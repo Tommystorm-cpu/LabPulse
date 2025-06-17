@@ -1,9 +1,7 @@
 /*
 Code for an Arduino to import into an IDE, then communicate with a DHT11 
-sensor. This code should be imported into the arduino IDE via a git file.
-
-This website has a good tutorial on how to do this.
-https://docs.simplefoc.com/library_download
+sensor. This code should be either downloaded into the Arduino IDE as a .cpp
+file or copy and pasted into one.
 */
 
 //Checks that the ARDUINO is defined and is version 1.0.0 or greater
@@ -124,15 +122,15 @@ int dht11::read(int pin)
 		else cnt--;
 	}
 
-	//Variables are written
-    //as bits[1] and bits[3] are allways zero they are omitted in formulas.
-	humidity    = bits[0]; 
-	temperature = bits[2]; 
-
+		humidity    = bits[0]; 
+		temperature = bits[2]; 
     //Check for potential transmission errors
-	uint8_t sum = bits[0] + bits[2]; 
-
-	if (bits[4] != sum) return DHTLIB_ERROR_CHECKSUM;
+	uint8_t sum = bits[0] + bits[1] + bits[2] + bits[3]; 
+	//Serial.print(sum);
+	//Serial.print(bits[4]);
+	if (bits[4] != sum & 0xFF) {
+    return DHTLIB_ERROR_CHECKSUM;
+  }
 	return DHTLIB_OK;
 }
 
