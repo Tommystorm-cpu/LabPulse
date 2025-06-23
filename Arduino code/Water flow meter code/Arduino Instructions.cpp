@@ -4,6 +4,8 @@ Liquid flow rate sensor -DIYhacking.com Arvind Sanjeev
 This code was found on 
 https://www.instructables.com/How-to-Use-Water-Flow-Sensor-Arduino-Tutorial/
 
+To use, copy and paste the code into the Arduino IDE.
+
 Measure the liquid/water flow rate using this code. 
 Connect Vcc and Gnd of sensor to arduino, and the 
 signal line to arduino digital pin 2.
