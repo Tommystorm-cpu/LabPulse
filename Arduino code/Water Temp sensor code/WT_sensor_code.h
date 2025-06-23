@@ -12,6 +12,7 @@ Header file to run the water temperature sensor on an Arduino
   #include <WProgram.h>
 #endif
 
+//Define class in .cpp file
 class WT_sensor {
   public:
     float read(int pin,
@@ -21,7 +22,8 @@ class WT_sensor {
       float D,
       float Res_const
       );
-        float Temperature;
+    float Temperature;
+    float Res_sensor;
 };
 
 #endif
