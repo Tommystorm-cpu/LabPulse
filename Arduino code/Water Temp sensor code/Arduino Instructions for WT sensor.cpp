@@ -1,7 +1,3 @@
-#include "WT_sensor_code.h"
-
-WT_sensor T_sens;
-
 //Define all pins used - up to 6 analog pins available
 //Note that you must change the i value in the loop() to 
 //match the number of entries in the list
@@ -22,13 +18,18 @@ void setup() {
 //Initialise on pin 0, and check each pin's output
 int i = 0;
 void loop() {
-  //Generate the temperature output of a pin
-  float Temperature = T_sens.read(pins[i],
-  A,
-  B,
-  C,
-  D,
-  Res_const);
+  //Read voltage across sensor, assuming the supply voltage is 5.0V and 10-bit ADC
+  float voltage = analogRead(pin) * (5.0 / 1023.0);
+  //Total supply is 5.0V, hence the constant resistor must have this voltage
+  float res_const_voltage = 5.0 - voltage;
+
+  //Calculate the sensors resistance
+  Res_sensor = (voltage/res_const_voltage) * Res_const;
+  float lnR = log (Res_sensor);
+
+  //Steinhart-Hart equation - converted to celcius
+  Temperature = (1.0 / (A + B * (lnR) + C * pow(lnR,2) + D * pow(lnR,3))) - 273.15;
+  
   //Print the temperature/resistance output 
   //Use resistance for testing circuit with known resistors.
   Serial.print("Temperature across pin ");
