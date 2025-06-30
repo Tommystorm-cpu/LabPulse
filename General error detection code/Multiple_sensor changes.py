@@ -13,9 +13,9 @@ std_error = 0.5 #Quoted accuracy for GE-1337
 results_list = [random.randint(10,13) for i in range(4)]
 
 #Check each entry against each following entry
-for r_i in results_list:
-  for r_j in results_list[i:-1]:
-    if r_i > r_j + 1.5*std_error or r_i < r_j - 1.5*st_error:
-      #One sensor is significantly different than another
-      #Send text message
-      break
+for i, r_i in enumerate(results_list):
+    for r_j in results_list[i+1:]:
+        if abs(r_i - r_j) > 1.5*std_error:
+          #One sensor is significantly different than another
+          #Send text message
+          break
