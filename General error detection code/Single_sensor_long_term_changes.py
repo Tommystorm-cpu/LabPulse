@@ -18,7 +18,7 @@ result = np.random.rand()
 
 if len(data_set) == 50:
   mean = np.mean(data_set)
-  std = np.std(data_set,mean)
+  std = np.std(data_set)
 
   if result < mean - 1.5*std or result > mean + 1.5*std:
     if error_occurred == False:
