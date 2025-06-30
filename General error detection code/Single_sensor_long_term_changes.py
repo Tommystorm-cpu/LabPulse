@@ -9,21 +9,6 @@ a variable is set to True for one hour.
 """
 import numpy as np
 
-#Define statistical functions
-def mean(data_set):
-  """
-  Calculates mean of a data_set where data_set is a list of numbers
-  """
-  return sum(data_set)/len(data_set)
-
-def std(data_set,mean):
-  if mean == None:
-    mean = mean(data_set)
-    
-  data_set = [((d - mean) ** 2)/len(data_set) for d in data_set]
-  
-  return sum(data_set) ** 0.5
-
 #Code to add before the try statement on the Pi
 data_set = []
 error_occurred = False
@@ -32,8 +17,8 @@ error_occurred = False
 result = np.random.rand()
 
 if len(data_set) == 50:
-  mean = mean(data_set)
-  std = std(data_set,mean)
+  mean = np.mean(data_set)
+  std = np.std(data_set,mean)
 
   if result < mean - 1.5*std or result > mean + 1.5*std:
     if error_occurred == False:
