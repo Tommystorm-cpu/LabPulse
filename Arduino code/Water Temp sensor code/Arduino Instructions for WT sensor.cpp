@@ -19,16 +19,16 @@ void setup() {
 int i = 0;
 void loop() {
   //Read voltage across sensor, assuming the supply voltage is 5.0V and 10-bit ADC
-  float voltage = analogRead(pin) * (5.0 / 1023.0);
+  float voltage = analogRead(pins[i]) * (5.0 / 1023.0);
   //Total supply is 5.0V, hence the constant resistor must have this voltage
   float res_const_voltage = 5.0 - voltage;
 
   //Calculate the sensors resistance
-  Res_sensor = (voltage/res_const_voltage) * Res_const;
+  float Res_sensor = (voltage/res_const_voltage) * Res_const;
   float lnR = log (Res_sensor);
 
   //Steinhart-Hart equation - converted to celcius
-  Temperature = (1.0 / (A + B * (lnR) + C * pow(lnR,2) + D * pow(lnR,3))) - 273.15;
+  float Temperature = (1.0 / (A + B * (lnR) + C * pow(lnR,2) + D * pow(lnR,3))) - 273.15;
   
   //Print the temperature/resistance output 
   //Use resistance for testing circuit with known resistors.
