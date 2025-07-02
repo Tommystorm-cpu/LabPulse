@@ -218,17 +218,31 @@ def main():
         return True
 
     def confirm_power_out(init_time, required_duration=0.25, timeout=1.0):
-        check_interval = 0.01
+        end_time = init_time + timeout
+        confirm_start = None
+    
         print(f"[DEBUG] Starting power outage confirmation at {init_time:.3f}")
-        while time.time() - init_time < timeout:
-            time.sleep(check_interval)
-            _, current_mA_check = read_voltage_current()
-            if determine_charging_status(current_mA_check) != "Discharging...":
-                print(f"[DEBUG] Power restored during confirmation at {time.time():.3f}")
-                return False
-            if time.time() - init_time >= required_duration:
-                print(f"[DEBUG] Outage confirmed at {time.time():.3f} (duration met)")
-                return True
+    
+        while time.time() < end_time:
+            _, current_mA = read_voltage_current()
+            is_discharging = determine_charging_status(current_mA) == "Discharging..."
+    
+            now = time.time()
+    
+            if is_discharging:
+                if confirm_start is None:
+                    confirm_start = now
+                    print(f"[DEBUG] Discharging started at {confirm_start:.3f}")
+                elif now - confirm_start >= required_duration:
+                    print(f"[DEBUG] Outage confirmed at {now:.3f} (duration met)")
+                    return True
+            else:
+                if confirm_start is not None:
+                    print(f"[DEBUG] Power restored before duration met (started at {confirm_start:.3f}, ended at {now:.3f})")
+                confirm_start = None
+    
+            time.sleep(0.005)  # Smaller sleep interval for better responsiveness
+    
         print(f"[DEBUG] Outage confirmation timed out at {time.time():.3f}")
         return False
 
@@ -311,5 +325,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
