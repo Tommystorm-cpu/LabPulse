@@ -217,34 +217,49 @@ def main():
                 return False
         return True
 
-    def confirm_power_out(init_time, required_duration=0.25, timeout=1.0):
-        end_time = init_time + timeout
-        confirm_start = None
+    def confirm_power_out(init_time, required_duration=0.25, timeout=1.0, max_idle_time=0.1):
+        check_interval = 0.01
+        discharging_time = 0.0
+        last_status_time = time.time()
+        idle_start_time = None
     
         print(f"[DEBUG] Starting power outage confirmation at {init_time:.3f}")
     
-        while time.time() < end_time:
-            _, current_mA = read_voltage_current()
-            is_discharging = determine_charging_status(current_mA) == "Discharging..."
-    
+        while time.time() - init_time < timeout:
+            time.sleep(check_interval)
+            _, current_mA_check = read_voltage_current()
+            status = determine_charging_status(current_mA_check)
             now = time.time()
     
-            if is_discharging:
-                if confirm_start is None:
-                    confirm_start = now
-                    print(f"[DEBUG] Discharging started at {confirm_start:.3f}")
-                elif now - confirm_start >= required_duration:
-                    print(f"[DEBUG] Outage confirmed at {now:.3f} (duration met)")
-                    return True
+            print(f"[DEBUG] t={now:.3f}, status={status}, discharging_time={discharging_time:.3f}")
+    
+            if status == "Discharging...":
+                # Reset idle tracker
+                idle_start_time = None
+                # Accumulate discharging time
+                discharging_time += now - last_status_time
+    
+            elif status == "idle":
+                if idle_start_time is None:
+                    idle_start_time = now
+                elif now - idle_start_time > max_idle_time:
+                    print(f"[DEBUG] Power idle too long ({now - idle_start_time:.3f}s) — cancelling.")
+                    return False
+    
             else:
-                if confirm_start is not None:
-                    print(f"[DEBUG] Power restored before duration met (started at {confirm_start:.3f}, ended at {now:.3f})")
-                confirm_start = None
+                print(f"[DEBUG] Status {status} is not valid during outage confirmation — cancelling.")
+                return False
     
-            time.sleep(0.005)  # Smaller sleep interval for better responsiveness
+            # Check if discharging time meets required threshold
+            if discharging_time >= required_duration:
+                print(f"[DEBUG] Outage confirmed after {discharging_time:.3f}s of discharging.")
+                return True
     
-        print(f"[DEBUG] Outage confirmation timed out at {time.time():.3f}")
+            last_status_time = now
+    
+        print(f"[DEBUG] Outage confirmation timed out. Only {discharging_time:.3f}s of discharging.")
         return False
+
 
 
     def confirm_and_send_outage_sms():
