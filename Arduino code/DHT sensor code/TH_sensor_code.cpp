@@ -24,7 +24,7 @@ transmission of data between the sensor and arduino, finally the
 DHTLIB_ERROR_TIMEOUT is returned if at any point the system runs for too
 long without a succesful change. 
 */
-#define DHTLIB_OK				0
+#define DHTLIB_OK	0
 #define DHTLIB_ERROR_CHECKSUM	-1
 #define DHTLIB_ERROR_TIMEOUT	-2
 
@@ -47,6 +47,7 @@ then be accessed by later code
 // DHTLIB_OK
 // DHTLIB_ERROR_CHECKSUM
 // DHTLIB_ERROR_TIMEOUT
+//Function provides a value to temperature and humidity but doesn't explicitly return them
 int dht11::read(int pin)
 {
 	/*
