@@ -1,3 +1,7 @@
+# Must run this command in terminal in the venv before running the script:
+#sudo apt update
+#pip install paho-mqtt adafruit-blinka adafruit-circuitpython-dht lgpio board
+
 import time
 import json
 import board
@@ -23,7 +27,7 @@ def publish_discovery():
 		"unit_of_measurement": "C",
 		"value_template": "{{ value_json.temperature }}",
 		"unique_id": "room_temperature_dht11",
-		"device_class": "temperature",
+		#"device_class": "temperature",
 		"device": {
 			"identifiers": [DEVICE_ID],
 			"name": "DHT11 Sensor",
@@ -37,7 +41,7 @@ def publish_discovery():
 		"unit_of_measurement": "%",
 		"value_template": "{{ value_json.humidity }}",
 		"unique_id": "room_humidity_dht11",
-		"device_class": "humidity",
+		#"device_class": "humidity",
 		"device": {
 			"identifiers": [DEVICE_ID],
 			"name": "DHT11 Sensor",
@@ -91,3 +95,6 @@ def main():
 
 if __name__ == "__main__":
 	main()
+
+
+
