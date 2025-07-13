@@ -1,0 +1,49 @@
+{
+  "pressure": {
+    "threshold": 5.0
+  },
+  "pump_flow1": {
+    "min": 2.0
+  },
+  "pump_flow2": {
+    "min": 2.0
+  },
+  "pump_temp0": {
+    "min": 10.0,
+    "max": 35.0
+  },
+  "pump_temp1": {
+    "min": 10.0,
+    "max": 35.0
+  },
+  "pump_temp2": {
+    "min": 10.0,
+    "max": 35.0
+  },
+  "pump_temp3": {
+    "min": 10.0,
+    "max": 35.0
+  },
+  "turbo_flow1": {
+    "min": 1.5
+  },
+  "turbo_flow2": {
+    "min": 1.5
+  },
+  "turbo_temp0": {
+    "min": 5.0,
+    "max": 40.0
+  },
+  "turbo_temp1": {
+    "min": 5.0,
+    "max": 40.0
+  },
+  "turbo_temp2": {
+    "min": 5.0,
+    "max": 40.0
+  },
+  "turbo_temp3": {
+    "min": 5.0,
+    "max": 40.0
+  }
+}
