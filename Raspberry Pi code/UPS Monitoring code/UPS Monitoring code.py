@@ -27,10 +27,11 @@ VOLTAGE_MIN = 6.0
 VOLTAGE_MAX = 7.92
 
 # List of phone numbers to send SMS to
-SMS_PHONE_NUMBERS = [
-    "+447955656806", # Matt's Number
-    "+447474510525" # Sam's Number
-]
+def load_recipients(path='/home/monitorpi/Desktop/Phone_Numbers.json'):
+    with open(path, 'r') as f:
+        return json.load(f)['recipients']
+
+SMS_PHONE_NUMBERS = load_recipients()
 # Global SMS message queue
 sms_queue = queue.Queue()
 
