@@ -1,0 +1,14 @@
+[Unit]
+Description=A service that runs a python script that monitors power outages
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/monitorpi
+ExecStart=/home/monitorpi/powerenv/bin/python3 /home/monitorpi/powerpub.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
