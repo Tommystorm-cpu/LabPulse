@@ -1,0 +1,14 @@
+[Unit]
+Description=Runs the Turbo Pump Monitor Script as BKG service
+After=network.target
+
+[Service]
+ExecStart=/home/monitorpi/waterenv/bin/python /home/monitorpi/turbopumppub.py
+WorkingDirectory=/home/monitorpi        
+Restart=on-failure
+RestartSec=5s
+User=root     
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
