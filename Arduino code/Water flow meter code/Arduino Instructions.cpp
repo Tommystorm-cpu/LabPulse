@@ -12,8 +12,6 @@ signal line to arduino digital pin 2.
  
  */
 
-byte statusLed    = 13;
-
 byte sensorPin = 2;
 const byte sensorInterrupt = digitalPinToInterrupt(sensorPin);
 
@@ -34,10 +32,6 @@ void setup()
   
   // Initialize a serial connection for reporting values to the host
   Serial.begin(9600);
-   
-  // Set up the status LED line as an output
-  pinMode(statusLed, OUTPUT);
-  digitalWrite(statusLed, HIGH);  // We have an active-low LED attached
 
   //Set input pin to accept signal
   pinMode(sensorPin, INPUT);
