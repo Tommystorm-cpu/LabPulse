@@ -7,6 +7,18 @@ float A = 0.0014948;
 float B = 0.00021902;
 float C = 1.6239e-6;
 float D = 3.4445e-8;
+/*
+If flow impedence is too large from the submerged temperature sensors, then replace with on house sensors.
+One possible suggestion is the Belimo Contact Temperature Sensor NTC 20K 01HT-1Q.
+It would have parameters of 
+A = 0.001161040565152103;
+B = 0.00021040244086619213;
+C = 2.8166933911320774e-07;
+D = 8.42584228417612e-08;
+
+This would be all that's needed to change in the code, however you may wish to change the values of the resistors on 
+the voltage divider circuit. Likely to around 40kOhms instead of 4-5kOhms since the components resistance is much higher.
+*/
 //Resistance of the constant resistor used
 float Res_const = 4700;
 
