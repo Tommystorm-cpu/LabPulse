@@ -45,7 +45,7 @@ unsigned long totalMilliLitres_2 = 0.0;
 //Define oldTime for time keeping purposes
 unsigned long oldTime = 0.0;
 
-float readTemperature(int voltage) {
+float readTemperature(float voltage) {
   /*
   Function to calculate the temperature reading of an NTC thermistor using the Steinhart-Hart equation.
   Its only input is voltage, however it is necessary to define the Steinhart-Hart equations parameters
