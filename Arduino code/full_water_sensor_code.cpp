@@ -105,9 +105,11 @@ void printResults() {
   Serial.print(flowRate_2, 2);
   Serial.print(" L/min, Total2: ");
   Serial.println(totalLitres_2, 2);
-      
+
+  //Calculate list length
+  int len = sizeof(a_pins) / sizeof(a_pins[0]);
   //Calculate and print temperature readings
-  for (int i = 0; i < a_pins.size(); i++) {
+  for (int i = 0; i < len; i++) {
     //Calculate voltage and temperature of sensor i
     float voltage = analogRead(a_pins[i]);
     float Temperature = readTemperature(voltage);
