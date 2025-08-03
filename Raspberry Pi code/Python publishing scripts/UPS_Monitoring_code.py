@@ -157,11 +157,27 @@ def publish_discovery(client):
         topic = f"homeassistant/sensor/{sensor['unique_id']}/config"
         client.publish(topic, json.dumps(sensor), retain=True)
 
+def get_modem_index():
+    try:
+        result = subprocess.run(["mmcli", "-L"], capture_output=True, text=True, check=True)
+        for line in result.stdout.splitlines():
+            if "/Modem/" in line:
+                # Extract index number from path like /org/freedesktop/ModemManager1/Modem/7
+                parts = line.strip().split('/')
+                return parts[-1].split()[0]  # '7'
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to list modems: {e.stderr}")
+    return None
+
 def send_sms(phone_number: str, message: str):
     try:
+        MODEM_INDEX = get_modem_index()
+        if not MODEM_INDEX:
+            print("No modem found.")
+            return
         print(f"Creating SMS to {phone_number}")
         result = subprocess.run(
-            ['mmcli', '-m', '0', '--messaging-create-sms', f'text="{message}",number={phone_number}'],
+            ['mmcli', '-m', MODEM_INDEX, '--messaging-create-sms', f'text="{message}",number={phone_number}'],
             capture_output=True, text=True, timeout=10
         )
 
