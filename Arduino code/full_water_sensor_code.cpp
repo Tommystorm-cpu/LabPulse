@@ -37,11 +37,9 @@ float calibrationFactor = 4.5;
 //Set up pulse counters as bytes that store up to 255 pulses
 volatile byte pulseCount_1 = 0;
 volatile byte pulseCount_2 = 0;
-//Set up flow rate and millilitres for sensor 1 and 2
+//Set up flow rate for sensor 1 and 2
 float flowRate_1 = 0.0;
-unsigned long totalMilliLitres_1 = 0.0;
 float flowRate_2 = 0.0;
-unsigned long totalMilliLitres_2 = 0.0;
 //Define oldTime for time keeping purposes
 unsigned long oldTime = 0.0;
 
@@ -60,8 +58,8 @@ float readTemperature(float voltage) {
   float lnR = log(Res_sensor);
 
   //Steinhart-Hart equation - converted to celcius
-  float Temperature = (1.0 / (A + B * (lnR) + C * pow(lnR,2) + D * pow(lnR,3))) - 273.15;]
-  return Temperature
+  float Temperature = (1.0 / (A + B * (lnR) + C * pow(lnR,2) + D * pow(lnR,3))) - 273.15;
+  return Temperature;
 }
 
 //Each turn of the water flow sensors wheel interrupts the program
@@ -85,40 +83,34 @@ void printResults() {
   detachInterrupt(sensorInterrupt_1);
   detachInterrupt(sensorInterrupt_2);
 
-  //Calculate flow rate, the 1000.0 converts from L to mL, 
+  //Calculate flow rate, 
   //the millis() - oldTime gives an accurate time for the num of pulses and the
   //calibrationFactor converts from pulse count to L/min.
   flowRate_1 = ((1000.0 / (millis() - oldTime)) * pulseCount_1) / calibrationFactor;
   flowRate_2 = ((1000.0 / (millis() - oldTime)) * pulseCount_2) / calibrationFactor;
 
-  //Add onto the totalLitres for each flow sensor
-  totalLitres_1 += flowRate_1 / 60;
-  totalLitres_2 += flowRate_2 / 60;
   //Print flow sensor results
   Serial.print("Flow1: ");
   Serial.print(flowRate_1, 2);
-  Serial.print(" L/min, Total1: ");
-  Serial.print(totalLitres_1, 2);
-  Serial.print(" L ");
+  Serial.print(" L/min | ");
   
   Serial.print("Flow2: ");
   Serial.print(flowRate_2, 2);
-  Serial.print(" L/min, Total2: ");
-  Serial.println(totalLitres_2, 2);
+  Serial.print(" L/min");
 
   //Calculate list length
   int len = sizeof(a_pins) / sizeof(a_pins[0]);
   //Calculate and print temperature readings
   for (int i = 0; i < len; i++) {
     //Calculate voltage and temperature of sensor i
-    float voltage = analogRead(a_pins[i]);
+    float voltage = analogRead(a_pins[i]) * (5.0/1023.0);
     float Temperature = readTemperature(voltage);
     //Print result
-    Serial.print("Temperature across pin ");
+    Serial.print("Temp");
     Serial.print(i);
-    Serial.print("is ");
-    Serial.print(Temperature);
-    Serial.println("Celcius")
+    Serial.print(": ");
+    Serial.print(Temperature,2);
+    Serial.print("C  ");
     }
 }
 
@@ -128,8 +120,10 @@ void setup() {
   Serial.begin(9600);
 
   //Set input pin to accept signal
-  pinMode(sensorPin, INPUT);
-  digitalWrite(sensorPin, HIGH);
+  pinMode(sensorPin_1, INPUT);
+  digitalWrite(sensorPin_1, HIGH);
+  pinMode(sensorPin_2, INPUT);
+  digitalWrite(sensorPin_2, HIGH);
 
   // The Hall-effect sensor is connected to pin 2 which uses interrupt 0.
   // Configured to trigger on a FALLING state change (transition from HIGH
@@ -137,20 +131,19 @@ void setup() {
   attachInterrupt(sensorInterrupt_1, pulseCounter_1, FALLING);
   attachInterrupt(sensorInterrupt_2, pulseCounter_2, FALLING);
 }
-
+volatile byte loopcounter = 0;
 void loop() {
   /* The Hall-effect sensor provides pulses corresponding to 4.5 per second per
   litre/min of flow. Since pulse count is stored as a byte, we can only store 255 
   pulses, so we must only count for every second, despite wanting to print 
   results every 3rd second - so we keep a timer.
   */
-  int counter = 0;
   if (millis() - oldTime >= 1000) {
-    timecounter++;
+    loopcounter++;
 
-    if (counter == 3) {
+    if (loopcounter == 3) {
       printResults();
-      timecounter = 0;
+      loopcounter = 0;
     }
      // Reset counters
     pulseCount_1 = 0;
