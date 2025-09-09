@@ -84,7 +84,7 @@ void printResults() {
 
   //Calculate flow rate, 
   //the millis() - oldTime gives an accurate time for the num of pulses 
-  float duration = ((millis() - oldTime)/1000)/60
+  float duration = ((millis() - oldTime)/1000)/60;
   flowRate_1 = flowCount_1 / duration;
   flowRate_2 = flowCount_2 / duration;
 
@@ -134,12 +134,12 @@ void loop() {
   if (millis() - oldTime >= 5000) {
     printResults();
     // Reset counters
-    pulseCount_1 = 0;
-    pulseCount_2 = 0;
+    flowCount_1 = 0;
+    flowCount_2 = 0;
     oldTime = millis();
     // Enable the interrupt again now that we've finished sending output
-    attachInterrupt(sensorInterrupt_1, pulseCounter_1, FALLING);
-    attachInterrupt(sensorInterrupt_2, pulseCounter_2, FALLING);
+    attachInterrupt(sensorInterrupt_1, flowCounter_1, FALLING);
+    attachInterrupt(sensorInterrupt_2, flowCounter_2, FALLING);
   }
 }
 
