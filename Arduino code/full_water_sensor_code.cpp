@@ -31,12 +31,11 @@ const byte sensorInterrupt_1 = digitalPinToInterrupt(sensorPin_1);
 byte sensorPin_2 = 3;
 const byte sensorInterrupt_2 = digitalPinToInterrupt(sensorPin_2);
 
-// The hall-effect flow sensor outputs approximately 4.5 pulses per second per
-// litre/minute of flow. The larger sensor has a rate of 1L=75 pulses, or 75/60 pulses per second for 1 litre/minute of flow
-float calibrationFactor = 4.5;
-//Set up pulse counters as bytes that store up to 255 pulses
-volatile byte pulseCount_1 = 0;
-volatile byte pulseCount_2 = 0;
+// The hall effect flow sensor outputs 450 pulses for every litre of flow
+float calibrationFactor = 450.0; //75.0 for larger flow sensor
+//Set up flow counters 
+float flowCount_1 = 0.0;
+float flowCount_2 = 0.0;
 //Set up flow rate for sensor 1 and 2
 float flowRate_1 = 0.0;
 float flowRate_2 = 0.0;
@@ -64,12 +63,12 @@ float readTemperature(float voltage) {
 
 //Each turn of the water flow sensors wheel interrupts the program
 //and adds on 1 to the respective pulseCount
-void pulseCounter_1() {
-  pulseCount_1++;
+void flowCounter_1() {
+  flowCount_1 += 1.0 / calibrationFactor;
 }
 
-void pulseCounter_2() {
-  pulseCount_2++;
+void flowCounter_2() {
+  flowCount_2 += 1.0 / calibrationFactor;
 }
 
 void printResults() {
@@ -84,10 +83,10 @@ void printResults() {
   detachInterrupt(sensorInterrupt_2);
 
   //Calculate flow rate, 
-  //the millis() - oldTime gives an accurate time for the num of pulses and the
-  //calibrationFactor converts from pulse count to L/min.
-  flowRate_1 = ((1000.0 / (millis() - oldTime)) * pulseCount_1) / calibrationFactor;
-  flowRate_2 = ((1000.0 / (millis() - oldTime)) * pulseCount_2) / calibrationFactor;
+  //the millis() - oldTime gives an accurate time for the num of pulses 
+  float duration = ((millis() - oldTime)/1000)/60
+  flowRate_1 = flowCount_1 / duration;
+  flowRate_2 = flowCount_2 / duration;
 
   //Print flow sensor results
   Serial.print("Flow1: ");
@@ -115,7 +114,6 @@ void printResults() {
 }
 
 void setup() {
-  
   // Initialize a serial connection for reporting values to the host
   Serial.begin(9600);
 
@@ -128,24 +126,14 @@ void setup() {
   // The Hall-effect sensor is connected to pin 2 which uses interrupt 0.
   // Configured to trigger on a FALLING state change (transition from HIGH
   // state to LOW state)
-  attachInterrupt(sensorInterrupt_1, pulseCounter_1, FALLING);
-  attachInterrupt(sensorInterrupt_2, pulseCounter_2, FALLING);
+  attachInterrupt(sensorInterrupt_1, flowCounter_1, FALLING);
+  attachInterrupt(sensorInterrupt_2, flowCounter_2, FALLING);
 }
 volatile byte loopcounter = 0;
 void loop() {
-  /* The Hall-effect sensor provides pulses corresponding to 4.5 per second per
-  litre/min of flow. Since pulse count is stored as a byte, we can only store 255 
-  pulses, so we must only count for every second, despite wanting to print 
-  results every 3rd second - so we keep a timer.
-  */
-  if (millis() - oldTime >= 1000) {
-    loopcounter++;
-
-    if (loopcounter == 3) {
-      printResults();
-      loopcounter = 0;
-    }
-     // Reset counters
+  if (millis() - oldTime >= 5000) {
+    printResults();
+    // Reset counters
     pulseCount_1 = 0;
     pulseCount_2 = 0;
     oldTime = millis();
