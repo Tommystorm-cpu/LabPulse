@@ -32,7 +32,7 @@ byte sensorPin_2 = 3;
 const byte sensorInterrupt_2 = digitalPinToInterrupt(sensorPin_2);
 
 // The hall-effect flow sensor outputs approximately 4.5 pulses per second per
-// litre/minute of flow.
+// litre/minute of flow. The larger sensor has a rate of 1L=75 pulses, or 75/60 pulses per second for 1 litre/minute of flow
 float calibrationFactor = 4.5;
 //Set up pulse counters as bytes that store up to 255 pulses
 volatile byte pulseCount_1 = 0;
