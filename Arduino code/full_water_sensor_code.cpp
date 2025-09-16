@@ -129,13 +129,12 @@ void setup() {
   attachInterrupt(sensorInterrupt_1, flowCounter_1, FALLING);
   attachInterrupt(sensorInterrupt_2, flowCounter_2, FALLING);
 }
-volatile byte loopcounter = 0;
 void loop() {
-  if (millis() - oldTime >= 5000) {
+  if (millis() - oldTime >= 5000.0) {
     printResults();
     // Reset counters
-    flowCount_1 = 0;
-    flowCount_2 = 0;
+    flowCount_1 = 0.0;
+    flowCount_2 = 0.0;
     oldTime = millis();
     // Enable the interrupt again now that we've finished sending output
     attachInterrupt(sensorInterrupt_1, flowCounter_1, FALLING);
