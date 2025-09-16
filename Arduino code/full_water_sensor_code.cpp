@@ -84,7 +84,7 @@ void printResults() {
 
   //Calculate flow rate, 
   //the millis() - oldTime gives an accurate time for the num of pulses 
-  float duration = ((millis() - oldTime)/1000)/60;
+  float duration = ((millis() - oldTime)/1000.0)/60.0;
   flowRate_1 = flowCount_1 / duration;
   flowRate_2 = flowCount_2 / duration;
 
