@@ -101,6 +101,7 @@ void printResults() {
   int len = sizeof(a_pins) / sizeof(a_pins[0]);
   //Calculate and print temperature readings
   for (int i = 0; i < len; i++) {
+    if (i != len - 1) {
     //Calculate voltage and temperature of sensor i
     float voltage = analogRead(a_pins[i]) * (5.0/1023.0);
     float Temperature = readTemperature(voltage);
@@ -110,7 +111,17 @@ void printResults() {
     Serial.print(": ");
     Serial.print(Temperature,2);
     Serial.print("C  ");
+    } else {
+      float voltage = analogRead(a_pins[i]) * (5.0/1023.0);
+    float Temperature = readTemperature(voltage);
+    //Print result
+    Serial.print("Temp");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(Temperature,2);
+    Serial.println("C  ");
     }
+  }
 }
 
 void setup() {
