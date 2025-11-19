@@ -13,7 +13,7 @@ if [ -z "$MODEM" ]; then
 fi
 
 if [ -n "$MODEM" ]; then
-    STATE=$(mmcli -m "$MODEM" | grep 'state:' | awk '{print $2}')
+    STATE=$(mmcli -m "$MODEM" | grep 'connected' | sed 's/\x1B\[[0-9;]\{1,\}[A-Za-z]//g' | awk '{print $NF}')
     if [ "$STATE" != "connected" ]; then
         echo "$(date): [WARN] Modem not connected. Attempting to reconnect..." >> "$LOG"
         mmcli -m "$MODEM" --simple-connect="apn=your.apn.here" >> "$LOG" 2>&1 #Make sure to change your.apn.here to the apn of your SIM service provider!
