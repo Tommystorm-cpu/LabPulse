@@ -1,2 +1,20 @@
 # Raspberry-Pi-and-Arduino-code-for-lab-monitoring
-Code in C++ and python to use the Raspberry Pi and arduino's that monitor lab equipment
+
+This repository consists of the code, instructions, 3D printable schematics and some introductory PCB designs for a lab monitoring set up.
+
+This set up aims to automate some aspects of lab management, mainly that of monitoring some different systems and sending alerts to lab workers when emergency thresholds are breached. For example, using a Gravity Analog Water Pressure Sensor, we successfully, remotely, monitor the compressed air pressure. Or likewise, using several GE-1337 temperature sensors and Gravity water flow meters we also monitor the water temperature and flow rate in the cooling pipes of the ULT lab.
+
+There is still massive potential to extend this repository to include other sensors and monitoring systems, and likely the existing code could be improved to be more efficient or accurate. For example, we have not yet produced a framework for monitoring oxygen or CO2 levels (although our lab and most labs with liquid nitrogen already have O2 sensors for safety reasons), useful data to monitor could also be air quality; especially with regards to labs where chemistry or semiconductor manufacture takes place.
+
+The current set up in the ULT lab is depicted in the Set_up_flowchart.pdf and described below.
+[Diagram flowchart](Set_up_flowchart.pdf)
+
+The Raspberry Pi:
+Our Pi, set up with a UPS hat and SIM hat, is the powerhouse of the set up. It powers and receives sensor data from the Arduino Uno's, is powered via barrel jack and connected to two batteries through the UPS hat. If a power outage occurs, or say the coolant water temperature raises beyond threshold, the Pi uses the SIM hat to send a text to anyone on the phone number list in Raspberry Pi code/Config files and scripts/phone_number_config.json - note these phone numbers are not real for obvious reasons. Additionally, outside of errors, the Pi uploads to Home Assistant, allowing for remote check-ins.
+
+Arduino's:
+Each arduino is powered by the Pi through a USB hub, and prints the values to Serial, which the Pi monitors in their own virtual environment. There are PCBs in the PCB_files file, in which can be used with 4 temperature sensors and 2 water flow sensors as a hat, allowing for relatively clean wiring. These PCBs definitely can be improved, but should work and will be worked on in future. 
+
+Set up of Arduino's is rather simple, upload the code to the arduino through the Pi or via a personal computer with USB, connect the required sensors to the corresponding pins and then connect to the Pi. Note that one common issue we have ran into is when disconnecting and reconnecting an Arduino, sometimes the USB ports change, e.g. from dev/tty/ACM0 to dev/tty/ACM1. In the Pi's code, change the USB port in the corresponding script from the Python publishing scripts file to the correct one. To check the correct one you can type ls /dev/ttyACM*, and this will list all connected ports of this type.
+
+For general enquiries, feel free to open an issue.
