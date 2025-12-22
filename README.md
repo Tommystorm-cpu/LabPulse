@@ -17,4 +17,18 @@ Each arduino is powered by the Pi through a USB hub, and prints the values to Se
 
 Set up of Arduino's is rather simple, upload the code to the arduino through the Pi or via a personal computer with USB, connect the required sensors to the corresponding pins and then connect to the Pi. Note that one common issue we have ran into is when disconnecting and reconnecting an Arduino, sometimes the USB ports change, e.g. from dev/tty/ACM0 to dev/tty/ACM1. In the Pi's code, change the USB port in the corresponding script from the Python publishing scripts file to the correct one. To check the correct one you can type ls /dev/ttyACM*, and this will list all connected ports of this type.
 
+Below is a summary of each file and its contents and uses.
+
+3D printable parts:
+In this file are any 3D models we used to place the raspberry pi with the UPS and SIM hats on.
+
+Arduino code:
+Here is all the code used to publish onto the arduino's using the Arduino IDE through the raspberry Pi. The one caveat here is for two of our arduino's we used full_water_sensor_code.cpp to monitor our sensors, which include 4 temperature sensors and 2 water flow sensors. If you wish to monitor only temperature, then you would have to use code from the corresponding file.
+
+General error detection code:
+These files of code are to monitor the data output of the sensors and create an alert if and when there are issues. The only one currently used as of the 22nd December 2025 is the Upper_lower_limits.py, however, you can adapt the other code to monitor for any spikes in data such as the mean temperature or flow rate, and you can use the code to raise an error if one sensor reports differently to the others.
+
+PCB_files:
+These files contain the prototypes used for an arduino hat. The first works but is messy and uses male and female header pins - therefore isn't great. There are prototypes of an arduino hat, showing the progress made. If you were to use this PCB design for 4 temperature sensors and 2 water flow sensors, use the final prototype file for your gerber file, or use it as inspiration to design your own.
+
 For general enquiries, feel free to open an issue.
