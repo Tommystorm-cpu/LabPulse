@@ -4,7 +4,9 @@ LabPulse is a small-scale monitoring system for lab infrastructure. We built it 
 
 LabPulse runs on a Raspberry Pi and uses the [Home Assistant](https://www.home-assistant.io/) web interface. The Pi is connected to various sensors controlled by Arduinos.
 
-This Github contains a shopping list, code, and CAD files for our system, which was built by two interns in the course of one summer. LabGuard is still very much a prototype, but it has already helped us respond quickly to what would otherwise have been a serious experimental interruption. We welcome attempts to replicate and improve it, and are happy to answer questions as time allows.
+This Github contains a shopping list, code, and CAD files for our system, which was built by two interns at Lancaster University in the course of one summer. LabPulse is still very much a prototype, but it has already helped us respond quickly to what would otherwise have been a serious experimental interruption. We welcome attempts to replicate and improve it, and are happy to answer questions as time allows.
+
+![LabPulse Logo](./assets/logo.png)
 
 ## Contents of this repository
 
