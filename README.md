@@ -1,6 +1,6 @@
 # LabPulse
 
-LabPulse is a small-scale monitoring system for lab infrastructure. We built it for our research group to monitor the building services on which [our experiments](https://wp.lancs.ac.uk/laird-group/) rely - power, chilled water, compressed air, etc. We can monitor their status online, and when one of them is interrupted, the users receive a text alert. We think of it as a small-scale building management system.
+LabPulse is a small-scale monitoring system for lab infrastructure. We built it for our research group to monitor the building services on which [our experiments](https://wp.lancs.ac.uk/laird-group/) rely - power, chilled water, compressed air, etc. We can monitor their status online, and if any of them is interrupted, the users receive a text alert. We think of it as a small-scale building management system.
 
 LabPulse runs on a Raspberry Pi and uses the [Home Assistant](https://www.home-assistant.io/) web interface. The Pi is connected to various sensors controlled by Arduinos.
 
