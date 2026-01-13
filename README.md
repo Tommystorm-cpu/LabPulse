@@ -6,6 +6,8 @@ LabPulse runs on a Raspberry Pi and uses the [Home Assistant](https://www.home-a
 
 This Github contains a shopping list, code, and CAD files for our system, which was built by two interns at Lancaster University in the course of one summer. LabPulse is still very much a prototype, but it has already helped us respond quickly to what would otherwise have been a serious experimental interruption. We welcome attempts to replicate and improve it, and are happy to answer questions as time allows.
 
+<img src="./Documentation/LabPulse%20cartoon-03.png" alt="What LabPulse does" width="200"/>
+
 ![LabPulse Logo](./Documentation/LabPulse%20cartoon-03.png)
 
 ## Contents of this repository
