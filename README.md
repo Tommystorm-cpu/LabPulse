@@ -1,4 +1,12 @@
-# Raspberry-Pi-and-Arduino-code-for-lab-monitoring
+# LabPulse
+
+LabPulse is a small-scale monitoring system for lab infrastructure. We built it for our research group to monitor the building services on which [our experiments](https://wp.lancs.ac.uk/laird-group/) rely - power, chilled water, compressed air, etc. We can monitor their status online, and when one of them is interrupted, the users receive a text alert. We think of it as a small-scale building management system.
+
+LabPulse runs on a Raspberry Pi and uses the [Home Assistant](https://www.home-assistant.io/) web interface. The Pi is connected to various sensors controlled by Arduinos.
+
+This Github contains a shopping list, code, and CAD files for our system, which was built by two interns in the course of one summer. LabGuard is still very much a prototype, but it has already helped us respond quickly to what would otherwise have been a serious experimental interruption. We welcome attempts to replicate and improve it, and are happy to answer questions as time allows.
+
+## Contents of this repository
 
 This repository consists of the code, instructions, 3D printable schematics and some introductory PCB designs for a lab monitoring set up.
 
