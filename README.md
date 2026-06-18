@@ -34,7 +34,7 @@ Below is a summary of each file and its contents and uses.
 3D printable parts:
 In this file are any 3D models we used to place the raspberry pi with the UPS and SIM hats on.
 
-Arduino code:
+Arduino:
 Here is all the code used to publish onto the arduino's using the Arduino IDE through the raspberry Pi. The one caveat here is for two of our arduino's we used full_water_sensor_code.cpp to monitor our sensors, which include 4 temperature sensors and 2 water flow sensors. If you wish to monitor only temperature, then you would have to use code from the corresponding file.
 
 General error detection code:
@@ -42,5 +42,14 @@ These files of code are to monitor the data output of the sensors and create an 
 
 PCB_files:
 These files contain the prototypes used for an arduino hat. The first works but is messy and uses male and female header pins - therefore isn't great. There are prototypes of an arduino hat, showing the progress made. If you were to use this PCB design for 4 temperature sensors and 2 water flow sensors, use the final prototype file for your gerber file, or use it as inspiration to design your own.
+
+archive_v1_pi_code:
+Contains an archive of the pi code before the alterations were made in accordance with the project review found in the documentation folder.
+
+pi_scripts:
+This directory contains the core Python architecture for LabPulse. These scripts run continuously as background `systemd` services to process hardware data, evaluate it against thresholds, and trigger alerts. 
+* `config.yaml`: The master configuration file. All hardware limits, calibration offsets, and SMS contact numbers are set here.
+* `pumproompub.py`, `pressurepub.py`, etc.: The main service scripts that read the Arduino serial inputs, validate them, and route them to Home Assistant via MQTT.
+* `labpulse_common/`: The shared library folder containing the `sms.py` 4G cellular engine and the `mqtt_health.py` heartbeat tracker.
 
 For general enquiries, feel free to open an issue.
