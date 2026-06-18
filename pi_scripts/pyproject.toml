@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labpulse"
+version = "1.0.0"
+description = "LabPulse Sensor Network & Telemetry System"
+authors = [{name = "Lab Administrator"}]
+requires-python = ">=3.9"
+
+# abstract dependencies 
+dependencies = [
+    "pyserial",
+    "paho-mqtt",
+    "smbus2",
+    "adafruit-circuitpython-dht",
+    "PyYAML",
+    "pydantic"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["labpulse_common"]
+
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-mock",
+    "ruff",
+    "mypy"
+]
+
+[tool.ruff]
+
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort (import sorting)
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = ["E501"] # Ignore line-length violations for long MQTT topic strings
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+ignore_missing_imports = true

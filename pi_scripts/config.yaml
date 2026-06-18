@@ -1,0 +1,49 @@
+# ==========================================
+# LabPulse Central Configuration File
+# ==========================================
+
+# --- Global Settings ---
+mqtt:
+  broker: "localhost"
+  port: 1883
+
+sms:
+  # Emergency contact numbers for system alerts
+  recipients:
+    - "+447955656806"
+    - "+447753180741"
+    - "+447474510525"
+    - "+4915204304823"
+    - "+447873257640"
+    - "+447724548990"
+    - "+447864783617"
+    - "+447568737172"
+
+# --- Hardware Services ---
+pump_room:
+  serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"
+  baud_rate: 9600
+  min_readings_under_threshold: 3
+
+pressure_monitor:
+  serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"
+  baud_rate: 9600
+  min_readings_under_threshold: 3
+  default_threshold_bar: 0.0
+
+turbo_pump:
+  serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"
+  baud_rate: 9600
+  min_readings_under_threshold: 3
+
+dht11:
+  pin: "D4" 
+  device_id: "dht11_pi_sensor"
+  state_topic: "home/sensor/dht11"
+
+ups_monitor:
+  i2c_addr: 0x42
+  mqtt_client_id: "PowerMonitor"
+  mqtt_base_topic: "home/power/ups"
+  voltage_min: 6.0
+  voltage_max: 7.92
