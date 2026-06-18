@@ -47,9 +47,9 @@ archive_v1_pi_code:
 Contains an archive of the pi code before the alterations were made in accordance with the project review found in the documentation folder.
 
 pi_scripts:
-This directory contains the core Python architecture for LabPulse. These scripts run continuously as background `systemd` services to process hardware data, evaluate it against thresholds, and trigger alerts. 
-* `config.yaml`: The master configuration file. All hardware limits, calibration offsets, and SMS contact numbers are set here.
-* `pumproompub.py`, `pressurepub.py`, etc.: The main service scripts that read the Arduino serial inputs, validate them, and route them to Home Assistant via MQTT.
-* `labpulse_common/`: The shared library folder containing the `sms.py` 4G cellular engine and the `mqtt_health.py` heartbeat tracker.
+This directory contains the core Python architecture for LabPulse. These scripts run continuously as background`systemd services to process hardware data, evaluate it against thresholds, and trigger alerts. 
+* config.yaml: The master configuration file. All hardware limits, calibration offsets, and SMS contact numbers are set here.
+* pumproompub.py, pressurepub.py, etc.: The main service scripts that read the Arduino serial inputs, validate them, and route them to Home Assistant via MQTT.
+* labpulse_common/: The shared library folder containing the sms.py 4G cellular engine and the mqtt_health.py heartbeat tracker.
 
 For general enquiries, feel free to open an issue.
