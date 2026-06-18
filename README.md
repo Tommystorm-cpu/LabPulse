@@ -46,6 +46,9 @@ These files contain the prototypes used for an arduino hat. The first works but 
 archive_v1_pi_code:
 Contains an archive of the pi code before the alterations were made in accordance with the project review found in the documentation folder.
 
+Installation: 
+Contains the installation guide, compatability checks and installation script to install the LabPulse infrastructure through a USB thumb-drive.
+
 pi_scripts:
 This directory contains the core Python architecture for LabPulse. These scripts run continuously as background`systemd services to process hardware data, evaluate it against thresholds, and trigger alerts. 
 * config.yaml: The master configuration file. All hardware limits, calibration offsets, and SMS contact numbers are set here.
