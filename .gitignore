@@ -1,2 +1,7 @@
 waterenv/
 __pycache__/
+
+# Codex local workspace/artifact files
+.codex/
+.agents/
+LABPULSE_SKILL.md
