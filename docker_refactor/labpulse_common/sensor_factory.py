@@ -11,7 +11,9 @@ class SensorFactory:
     The factory keeps driver-specific construction in one place. Serial is
     implemented now; GPIO and I2C have placeholder methods ready for later.
     """
-    def __init__(self):
+    def __init__(self) -> None:
+        """Create a factory logger."""
+
         self.logger = logging.getLogger("SensorFactory")
 
     def build(self, service_name: str, service_config: ServiceConfig) -> BaseSensorDriver:
@@ -75,7 +77,7 @@ class SensorFactory:
         self,
         service_name: str,
         service_config: ServiceConfig,
-    ) -> dict:
+    ) -> dict[str, object]:
         """
         Convert the service config format into serial_driver.py's config shape.
         """
@@ -85,6 +87,8 @@ class SensorFactory:
         if not service_config.parser:
             raise ValueError(f"Serial service '{service_name}' is missing parser")
 
+        # serial_driver.py intentionally receives a small driver-specific dict
+        # rather than the full ServiceConfig object.
         return {
             "port": service_config.serial_port,
             "baud_rate": service_config.baud_rate,

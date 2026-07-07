@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from typing import Any, Callable, TypeVar
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
@@ -10,7 +11,12 @@ from labpulse_common.drivers.serial_driver import Driver as SerialDriver
 from labpulse_common.sensor_factory import SensorFactory
 
 
-def make_service_config(**overrides):
+TException = TypeVar("TException", bound=Exception)
+
+
+def make_service_config(**overrides: Any) -> ServiceConfig:
+    """Build a valid serial ServiceConfig, with optional field overrides."""
+
     config = {
         "driver": "serial",
         "parser": "pump_room",
@@ -23,12 +29,20 @@ def make_service_config(**overrides):
     return ServiceConfig(**config)
 
 
-def assert_equal(actual, expected, label):
+def assert_equal(actual: object, expected: object, label: str) -> None:
+    """Raise AssertionError when two values differ."""
+
     if actual != expected:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
-def assert_raises(expected_error, expected_message, func):
+def assert_raises(
+    expected_error: type[TException],
+    expected_message: str,
+    func: Callable[[], object],
+) -> str:
+    """Assert that a callable raises the expected error and message."""
+
     try:
         func()
     except expected_error as error:
@@ -43,7 +57,9 @@ def assert_raises(expected_error, expected_message, func):
     raise AssertionError(f"Expected {expected_error.__name__} to be raised")
 
 
-def test_serial_driver_builds():
+def test_serial_driver_builds() -> None:
+    """Check that a serial service creates a SerialDriver with driver config."""
+
     factory = SensorFactory()
     service_config = make_service_config()
 
@@ -56,7 +72,9 @@ def test_serial_driver_builds():
     assert_equal(driver.config["parser"], "pump_room", "parser")
 
 
-def test_serial_config_requires_port():
+def test_serial_config_requires_port() -> None:
+    """Check that serial services fail clearly without serial_port."""
+
     factory = SensorFactory()
     service_config = make_service_config(serial_port=None)
 
@@ -67,7 +85,9 @@ def test_serial_config_requires_port():
     )
 
 
-def test_serial_config_requires_parser():
+def test_serial_config_requires_parser() -> None:
+    """Check that serial services fail clearly without parser."""
+
     factory = SensorFactory()
     service_config = make_service_config(parser=None)
 
@@ -78,7 +98,9 @@ def test_serial_config_requires_parser():
     )
 
 
-def test_gpio_slot_exists_but_is_not_implemented():
+def test_gpio_slot_exists_but_is_not_implemented() -> None:
+    """Check that the GPIO factory slot exists as a placeholder."""
+
     factory = SensorFactory()
     service_config = make_service_config(driver="gpio", parser=None, serial_port=None)
 
@@ -89,7 +111,9 @@ def test_gpio_slot_exists_but_is_not_implemented():
     )
 
 
-def test_i2c_slot_exists_but_is_not_implemented():
+def test_i2c_slot_exists_but_is_not_implemented() -> None:
+    """Check that the I2C factory slot exists as a placeholder."""
+
     factory = SensorFactory()
     service_config = make_service_config(driver="i2c", parser=None, serial_port=None)
 
@@ -109,7 +133,9 @@ TESTS = [
 ]
 
 
-def main():
+def main() -> None:
+    """Run all SensorFactory test cases."""
+
     print("Running SensorFactory tests")
     print(f"Refactor dir: {REFACTOR_DIR}")
     print()

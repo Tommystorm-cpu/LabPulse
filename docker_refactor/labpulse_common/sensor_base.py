@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 import logging
 
 class BaseSensorDriver(ABC):
@@ -9,7 +9,7 @@ class BaseSensorDriver(ABC):
     and implement these core methods.
     """
 
-    def __init__(self, name: str, config: Dict[str, Any]):
+    def __init__(self, name: str, config: dict[str, Any]) -> None:
         """
         Initialize the sensor driver with its unique name and YAML config parameters.
         """
@@ -27,7 +27,7 @@ class BaseSensorDriver(ABC):
         pass
 
     @abstractmethod
-    def read(self) -> Optional[Dict[str, float]]:
+    def read(self) -> Optional[dict[str, float]]:
         """
         Read data from the hardware.
         MUST return a dictionary of {metric_name: value} (e.g., {"pump_flow2": 4.5})

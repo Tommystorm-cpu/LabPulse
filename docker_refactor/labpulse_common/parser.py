@@ -11,7 +11,7 @@ class SerialParser:
     format, for example: pressure, pump_room, or water. NOTE: In future, the arduino output will be standardised and this will be mostly unneeded. This is just to get things up and running fast.
     """
 
-    def __init__(self, name: str, parser_type: str):
+    def __init__(self, name: str, parser_type: str) -> None:
         """
         Create a parser for one configured LabPulse service.
 

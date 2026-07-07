@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from typing import Any
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
@@ -74,7 +75,9 @@ TEST_CASES = [
 ]
 
 
-def run_test(test_case):
+def run_test(test_case: dict[str, Any]) -> bool:
+    """Run one parser test case and print useful debug output."""
+
     parser = SerialParser(test_case["service_name"], test_case["parser_type"])
     actual = parser.parse(test_case["line"])
     expected = test_case["expected"]
@@ -92,7 +95,9 @@ def run_test(test_case):
     return passed
 
 
-def main():
+def main() -> None:
+    """Run all SerialParser test cases."""
+
     print("Running SerialParser tests")
     print(f"Refactor dir: {REFACTOR_DIR}")
     print()

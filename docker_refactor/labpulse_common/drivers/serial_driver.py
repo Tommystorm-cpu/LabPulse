@@ -1,17 +1,24 @@
+from typing import Any, Optional
+
 import serial
-from typing import Dict, Any, Optional
+
 from labpulse_common.parser import SerialParser
 from labpulse_common.sensor_base import BaseSensorDriver
 
 class Driver(BaseSensorDriver):
     """
-    The Universal Serial Driver for LabPulse 
-    Automatically parses any pipe-delimited Arduino data (e.g., 'Flow1: 4.5 | Temp0: 22.1').
+    USB serial driver for Arduino-backed LabPulse services.
+
+    The driver reads raw serial lines and delegates format-specific parsing to
+    SerialParser.
     """
 
-    def __init__(self, name: str, config: Dict[str, Any]):
+    def __init__(self, name: str, config: dict[str, Any]) -> None:
+        """Store serial settings and create the parser for this service."""
+
         super().__init__(name, config)
-        # Pull specific connection settings from the YAML params
+
+        # SensorFactory translates ServiceConfig into this driver-specific shape.
         self.port = self.config.get("port")
         self.baud_rate = self.config.get("baud_rate", 9600)
         self.ser = None
@@ -30,7 +37,7 @@ class Driver(BaseSensorDriver):
             self.connected = False
             return False
 
-    def read(self) -> Optional[Dict[str, float]]:
+    def read(self) -> Optional[dict[str, float]]:
         """Reads one line of data and parses it into a dictionary."""
         if not self.connected or not self.ser:
             return None

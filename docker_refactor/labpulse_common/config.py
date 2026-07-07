@@ -17,13 +17,19 @@ logger = logging.getLogger("Config")
 # ==========================================
 
 class MqttConfig(BaseModel):
+    """MQTT broker connection settings used by LabPulse publishers."""
+
     broker: str
     port: int = Field(default=1883, ge=1, le=65535)
 
 class SmsConfig(BaseModel):
+    """SMS recipient settings for future alerting integrations."""
+
     recipients: list[str] = Field(default_factory=list)
 
 class ServiceConfig(BaseModel):
+    """Configuration for one independently running LabPulse sensor service."""
+
     enabled: bool = True
     driver: Literal["serial", "gpio", "i2c"]
     parser: str | None = None
@@ -33,7 +39,8 @@ class ServiceConfig(BaseModel):
     metric_prefix: str
 
 class LabPulseConfig(BaseModel):
-    """The Master Configuration Object"""
+    """Validated top-level LabPulse configuration object."""
+
     mqtt: MqttConfig
     sms: SmsConfig = Field(default_factory=SmsConfig)
     services: dict[str, ServiceConfig]
@@ -43,9 +50,13 @@ class LabPulseConfig(BaseModel):
 # ==========================================
 
 def resolve_path(path: str | Path) -> Path:
+    """Expand user markers and return an absolute path."""
+
     return Path(path).expanduser().resolve()
 
 def resolve_config_relative_path(config_path: str | Path, value: str | Path) -> Path:
+    """Resolve a path relative to the directory containing a config file."""
+
     candidate = Path(value).expanduser()
 
     if candidate.is_absolute():
@@ -82,6 +93,8 @@ def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> LabPulseConfig:
         sys.exit(1)
 
 def get_service_config(config: LabPulseConfig, service_name: str) -> ServiceConfig:
+    """Return one service config, exiting with a readable error if missing."""
+
     try:
         return config.services[service_name]
     except KeyError:
@@ -98,7 +111,7 @@ def load_recipients(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> list[str]:
     config = load_config(yaml_path)
     return config.sms.recipients
 
-def load_all_thresholds(thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -> dict:
+def load_all_thresholds(thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -> dict[str, object]:
     """Reads the dynamic, user-adjustable thresholds from JSON."""
     path = resolve_path(thresholds_path)
 
@@ -108,7 +121,10 @@ def load_all_thresholds(thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
 
-def save_all_thresholds(thresholds_dict: dict, thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -> None:
+def save_all_thresholds(
+    thresholds_dict: dict[str, object],
+    thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH,
+) -> None:
     """Saves dynamic user adjustments back to JSON."""
     path = resolve_path(thresholds_path)
 

@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_LOG_DIR = BASE_DIR / "logs"
 
 
-def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> Path:
+def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> Path | None:
     """
     Configure LabPulse logging for a running service.
 
@@ -35,6 +35,8 @@ def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> 
 
 
 def _get_log_file(app_name: str) -> Path | None:
+    """Return the configured log path, or None when file logging is disabled."""
+
     configured_file = os.getenv("LABPULSE_LOG_FILE")
 
     if configured_file == "":
