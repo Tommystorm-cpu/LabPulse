@@ -4,11 +4,11 @@ set -euo pipefail
 PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-FORCE=0
+BACKUP=0
 
 usage() {
   cat <<'EOF'
-Usage: ./setup_container_fs.sh [--force]
+Usage: ./setup_container_fs.sh [--backup]
 
 Creates the Raspberry Pi Docker Compose folder layout for the LabPulse
 container prototype.
@@ -20,7 +20,7 @@ Override target:
   LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 
 Options:
-  --force   Replace generated files without making .bak copies.
+  --backup  Create .bak timestamp copies before replacing generated files.
 
 This script preserves the Home Assistant config directory.
 EOF
@@ -28,8 +28,8 @@ EOF
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --force)
-      FORCE=1
+    --backup)
+      BACKUP=1
       shift
       ;;
     -h|--help)
@@ -47,7 +47,7 @@ done
 backup_if_needed() {
   local path="$1"
 
-  if [ "$FORCE" -eq 1 ] || [ ! -e "$path" ]; then
+  if [ "$BACKUP" -ne 1 ] || [ ! -e "$path" ]; then
     return
   fi
 
@@ -74,14 +74,13 @@ replace_dir() {
   local destination="$2"
 
   if [ -e "$destination" ]; then
-    if [ "$FORCE" -eq 1 ]; then
-      rm -rf "$destination"
-    else
+    if [ "$BACKUP" -eq 1 ]; then
       local backup="${destination}.bak.$(date +%Y%m%d-%H%M%S)"
       cp -a "$destination" "$backup"
-      rm -rf "$destination"
       echo "Backed up existing directory: $backup"
     fi
+
+    rm -rf "$destination"
   fi
 
   cp -a "$source" "$destination"

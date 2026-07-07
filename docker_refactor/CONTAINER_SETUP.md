@@ -65,6 +65,8 @@ By default, the script creates or updates:
 ~/labpulse-ha/
 ```
 
+It overwrites the generated Compose, Mosquitto, and Python container files by default.
+
 It preserves:
 
 ```text
@@ -79,10 +81,10 @@ To use a different target folder:
 LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 ```
 
-To replace generated files without creating `.bak` copies:
+To create `.bak` copies before replacing generated files:
 
 ```bash
-./setup_container_fs.sh --force
+./setup_container_fs.sh --backup
 ```
 
 The script also copies `docker_refactor/config.yaml` into the Python container folder and changes:
