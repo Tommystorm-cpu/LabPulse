@@ -1,11 +1,17 @@
+import json
+import logging
 import random
 import time
 import paho.mqtt.client as mqtt
 from labpulse_common.config import load_config
-import json
+from labpulse_common.logging_config import configure_logging
+import serial
+
+configure_logging("fake_sensor")
+logger = logging.getLogger("FakeSensor")
 
 sys_config = load_config()
-cfg = sys_config.pressure_monitor
+cfg = sys_config.services["pressure_monitor"]
 mqtt_cfg = sys_config.mqtt
 
 MQTT_BROKER = mqtt_cfg.broker
@@ -16,6 +22,12 @@ SENSOR_ID = "fake_sensor"
 STATE_TOPIC = f"home/sensor/{SENSOR_ID}/state"
 
 mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="PressureMonitor")
+
+ser = serial.Serial(
+    cfg.serial_port,
+    cfg.baud_rate,
+    timeout=2
+)
 
 def read_fake_sensor():
     return {
@@ -42,16 +54,24 @@ def publish_readings(reading):
     mqtt_client.publish(STATE_TOPIC, reading)
 
 def main():
+    logger.info("Connecting to MQTT broker %s:%s", MQTT_BROKER, MQTT_PORT)
     mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
     mqtt_client.loop_start()
 
     publish_discovery()
+    logger.info("Published Home Assistant discovery for %s", SENSOR_ID)
+    logger.info("Reading pressure data from %s at %s baud", cfg.serial_port, cfg.baud_rate)
 
     while True:
-        reading = read_fake_sensor()["pressure_bar"]
-        publish_readings(reading)
-        print(reading)
-        time.sleep(1)
+        line = ser.readline().decode("utf-8").strip()
+
+        if not line:
+            continue
+
+        pressure_bar = round(float(line) * 10.0, 2)
+
+        publish_readings(pressure_bar)
+        logger.info("Published pressure reading: %s bar", pressure_bar)
 
 if __name__ == "__main__":
     main()

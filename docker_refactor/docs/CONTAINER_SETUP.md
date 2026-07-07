@@ -35,17 +35,22 @@ The Raspberry Pi working folder is:
     data/
     log/
 
+  logs/
+
   labpulse-python/
     Dockerfile
     requirements.txt
     config.yaml
     fake_sensor.py
+    main.py
     labpulse_common/
 ```
 
 `homeassistant/config/` is mounted into the Home Assistant container as `/config`.
 
 `mosquitto/config/`, `mosquitto/data/`, and `mosquitto/log/` are mounted into the Mosquitto container.
+
+`logs/` stores LabPulse Python log files written by the Python container.
 
 `labpulse-python/` is built into the Python container image.
 
@@ -57,6 +62,48 @@ From a clone of this repository on the Raspberry Pi:
 cd ~/LabPulse/docker_refactor
 chmod +x setup_container_fs.sh
 ./setup_container_fs.sh
+```
+
+By default this creates a real-Arduino setup. The Python container is given access to:
+
+```text
+/dev
+```
+
+Use this for the final hardware setup with real USB Arduinos. This lets Python use stable config paths such as:
+
+```text
+/dev/serial/by-id/usb-Arduino__...
+```
+
+when the Arduinos are plugged in.
+
+For fake USB serial testing with `simulate_arduinos.sh`, run:
+
+```bash
+./setup_container_fs.sh -fake_usb
+```
+
+That version mounts:
+
+```text
+/tmp/labpulse-fake-serial
+/dev/pts
+```
+
+into the Python container.
+
+It also rewrites the copied `labpulse-python/config.yaml` serial ports to:
+
+```yaml
+pressure_monitor:
+  serial_port: "/tmp/labpulse-fake-serial/pressure"
+
+pump_room:
+  serial_port: "/tmp/labpulse-fake-serial/pump_room"
+
+turbo_pump:
+  serial_port: "/tmp/labpulse-fake-serial/turbo_pump"
 ```
 
 By default, the script creates or updates:
@@ -136,9 +183,14 @@ services:
     build: ./labpulse-python
     depends_on:
       - mosquitto
+    volumes:
+      - ./logs:/app/logs
+      - /dev:/dev
+    privileged: true
     environment:
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
+      LABPULSE_LOG_DIR: /app/logs
     restart: unless-stopped
 ```
 
@@ -169,10 +221,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY fake_sensor.py .
+COPY main.py .
 COPY labpulse_common ./labpulse_common
 COPY config.yaml .
 
-CMD ["python", "fake_sensor.py"]
+CMD ["python", "main.py", "--service", "pressure_monitor"]
 ```
 
 `~/labpulse-ha/labpulse-python/requirements.txt` should include:
@@ -279,6 +332,19 @@ Watch the Python logs:
 docker compose logs -f labpulse-python
 ```
 
+The same Python logs are also written to files on the Pi:
+
+```text
+~/labpulse-ha/logs/
+```
+
+For example:
+
+```text
+~/labpulse-ha/logs/fake_sensor.log
+~/labpulse-ha/logs/pump_room.log
+```
+
 Watch Mosquitto logs:
 
 ```bash
@@ -311,6 +377,61 @@ The subscriber should print:
 labpulse/test/hello hello
 ```
 
+## Simulate Arduino Serial Devices
+
+For testing scripts that normally read from USB Arduinos, use:
+
+```bash
+cd ~/LabPulse/docker_refactor
+chmod +x simulate_arduinos.sh
+./simulate_arduinos.sh
+```
+
+The script uses `socat` to create fake serial devices and continuously writes Arduino-like readings to them.
+
+Install `socat` on the Pi if needed:
+
+```bash
+sudo apt install socat -y
+```
+
+Default fake serial paths:
+
+```text
+/tmp/labpulse-fake-serial/pressure
+/tmp/labpulse-fake-serial/pump_room
+/tmp/labpulse-fake-serial/turbo_pump
+```
+
+When `setup_container_fs.sh -fake_usb` is used, the generated Compose file mounts `/tmp/labpulse-fake-serial` and `/dev/pts` into the `labpulse-python` container so these fake serial links can be read from inside Docker.
+
+In fake USB mode, the setup script creates the `/tmp/labpulse-fake-serial` directory if it does not already exist. The actual fake device links, such as `/tmp/labpulse-fake-serial/pressure`, only exist while `simulate_arduinos.sh` is running.
+
+For fake serial testing, set these `config.yaml` values:
+
+```yaml
+pressure_monitor:
+  serial_port: "/tmp/labpulse-fake-serial/pressure"
+
+pump_room:
+  serial_port: "/tmp/labpulse-fake-serial/pump_room"
+
+turbo_pump:
+  serial_port: "/tmp/labpulse-fake-serial/turbo_pump"
+```
+
+The simulator writes serial lines matching the Arduino sketches in the repository.
+
+See [ARDUINO_SERIAL_FORMATS.md](ARDUINO_SERIAL_FORMATS.md) for the exact line formats and notes on which lines the current Python parsers handle.
+
+Stop the simulator with:
+
+```text
+Ctrl+C
+```
+
+Stopping and restarting the simulator also simulates serial devices disappearing and returning.
+
 ## Stop The System
 
 ```bash
@@ -338,6 +459,13 @@ If `labpulse-python` repeatedly restarts, read its logs:
 
 ```bash
 docker compose logs -f labpulse-python
+```
+
+or check the persistent Python log files:
+
+```bash
+ls -la ~/labpulse-ha/logs
+tail -f ~/labpulse-ha/logs/fake_sensor.log
 ```
 
 Common causes:

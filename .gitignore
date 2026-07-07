@@ -1,5 +1,6 @@
 waterenv/
 __pycache__/
+docker_refactor/logs/
 
 # Codex local workspace/artifact files
 .codex/

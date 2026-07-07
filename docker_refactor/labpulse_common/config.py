@@ -1,13 +1,16 @@
-import os
-import sys
 import json
+import logging
+import sys
+from pathlib import Path
+from typing import Literal
+
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
-# Resolve absolute paths
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-YAML_PATH = os.path.join(BASE_DIR, 'config.yaml')
-JSON_THRESHOLDS_PATH = os.path.join(BASE_DIR, 'thresholds.json')
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
+DEFAULT_THRESHOLDS_PATH = BASE_DIR / "thresholds.json"
+logger = logging.getLogger("Config")
 
 # ==========================================
 # PYDANTIC SCHEMAS 
@@ -15,57 +18,53 @@ JSON_THRESHOLDS_PATH = os.path.join(BASE_DIR, 'thresholds.json')
 
 class MqttConfig(BaseModel):
     broker: str
-    port: int = Field(default=1883, ge=1, le=65535) # Must be a valid port number
+    port: int = Field(default=1883, ge=1, le=65535)
 
 class SmsConfig(BaseModel):
-    recipients: list[str]
+    recipients: list[str] = Field(default_factory=list)
 
-class SerialDeviceConfig(BaseModel):
-    serial_port: str
+class ServiceConfig(BaseModel):
+    driver: Literal["serial", "gpio", "i2c"]
+    parser: str | None = None
+    serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
-    min_readings_under_threshold: int = Field(default=3, ge=1)
-
-class PressureConfig(SerialDeviceConfig):
-    # Inherits serial settings, adds pressure-specific fields
-    default_threshold_bar: float = 0.0
-
-class DhtConfig(BaseModel):
-    pin: str
-    device_id: str = "dht11_pi_sensor"
-    state_topic: str = "home/sensor/dht11"
-
-class UpsConfig(BaseModel):
-    i2c_addr: int = 0x42
-    mqtt_client_id: str = "PowerMonitor"
-    mqtt_base_topic: str = "home/power/ups"
-    voltage_min: float = 6.0
-    voltage_max: float = 7.92
+    device_name: str
+    metric_prefix: str
 
 class LabPulseConfig(BaseModel):
     """The Master Configuration Object"""
     mqtt: MqttConfig
-    sms: SmsConfig
-    pump_room: SerialDeviceConfig
-    pressure_monitor: PressureConfig
-    turbo_pump: SerialDeviceConfig
-    dht11: DhtConfig
-    ups_monitor: UpsConfig
+    sms: SmsConfig = Field(default_factory=SmsConfig)
+    services: dict[str, ServiceConfig]
 
 # ==========================================
 # CONFIGURATION LOADERS
 # ==========================================
 
-def load_config() -> LabPulseConfig:
+def resolve_path(path: str | Path) -> Path:
+    return Path(path).expanduser().resolve()
+
+def resolve_config_relative_path(config_path: str | Path, value: str | Path) -> Path:
+    candidate = Path(value).expanduser()
+
+    if candidate.is_absolute():
+        return candidate
+
+    return (resolve_path(config_path).parent / candidate).resolve()
+
+def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> LabPulseConfig:
     """Reads YAML and validates it strictly against the Pydantic schema."""
-    if not os.path.exists(YAML_PATH):
-        print(f"CRITICAL ERROR: Configuration file missing at {YAML_PATH}")
+    config_path = resolve_path(yaml_path)
+
+    if not config_path.exists():
+        logger.critical("Configuration file missing at %s", config_path)
         sys.exit(1)
 
-    with open(YAML_PATH, 'r') as file:
+    with config_path.open("r", encoding="utf-8") as file:
         try:
             yaml_data = yaml.safe_load(file)
         except yaml.YAMLError as e:
-            print(f"CRITICAL ERROR: Invalid YAML formatting in config.yaml.\nDetails: {e}")
+            logger.critical("Invalid YAML formatting in %s. Details: %s", config_path, e)
             sys.exit(1)
 
     try:
@@ -74,28 +73,43 @@ def load_config() -> LabPulseConfig:
         return validated_config
     except ValidationError as e:
         # Fail Fast: Print exact human-readable errors and kill the script
-        print("\n=======================================================")
-        print("CONFIGURATION VALIDATION FAILED ")
-        print("LabPulse cannot start because config.yaml has errors:")
+        logger.critical("CONFIGURATION VALIDATION FAILED")
+        logger.critical("LabPulse cannot start because %s has errors:", config_path)
         for error in e.errors():
             location = " -> ".join([str(loc) for loc in error['loc']])
-            print(f"- [ {location} ]: {error['msg']}")
-        print("=======================================================\n")
+            logger.critical("[ %s ]: %s", location, error["msg"])
         sys.exit(1)
 
-def load_recipients() -> list[str]:
+def get_service_config(config: LabPulseConfig, service_name: str) -> ServiceConfig:
+    try:
+        return config.services[service_name]
+    except KeyError:
+        available = ", ".join(sorted(config.services))
+        logger.critical(
+            "Unknown service '%s'. Available services: %s",
+            service_name,
+            available,
+        )
+        sys.exit(1)
+
+def load_recipients(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> list[str]:
     """Pulls SMS numbers directly from the validated config object."""
-    config = load_config()
+    config = load_config(yaml_path)
     return config.sms.recipients
 
-def load_all_thresholds() -> dict:
+def load_all_thresholds(thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -> dict:
     """Reads the dynamic, user-adjustable thresholds from JSON."""
-    if not os.path.exists(JSON_THRESHOLDS_PATH):
+    path = resolve_path(thresholds_path)
+
+    if not path.exists():
         return {}
-    with open(JSON_THRESHOLDS_PATH, 'r') as file:
+
+    with path.open("r", encoding="utf-8") as file:
         return json.load(file)
 
-def save_all_thresholds(thresholds_dict: dict):
+def save_all_thresholds(thresholds_dict: dict, thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -> None:
     """Saves dynamic user adjustments back to JSON."""
-    with open(JSON_THRESHOLDS_PATH, 'w') as file:
+    path = resolve_path(thresholds_path)
+
+    with path.open("w", encoding="utf-8") as file:
         json.dump(thresholds_dict, file, indent=4)

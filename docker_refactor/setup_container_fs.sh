@@ -5,10 +5,11 @@ PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BACKUP=0
+FAKE_USB=0
 
 usage() {
   cat <<'EOF'
-Usage: ./setup_container_fs.sh [--backup]
+Usage: ./setup_container_fs.sh [-fake_usb] [--backup]
 
 Creates the Raspberry Pi Docker Compose folder layout for the LabPulse
 container prototype.
@@ -20,6 +21,7 @@ Override target:
   LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 
 Options:
+  -fake_usb  Mount socat fake USB serial paths for simulator testing.
   --backup  Create .bak timestamp copies before replacing generated files.
 
 This script preserves the Home Assistant config directory.
@@ -28,6 +30,10 @@ EOF
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -fake_usb|--fake-usb|--fake_usb)
+      FAKE_USB=1
+      shift
+      ;;
     --backup)
       BACKUP=1
       shift
@@ -94,8 +100,27 @@ mkdir -p "$PROJECT_DIR/mosquitto/config"
 mkdir -p "$PROJECT_DIR/mosquitto/data"
 mkdir -p "$PROJECT_DIR/mosquitto/log"
 mkdir -p "$PROJECT_DIR/labpulse-python"
+mkdir -p "$PROJECT_DIR/logs"
 
-write_file "$PROJECT_DIR/compose.yaml" <<'EOF'
+if [ "$FAKE_USB" -eq 1 ]; then
+  mkdir -p /tmp/labpulse-fake-serial
+fi
+
+if [ "$FAKE_USB" -eq 1 ]; then
+  PYTHON_DEVICE_MOUNTS='    volumes:
+      - ./logs:/app/logs
+      - /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial
+      - /dev/pts:/dev/pts'
+  USB_MODE_DESCRIPTION="fake USB serial simulator"
+else
+  PYTHON_DEVICE_MOUNTS='    volumes:
+      - ./logs:/app/logs
+      - /dev:/dev
+    privileged: true'
+  USB_MODE_DESCRIPTION="real Arduino USB serial devices"
+fi
+
+write_file "$PROJECT_DIR/compose.yaml" <<EOF
 services:
   homeassistant:
     container_name: labpulse-homeassistant
@@ -126,9 +151,11 @@ services:
     build: ./labpulse-python
     depends_on:
       - mosquitto
+$PYTHON_DEVICE_MOUNTS
     environment:
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
+      LABPULSE_LOG_DIR: /app/logs
     restart: unless-stopped
 EOF
 
@@ -149,24 +176,67 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY fake_sensor.py .
+COPY main.py .
 COPY labpulse_common ./labpulse_common
 COPY config.yaml .
 
-CMD ["python", "fake_sensor.py"]
+CMD ["python", "main.py", "--service", "pressure_monitor"]
 EOF
 
 write_file "$PROJECT_DIR/labpulse-python/requirements.txt" <<'EOF'
 paho-mqtt
 pydantic
 pyyaml
+pyserial
 EOF
 
 copy_file "$SCRIPT_DIR/fake_sensor.py" "$PROJECT_DIR/labpulse-python/fake_sensor.py"
+copy_file "$SCRIPT_DIR/main.py" "$PROJECT_DIR/labpulse-python/main.py"
 copy_file "$SCRIPT_DIR/config.yaml" "$PROJECT_DIR/labpulse-python/config.yaml"
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
 
 if grep -q 'broker: "localhost"' "$PROJECT_DIR/labpulse-python/config.yaml"; then
   sed -i 's/broker: "localhost"/broker: "mosquitto"/' "$PROJECT_DIR/labpulse-python/config.yaml"
+fi
+
+if [ "$FAKE_USB" -eq 1 ]; then
+  python3 - "$PROJECT_DIR/labpulse-python/config.yaml" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+
+fake_ports = {
+    "pump_room": "/tmp/labpulse-fake-serial/pump_room",
+    "pressure_monitor": "/tmp/labpulse-fake-serial/pressure",
+    "turbo_pump": "/tmp/labpulse-fake-serial/turbo_pump",
+}
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+if yaml is not None:
+    data = yaml.safe_load(path.read_text())
+    for section, serial_port in fake_ports.items():
+        if section in data.get("services", {}):
+            data["services"][section]["serial_port"] = serial_port
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+else:
+    text = path.read_text()
+    replacements = {
+        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"':
+            'serial_port: "/tmp/labpulse-fake-serial/pump_room"',
+        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"':
+            'serial_port: "/tmp/labpulse-fake-serial/pressure"',
+        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"':
+            'serial_port: "/tmp/labpulse-fake-serial/turbo_pump"',
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    path.write_text(text)
+PY
 fi
 
 cat <<EOF
@@ -177,6 +247,10 @@ Created/updated:
   $PROJECT_DIR/compose.yaml
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/
+  $PROJECT_DIR/logs/
+
+USB mode:
+  $USB_MODE_DESCRIPTION
 
 Preserved:
   $PROJECT_DIR/homeassistant/config/
