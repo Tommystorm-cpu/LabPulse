@@ -22,6 +22,7 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
         "parser": "pump_room",
         "serial_port": "/tmp/labpulse-fake-serial/pump_room",
         "baud_rate": 9600,
+        "reconnect_interval_seconds": 5.0,
         "device_name": "Pump Room Sensor Hub",
         "metric_prefix": "pump",
     }
@@ -70,6 +71,7 @@ def test_serial_driver_builds() -> None:
     assert_equal(driver.config["port"], "/tmp/labpulse-fake-serial/pump_room", "port")
     assert_equal(driver.config["baud_rate"], 9600, "baud rate")
     assert_equal(driver.config["parser"], "pump_room", "parser")
+    assert_equal(driver.config["reconnect_interval_seconds"], 5.0, "reconnect interval")
 
 
 def test_serial_config_requires_port() -> None:

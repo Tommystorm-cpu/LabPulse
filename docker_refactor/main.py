@@ -77,11 +77,19 @@ def main() -> None:
 
     if not driver.setup():
         logger.error("Could not start service %s because the driver did not connect", args.service)
-        return
+
+    last_status = driver.get_status()
+    if publisher:
+        publisher.publish_status(last_status)
 
     try:
         while True:
             readings = driver.read()
+            current_status = driver.get_status()
+
+            if publisher and current_status != last_status:
+                publisher.publish_status(current_status)
+                last_status = current_status
 
             if not readings:
                 # Serial devices often produce blank lines while starting up.

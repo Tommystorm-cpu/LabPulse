@@ -93,4 +93,5 @@ class SensorFactory:
             "port": service_config.serial_port,
             "baud_rate": service_config.baud_rate,
             "parser": service_config.parser,
+            "reconnect_interval_seconds": service_config.reconnect_interval_seconds,
         }

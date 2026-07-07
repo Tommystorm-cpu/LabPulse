@@ -37,6 +37,7 @@ class ServiceConfig(BaseModel):
     baud_rate: int = Field(default=9600, gt=0)
     device_name: str
     metric_prefix: str
+    reconnect_interval_seconds: float = Field(default=5.0, gt=0)
 
 class LabPulseConfig(BaseModel):
     """Validated top-level LabPulse configuration object."""

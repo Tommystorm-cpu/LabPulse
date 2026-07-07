@@ -16,6 +16,7 @@ class BaseSensorDriver(ABC):
         self.name = name
         self.config = config
         self.connected = False
+        self.status = "disconnected"
         self.logger = logging.getLogger(f"Driver.{self.name}")
 
     @abstractmethod
@@ -41,3 +42,8 @@ class BaseSensorDriver(ABC):
         Safely close connections and release hardware resources.
         """
         pass
+
+    def get_status(self) -> str:
+        """Return the current driver health/status string."""
+
+        return self.status

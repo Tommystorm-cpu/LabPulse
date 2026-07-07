@@ -27,6 +27,7 @@ class HomeAssistantMqttPublisher:
         self.service_config = service_config
         self.mqtt_config = mqtt_config
         self.discovery_published = False
+        self.status_discovery_published = False
         self.logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -52,6 +53,37 @@ class HomeAssistantMqttPublisher:
             self.discovery_published = True
 
         self.publish_readings(readings)
+
+    def publish_status(self, status: str) -> None:
+        """Publish the service health status as a retained Home Assistant entity."""
+
+        if not self.status_discovery_published:
+            self.publish_status_discovery()
+            self.status_discovery_published = True
+
+        self.client.publish(self.status_topic(), status, retain=True)
+        self.logger.info("Published service status: %s", status)
+
+    def publish_status_discovery(self) -> None:
+        """Publish Home Assistant MQTT discovery config for service status."""
+
+        payload = {
+            "name": "Status",
+            "state_topic": self.status_topic(),
+            "unique_id": f"{self.service_name}_status",
+            "icon": "mdi:heart-pulse",
+            "device": {
+                "identifiers": [self.service_name],
+                "name": self.service_config.device_name,
+            },
+        }
+
+        self.client.publish(
+            self.status_discovery_topic(),
+            json.dumps(payload),
+            retain=True,
+        )
+        self.logger.info("Published Home Assistant status discovery")
 
     def publish_discovery(self, readings: dict[str, float]) -> None:
         """Publish Home Assistant MQTT discovery config for each metric."""
@@ -93,9 +125,19 @@ class HomeAssistantMqttPublisher:
         """Return the MQTT state topic for one metric."""
         return f"{STATE_TOPIC_PREFIX}/{self.service_name}/{metric_name}/state"
 
+    def status_topic(self) -> str:
+        """Return the MQTT state topic for this service's health status."""
+
+        return f"{STATE_TOPIC_PREFIX}/{self.service_name}/status"
+
     def discovery_topic(self, metric_name: str) -> str:
         """Return the Home Assistant discovery topic for one metric."""
         return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_{metric_name}/config"
+
+    def status_discovery_topic(self) -> str:
+        """Return the Home Assistant discovery topic for service status."""
+
+        return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_status/config"
 
     @staticmethod
     def metric_label(metric_name: str) -> str:

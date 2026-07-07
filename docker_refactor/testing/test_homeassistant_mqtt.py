@@ -113,6 +113,16 @@ def test_topics_and_units() -> None:
         "homeassistant/sensor/pressure_monitor_pressure_monitor_pressure/config",
         "discovery topic",
     )
+    assert_equal(
+        publisher.status_topic(),
+        "home/sensor/pressure_monitor/status",
+        "status topic",
+    )
+    assert_equal(
+        publisher.status_discovery_topic(),
+        "homeassistant/sensor/pressure_monitor_status/config",
+        "status discovery topic",
+    )
     assert_equal(publisher.unit_for_metric("pressure_monitor_pressure"), "bar", "pressure unit")
     assert_equal(publisher.unit_for_metric("pump_room_temp0"), "\u00b0C", "temperature unit")
     assert_equal(publisher.unit_for_metric("pump_room_roomhum"), "%", "humidity unit")
@@ -156,10 +166,44 @@ def test_publish_discovery_once_then_readings() -> None:
     assert_equal(second_state["payload"], 1.23, "second state payload")
 
 
+def test_publish_status_discovery_once_then_status() -> None:
+    """Check service status discovery is retained once and status updates publish."""
+
+    publisher = make_publisher()
+
+    publisher.publish_status("disconnected")
+    publisher.publish_status("reconnecting")
+
+    published = publisher.client.published
+    assert_equal(len(published), 3, "publish count")
+
+    discovery = published[0]
+    first_status = published[1]
+    second_status = published[2]
+
+    assert_equal(discovery["retain"], True, "status discovery retain")
+    assert_equal(
+        discovery["topic"],
+        "homeassistant/sensor/pressure_monitor_status/config",
+        "status discovery topic",
+    )
+
+    payload = json.loads(str(discovery["payload"]))
+    assert_equal(payload["name"], "Status", "status name")
+    assert_equal(payload["state_topic"], "home/sensor/pressure_monitor/status", "status state topic")
+    assert_equal(payload["icon"], "mdi:heart-pulse", "status icon")
+
+    assert_equal(first_status["topic"], "home/sensor/pressure_monitor/status", "first status topic")
+    assert_equal(first_status["payload"], "disconnected", "first status payload")
+    assert_equal(first_status["retain"], True, "first status retain")
+    assert_equal(second_status["payload"], "reconnecting", "second status payload")
+
+
 TESTS = [
     ("connect and disconnect", test_connect_and_disconnect),
     ("topics and units", test_topics_and_units),
     ("publish discovery once then readings", test_publish_discovery_once_then_readings),
+    ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
 ]
 
 

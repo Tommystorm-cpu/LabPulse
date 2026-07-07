@@ -35,6 +35,7 @@ services:
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
     metric_prefix: "air_pressure"
+    reconnect_interval_seconds: 5
 
   pump_room:
     enabled: true
@@ -44,6 +45,7 @@ services:
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
     metric_prefix: "pump"
+    reconnect_interval_seconds: 5
 
   turbo_pump:
     enabled: true
@@ -53,6 +55,7 @@ services:
     baud_rate: 9600
     device_name: "Turbo Pump Hub"
     metric_prefix: "turbo"
+    reconnect_interval_seconds: 5
 
 # --- OLD Hardware Services ---
 #pump_room:
