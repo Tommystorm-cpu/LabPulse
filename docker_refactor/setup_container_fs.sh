@@ -3,6 +3,8 @@ set -euo pipefail
 
 PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIVE_CONFIG="$PROJECT_DIR/config.yaml"
+TEMPLATE_CONFIG="$SCRIPT_DIR/config.yaml"
 
 BACKUP=0
 FAKE_USB=0
@@ -107,57 +109,10 @@ if [ "$FAKE_USB" -eq 1 ]; then
 fi
 
 if [ "$FAKE_USB" -eq 1 ]; then
-  PYTHON_DEVICE_MOUNTS='    volumes:
-      - ./logs:/app/logs
-      - /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial
-      - /dev/pts:/dev/pts'
   USB_MODE_DESCRIPTION="fake USB serial simulator"
 else
-  PYTHON_DEVICE_MOUNTS='    volumes:
-      - ./logs:/app/logs
-      - /dev:/dev
-    privileged: true'
   USB_MODE_DESCRIPTION="real Arduino USB serial devices"
 fi
-
-write_file "$PROJECT_DIR/compose.yaml" <<EOF
-services:
-  homeassistant:
-    container_name: labpulse-homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
-    volumes:
-      - ./homeassistant/config:/config
-      - /etc/localtime:/etc/localtime:ro
-      - /run/dbus:/run/dbus:ro
-    restart: unless-stopped
-    privileged: true
-    network_mode: host
-    environment:
-      TZ: Europe/London
-
-  mosquitto:
-    container_name: labpulse-mqtt
-    image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    restart: unless-stopped
-
-  labpulse-python:
-    container_name: labpulse-python
-    build: ./labpulse-python
-    depends_on:
-      - mosquitto
-$PYTHON_DEVICE_MOUNTS
-    environment:
-      MQTT_BROKER: mosquitto
-      MQTT_PORT: 1883
-      LABPULSE_LOG_DIR: /app/logs
-    restart: unless-stopped
-EOF
 
 write_file "$PROJECT_DIR/mosquitto/config/mosquitto.conf" <<'EOF'
 listener 1883
@@ -178,7 +133,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY fake_sensor.py .
 COPY main.py .
 COPY labpulse_common ./labpulse_common
-COPY config.yaml .
 
 CMD ["python", "main.py", "--service", "pressure_monitor"]
 EOF
@@ -192,19 +146,28 @@ EOF
 
 copy_file "$SCRIPT_DIR/fake_sensor.py" "$PROJECT_DIR/labpulse-python/fake_sensor.py"
 copy_file "$SCRIPT_DIR/main.py" "$PROJECT_DIR/labpulse-python/main.py"
-copy_file "$SCRIPT_DIR/config.yaml" "$PROJECT_DIR/labpulse-python/config.yaml"
+copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
+chmod +x "$PROJECT_DIR/generate_compose.sh"
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
 
-if grep -q 'broker: "localhost"' "$PROJECT_DIR/labpulse-python/config.yaml"; then
-  sed -i 's/broker: "localhost"/broker: "mosquitto"/' "$PROJECT_DIR/labpulse-python/config.yaml"
+if [ ! -e "$LIVE_CONFIG" ]; then
+  if [ -e "$PROJECT_DIR/labpulse-python/config.yaml" ]; then
+    copy_file "$PROJECT_DIR/labpulse-python/config.yaml" "$LIVE_CONFIG"
+    echo "Migrated legacy labpulse-python/config.yaml to live config: $LIVE_CONFIG"
+  else
+    copy_file "$TEMPLATE_CONFIG" "$LIVE_CONFIG"
+    echo "Created live config from template: $LIVE_CONFIG"
+  fi
+else
+  echo "Preserving existing live config: $LIVE_CONFIG"
 fi
 
-if [ "$FAKE_USB" -eq 1 ]; then
-  python3 - "$PROJECT_DIR/labpulse-python/config.yaml" <<'PY'
+python3 - "$LIVE_CONFIG" "$FAKE_USB" <<'PY'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
+fake_usb = sys.argv[2] == "1"
 
 fake_ports = {
     "pump_room": "/tmp/labpulse-fake-serial/pump_room",
@@ -219,25 +182,50 @@ except ImportError:
 
 if yaml is not None:
     data = yaml.safe_load(path.read_text())
-    for section, serial_port in fake_ports.items():
-        if section in data.get("services", {}):
-            data["services"][section]["serial_port"] = serial_port
+
+    data.setdefault("mqtt", {})["broker"] = "mosquitto"
+
+    for service_config in data.get("services", {}).values():
+        service_config.setdefault("enabled", True)
+
+    if fake_usb:
+        for section, serial_port in fake_ports.items():
+            if section in data.get("services", {}):
+                data["services"][section]["serial_port"] = serial_port
+
     path.write_text(yaml.safe_dump(data, sort_keys=False))
 else:
     text = path.read_text()
-    replacements = {
-        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"':
-            'serial_port: "/tmp/labpulse-fake-serial/pump_room"',
-        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"':
-            'serial_port: "/tmp/labpulse-fake-serial/pressure"',
-        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"':
-            'serial_port: "/tmp/labpulse-fake-serial/turbo_pump"',
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
+    text = text.replace('broker: "localhost"', 'broker: "mosquitto"')
+    text = text.replace("broker: localhost", "broker: mosquitto")
+
+    if fake_usb:
+        replacements = {
+            'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"':
+                'serial_port: "/tmp/labpulse-fake-serial/pump_room"',
+            'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"':
+                'serial_port: "/tmp/labpulse-fake-serial/pressure"',
+            'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"':
+                'serial_port: "/tmp/labpulse-fake-serial/turbo_pump"',
+            'serial_port: "/dev/serial/by-id/..."':
+                'serial_port: "/tmp/labpulse-fake-serial/pressure"',
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new, 1)
+
     path.write_text(text)
 PY
+
+COMPOSE_MODE_ARGS=()
+if [ "$FAKE_USB" -eq 1 ]; then
+  COMPOSE_MODE_ARGS+=("-fake_usb")
 fi
+
+bash "$PROJECT_DIR/generate_compose.sh" \
+  --config "$LIVE_CONFIG" \
+  --output "$PROJECT_DIR/compose.yaml" \
+  --project-dir "$PROJECT_DIR" \
+  "${COMPOSE_MODE_ARGS[@]}"
 
 cat <<EOF
 
@@ -245,6 +233,8 @@ Done.
 
 Created/updated:
   $PROJECT_DIR/compose.yaml
+  $PROJECT_DIR/config.yaml
+  $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/
   $PROJECT_DIR/logs/
@@ -257,9 +247,14 @@ Preserved:
 
 Next commands:
   cd "$PROJECT_DIR"
+  nano config.yaml
+  ./generate_compose.sh
   docker compose config
   docker compose up -d --build
 
 Important:
-  The copied Python config uses mqtt.broker: "mosquitto" for Docker Compose.
+  EDIT THIS FILE for sensors and enabled flags:
+    $PROJECT_DIR/config.yaml
+
+  Do not edit docker_refactor/config.yaml for the running Pi system.
 EOF

@@ -24,6 +24,7 @@ class SmsConfig(BaseModel):
     recipients: list[str] = Field(default_factory=list)
 
 class ServiceConfig(BaseModel):
+    enabled: bool = True
     driver: Literal["serial", "gpio", "i2c"]
     parser: str | None = None
     serial_port: str | None = None

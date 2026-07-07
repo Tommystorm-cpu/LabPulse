@@ -1,6 +1,13 @@
 # ==========================================
-# LabPulse Central Configuration File
+# LabPulse Starter Configuration Template
 # ==========================================
+#
+# On the Raspberry Pi, edit the live config here:
+#
+#   ~/labpulse-ha/config.yaml
+#
+# This repo file is only copied as a starter template when the live config
+# does not already exist.
 
 # --- Global Settings ---
 mqtt:
@@ -21,6 +28,7 @@ sms:
 
 services:
   pressure_monitor:
+    enabled: true
     driver: serial
     parser: pressure
     serial_port: "/dev/serial/by-id/..."
@@ -29,6 +37,7 @@ services:
     metric_prefix: "air_pressure"
 
   pump_room:
+    enabled: true
     driver: serial
     parser: pump_room
     serial_port: "/dev/serial/by-id/..."
@@ -37,6 +46,7 @@ services:
     metric_prefix: "pump"
 
   turbo_pump:
+    enabled: true
     driver: serial
     parser: water
     serial_port: "/dev/serial/by-id/..."
