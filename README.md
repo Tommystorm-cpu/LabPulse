@@ -48,6 +48,7 @@ Contains an archive of the pi code before the alterations were made in accordanc
 
 Installation: 
 Contains the installation guide, compatability checks and installation script to install the LabPulse infrastructure through a USB thumb-drive.
+For the newer Docker Compose based prototype, see [docker_refactor/CONTAINER_SETUP.md](docker_refactor/CONTAINER_SETUP.md).
 
 pi_scripts:
 This directory contains the core Python architecture for LabPulse. These scripts run continuously as background`systemd services to process hardware data, evaluate it against thresholds, and trigger alerts. 
