@@ -184,13 +184,13 @@ services:
 
 The generated dashboard would include the pressure monitor and pump room sections, but omit the turbo pump section.
 
-Later, generation can become dynamic by metric. The config could describe the metrics each service emits:
+Later, generation can become dynamic by reading. The config can describe the readings each service emits:
 
 ```yaml
 services:
   pressure_monitor:
     enabled: true
-    metrics:
+    readings:
       - name: pressure
         label: Air Pressure
         unit: bar
@@ -198,7 +198,7 @@ services:
           min: 5.0
 ```
 
-That would allow the generator to create cards, helpers, template sensors, and warnings automatically for each metric.
+That allows the generator to create cards, helpers, template sensors, and warnings automatically for each reading.
 
 ## Recommended Development Order
 
@@ -208,7 +208,7 @@ That would allow the generator to create cards, helpers, template sensors, and w
 4. Add Home Assistant template files to `docker_refactor/homeassistant/`.
 5. Update setup so it can install those files into `~/labpulse-ha/homeassistant/config/`.
 6. Add a generator that creates dashboard YAML from enabled services in `~/labpulse-ha/config.yaml`.
-7. Later, extend `config.yaml` so each service can describe its metrics and default thresholds.
+7. Extend `config.yaml` so each service describes its readings and default thresholds.
 
 ## Key Design Principle
 

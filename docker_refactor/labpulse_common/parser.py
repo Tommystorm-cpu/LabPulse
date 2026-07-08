@@ -1,3 +1,5 @@
+"""Parse Arduino serial text into named LabPulse readings."""
+
 import math
 import re
 from typing import Optional
@@ -15,7 +17,8 @@ class SerialParser:
         """
         Create a parser for one configured LabPulse service.
 
-        name is used as the metric namespace, for example pump_room.
+        name identifies the service in logs; parsed reading keys come from the
+        Arduino labels and must match `readings[].name` in config.yaml.
         parser_type selects the expected Arduino output format.
         """
         self.name = name
@@ -29,7 +32,7 @@ class SerialParser:
 
     def parse(self, line: str) -> Optional[dict[str, float]]:
         """
-        Parse one raw serial line into metric/value pairs.
+        Parse one raw serial line into reading/value pairs.
 
         Returns None when the line is empty, malformed, or not relevant to the
         configured parser type.
@@ -97,8 +100,6 @@ class SerialParser:
     def _parse_pipe_delimited(self, line: str) -> Optional[dict[str, float]]:
         """
         Parse generic pipe-delimited label/value chunks.
-
-        This is the fallback parser for older or unknown serial formats.
         """
         parsed_data = {}
 
@@ -118,11 +119,11 @@ class SerialParser:
 
     def _key(self, label: str) -> str:
         """
-        Convert an Arduino label into a namespaced metric key.
+        Convert an Arduino label into the config reading key.
 
-        Example: service pump_room and label Flow1 become pump_room_flow1.
+        Example: label Flow1 becomes flow1.
         """
-        return f"{self.name}_{label.strip().lower()}"
+        return label.strip().lower()
 
     def _clean_float(self, raw_value: str) -> Optional[float]:
         """

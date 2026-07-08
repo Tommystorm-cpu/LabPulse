@@ -189,8 +189,8 @@ Home Assistant uses host networking in the generated Compose setup, so
 The LabPulse Python services publish Home Assistant MQTT discovery messages for:
 
 - service status
-- each sensor metric
-- newly seen metrics from multi-line hubs
+- each sensor reading
+- newly seen readings from multi-line hubs
 
 Wait for each Arduino hub to emit a full cycle of readings.
 

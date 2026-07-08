@@ -15,14 +15,14 @@ TEST_CASES = [
         "service_name": "pressure_monitor",
         "parser_type": "pressure",
         "line": "0.1034",
-        "expected": {"pressure_monitor_pressure": 1.03},
+        "expected": {"pressure": 1.03},
     },
     {
         "name": "pump room flow line",
         "service_name": "pump_room",
         "parser_type": "pump_room",
         "line": "Flow1: 2.45 L/min | Flow2: 3.10 L/min",
-        "expected": {"pump_room_flow1": 2.45, "pump_room_flow2": 3.1},
+        "expected": {"flow1": 2.45, "flow2": 3.1},
     },
     {
         "name": "pump room temperature line",
@@ -30,10 +30,10 @@ TEST_CASES = [
         "parser_type": "pump_room",
         "line": "Temp0: 20.11C  Temp1: 20.22C  Temp2: 20.33C  Temp3: 20.44C  ",
         "expected": {
-            "pump_room_temp0": 20.11,
-            "pump_room_temp1": 20.22,
-            "pump_room_temp2": 20.33,
-            "pump_room_temp3": 20.44,
+            "temp0": 20.11,
+            "temp1": 20.22,
+            "temp2": 20.33,
+            "temp3": 20.44,
         },
     },
     {
@@ -42,10 +42,10 @@ TEST_CASES = [
         "parser_type": "pump_room",
         "line": "RoomTemp: 21.2C | RoomHum: 45.0% | Press1: 1.23 bar | Press2: 1.45 bar",
         "expected": {
-            "pump_room_roomtemp": 21.2,
-            "pump_room_roomhum": 45.0,
-            "pump_room_press1": 1.23,
-            "pump_room_press2": 1.45,
+            "roomtemp": 21.2,
+            "roomhum": 45.0,
+            "press1": 1.23,
+            "press2": 1.45,
         },
     },
     {
@@ -54,12 +54,12 @@ TEST_CASES = [
         "parser_type": "water",
         "line": "Flow1: 2.45 L/min | Flow2: 3.10 L/minTemp0: 20.11C  Temp1: 20.22C  Temp2: 20.33C  Temp3: 20.44C  ",
         "expected": {
-            "turbo_pump_flow1": 2.45,
-            "turbo_pump_flow2": 3.1,
-            "turbo_pump_temp0": 20.11,
-            "turbo_pump_temp1": 20.22,
-            "turbo_pump_temp2": 20.33,
-            "turbo_pump_temp3": 20.44,
+            "flow1": 2.45,
+            "flow2": 3.1,
+            "temp0": 20.11,
+            "temp1": 20.22,
+            "temp2": 20.33,
+            "temp3": 20.44,
         },
     },
     {
@@ -68,8 +68,8 @@ TEST_CASES = [
         "parser_type": "water",
         "line": "FlowRate:1.234,TotalLitres:0.567",
         "expected": {
-            "flow_test_flowrate": 1.234,
-            "flow_test_totallitres": 0.567,
+            "flowrate": 1.234,
+            "totallitres": 0.567,
         },
     },
 ]

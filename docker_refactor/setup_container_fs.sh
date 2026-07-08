@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# One-time bootstrapper: copy the refactor files into the live Raspberry Pi
+# working directory, then run the generators that users call directly later.
 PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIVE_CONFIG="$PROJECT_DIR/config.yaml"
@@ -9,6 +11,7 @@ TEMPLATE_CONFIG="$SCRIPT_DIR/config.yaml"
 BACKUP=0
 FAKE_USB=0
 
+# Print usage from one place so normal help and error paths stay consistent.
 usage() {
   cat <<'EOF'
 Usage: ./setup_container_fs.sh [options]
@@ -53,6 +56,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# Backups are opt-in because this script may be run repeatedly during setup.
 backup_if_needed() {
   local path="$1"
 
@@ -65,12 +69,14 @@ backup_if_needed() {
   echo "Backed up existing file: $backup"
 }
 
+# Write heredoc content to a file while preserving the optional backup behavior.
 write_file() {
   local path="$1"
   backup_if_needed "$path"
   cat > "$path"
 }
 
+# Copy repo-managed files into the live ~/labpulse-ha working folder.
 copy_file() {
   local source="$1"
   local destination="$2"
@@ -78,6 +84,7 @@ copy_file() {
   cp "$source" "$destination"
 }
 
+# Replace copied Python package code so rebuilt containers use this repo state.
 replace_dir() {
   local source="$1"
   local destination="$2"
@@ -97,6 +104,7 @@ replace_dir() {
 
 echo "Setting up LabPulse container filesystem at: $PROJECT_DIR"
 
+# Create the live folder skeleton expected by Docker volume mounts.
 mkdir -p "$PROJECT_DIR"
 mkdir -p "$PROJECT_DIR/homeassistant/config"
 mkdir -p "$PROJECT_DIR/mosquitto/config"
@@ -109,12 +117,14 @@ if [ "$FAKE_USB" -eq 1 ]; then
   mkdir -p /tmp/labpulse-fake-serial
 fi
 
+# Keep a plain-English USB mode for the final summary output.
 if [ "$FAKE_USB" -eq 1 ]; then
   USB_MODE_DESCRIPTION="fake USB serial simulator"
 else
   USB_MODE_DESCRIPTION="real Arduino USB serial devices"
 fi
 
+# Minimal local Mosquitto config for the LabPulse stack.
 write_file "$PROJECT_DIR/mosquitto/config/mosquitto.conf" <<'EOF'
 listener 1883
 allow_anonymous true
@@ -123,6 +133,8 @@ persistence_location /mosquitto/data/
 log_dest stdout
 EOF
 
+# The live folder owns the Dockerfile so docker compose can build from
+# ~/labpulse-ha without needing the original repo checkout.
 write_file "$PROJECT_DIR/labpulse-python/Dockerfile" <<'EOF'
 FROM python:3.12-slim
 
@@ -131,13 +143,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY fake_sensor.py .
 COPY main.py .
 COPY labpulse_common ./labpulse_common
 
 CMD ["python", "main.py", "--service", "pressure_monitor"]
 EOF
 
+# Keep the runtime dependency list small for Raspberry Pi builds.
 write_file "$PROJECT_DIR/labpulse-python/requirements.txt" <<'EOF'
 paho-mqtt
 pydantic
@@ -145,26 +157,29 @@ pyyaml
 pyserial
 EOF
 
-copy_file "$SCRIPT_DIR/fake_sensor.py" "$PROJECT_DIR/labpulse-python/fake_sensor.py"
+# Copy the scripts and Python service code that the live Compose project uses.
 copy_file "$SCRIPT_DIR/main.py" "$PROJECT_DIR/labpulse-python/main.py"
 copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
+replace_dir "$SCRIPT_DIR/labpulse_homeassistant" "$PROJECT_DIR/labpulse_homeassistant"
+find "$PROJECT_DIR/labpulse_homeassistant" -type d -name "__pycache__" -prune -exec rm -rf {} +
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
 
+# Preserve the live user-edited config if it exists. The repo config is only a
+# starter template for new installations.
 if [ ! -e "$LIVE_CONFIG" ]; then
-  if [ -e "$PROJECT_DIR/labpulse-python/config.yaml" ]; then
-    copy_file "$PROJECT_DIR/labpulse-python/config.yaml" "$LIVE_CONFIG"
-    echo "Migrated legacy labpulse-python/config.yaml to live config: $LIVE_CONFIG"
-  else
-    copy_file "$TEMPLATE_CONFIG" "$LIVE_CONFIG"
-    echo "Created live config from template: $LIVE_CONFIG"
-  fi
+  copy_file "$TEMPLATE_CONFIG" "$LIVE_CONFIG"
+  echo "Created live config from template: $LIVE_CONFIG"
 else
   echo "Preserving existing live config: $LIVE_CONFIG"
 fi
 
+# Normalize live config after creation:
+# - Python containers reach MQTT by Compose service name "mosquitto".
+# - Fake USB setup rewrites serial ports to simulator paths.
+# PyYAML is preferred; the text fallback keeps setup usable on minimal Pis.
 python3 - "$LIVE_CONFIG" "$FAKE_USB" <<'PY'
 from pathlib import Path
 import sys
@@ -213,17 +228,20 @@ else:
             'serial_port: "/dev/serial/by-id/..."':
                 'serial_port: "/tmp/labpulse-fake-serial/pressure"',
         }
-        for old, new in replacements.items():
-            text = text.replace(old, new, 1)
+        for source, replacement in replacements.items():
+            text = text.replace(source, replacement, 1)
 
     path.write_text(text)
 PY
 
+# Pass fake USB mode through to Compose generation so the right device mounts
+# are written into compose.yaml.
 COMPOSE_MODE_ARGS=()
 if [ "$FAKE_USB" -eq 1 ]; then
   COMPOSE_MODE_ARGS+=("-fake_usb")
 fi
 
+# Leave the live folder with fresh generated Compose and Home Assistant config.
 bash "$PROJECT_DIR/generate_compose.sh" \
   --config "$LIVE_CONFIG" \
   --output "$PROJECT_DIR/compose.yaml" \
@@ -235,6 +253,7 @@ bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
   --project-dir "$PROJECT_DIR"
 
+# Finish by printing the live paths and the normal next commands.
 cat <<EOF
 
 Done.
@@ -244,6 +263,7 @@ Created/updated:
   $PROJECT_DIR/config.yaml
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
+  $PROJECT_DIR/labpulse_homeassistant/
   $PROJECT_DIR/homeassistant/config/packages/labpulse_thresholds.yaml
   $PROJECT_DIR/homeassistant/config/labpulse_alarm_cards.yaml
   $PROJECT_DIR/homeassistant/config/.storage/lovelace

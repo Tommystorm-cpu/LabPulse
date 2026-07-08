@@ -24,7 +24,7 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
         "baud_rate": 9600,
         "reconnect_interval_seconds": 5.0,
         "device_name": "Pump Room Sensor Hub",
-        "metric_prefix": "pump",
+        "readings": [{"name": "flow1", "label": "Flow 1", "unit": "L/min"}],
     }
     config.update(overrides)
     return ServiceConfig(**config)

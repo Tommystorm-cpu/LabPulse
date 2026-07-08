@@ -34,7 +34,21 @@ services:
     serial_port: "/dev/serial/by-id/..."
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
-    metric_prefix: "air_pressure"
+    display:
+      section: "Air Pressure"
+      icon: "mdi:gauge"
+      order: 40
+    readings:
+      - name: "pressure"
+        label: "Pressure"
+        unit: "bar"
+        device_class: "pressure"
+        alarm:
+          mode: "min"
+          min: 1
+          range_min: 0
+          range_max: 10
+          step: 0.1
     reconnect_interval_seconds: 5
 
   pump_room:
@@ -44,7 +58,73 @@ services:
     serial_port: "/dev/serial/by-id/..."
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
-    metric_prefix: "pump"
+    display:
+      section: "Pump Room"
+      icon: "mdi:water-pump"
+      order: 20
+    readings:
+      - name: "flow1"
+        label: "Flow 1"
+        unit: "L/min"
+        alarm:
+          mode: "min"
+          min: 1
+          range_min: 0
+          range_max: 20
+          step: 0.1
+      - name: "flow2"
+        label: "Flow 2"
+        unit: "L/min"
+        alarm:
+          mode: "min"
+          min: 1
+          range_min: 0
+          range_max: 20
+          step: 0.1
+      - name: "temp0"
+        label: "Temperature 0"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
+      - name: "temp1"
+        label: "Temperature 1"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
+      - name: "temp2"
+        label: "Temperature 2"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
+      - name: "temp3"
+        label: "Temperature 3"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
     reconnect_interval_seconds: 5
 
   turbo_pump:
@@ -54,25 +134,74 @@ services:
     serial_port: "/dev/serial/by-id/..."
     baud_rate: 9600
     device_name: "Turbo Pump Hub"
-    metric_prefix: "turbo"
+    display:
+      section: "Cryogenics"
+      icon: "mdi:snowflake-alert"
+      order: 30
+    readings:
+      - name: "flow1"
+        label: "Flow 1"
+        unit: "L/min"
+        alarm:
+          mode: "min"
+          min: 1
+          range_min: 0
+          range_max: 20
+          step: 0.1
+      - name: "flow2"
+        label: "Flow 2"
+        unit: "L/min"
+        alarm:
+          mode: "min"
+          min: 1
+          range_min: 0
+          range_max: 20
+          step: 0.1
+      - name: "temp0"
+        label: "Temperature 0"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
+      - name: "temp1"
+        label: "Temperature 1"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
+      - name: "temp2"
+        label: "Temperature 2"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
+      - name: "temp3"
+        label: "Temperature 3"
+        unit: "\u00b0C"
+        device_class: "temperature"
+        alarm:
+          mode: "range"
+          min: 5
+          max: 35
+          range_min: -20
+          range_max: 80
+          step: 0.1
     reconnect_interval_seconds: 5
-
-# --- OLD Hardware Services ---
-#pump_room:
-#  serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.#cc__0043_03536383236351403122-if00"
-#  baud_rate: 9600
-#  min_readings_under_threshold: 3
-
-#pressure_monitor:
-#  serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.#cc__0043_0353638323635131E2C3-if00"
-#  baud_rate: 9600
-#  min_readings_under_threshold: 3
-#  default_threshold_bar: 0.0
-
-#turbo_pump:
-#  serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.#cc__0043_0353638323635140B172-if00"
-#  baud_rate: 9600
-#  min_readings_under_threshold: 3
 
 #dht11:
 #  pin: "D4" 

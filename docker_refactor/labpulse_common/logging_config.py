@@ -1,3 +1,5 @@
+"""Configure Docker-friendly logging for LabPulse services."""
+
 import logging
 import os
 import sys

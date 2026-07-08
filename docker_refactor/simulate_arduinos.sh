@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Fake serial devices live in /tmp by default so they are easy to mount into the
+# LabPulse Python containers and easy to discard after testing.
 SIM_DIR="${LABPULSE_FAKE_SERIAL_DIR:-/tmp/labpulse-fake-serial}"
 INTERVAL="${LABPULSE_FAKE_SERIAL_INTERVAL:-1}"
 
+# Track background socat/writer processes so Ctrl+C can clean them up.
 SOCAT_PIDS=()
 WRITER_PIDS=()
 
@@ -33,6 +36,8 @@ Requires:
 EOF
 }
 
+# Simple option parser; environment variables are also supported for common
+# repeatable test settings.
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dir)
@@ -55,6 +60,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# Fail early with a helpful install hint if socat is not available.
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
@@ -63,6 +69,7 @@ require_command() {
   fi
 }
 
+# Remove fake serial links and stop background writers/socat pairs on exit.
 cleanup() {
   set +e
 
@@ -88,6 +95,8 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+# Numeric helpers generate values in the same decimal style as the Arduino
+# sketches, keeping parser tests realistic.
 random_tenths() {
   local min="$1"
   local max="$2"
@@ -102,11 +111,14 @@ random_hundredths() {
   printf '%d.%02d' "$((value / 100))" "$((value % 100))"
 }
 
+# Pressure Arduino emits raw MPa-looking values; Python scales them to bar.
 random_pressure_raw() {
   local value=$((950 + RANDOM % 151))
   printf '0.%04d' "$value"
 }
 
+# Create a linked pseudo-terminal pair. LabPulse reads from <name>; this
+# simulator writes to <name>_writer.
 start_pair() {
   local name="$1"
   local read_link="$SIM_DIR/$name"
@@ -133,6 +145,7 @@ start_pair() {
   exit 1
 }
 
+# Compressed-air sketch: one numeric value per line.
 write_pressure() {
   local writer="$SIM_DIR/pressure_writer"
 
@@ -142,6 +155,8 @@ write_pressure() {
   done
 }
 
+# Pump room sketch: emits flow, temperature, and room/pressure readings as
+# separate lines, matching the parser's multi-format behavior.
 write_pump_room() {
   local writer="$SIM_DIR/pump_room_writer"
 
@@ -169,6 +184,8 @@ write_pump_room() {
   done
 }
 
+# Turbo pump sketch: emits flow and temperature readings in the combined style
+# used by the current water parser.
 write_turbo_pump() {
   local writer="$SIM_DIR/turbo_pump_writer"
 
@@ -193,6 +210,8 @@ require_command socat
 
 mkdir -p "$SIM_DIR"
 
+# Create all pseudo-serial devices before starting writers so containers can
+# connect immediately.
 start_pair pressure
 start_pair pump_room
 start_pair turbo_pump

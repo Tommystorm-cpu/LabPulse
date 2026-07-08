@@ -1,6 +1,11 @@
 waterenv/
 __pycache__/
 docker_refactor/logs/
+**/__pycache__/
+
+# Generated Home Assistant smoke-test outputs
+tmp_ha_*/
+tmp_ha_*-check.py
 
 # Codex local workspace/artifact files
 .codex/

@@ -42,7 +42,6 @@ The Raspberry Pi working folder is:
   labpulse-python/
     Dockerfile
     requirements.txt
-    fake_sensor.py
     main.py
     labpulse_common/
 ```
@@ -312,7 +311,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY fake_sensor.py .
 COPY main.py .
 COPY labpulse_common ./labpulse_common
 
@@ -434,9 +432,9 @@ The same Python logs are also written to files on the Pi:
 For example:
 
 ```text
-~/labpulse-ha/logs/fake_sensor.log
 ~/labpulse-ha/logs/pressure_monitor.log
 ~/labpulse-ha/logs/pump_room.log
+~/labpulse-ha/logs/turbo_pump.log
 ```
 
 Watch Mosquitto logs:
@@ -561,7 +559,7 @@ or check the persistent Python log files:
 
 ```bash
 ls -la ~/labpulse-ha/logs
-tail -f ~/labpulse-ha/logs/fake_sensor.log
+tail -f ~/labpulse-ha/logs/pressure_monitor.log
 ```
 
 Common causes:

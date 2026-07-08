@@ -1,3 +1,5 @@
+"""Build LabPulse sensor drivers from validated service config."""
+
 import logging
 
 from labpulse_common.config import ServiceConfig

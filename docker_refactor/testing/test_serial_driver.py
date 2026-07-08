@@ -107,7 +107,7 @@ def test_read_attempts_reconnect_when_disconnected() -> None:
     second_read = driver.read()
 
     assert_equal(first_read, None, "first read while reconnecting")
-    assert_equal(second_read, {"pressure_monitor_pressure": 1.23}, "second read")
+    assert_equal(second_read, {"pressure": 1.23}, "second read")
     assert_equal(driver.get_status(), "online", "status")
 
 

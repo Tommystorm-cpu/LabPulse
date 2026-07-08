@@ -59,7 +59,7 @@ def make_publisher(
     service_name: str = "pressure_monitor",
     parser: str = "pressure",
     device_name: str = "Air Pressure Sensor Hub",
-    metric_prefix: str = "air_pressure",
+    readings: list[dict[str, str]] | None = None,
 ) -> HomeAssistantMqttPublisher:
     """Create a publisher wired to FakeMqttClient."""
 
@@ -70,7 +70,7 @@ def make_publisher(
         serial_port="/tmp/labpulse-fake-serial/pressure",
         baud_rate=9600,
         device_name=device_name,
-        metric_prefix=metric_prefix,
+        readings=readings or [{"name": "pressure", "label": "Pressure", "unit": "bar"}],
     )
     mqtt_config = MqttConfig(broker="mosquitto", port=1883)
     publisher = HomeAssistantMqttPublisher(
@@ -104,18 +104,18 @@ def test_connect_and_disconnect() -> None:
 
 
 def test_topics_and_units() -> None:
-    """Check topic construction and Home Assistant unit inference."""
+    """Check topic construction and configured reading lookup."""
 
     publisher = make_publisher()
 
     assert_equal(
-        publisher.state_topic("pressure_monitor_pressure"),
-        "home/sensor/pressure_monitor/pressure_monitor_pressure/state",
+        publisher.state_topic("pressure"),
+        "home/sensor/pressure_monitor/pressure/state",
         "state topic",
     )
     assert_equal(
-        publisher.discovery_topic("pressure_monitor_pressure"),
-        "homeassistant/sensor/pressure_monitor_pressure_monitor_pressure/config",
+        publisher.discovery_topic("pressure"),
+        "homeassistant/sensor/pressure_monitor_pressure/config",
         "discovery topic",
     )
     assert_equal(
@@ -128,17 +128,15 @@ def test_topics_and_units() -> None:
         "homeassistant/sensor/pressure_monitor_status/config",
         "status discovery topic",
     )
-    assert_equal(publisher.unit_for_metric("pressure_monitor_pressure"), "bar", "pressure unit")
-    assert_equal(publisher.unit_for_metric("pump_room_temp0"), "\u00b0C", "temperature unit")
-    assert_equal(publisher.unit_for_metric("pump_room_roomhum"), "%", "humidity unit")
-    assert_equal(publisher.unit_for_metric("pump_room_flow1"), "L/min", "flow unit")
+    reading = publisher.reading_config_for("pressure")
+    assert_equal(reading.unit if reading else None, "bar", "pressure unit")
 
 
 def test_publish_discovery_once_then_readings() -> None:
     """Check discovery is retained once and state readings publish every time."""
 
     publisher = make_publisher()
-    readings = {"pressure_monitor_pressure": 1.23}
+    readings = {"pressure": 1.23}
 
     publisher.publish(readings)
     publisher.publish(readings)
@@ -153,18 +151,20 @@ def test_publish_discovery_once_then_readings() -> None:
     assert_equal(discovery["retain"], True, "discovery retain")
     assert_equal(
         discovery["topic"],
-        "homeassistant/sensor/pressure_monitor_pressure_monitor_pressure/config",
+        "homeassistant/sensor/pressure_monitor_pressure/config",
         "discovery topic",
     )
 
     payload = json.loads(str(discovery["payload"]))
-    assert_equal(payload["name"], "Pressure Monitor Pressure", "entity name")
+    assert_equal(payload["name"], "Pressure", "entity name")
+    assert_equal(payload["unique_id"], "pressure_monitor_pressure", "unique id")
+    assert_equal(payload["object_id"], "air_pressure_sensor_hub_pressure", "object id")
     assert_equal(payload["unit_of_measurement"], "bar", "unit")
     assert_equal(payload["device"]["name"], "Air Pressure Sensor Hub", "device name")
 
     assert_equal(
         first_state["topic"],
-        "home/sensor/pressure_monitor/pressure_monitor_pressure/state",
+        "home/sensor/pressure_monitor/pressure/state",
         "first state topic",
     )
     assert_equal(first_state["payload"], 1.23, "first state payload")
@@ -196,6 +196,7 @@ def test_publish_status_discovery_once_then_status() -> None:
     payload = json.loads(str(discovery["payload"]))
     assert_equal(payload["name"], "Status", "status name")
     assert_equal(payload["state_topic"], "home/sensor/pressure_monitor/status", "status state topic")
+    assert_equal(payload["object_id"], "air_pressure_sensor_hub_status", "status object id")
     assert_equal(payload["icon"], "mdi:heart-pulse", "status icon")
 
     assert_equal(first_status["topic"], "home/sensor/pressure_monitor/status", "first status topic")
@@ -204,33 +205,91 @@ def test_publish_status_discovery_once_then_status() -> None:
     assert_equal(second_status["payload"], "reconnecting", "second status payload")
 
 
-def test_publish_discovery_for_new_metrics() -> None:
-    """Check multi-format hubs discover metrics that appear after first publish."""
+def test_publish_discovery_for_new_readings() -> None:
+    """Check multi-format hubs discover readings that appear after first publish."""
 
     publisher = make_publisher(
         service_name="pump_room",
         parser="pump_room",
         device_name="Pump Room Sensor Hub",
-        metric_prefix="pump",
+        readings=[
+            {"name": "flow1", "label": "Flow 1", "unit": "L/min"},
+            {"name": "temp0", "label": "Temperature 0", "unit": "\u00b0C"},
+        ],
     )
 
-    publisher.publish({"pump_room_flow1": 2.1})
-    publisher.publish({"pump_room_temp0": 20.5})
+    publisher.publish({"flow1": 2.1})
+    publisher.publish({"temp0": 20.5})
 
     published = publisher.client.published
-    discovery_topics = [
-        item["topic"]
+    discovery_publishes = [
+        (item["topic"], item["payload"])
         for item in published
         if str(item["topic"]).startswith("homeassistant/sensor/")
     ]
 
     assert_equal(
-        discovery_topics,
+        discovery_publishes,
         [
-            "homeassistant/sensor/pump_room_pump_room_flow1/config",
-            "homeassistant/sensor/pump_room_pump_room_temp0/config",
+            (
+                "homeassistant/sensor/pump_room_flow1/config",
+                json.dumps(
+                    {
+                        "name": "Flow 1",
+                        "state_topic": "home/sensor/pump_room/flow1/state",
+                        "unique_id": "pump_room_flow1",
+                        "object_id": "pump_room_sensor_hub_flow_1",
+                        "device": {
+                            "identifiers": ["pump_room"],
+                            "name": "Pump Room Sensor Hub",
+                        },
+                        "unit_of_measurement": "L/min",
+                    }
+                ),
+            ),
+            (
+                "homeassistant/sensor/pump_room_temp0/config",
+                json.dumps(
+                    {
+                        "name": "Temperature 0",
+                        "state_topic": "home/sensor/pump_room/temp0/state",
+                        "unique_id": "pump_room_temp0",
+                        "object_id": "pump_room_sensor_hub_temperature_0",
+                        "device": {
+                            "identifiers": ["pump_room"],
+                            "name": "Pump Room Sensor Hub",
+                        },
+                        "unit_of_measurement": "\u00b0C",
+                    }
+                ),
+            ),
         ],
-        "discovery topics",
+        "discovery publishes",
+    )
+
+
+def test_ignore_unconfigured_readings() -> None:
+    """Check readings not declared in config are ignored."""
+
+    publisher = make_publisher(
+        service_name="pump_room",
+        parser="pump_room",
+        device_name="Pump Room Sensor Hub",
+        readings=[
+            {"name": "flow1", "label": "Flow 1", "unit": "L/min"},
+        ],
+    )
+
+    publisher.publish({"press1": 1.2, "flow1": 2.1})
+
+    published = publisher.client.published
+    assert_equal(
+        [item["topic"] for item in published],
+        [
+            "homeassistant/sensor/pump_room_flow1/config",
+            "home/sensor/pump_room/flow1/state",
+        ],
+        "published topics",
     )
 
 
@@ -239,7 +298,8 @@ TESTS = [
     ("topics and units", test_topics_and_units),
     ("publish discovery once then readings", test_publish_discovery_once_then_readings),
     ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
-    ("publish discovery for new metrics", test_publish_discovery_for_new_metrics),
+    ("publish discovery for new readings", test_publish_discovery_for_new_readings),
+    ("ignore unconfigured readings", test_ignore_unconfigured_readings),
 ]
 
 

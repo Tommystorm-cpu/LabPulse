@@ -1,3 +1,5 @@
+"""Base interface shared by all LabPulse sensor drivers."""
+
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 import logging
@@ -31,7 +33,7 @@ class BaseSensorDriver(ABC):
     def read(self) -> Optional[dict[str, float]]:
         """
         Read data from the hardware.
-        MUST return a dictionary of {metric_name: value} (e.g., {"pump_flow2": 4.5})
+        MUST return a dictionary of {reading_name: value} (e.g., {"pump_flow2": 4.5})
         or None if the read fails/times out.
         """
         pass

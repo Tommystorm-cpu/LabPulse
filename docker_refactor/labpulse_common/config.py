@@ -1,4 +1,5 @@
-import json
+"""Load and validate LabPulse service configuration."""
+
 import logging
 import sys
 from pathlib import Path
@@ -9,7 +10,6 @@ from pydantic import BaseModel, Field, ValidationError
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
-DEFAULT_THRESHOLDS_PATH = BASE_DIR / "thresholds.json"
 logger = logging.getLogger("Config")
 
 # ==========================================
@@ -27,6 +27,22 @@ class SmsConfig(BaseModel):
 
     recipients: list[str] = Field(default_factory=list)
 
+class ReadingConfig(BaseModel):
+    """One named value published by a LabPulse service."""
+
+    name: str
+    label: str | None = None
+    unit: str | None = None
+    device_class: str | None = None
+    state_class: str | None = None
+
+class DisplayConfig(BaseModel):
+    """Dashboard display hints for one LabPulse service."""
+
+    section: str | None = None
+    icon: str | None = None
+    order: int = 100
+
 class ServiceConfig(BaseModel):
     """Configuration for one independently running LabPulse sensor service."""
 
@@ -36,7 +52,8 @@ class ServiceConfig(BaseModel):
     serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
     device_name: str
-    metric_prefix: str
+    display: DisplayConfig = Field(default_factory=DisplayConfig)
+    readings: list[ReadingConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
 
 class LabPulseConfig(BaseModel):
@@ -111,23 +128,3 @@ def load_recipients(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> list[str]:
     """Pulls SMS numbers directly from the validated config object."""
     config = load_config(yaml_path)
     return config.sms.recipients
-
-def load_all_thresholds(thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH) -> dict[str, object]:
-    """Reads the dynamic, user-adjustable thresholds from JSON."""
-    path = resolve_path(thresholds_path)
-
-    if not path.exists():
-        return {}
-
-    with path.open("r", encoding="utf-8") as file:
-        return json.load(file)
-
-def save_all_thresholds(
-    thresholds_dict: dict[str, object],
-    thresholds_path: str | Path = DEFAULT_THRESHOLDS_PATH,
-) -> None:
-    """Saves dynamic user adjustments back to JSON."""
-    path = resolve_path(thresholds_path)
-
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(thresholds_dict, file, indent=4)

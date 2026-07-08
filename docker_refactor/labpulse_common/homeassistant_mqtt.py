@@ -1,9 +1,12 @@
+"""Publish LabPulse readings to Home Assistant via MQTT discovery."""
+
 import json
 import logging
+import re
 
 import paho.mqtt.client as mqtt
 
-from labpulse_common.config import MqttConfig, ServiceConfig
+from labpulse_common.config import MqttConfig, ReadingConfig, ServiceConfig
 
 
 DISCOVERY_PREFIX = "homeassistant"
@@ -26,7 +29,7 @@ class HomeAssistantMqttPublisher:
         self.service_name = service_name
         self.service_config = service_config
         self.mqtt_config = mqtt_config
-        self.discovered_metrics: set[str] = set()
+        self.discovered_readings: set[str] = set()
         self.status_discovery_published = False
         self.logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
         self.client = mqtt.Client(
@@ -46,19 +49,34 @@ class HomeAssistantMqttPublisher:
 
     def publish(self, readings: dict[str, float]) -> None:
         """
-        Publish Home Assistant discovery for new metrics, then publish readings.
+        Publish Home Assistant discovery for new readings, then publish values.
         """
+        readings = self.configured_readings(readings)
         undiscovered_readings = {
-            metric_name: reading
-            for metric_name, reading in readings.items()
-            if metric_name not in self.discovered_metrics
+            reading_name: reading
+            for reading_name, reading in readings.items()
+            if reading_name not in self.discovered_readings
         }
 
         if undiscovered_readings:
             self.publish_discovery(undiscovered_readings)
-            self.discovered_metrics.update(undiscovered_readings)
+            self.discovered_readings.update(undiscovered_readings)
 
         self.publish_readings(readings)
+
+    def configured_readings(self, readings: dict[str, float]) -> dict[str, float]:
+        """Return only readings declared exactly in this service's config."""
+
+        configured = {}
+
+        for reading_name, reading in readings.items():
+            reading_config = self.reading_config_for(reading_name)
+            if reading_config:
+                configured[reading_name] = reading
+            else:
+                self.logger.warning("Ignoring unconfigured reading: %s", reading_name)
+
+        return configured
 
     def publish_status(self, status: str) -> None:
         """Publish the service health status as a retained Home Assistant entity."""
@@ -77,6 +95,7 @@ class HomeAssistantMqttPublisher:
             "name": "Status",
             "state_topic": self.status_topic(),
             "unique_id": f"{self.service_name}_status",
+            "object_id": self.object_id("status"),
             "icon": "mdi:heart-pulse",
             "device": {
                 "identifiers": [self.service_name],
@@ -92,34 +111,41 @@ class HomeAssistantMqttPublisher:
         self.logger.info("Published Home Assistant status discovery")
 
     def publish_discovery(self, readings: dict[str, float]) -> None:
-        """Publish Home Assistant MQTT discovery config for each metric."""
-        for metric_name in readings:
+        """Publish Home Assistant MQTT discovery config for each reading."""
+        for reading_name in readings:
+            reading_config = self.reading_config_for(reading_name)
             payload = {
-                "name": self.metric_label(metric_name),
-                "state_topic": self.state_topic(metric_name),
-                "unique_id": f"{self.service_name}_{metric_name}",
+                "name": self.reading_label(reading_name, reading_config),
+                "state_topic": self.state_topic(reading_name),
+                "unique_id": f"{self.service_name}_{reading_name}",
+                "object_id": self.object_id(reading_name, reading_config),
                 "device": {
                     "identifiers": [self.service_name],
                     "name": self.service_config.device_name,
                 },
             }
 
-            unit = self.unit_for_metric(metric_name)
-            if unit:
-                payload["unit_of_measurement"] = unit
+            if reading_config and reading_config.unit:
+                payload["unit_of_measurement"] = reading_config.unit
+
+            if reading_config and reading_config.device_class:
+                payload["device_class"] = reading_config.device_class
+
+            if reading_config and reading_config.state_class:
+                payload["state_class"] = reading_config.state_class
 
             self.client.publish(
-                self.discovery_topic(metric_name),
+                self.discovery_topic(reading_name),
                 json.dumps(payload),
                 retain=True,
             )
-            self.logger.info("Published Home Assistant discovery for %s", metric_name)
+            self.logger.info("Published Home Assistant discovery for %s", reading_name)
 
     def publish_readings(self, readings: dict[str, float]) -> None:
         """Publish current sensor readings to their MQTT state topics."""
-        for metric_name, reading in readings.items():
-            self.client.publish(self.state_topic(metric_name), reading)
-            #self.logger.info("Published %s reading: %s", metric_name, reading)
+        for reading_name, reading in readings.items():
+            self.client.publish(self.state_topic(reading_name), reading)
+            #self.logger.info("Published %s reading: %s", reading_name, reading)
 
     def disconnect(self) -> None:
         """Stop MQTT networking and disconnect from the broker."""
@@ -127,43 +153,60 @@ class HomeAssistantMqttPublisher:
         self.client.disconnect()
         self.logger.info("Disconnected from MQTT broker")
 
-    def state_topic(self, metric_name: str) -> str:
-        """Return the MQTT state topic for one metric."""
-        return f"{STATE_TOPIC_PREFIX}/{self.service_name}/{metric_name}/state"
+    def state_topic(self, reading_name: str) -> str:
+        """Return the MQTT state topic for one reading."""
+        return f"{STATE_TOPIC_PREFIX}/{self.service_name}/{reading_name}/state"
 
     def status_topic(self) -> str:
         """Return the MQTT state topic for this service's health status."""
 
         return f"{STATE_TOPIC_PREFIX}/{self.service_name}/status"
 
-    def discovery_topic(self, metric_name: str) -> str:
-        """Return the Home Assistant discovery topic for one metric."""
-        return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_{metric_name}/config"
+    def discovery_topic(self, reading_name: str) -> str:
+        """Return the Home Assistant discovery topic for one reading."""
+        return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_{reading_name}/config"
 
     def status_discovery_topic(self) -> str:
         """Return the Home Assistant discovery topic for service status."""
 
         return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_status/config"
 
-    @staticmethod
-    def metric_label(metric_name: str) -> str:
-        """Convert a metric key into a readable Home Assistant entity name."""
-        return metric_name.replace("_", " ").title()
+    def entity_prefix(self) -> str:
+        """Return the Home Assistant entity prefix for this service's device."""
 
-    @staticmethod
-    def unit_for_metric(metric_name: str) -> str | None:
-        """Infer a Home Assistant unit from the metric name."""
-        if "pressure" in metric_name or "press" in metric_name:
-            return "bar"
+        return slug(self.service_config.device_name)
 
-        if "temp" in metric_name:
-            return "\u00b0C"
+    def object_id(self, reading_name: str, reading_config: ReadingConfig | None = None) -> str:
+        """Return the Home Assistant object ID for one discovered entity.
 
-        if "hum" in metric_name:
-            return "%"
+        The machine key stays in `unique_id`; the visible entity ID follows the
+        configured label because Home Assistant derives entity IDs from names
+        such as "Flow 1" -> "flow_1".
+        """
 
-        if "flow" in metric_name:
-            return "L/min"
+        label = reading_config.label if reading_config and reading_config.label else reading_name
+        return f"{self.entity_prefix()}_{slug(label)}"
+
+    def reading_config_for(self, reading_name: str) -> ReadingConfig | None:
+        """Return configured metadata for a published reading name."""
+
+        for reading in self.service_config.readings:
+            if reading_name == reading.name:
+                return reading
 
         return None
 
+    @staticmethod
+    def reading_label(reading_name: str, reading_config) -> str:
+        """Return the configured label, or a title-cased fallback."""
+
+        if reading_config and reading_config.label:
+            return reading_config.label
+
+        return reading_name.replace("_", " ").title()
+
+
+def slug(value: str) -> str:
+    """Return a Home Assistant-safe lowercase identifier."""
+
+    return re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
