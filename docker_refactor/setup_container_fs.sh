@@ -11,10 +11,9 @@ FAKE_USB=0
 
 usage() {
   cat <<'EOF'
-Usage: ./setup_container_fs.sh [-fake_usb] [--backup]
+Usage: ./setup_container_fs.sh [options]
 
-Creates the Raspberry Pi Docker Compose folder layout for the LabPulse
-container prototype.
+One-time bootstrap for the Raspberry Pi LabPulse folder.
 
 Default target:
   ~/labpulse-ha
@@ -26,7 +25,9 @@ Options:
   -fake_usb  Mount socat fake USB serial paths for simulator testing.
   --backup  Create .bak timestamp copies before replacing generated files.
 
-This script preserves the Home Assistant config directory.
+After this script has run once, work from ~/labpulse-ha:
+  ./generate_compose.sh
+  ./generate_homeassistant_config.sh
 EOF
 }
 
@@ -148,6 +149,8 @@ copy_file "$SCRIPT_DIR/fake_sensor.py" "$PROJECT_DIR/labpulse-python/fake_sensor
 copy_file "$SCRIPT_DIR/main.py" "$PROJECT_DIR/labpulse-python/main.py"
 copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
+copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
+chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
 
 if [ ! -e "$LIVE_CONFIG" ]; then
@@ -227,6 +230,11 @@ bash "$PROJECT_DIR/generate_compose.sh" \
   --project-dir "$PROJECT_DIR" \
   "${COMPOSE_MODE_ARGS[@]}"
 
+bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
+  --config "$LIVE_CONFIG" \
+  --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
+  --project-dir "$PROJECT_DIR"
+
 cat <<EOF
 
 Done.
@@ -235,6 +243,10 @@ Created/updated:
   $PROJECT_DIR/compose.yaml
   $PROJECT_DIR/config.yaml
   $PROJECT_DIR/generate_compose.sh
+  $PROJECT_DIR/generate_homeassistant_config.sh
+  $PROJECT_DIR/homeassistant/config/packages/labpulse_thresholds.yaml
+  $PROJECT_DIR/homeassistant/config/labpulse_alarm_cards.yaml
+  $PROJECT_DIR/homeassistant/config/.storage/lovelace
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/
   $PROJECT_DIR/logs/
@@ -249,6 +261,7 @@ Next commands:
   cd "$PROJECT_DIR"
   nano config.yaml
   ./generate_compose.sh
+  ./generate_homeassistant_config.sh
   docker compose config
   docker compose up -d --build
 

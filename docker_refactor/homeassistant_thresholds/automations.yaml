@@ -1,0 +1,65 @@
+- alias: Air Pressure Alert
+  description: "Set alert state when air pressure stays below the dashboard threshold"
+  mode: single
+  trigger:
+    - platform: template
+      value_template: >
+        {{ states('sensor.air_pressure_sensor_hub_pressure_monitor_pressure') | float(0)
+           < states('input_number.air_pressure_minimum_threshold') | float(0) }}
+      for:
+        seconds: "{{ states('input_number.air_pressure_alert_delay_seconds') | int(2) }}"
+  condition:
+    - condition: state
+      entity_id: input_boolean.air_pressure_alert_active
+      state: "off"
+  action:
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.air_pressure_alert_active
+
+    - service: persistent_notification.create
+      data:
+        title: "LabPulse air pressure alert"
+        message: >
+          Air pressure has stayed below the threshold for
+          {{ states('input_number.air_pressure_alert_delay_seconds') | int(2) }} seconds.
+
+          Current reading:
+          {{ states('sensor.air_pressure_sensor_hub_pressure_monitor_pressure') }} bar.
+
+          Threshold:
+          {{ states('input_number.air_pressure_minimum_threshold') }} bar.
+        notification_id: labpulse_air_pressure_status
+
+- alias: Air Pressure Recovery
+  description: "Clear alert state when air pressure recovers above the dashboard threshold"
+  mode: single
+  trigger:
+    - platform: template
+      value_template: >
+        {{ states('sensor.air_pressure_sensor_hub_pressure_monitor_pressure') | float(0)
+           >= states('input_number.air_pressure_minimum_threshold') | float(0) }}
+      for:
+        seconds: "{{ states('input_number.air_pressure_recovery_delay_seconds') | int(2) }}"
+  condition:
+    - condition: state
+      entity_id: input_boolean.air_pressure_alert_active
+      state: "on"
+  action:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.air_pressure_alert_active
+
+    - service: persistent_notification.create
+      data:
+        title: "LabPulse air pressure recovered"
+        message: >
+          Air pressure has recovered above the threshold for
+          {{ states('input_number.air_pressure_recovery_delay_seconds') | int(2) }} seconds.
+
+          Current reading:
+          {{ states('sensor.air_pressure_sensor_hub_pressure_monitor_pressure') }} bar.
+
+          Threshold:
+          {{ states('input_number.air_pressure_minimum_threshold') }} bar.
+        notification_id: labpulse_air_pressure_status

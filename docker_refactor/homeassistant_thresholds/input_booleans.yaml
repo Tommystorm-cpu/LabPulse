@@ -1,0 +1,3 @@
+air_pressure_alert_active:
+  name: Air Pressure Alert Active
+  initial: false

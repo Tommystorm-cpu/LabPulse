@@ -1,0 +1,20 @@
+homeassistant:
+  packages: !include_dir_named packages
+
+default_config:
+
+frontend:
+
+history:
+
+logbook:
+
+my:
+
+mobile_app:
+
+system_health:
+
+mqtt:
+  broker: 127.0.0.1
+  port: 1883

@@ -1,0 +1,1 @@
+{"data": {"entities": [{"platform": "mqtt", "unique_id": "pressure_monitor_status", "entity_id": "sensor.real_air_status"}, {"platform": "mqtt", "unique_id": "pressure_monitor_pressure_monitor_pressure", "entity_id": "sensor.real_air_pressure"}, {"platform": "mqtt", "unique_id": "pump_room_pump_room_flow1", "entity_id": "sensor.real_pump_flow1"}]}}

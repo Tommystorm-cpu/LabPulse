@@ -1,0 +1,26 @@
+air_pressure_minimum_threshold:
+  name: Air Pressure Minimum Threshold
+  min: 0
+  max: 10
+  step: 0.1
+  initial: 1
+  unit_of_measurement: bar
+  mode: box
+
+air_pressure_alert_delay_seconds:
+  name: Air Pressure Alert Delay
+  min: 0
+  max: 300
+  step: 1
+  initial: 2
+  unit_of_measurement: s
+  mode: box
+
+air_pressure_recovery_delay_seconds:
+  name: Air Pressure Recovery Delay
+  min: 0
+  max: 300
+  step: 1
+  initial: 2
+  unit_of_measurement: s
+  mode: box

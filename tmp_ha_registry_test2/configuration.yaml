@@ -1,0 +1,16 @@
+homeassistant:
+  packages: !include_dir_named packages
+
+default_config:
+
+frontend:
+
+history:
+
+logbook:
+
+my:
+
+mobile_app:
+
+system_health:

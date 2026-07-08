@@ -1,0 +1,9 @@
+type: entities
+title: Air Pressure Threshold
+entities:
+  - entity: sensor.air_pressure_sensor_hub_pressure_monitor_pressure
+    name: Current pressure
+  - entity: input_number.air_pressure_minimum_threshold
+  - entity: input_number.air_pressure_alert_delay_seconds
+  - entity: input_number.air_pressure_recovery_delay_seconds
+  - entity: input_boolean.air_pressure_alert_active

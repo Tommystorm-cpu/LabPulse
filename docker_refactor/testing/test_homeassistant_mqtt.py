@@ -55,21 +55,26 @@ class FakeMqttClient:
         self.disconnected = True
 
 
-def make_publisher() -> HomeAssistantMqttPublisher:
+def make_publisher(
+    service_name: str = "pressure_monitor",
+    parser: str = "pressure",
+    device_name: str = "Air Pressure Sensor Hub",
+    metric_prefix: str = "air_pressure",
+) -> HomeAssistantMqttPublisher:
     """Create a publisher wired to FakeMqttClient."""
 
     service_config = ServiceConfig(
         enabled=True,
         driver="serial",
-        parser="pressure",
+        parser=parser,
         serial_port="/tmp/labpulse-fake-serial/pressure",
         baud_rate=9600,
-        device_name="Air Pressure Sensor Hub",
-        metric_prefix="air_pressure",
+        device_name=device_name,
+        metric_prefix=metric_prefix,
     )
     mqtt_config = MqttConfig(broker="mosquitto", port=1883)
     publisher = HomeAssistantMqttPublisher(
-        "pressure_monitor",
+        service_name,
         service_config,
         mqtt_config,
     )
@@ -199,11 +204,42 @@ def test_publish_status_discovery_once_then_status() -> None:
     assert_equal(second_status["payload"], "reconnecting", "second status payload")
 
 
+def test_publish_discovery_for_new_metrics() -> None:
+    """Check multi-format hubs discover metrics that appear after first publish."""
+
+    publisher = make_publisher(
+        service_name="pump_room",
+        parser="pump_room",
+        device_name="Pump Room Sensor Hub",
+        metric_prefix="pump",
+    )
+
+    publisher.publish({"pump_room_flow1": 2.1})
+    publisher.publish({"pump_room_temp0": 20.5})
+
+    published = publisher.client.published
+    discovery_topics = [
+        item["topic"]
+        for item in published
+        if str(item["topic"]).startswith("homeassistant/sensor/")
+    ]
+
+    assert_equal(
+        discovery_topics,
+        [
+            "homeassistant/sensor/pump_room_pump_room_flow1/config",
+            "homeassistant/sensor/pump_room_pump_room_temp0/config",
+        ],
+        "discovery topics",
+    )
+
+
 TESTS = [
     ("connect and disconnect", test_connect_and_disconnect),
     ("topics and units", test_topics_and_units),
     ("publish discovery once then readings", test_publish_discovery_once_then_readings),
     ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
+    ("publish discovery for new metrics", test_publish_discovery_for_new_metrics),
 ]
 
 

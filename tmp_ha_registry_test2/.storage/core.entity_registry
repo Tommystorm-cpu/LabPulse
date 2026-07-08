@@ -1,0 +1,1 @@
+{"data": {"entities": [{"platform": "mqtt", "unique_id": "some_other_pump_room_temp0", "entity_id": "sensor.actual_temp0"}, {"platform": "mqtt", "unique_id": "pump_room_status", "entity_id": "sensor.actual_pump_status"}]}}

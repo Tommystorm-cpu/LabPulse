@@ -26,7 +26,7 @@ class HomeAssistantMqttPublisher:
         self.service_name = service_name
         self.service_config = service_config
         self.mqtt_config = mqtt_config
-        self.discovery_published = False
+        self.discovered_metrics: set[str] = set()
         self.status_discovery_published = False
         self.logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
         self.client = mqtt.Client(
@@ -46,11 +46,17 @@ class HomeAssistantMqttPublisher:
 
     def publish(self, readings: dict[str, float]) -> None:
         """
-        Publish Home Assistant discovery once, then publish the latest readings.
+        Publish Home Assistant discovery for new metrics, then publish readings.
         """
-        if not self.discovery_published:
-            self.publish_discovery(readings)
-            self.discovery_published = True
+        undiscovered_readings = {
+            metric_name: reading
+            for metric_name, reading in readings.items()
+            if metric_name not in self.discovered_metrics
+        }
+
+        if undiscovered_readings:
+            self.publish_discovery(undiscovered_readings)
+            self.discovered_metrics.update(undiscovered_readings)
 
         self.publish_readings(readings)
 
@@ -113,7 +119,7 @@ class HomeAssistantMqttPublisher:
         """Publish current sensor readings to their MQTT state topics."""
         for metric_name, reading in readings.items():
             self.client.publish(self.state_topic(metric_name), reading)
-            self.logger.info("Published %s reading: %s", metric_name, reading)
+            #self.logger.info("Published %s reading: %s", metric_name, reading)
 
     def disconnect(self) -> None:
         """Stop MQTT networking and disconnect from the broker."""

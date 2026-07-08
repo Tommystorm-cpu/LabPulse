@@ -160,11 +160,10 @@ The intended flow is:
   -> compose.yaml
 
 ~/labpulse-ha/config.yaml
-  -> future Home Assistant generator
-  -> homeassistant/config/dashboards/labpulse.yaml
-  -> homeassistant/config/input_numbers.yaml
-  -> homeassistant/config/templates.yaml
-  -> homeassistant/config/automations.yaml
+  -> generate_homeassistant_config.sh
+  -> homeassistant/config/.storage/lovelace
+  -> homeassistant/config/packages/labpulse_thresholds.yaml
+  -> homeassistant/config/labpulse_alarm_cards.yaml
 ```
 
 At first, generation can be dynamic by service.
