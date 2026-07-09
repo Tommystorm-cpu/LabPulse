@@ -2,6 +2,7 @@
 
 import argparse
 from argparse import Namespace
+import logging
 from pathlib import Path
 import sys
 
@@ -12,6 +13,7 @@ if str(APP_DIR) not in sys.path:
 
 from labpulse_common.config import load_config
 from labpulse_common.logging_config import configure_logging
+from labpulse_sms.sender import build_sms_sender
 from labpulse_sms.sms_subscriber import SMSSubscriber
 
 DEFAULT_CONFIG_PATH = APP_DIR / "config.yaml"
@@ -36,7 +38,8 @@ def main() -> None:
     configure_logging("sms")
     cfg = load_config(args.config)
 
-    subscriber = SMSSubscriber(cfg.mqtt)
+    sender = build_sms_sender(cfg.sms, logging.getLogger("HomeAssistantMqtt.SMS"))
+    subscriber = SMSSubscriber(cfg.mqtt, sender)
     subscriber.connect()
     subscriber.loop_forever()
 

@@ -40,6 +40,10 @@ docker_refactor/config.yaml
 
 That file is only copied as a starter.
 
+For SMS setup, keep `sms.backend: "log"` on a test Pi and switch it to
+`"mmcli"` only on the real Pi with the modem. The full SMS guide is
+`docker_refactor/docs/SMS_SETUP.md`.
+
 ## 2. One-Time Bootstrap
 
 From the repository checkout on the Raspberry Pi:

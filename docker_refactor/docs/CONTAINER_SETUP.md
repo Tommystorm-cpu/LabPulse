@@ -20,6 +20,9 @@ Each container has one job:
 - `labpulse-sms` runs the shared SMS engine.
 - Each `labpulse-*` Python container runs one configured LabPulse service.
 
+For real modem setup and safe test-Pi SMS testing, see
+`docker_refactor/docs/SMS_SETUP.md`.
+
 The SMS container subscribes to:
 
 ```text
@@ -28,6 +31,21 @@ labpulse/sms/#
 
 Use `labpulse/sms/send` for initial SMS request messages. The wider namespace
 leaves room for later topics such as test, status, or acknowledgement messages.
+Generated LabPulse alert automations publish JSON payloads with the tripped
+service and reading, for example:
+
+```json
+{
+  "event": "alert",
+  "service": "pressure_monitor",
+  "service_label": "Air Pressure Sensor Hub",
+  "reading": "pressure",
+  "reading_label": "Pressure",
+  "entity_id": "binary_sensor.labpulse_pressure_monitor_pressure_alarm",
+  "title": "LabPulse Pressure alert",
+  "message": "Air Pressure Sensor Hub / Pressure alarm is active."
+}
+```
 
 ## Folder Layout
 

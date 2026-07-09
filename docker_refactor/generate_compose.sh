@@ -130,6 +130,9 @@ if not config_path.exists():
 
 data = yaml.safe_load(config_path.read_text()) or {}
 services = data.get("services", {})
+sms_config = data.get("sms", {}) or {}
+sms_backend = str(sms_config.get("backend", "log")).lower()
+sms_needs_modem = sms_backend == "mmcli"
 
 enabled_services = [
     service_name
@@ -189,6 +192,42 @@ lines = [
 if not fake_usb:
     lines.append("  privileged: true")
 
+sms_service_lines = [
+    "  labpulse-sms:",
+]
+
+if sms_needs_modem:
+    sms_service_lines.extend(
+        [
+            "    build: ./labpulse-python",
+            "    depends_on:",
+            "      - mosquitto",
+            "    volumes:",
+            "      - ./logs:/app/logs",
+            "      - ./config.yaml:/app/config.yaml:ro",
+            "      - /run/dbus:/run/dbus:ro",
+            "      - /dev:/dev",
+            "    privileged: true",
+            "    environment:",
+            "      MQTT_BROKER: mosquitto",
+            "      MQTT_PORT: 1883",
+            "      LABPULSE_LOG_DIR: /app/logs",
+            "    restart: unless-stopped",
+            "    container_name: labpulse-sms",
+            f"    command: {sms_command()}",
+            "",
+        ]
+    )
+else:
+    sms_service_lines.extend(
+        [
+            "    <<: *labpulse-python-base",
+            "    container_name: labpulse-sms",
+            f"    command: {sms_command()}",
+            "",
+        ]
+    )
+
 # Home Assistant uses host networking so its MQTT integration can connect to
 # Mosquitto at 127.0.0.1:1883. Python containers use the Compose service name.
 lines.extend(
@@ -224,11 +263,7 @@ lines.extend(
         "      - ./mosquitto/log:/mosquitto/log",
         "    restart: unless-stopped",
         "",
-        "  labpulse-sms:",
-        "    <<: *labpulse-python-base",
-        "    container_name: labpulse-sms",
-        f"    command: {sms_command()}",
-        "",
+        *sms_service_lines,
     ]
 )
 

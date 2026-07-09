@@ -99,6 +99,16 @@ def test_generated_package_and_entity_map() -> None:
     )
     assert_equal(package["automation"][0]["condition"][0]["state"], "off", "alert active condition")
     assert_equal(package["automation"][0]["action"][0]["service"], "input_boolean.turn_on", "alert toggles memory")
+    sms_action = package["automation"][0]["action"][2]
+    assert_equal(sms_action["service"], "mqtt.publish", "alert publishes SMS MQTT")
+    assert_equal(sms_action["data"]["topic"], "labpulse/sms/send", "SMS MQTT topic")
+    sms_payload = sms_action["data"]["payload"]
+    if '"service": "pressure_monitor"' not in sms_payload:
+        raise AssertionError("SMS payload should include service key")
+    if '"reading": "pressure"' not in sms_payload:
+        raise AssertionError("SMS payload should include reading key")
+    if "{{ states(" not in sms_payload:
+        raise AssertionError("SMS payload should preserve current reading Jinja")
     assert_equal(package["automation"][1]["condition"][0]["state"], "on", "recovery active condition")
     assert_equal(package["automation"][1]["action"][0]["service"], "input_boolean.turn_off", "recovery clears memory")
     assert_equal(

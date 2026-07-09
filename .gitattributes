@@ -1,0 +1,3 @@
+# Keep Raspberry Pi shell scripts executable by /usr/bin/env.
+*.sh text eol=lf
+docker_refactor/*.sh text eol=lf

@@ -23,8 +23,9 @@ class MqttConfig(BaseModel):
     port: int = Field(default=1883, ge=1, le=65535)
 
 class SmsConfig(BaseModel):
-    """SMS recipient settings for future alerting integrations."""
+    """SMS delivery settings used by the LabPulse SMS service."""
 
+    backend: Literal["log", "mmcli"] = "log"
     recipients: list[str] = Field(default_factory=list)
 
 class ReadingConfig(BaseModel):

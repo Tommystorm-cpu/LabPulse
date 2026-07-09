@@ -1,10 +1,12 @@
 """Subscribe to MQTT events that should be forwarded by the SMS service."""
 
+import json
 import logging
 
 import paho.mqtt.client as mqtt
 
 from labpulse_common.config import MqttConfig
+from labpulse_sms.sender import SmsSender, format_sms_message
 
 
 SMS_TOPIC = "labpulse/sms/#"
@@ -13,10 +15,11 @@ SMS_TOPIC = "labpulse/sms/#"
 class SMSSubscriber:
     """MQTT subscriber used by the SMS container."""
 
-    def __init__(self, mqtt_config: MqttConfig) -> None:
+    def __init__(self, mqtt_config: MqttConfig, sender: SmsSender) -> None:
         """Store MQTT settings and create the client."""
 
         self.mqtt_config = mqtt_config
+        self.sender = sender
         self.logger = logging.getLogger("HomeAssistantMqtt.SMS")
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -60,4 +63,28 @@ class SMSSubscriber:
     def on_message(self, _client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
         """Handle one inbound MQTT message."""
 
-        self.logger.info("SMS service received MQTT message on %s", message.topic)
+        request = parse_sms_payload(message.payload)
+        self.logger.info(
+            "SMS request received: service=%s reading=%s entity_id=%s title=%s message=%s",
+            request.get("service", "unknown"),
+            request.get("reading", "unknown"),
+            request.get("entity_id", "unknown"),
+            request.get("title", "LabPulse SMS"),
+            request.get("message", ""),
+        )
+        self.sender.broadcast(format_sms_message(request))
+
+
+def parse_sms_payload(payload: bytes | str) -> dict[str, str]:
+    """Decode one SMS MQTT payload into a loggable request dictionary."""
+
+    text = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError:
+        return {"message": text}
+
+    if not isinstance(decoded, dict):
+        return {"message": text}
+
+    return {str(key): str(value) for key, value in decoded.items()}

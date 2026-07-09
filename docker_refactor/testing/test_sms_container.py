@@ -7,8 +7,9 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import MqttConfig
+from labpulse_sms.sender import LogSmsSender, MmcliSmsSender, format_sms_message, quote_mmcli_value
 from labpulse_sms.sms_entry import DEFAULT_CONFIG_PATH, parse_args
-from labpulse_sms.sms_subscriber import SMS_TOPIC, SMSSubscriber
+from labpulse_sms.sms_subscriber import SMS_TOPIC, SMSSubscriber, parse_sms_payload
 
 
 class FakeSmsClient:
@@ -29,6 +30,18 @@ class FakeSmsClient:
         """Record MQTT subscription topics."""
 
         self.subscriptions.append(topic)
+
+
+class FakeSender:
+    """Small SMS sender stand-in for subscriber tests."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def broadcast(self, message: str) -> None:
+        """Record outbound SMS messages."""
+
+        self.messages.append(message)
 
 
 def assert_contains(text: str, expected: str, label: str) -> None:
@@ -64,6 +77,8 @@ def test_compose_generates_one_sms_container() -> None:
     assert_contains(compose_script, "labpulse-sms:", "SMS service")
     assert_contains(compose_script, "container_name: labpulse-sms", "SMS container name")
     assert_contains(compose_script, '["python", "labpulse_sms/sms_entry.py"', "SMS entry command")
+    assert_contains(compose_script, 'sms_backend = str(sms_config.get("backend", "log")).lower()', "SMS backend read")
+    assert_contains(compose_script, "- /run/dbus:/run/dbus:ro", "mmcli D-Bus mount")
 
 
 def test_sms_entry_defaults_to_app_config() -> None:
@@ -85,7 +100,7 @@ def test_sms_entry_defaults_to_app_config() -> None:
 def test_sms_subscriber_subscribes_to_sms_topic() -> None:
     """Check the SMS subscriber subscribes to the SMS MQTT namespace."""
 
-    subscriber = SMSSubscriber(MqttConfig(broker="mosquitto", port=1883))
+    subscriber = SMSSubscriber(MqttConfig(broker="mosquitto", port=1883), FakeSender())
     fake_client = FakeSmsClient()
     subscriber.client = fake_client
 
@@ -100,11 +115,108 @@ def test_sms_subscriber_subscribes_to_sms_topic() -> None:
     assert_equal(fake_client.subscriptions, [SMS_TOPIC], "SMS topic subscription")
 
 
+def test_sms_payload_parser_keeps_service_and_reading() -> None:
+    """Check SMS JSON payloads preserve alarm identity fields."""
+
+    payload = (
+        b'{"event":"alert","service":"pressure_monitor","reading":"pressure",'
+        b'"entity_id":"binary_sensor.labpulse_pressure_monitor_pressure_alarm",'
+        b'"message":"Pressure tripped"}'
+    )
+    parsed = parse_sms_payload(payload)
+
+    assert_equal(parsed["service"], "pressure_monitor", "payload service")
+    assert_equal(parsed["reading"], "pressure", "payload reading")
+    assert_equal(
+        parsed["entity_id"],
+        "binary_sensor.labpulse_pressure_monitor_pressure_alarm",
+        "payload entity",
+    )
+
+    fallback = parse_sms_payload(b"plain text")
+    assert_equal(fallback["message"], "plain text", "plain text fallback")
+
+
+def test_sms_subscriber_broadcasts_formatted_message() -> None:
+    """Check inbound MQTT payloads are formatted and queued for sending."""
+
+    sender = FakeSender()
+    subscriber = SMSSubscriber(MqttConfig(broker="mosquitto", port=1883), sender)
+
+    message = type("Message", (), {})()
+    message.payload = (
+        b'{"title":"LabPulse alarm","service_label":"Pump Room",'
+        b'"reading_label":"Flow 1","message":"Flow 1 alarm is active.",'
+        b'"current":"0.2"}'
+    )
+    subscriber.on_message(None, None, message)
+
+    assert_equal(len(sender.messages), 1, "broadcast count")
+    assert_contains(sender.messages[0], "Pump Room / Flow 1", "formatted identity")
+    assert_contains(sender.messages[0], "Current: 0.2", "formatted current value")
+
+
+def test_log_sender_queues_one_message_per_recipient() -> None:
+    """Check log backend accepts messages without contacting hardware."""
+
+    logger = type("Logger", (), {"info": lambda *_args: None, "warning": lambda *_args: None})()
+    sender = LogSmsSender(["+441", "+442"], logger)
+
+    assert_equal(sender.send_sms("+441", "hello"), True, "log sender success")
+
+
+def test_mmcli_sender_uses_modemmanager_commands() -> None:
+    """Check mmcli backend creates and sends an SMS without real hardware."""
+
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], **_kwargs: object):
+        calls.append(command)
+        if command == ["mmcli", "-L"]:
+            stdout = "/org/freedesktop/ModemManager1/Modem/7 [Test Modem]\n"
+        elif command[:4] == ["mmcli", "-m", "7", "--messaging-create-sms"]:
+            stdout = "Successfully created new SMS: /org/freedesktop/ModemManager1/SMS/12\n"
+        elif command == ["mmcli", "-s", "/org/freedesktop/ModemManager1/SMS/12", "--send"]:
+            stdout = ""
+        else:
+            raise AssertionError(f"unexpected command: {command!r}")
+        return type("Completed", (), {"stdout": stdout, "stderr": "", "returncode": 0})()
+
+    logger = type(
+        "Logger",
+        (),
+        {
+            "info": lambda *_args: None,
+            "warning": lambda *_args: None,
+            "error": lambda *_args: None,
+            "exception": lambda *_args: None,
+        },
+    )()
+    sender = MmcliSmsSender(["+441"], logger, runner=runner, retries=1, retry_delay_seconds=0)
+
+    assert_equal(sender.send_sms("+441", "hello"), True, "mmcli send success")
+    assert_equal(calls[0], ["mmcli", "-L"], "list modems command")
+    assert_equal(calls[-1], ["mmcli", "-s", "/org/freedesktop/ModemManager1/SMS/12", "--send"], "send command")
+
+
+def test_sms_message_helpers_quote_and_format() -> None:
+    """Check mmcli quoting and user-facing message formatting."""
+
+    assert_equal(quote_mmcli_value("Dave's lab"), "'Dave\\'s lab'", "mmcli quote")
+    formatted = format_sms_message({"title": "Title", "service": "pump", "reading": "flow"})
+    assert_contains(formatted, "pump / flow", "fallback labels")
+
+
 TESTS = [
     ("setup copies SMS package into image", test_setup_copies_sms_package_into_image),
     ("compose generates one SMS container", test_compose_generates_one_sms_container),
     ("SMS entry defaults to app config", test_sms_entry_defaults_to_app_config),
     ("SMS subscriber subscribes to SMS topic", test_sms_subscriber_subscribes_to_sms_topic),
+    ("SMS payload parser keeps service and reading", test_sms_payload_parser_keeps_service_and_reading),
+    ("SMS subscriber broadcasts formatted message", test_sms_subscriber_broadcasts_formatted_message),
+    ("log sender queues one message per recipient", test_log_sender_queues_one_message_per_recipient),
+    ("mmcli sender uses ModemManager commands", test_mmcli_sender_uses_modemmanager_commands),
+    ("SMS message helpers quote and format", test_sms_message_helpers_quote_and_format),
 ]
 
 

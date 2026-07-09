@@ -100,6 +100,25 @@ automations:
               Min: {{ states('{reading.minimum_threshold_entity}') }}.
               Max: {{ states('{reading.maximum_threshold_entity}') }}.
             notification_id: "labpulse_{reading.reading_id}_status"
+        - service: mqtt.publish
+          data:
+            topic: labpulse/sms/send
+            qos: 1
+            retain: false
+            payload: >
+              {
+                "event": "alert",
+                "service": "{service.name}",
+                "service_label": "{service.label}",
+                "reading": "{reading.name}",
+                "reading_label": "{reading.label}",
+                "entity_id": "{reading.alarm_entity_id}",
+                "title": "LabPulse {reading.label} alert",
+                "message": "{service.label} / {reading.label} alarm is active.",
+                "current": "{{ states('{reading.expected_entity_id}') }}",
+                "minimum_threshold": "{{ states('{reading.minimum_threshold_entity}') }}",
+                "maximum_threshold": "{{ states('{reading.maximum_threshold_entity}') }}"
+              }
 
     - alias: "LabPulse {reading.label} Recovery"
       mode: single
