@@ -3,6 +3,12 @@
 This package generates the Home Assistant side of LabPulse from the live
 `~/labpulse-ha/config.yaml` file.
 
+For the full dashboard and automation editing guide, read:
+
+```text
+docker_refactor/docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md
+```
+
 The normal user command is the shell wrapper:
 
 ```bash

@@ -98,7 +98,7 @@ Read in this order:
 18. `docker_refactor/labpulse_sms/sender.py`
 19. `docker_refactor/testing/`
 
-After that, read the docs in `docker_refactor/docs/` to compare intended
+After that, read the docs in `docker_refactor/docs/` to compare documented
 behavior against implementation.
 
 ## Config File

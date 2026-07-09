@@ -1,24 +1,24 @@
 # LabPulse Happy Path Setup
 
-This is the normal setup path for running LabPulse on a Raspberry Pi with
-Docker Compose, Home Assistant, Mosquitto, one SMS container, and one Python
-container per enabled sensor hub.
+This is the normal setup and update path for running LabPulse on a Raspberry Pi
+with Docker Compose, Home Assistant, Mosquitto, SMS, and one Python container
+per enabled sensor hub.
 
 The important rule is:
 
 ```text
-Run setup_container_fs.sh once.
+Run setup_container_fs.sh from the repo.
 After that, work from ~/labpulse-ha.
 ```
 
-## 1. Starting Point
+## Starting Point
 
 Use this guide when you have:
 
 - a Raspberry Pi
 - Docker and Docker Compose installed
-- this LabPulse repository cloned on the Pi
-- Arduino sensor hubs connected by USB, or fake USB serial testing enabled
+- this repository cloned on the Pi
+- real Arduino USB sensor hubs, or fake USB serial testing
 
 The live runtime folder will be:
 
@@ -26,27 +26,23 @@ The live runtime folder will be:
 ~/labpulse-ha/
 ```
 
-The live config file will be:
+The live config will be:
 
 ```text
 ~/labpulse-ha/config.yaml
 ```
 
-Do not edit the repo template for the running system:
+Do not edit this repo file for the running Pi:
 
 ```text
 docker_refactor/config.yaml
 ```
 
-That file is only copied as a starter.
+It is only copied as a starter when the live config does not exist.
 
-For SMS setup, keep `sms.backend: "log"` on a test Pi and switch it to
-`"mmcli"` only on the real Pi with the modem. The full SMS guide is
-`docker_refactor/docs/SMS_SETUP.md`.
+## One-Time Bootstrap
 
-## 2. One-Time Bootstrap
-
-From the repository checkout on the Raspberry Pi:
+From the repository checkout:
 
 ```bash
 cd ~/LabPulse/docker_refactor
@@ -54,93 +50,106 @@ chmod +x setup_container_fs.sh
 ./setup_container_fs.sh
 ```
 
-For fake USB serial testing instead of real Arduinos:
+For fake USB testing:
 
 ```bash
 ./setup_container_fs.sh -fake_usb
 ```
 
-The setup script creates:
+The setup script creates or updates:
 
 ```text
 ~/labpulse-ha/config.yaml
 ~/labpulse-ha/compose.yaml
 ~/labpulse-ha/generate_compose.sh
 ~/labpulse-ha/generate_homeassistant_config.sh
+~/labpulse-ha/labpulse-python/
+~/labpulse-ha/labpulse_homeassistant/
 ~/labpulse-ha/homeassistant/config/
 ~/labpulse-ha/mosquitto/
-~/labpulse-ha/labpulse-python/
 ~/labpulse-ha/logs/
 ```
 
-It also automatically runs:
+It also runs:
 
 ```bash
 ~/labpulse-ha/generate_compose.sh
 ~/labpulse-ha/generate_homeassistant_config.sh --reset-dashboard
 ```
 
-## 3. Edit The Live Config
+The first run seeds the editable Home Assistant dashboard. Later normal
+generation preserves dashboard edits.
 
-After setup, move into the live folder:
+## Edit The Live Config
+
+After setup:
 
 ```bash
 cd ~/labpulse-ha
-```
-
-Edit:
-
-```bash
 nano config.yaml
 ```
 
-Use this file for hardware, enabled services, serial paths, reading names, and
-labels. Tune alarm thresholds and delays later in Home Assistant; those values
-are dashboard-editable helpers, not `config.yaml` fields.
+Use this file for:
 
-For real hardware, set stable USB paths such as:
+- enabling or disabling services
+- serial USB paths
+- driver and parser selection
+- device names
+- reading names, labels, units, and device classes
+- dashboard section names, icons, and order
+- SMS recipients and backend
+
+Tune alarm thresholds and delays in Home Assistant after the helpers are
+generated. Threshold values do not live in `config.yaml`.
+
+For real hardware, use stable USB paths:
 
 ```yaml
 services:
   pressure_monitor:
-    enabled: true
     serial_port: "/dev/serial/by-id/usb-Arduino_..."
 ```
 
-Avoid final deployments that depend on:
+Avoid:
 
 ```text
-/dev/ttyUSB0
 /dev/ttyACM0
+/dev/ttyUSB0
 ```
 
-Those names can change when devices are unplugged/replugged.
+Those can change after reboot or unplug/replug.
 
-## 4. Regenerate Files
+## Regenerate Generated Files
 
-Whenever `config.yaml` changes, regenerate Compose:
+After changing `config.yaml`:
 
 ```bash
+cd ~/labpulse-ha
 ./generate_compose.sh
-```
-
-Regenerate Home Assistant config:
-
-```bash
 ./generate_homeassistant_config.sh
-```
-
-Check the generated Compose file:
-
-```bash
 docker compose config
 ```
 
-## 5. Start LabPulse
+`generate_compose.sh` updates:
 
-Build and start the stack:
+```text
+compose.yaml
+```
+
+`generate_homeassistant_config.sh` updates:
+
+```text
+homeassistant/config/configuration.yaml
+homeassistant/config/packages/labpulse_generated.yaml
+homeassistant/config/labpulse_entity_map.yaml
+```
+
+Normal Home Assistant generation does not overwrite the editable dashboard.
+
+## Start LabPulse
 
 ```bash
+cd ~/labpulse-ha
 docker compose up -d --build
 ```
 
@@ -150,34 +159,30 @@ Check containers:
 docker compose ps
 ```
 
-Follow logs:
+Expected names:
 
-```bash
-docker compose logs -f
+```text
+labpulse-homeassistant
+labpulse-mqtt
+labpulse-sms
+labpulse-pressure-monitor
+labpulse-pump-room
+labpulse-turbo-pump
 ```
 
-Useful focused logs:
+Disabled services will not have containers.
 
-```bash
-docker compose logs -f homeassistant
-docker compose logs -f mosquitto
-docker compose logs -f labpulse-sms
-docker compose logs -f labpulse-pressure-monitor
-docker compose logs -f labpulse-pump-room
-docker compose logs -f labpulse-turbo-pump
-```
+## Configure Home Assistant
 
-## 6. Configure Home Assistant
-
-Open Home Assistant in a browser:
+Open:
 
 ```text
 http://<raspberry-pi-ip>:8123
 ```
 
-Create the Home Assistant user account when prompted.
+Create the Home Assistant user when prompted.
 
-Then add MQTT:
+Add MQTT:
 
 ```text
 Settings -> Devices & services -> Add integration -> MQTT
@@ -190,103 +195,53 @@ Broker: 127.0.0.1
 Port: 1883
 ```
 
-Home Assistant uses host networking in the generated Compose setup, so
-`127.0.0.1:1883` reaches Mosquitto on the Pi.
+Home Assistant uses host networking, so `127.0.0.1:1883` reaches Mosquitto on
+the Pi.
 
-## 7. Wait For MQTT Discovery
+## Wait For Discovery
 
-The LabPulse Python services publish Home Assistant MQTT discovery messages for:
+LabPulse services publish MQTT discovery for:
 
-- service status
-- each sensor reading
-- newly seen readings from multi-line hubs
+- each service status entity
+- each configured reading once that reading is seen
 
-Wait for each Arduino hub to emit a full cycle of readings.
-
-LabPulse uses stable MQTT discovery IDs, so entities should appear with names
-like:
+Expected entity IDs look like:
 
 ```text
-sensor.labpulse_pressure_monitor_pressure
 sensor.labpulse_pressure_monitor_status
+sensor.labpulse_pressure_monitor_pressure
 binary_sensor.labpulse_pressure_monitor_pressure_alarm
+input_number.labpulse_pressure_monitor_pressure_minimum_threshold
+input_number.labpulse_pressure_monitor_pressure_maximum_threshold
 ```
 
-If a dashboard card does not match an entity, inspect:
+If a dashboard card cannot find an entity, inspect:
 
 ```text
 ~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
 ```
 
-## 8. Use The Dashboard
+## Use And Edit The Dashboard
 
-The generated dashboard is a normal editable Home Assistant UI dashboard, not a
-YAML-mode dashboard.
+The generated dashboard is a normal Home Assistant UI dashboard.
 
-It includes:
+Edit the live layout in the Home Assistant UI.
 
-- System Health
-- Pump Room
-- Cryogenics
-- Air Pressure
-- current readings
-- alarm threshold controls
-- alert/recovery delay controls
-
-Threshold logic lives in Home Assistant. The Python services only publish
-readings and status.
-
-## 9. Save Dashboard Edits
-
-After editing the dashboard in Home Assistant, save a backup:
+After edits, back it up:
 
 ```bash
 cd ~/labpulse-ha
 ./generate_homeassistant_config.sh --backup-dashboard
 ```
 
-This writes:
-
-```text
-~/labpulse-ha/homeassistant_backups/dashboard-latest/
-```
-
-It avoids copying Home Assistant auth/account storage.
-
-## 10. Restore Dashboard Edits
-
-To restore the latest saved Home Assistant UI/config backup:
+To intentionally replace the dashboard with the generated starter layout:
 
 ```bash
-cd ~/labpulse-ha
-./generate_homeassistant_config.sh --load-dashboard
+./generate_homeassistant_config.sh --backup-dashboard --reset-dashboard
 docker compose restart homeassistant
 ```
 
-## 11. Fresh Home Assistant Reset
-
-If Home Assistant config gets messy and you want a clean generated setup:
-
-```bash
-cd ~/labpulse-ha
-docker compose stop homeassistant
-rm -rf ~/labpulse-ha/homeassistant/config
-mkdir -p ~/labpulse-ha/homeassistant/config
-./generate_homeassistant_config.sh --reset-dashboard
-docker compose up -d homeassistant
-```
-
-This wipes everything under:
-
-```text
-~/labpulse-ha/homeassistant/config/
-```
-
-Then it regenerates the LabPulse Home Assistant config from `config.yaml`.
-
-After a fresh reset, add the MQTT integration again in the Home Assistant UI.
-
-## 12. Normal Update Loop
+## Normal Update Loop
 
 For day-to-day changes:
 
@@ -298,12 +253,11 @@ nano config.yaml
 docker compose up -d --build
 ```
 
-If new sensors/entities appear, add or arrange them in the Home Assistant UI
-dashboard. Normal generation does not overwrite your edited dashboard.
+Then use the Home Assistant UI to arrange any new entities.
 
-## 13. Fake USB Test Path
+## Fake USB Test Path
 
-For simulator testing:
+Terminal 1:
 
 ```bash
 cd ~/LabPulse/docker_refactor
@@ -311,14 +265,15 @@ cd ~/LabPulse/docker_refactor
 ./simulate_arduinos.sh
 ```
 
-In another terminal:
+Terminal 2:
 
 ```bash
 cd ~/labpulse-ha
 docker compose up -d --build
+docker compose logs -f
 ```
 
-The fake serial paths are:
+Fake serial paths:
 
 ```text
 /tmp/labpulse-fake-serial/pressure
@@ -326,75 +281,53 @@ The fake serial paths are:
 /tmp/labpulse-fake-serial/turbo_pump
 ```
 
-## 14. Quick Health Checks
+Stopping and restarting `simulate_arduinos.sh` simulates USB devices
+disappearing and returning.
 
-Container status:
+## Useful Logs
 
-```bash
-docker compose ps
-```
-
-Live container resource usage:
+All logs:
 
 ```bash
-docker stats
+docker compose logs -f
 ```
 
-Pi memory:
+Focused logs:
 
 ```bash
-free -h
+docker compose logs -f homeassistant
+docker compose logs -f mosquitto
+docker compose logs -f labpulse-sms
+docker compose logs -f labpulse-pressure-monitor
+docker compose logs -f labpulse-pump-room
+docker compose logs -f labpulse-turbo-pump
 ```
 
-Disk usage:
+Persistent Python logs:
 
-```bash
-df -h
-docker system df
+```text
+~/labpulse-ha/logs/pressure_monitor.log
+~/labpulse-ha/logs/pump_room.log
+~/labpulse-ha/logs/turbo_pump.log
+~/labpulse-ha/logs/sms.log
 ```
 
-Home Assistant logs:
+## Common Fixes
 
-```bash
-docker compose logs homeassistant
-```
+If Home Assistant MQTT setup fails, remove any old YAML-based MQTT broker config
+from `configuration.yaml` and add MQTT through the UI.
 
-LabPulse service logs:
-
-```bash
-docker compose logs labpulse-sms
-docker compose logs labpulse-pump-room
-docker compose logs labpulse-pressure-monitor
-docker compose logs labpulse-turbo-pump
-```
-
-## 15. Common Fixes
-
-If Home Assistant says MQTT config is invalid, remove any YAML like:
+If Python containers cannot connect to MQTT, check:
 
 ```yaml
 mqtt:
-  broker: 127.0.0.1
-  port: 1883
+  broker: "mosquitto"
 ```
 
-Configure MQTT through the Home Assistant UI instead.
-
-If dashboard cards say `Entity not found`, wait for MQTT discovery and compare
-the card entity IDs with:
+If entities are missing, wait for sensor readings and check:
 
 ```text
 ~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
-```
-
-If old dashboards keep coming back, stop Home Assistant before wiping config:
-
-```bash
-docker compose stop homeassistant
-rm -rf ~/labpulse-ha/homeassistant/config
-mkdir -p ~/labpulse-ha/homeassistant/config
-./generate_homeassistant_config.sh --reset-dashboard
-docker compose up -d homeassistant
 ```
 
 If a sensor hub is missing, check:
@@ -404,4 +337,5 @@ ls -l /dev/serial/by-id/
 docker compose logs labpulse-<service-name>
 ```
 
-Then update `~/labpulse-ha/config.yaml` with the correct serial path.
+Then update `~/labpulse-ha/config.yaml` with the correct serial path and
+regenerate.

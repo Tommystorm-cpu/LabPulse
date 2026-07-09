@@ -1,64 +1,50 @@
-# LabPulse Container Setup
+# Container Setup
 
-This guide documents the Docker-based LabPulse test setup used on the Raspberry Pi.
+This guide documents the generated Raspberry Pi Docker filesystem and how it is
+created from `docker_refactor/`.
 
-The target architecture is:
+For the shortest setup path, read [HAPPY_PATH_SETUP.md](HAPPY_PATH_SETUP.md).
 
-```text
-Raspberry Pi
-  Docker Compose project
-    homeassistant container
-    mosquitto container
-    one LabPulse SMS container
-    one LabPulse Python container per enabled service
-```
+## Generated Runtime Folder
 
-Each container has one job:
-
-- `homeassistant` runs the Home Assistant web interface.
-- `mosquitto` runs the MQTT broker.
-- `labpulse-sms` runs the shared SMS engine.
-- Each `labpulse-*` Python container runs one configured LabPulse service.
-
-For real modem setup and safe test-Pi SMS testing, see
-`docker_refactor/docs/SMS_SETUP.md`.
-
-The SMS container subscribes to:
+The default live folder is:
 
 ```text
-labpulse/sms/#
+~/labpulse-ha/
 ```
 
-Use `labpulse/sms/send` for initial SMS request messages. The wider namespace
-leaves room for later topics such as test, status, or acknowledgement messages.
-Generated LabPulse alert automations publish JSON payloads with the tripped
-service and reading, for example:
+Override it with:
 
-```json
-{
-  "event": "alert",
-  "service": "pressure_monitor",
-  "service_label": "Air Pressure Sensor Hub",
-  "reading": "pressure",
-  "reading_label": "Pressure",
-  "entity_id": "binary_sensor.labpulse_pressure_monitor_pressure_alarm",
-  "title": "LabPulse Pressure alert",
-  "message": "Air Pressure Sensor Hub / Pressure alarm is active."
-}
+```bash
+LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 ```
 
-## Folder Layout
-
-The Raspberry Pi working folder is:
+Folder layout:
 
 ```text
 ~/labpulse-ha/
   compose.yaml
-  config.yaml        <-- EDIT THIS FILE
+  config.yaml
   generate_compose.sh
+  generate_homeassistant_config.sh
 
   homeassistant/
     config/
+      configuration.yaml
+      automations.yaml
+      scripts.yaml
+      scenes.yaml
+      labpulse_entity_map.yaml
+      packages/
+        labpulse_generated.yaml
+      .storage/
+        lovelace
+
+  homeassistant_backups/
+    dashboard-YYYYMMDD-HHMMSS/
+      lovelace
+    dashboard-latest/
+      lovelace
 
   mosquitto/
     config/
@@ -66,368 +52,188 @@ The Raspberry Pi working folder is:
     data/
     log/
 
-  logs/
-
   labpulse-python/
     Dockerfile
     requirements.txt
     main.py
     labpulse_common/
     labpulse_sms/
+
+  labpulse_homeassistant/
+    generator package copied from the repo
+
+  logs/
 ```
 
-`homeassistant/config/` is mounted into the Home Assistant container as `/config`.
+## Bootstrap Script
 
-`mosquitto/config/`, `mosquitto/data/`, and `mosquitto/log/` are mounted into the Mosquitto container.
-
-`logs/` stores LabPulse Python log files written by the Python container.
-
-`config.yaml` is the live LabPulse config for this Pi. This is the file users edit to enable/disable services, change serial ports, and set sensor names.
-
-Keep `config.yaml` focused on hardware and labels. Alarm thresholds and alert
-delays are generated as Home Assistant helpers and should be tuned from the
-Home Assistant dashboard.
-
-`generate_compose.sh` regenerates `compose.yaml` from the live config. Run it from this folder.
-
-`labpulse-python/` is built into the Python container image.
-
-`compose.yaml` is generated from `~/labpulse-ha/config.yaml`. It includes one
-SMS container, and each enabled service under `services:` becomes one sensor
-container.
-
-The repo file `docker_refactor/config.yaml` is only a starter template. Do not edit it to change the running Pi system.
-
-## Create The Layout With The Script
-
-From a clone of this repository on the Raspberry Pi:
+Run from the repository checkout:
 
 ```bash
 cd ~/LabPulse/docker_refactor
-chmod +x setup_container_fs.sh
 ./setup_container_fs.sh
 ```
 
-By default this creates a real-Arduino setup. The Python container is given access to:
-
-```text
-/dev
-```
-
-Use this for the final hardware setup with real USB Arduinos. This lets Python use stable config paths such as:
-
-```text
-/dev/serial/by-id/usb-Arduino__...
-```
-
-when the Arduinos are plugged in.
-
-For fake USB serial testing with `simulate_arduinos.sh`, run:
+Fake USB mode:
 
 ```bash
 ./setup_container_fs.sh -fake_usb
 ```
 
-That version mounts:
-
-```text
-/tmp/labpulse-fake-serial
-/dev/pts
-```
-
-into the Python container.
-
-It also rewrites the live `~/labpulse-ha/config.yaml` serial ports to:
-
-```yaml
-pressure_monitor:
-  serial_port: "/tmp/labpulse-fake-serial/pressure"
-
-pump_room:
-  serial_port: "/tmp/labpulse-fake-serial/pump_room"
-
-turbo_pump:
-  serial_port: "/tmp/labpulse-fake-serial/turbo_pump"
-```
-
-By default, the script creates or updates:
-
-```text
-~/labpulse-ha/
-```
-
-It overwrites the generated Compose, Mosquitto, and Python container files by default.
-
-It preserves:
-
-```text
-~/labpulse-ha/homeassistant/config/
-```
-
-so existing Home Assistant setup, users, dashboards, and entity data are not removed.
-
-To use a different target folder:
-
-```bash
-LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
-```
-
-To create `.bak` copies before replacing generated files:
+Optional backups before replacing generated files:
 
 ```bash
 ./setup_container_fs.sh --backup
 ```
 
-The first time setup runs, it creates the live config:
+The script:
+
+1. Creates the live folder skeleton.
+2. Writes Mosquitto config.
+3. Writes `labpulse-python/Dockerfile`.
+4. Writes `labpulse-python/requirements.txt`.
+5. Copies `main.py`.
+6. Copies `labpulse_common/`.
+7. Copies `labpulse_sms/`.
+8. Copies `labpulse_homeassistant/`.
+9. Copies generator shell scripts.
+10. Creates `config.yaml` from the repo template only if missing.
+11. Converts the starter MQTT broker from `localhost` to `mosquitto`.
+12. Applies fake serial paths in fake USB mode.
+13. Runs Compose generation.
+14. Runs Home Assistant generation with `--reset-dashboard`.
+
+Existing live `config.yaml` is preserved.
+
+Existing `homeassistant/config/` is preserved unless you delete it yourself.
+
+## Generated Compose
+
+`generate_compose.sh` writes:
 
 ```text
-~/labpulse-ha/config.yaml
+~/labpulse-ha/compose.yaml
 ```
 
-from the starter template:
+It creates:
+
+- Home Assistant
+- Mosquitto
+- SMS worker
+- one Python sensor container per enabled service
+
+The Compose file is generated output. Do not hand-edit it for permanent
+changes.
+
+## Real USB Mode
+
+Default setup mounts:
 
 ```text
-docker_refactor/config.yaml
+/dev:/dev
 ```
 
-After that, setup preserves the existing live config so user edits are not lost.
-
-For Docker, setup changes the live config from:
+into LabPulse Python containers and sets:
 
 ```yaml
-broker: "localhost"
+privileged: true
 ```
 
-to:
+This allows serial paths such as:
+
+```text
+/dev/serial/by-id/usb-Arduino__...
+```
+
+to work inside containers.
+
+## Fake USB Mode
+
+Fake USB setup mounts:
+
+```text
+/tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial
+/dev/pts:/dev/pts
+```
+
+It uses paths such as:
+
+```text
+/tmp/labpulse-fake-serial/pressure
+/tmp/labpulse-fake-serial/pump_room
+/tmp/labpulse-fake-serial/turbo_pump
+```
+
+The simulator is:
+
+```bash
+cd ~/LabPulse/docker_refactor
+./simulate_arduinos.sh
+```
+
+Install `socat` if needed:
+
+```bash
+sudo apt install socat -y
+```
+
+## SMS Container Mounts
+
+With:
 
 ```yaml
-broker: "mosquitto"
+sms:
+  backend: "log"
 ```
 
-for the container setup.
+the SMS container uses the normal LabPulse Python base service.
 
-The live config is also normalised so every service has an explicit `enabled` flag. If the template omits `enabled`, setup writes it as:
+With:
 
 ```yaml
-enabled: true
+sms:
+  backend: "mmcli"
 ```
 
-It then copies `generate_compose.sh` into `~/labpulse-ha/` and generates `compose.yaml` from the live config. You should work from `~/labpulse-ha`, edit `config.yaml`, then regenerate Compose, rather than hand-editing `compose.yaml`.
+the generated SMS service gets:
 
-To temporarily disable a service, add `enabled: false`:
+```text
+/run/dbus:/run/dbus:ro
+/dev:/dev
+privileged: true
+```
+
+so `mmcli` inside the container can talk to host ModemManager.
+
+Regenerate Compose after changing `sms.backend`.
+
+## Home Assistant Container
+
+Generated Home Assistant service:
 
 ```yaml
-services:
-  turbo_pump:
-    enabled: false
-    driver: serial
-    parser: water
+network_mode: host
 ```
 
-## Generate Home Assistant Config From Config
-
-The Home Assistant config is generated by:
-
-```bash
-cd ~/labpulse-ha
-./generate_homeassistant_config.sh
-```
-
-Normal generation writes:
+This allows Home Assistant to use:
 
 ```text
-homeassistant/config/configuration.yaml
-homeassistant/config/packages/labpulse_generated.yaml
-homeassistant/config/labpulse_entity_map.yaml
+127.0.0.1:1883
 ```
 
-It also creates these Home Assistant UI-managed files if they do not already
-exist:
+for MQTT.
+
+It mounts:
 
 ```text
-homeassistant/config/automations.yaml
-homeassistant/config/scripts.yaml
-homeassistant/config/scenes.yaml
+./homeassistant/config:/config
+/etc/localtime:/etc/localtime:ro
+/run/dbus:/run/dbus:ro
 ```
 
-Those files are included from `configuration.yaml` so automations, scripts, and
-scenes created in the Home Assistant UI can load correctly. The generator never
-overwrites them after creation.
+## Mosquitto Container
 
-Normal generation does not touch the editable dashboard at:
-
-```text
-homeassistant/config/.storage/lovelace
-```
-
-Use `--reset-dashboard` only when you want to create or replace the editable
-Home Assistant dashboard with the generated starter layout:
-
-```bash
-./generate_homeassistant_config.sh --reset-dashboard
-```
-
-The starter layout is defined in the repository at:
-
-```text
-docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
-```
-
-Edit that seed file when changing what a fresh/reset dashboard should contain.
-After Home Assistant users edit the live dashboard, normal generator runs
-preserve those UI edits.
-
-Use explicit dashboard backups when experimenting in the Home Assistant UI:
-
-```bash
-./generate_homeassistant_config.sh --backup-dashboard
-./generate_homeassistant_config.sh --load-dashboard
-```
-
-The setup script uses `--reset-dashboard` for first bootstrap. After that,
-dashboard layout is normally edited in Home Assistant and preserved by the
-generator.
-
-LabPulse MQTT discovery publishes stable `unique_id`, `object_id`, and
-`default_entity_id` values. The `default_entity_id` is what asks Home Assistant
-to create entities such as:
-
-```text
-sensor.labpulse_pressure_monitor_pressure
-sensor.labpulse_pressure_monitor_status
-```
-
-Generated alarm logic uses a visible binary sensor plus an internal memory
-boolean per reading:
-
-```text
-binary_sensor.labpulse_pressure_monitor_pressure_alarm
-input_boolean.labpulse_pressure_monitor_pressure_alert_active
-```
-
-The generated alarm helpers, binary sensors, and automations are seeded from:
-
-```text
-docker_refactor/labpulse_homeassistant/templates/alarm_logic.yaml
-```
-
-Edit that seed when changing alarm behavior, for example adding mute controls,
-re-arm timers, trigger-reset deadbands, or different notification actions.
-
-The memory boolean stops Home Assistant from sending recovery notifications
-unless an alert was active first. The starter dashboard groups these booleans in
-an `Alert Memory` card that can be removed later if it is not useful.
-
-Every reading uses a min/max range alarm in Home Assistant. For readings such as
-pressure or flow where the practical concern is usually the minimum, the
-generated maximum threshold starts very high and can be adjusted from the
-dashboard if an upper limit becomes useful.
-
-## Generate Docker Compose From Config
-
-The Compose file is generated by:
-
-```bash
-cd ~/labpulse-ha
-./generate_compose.sh
-```
-
-Useful options:
-
-```bash
-cd ~/labpulse-ha
-./generate_compose.sh
-```
-
-For fake USB testing:
-
-```bash
-cd ~/labpulse-ha
-./generate_compose.sh -fake_usb
-```
-
-After `setup_container_fs.sh -fake_usb` has written fake serial paths into `config.yaml`, the generator can also infer fake USB mode automatically. So this is usually enough:
-
-```bash
-cd ~/labpulse-ha
-./generate_compose.sh
-```
-
-The generator needs PyYAML on the Raspberry Pi host:
-
-```bash
-sudo apt install python3-yaml
-```
-
-## Docker Compose File
-
-`~/labpulse-ha/compose.yaml`:
-
-```yaml
-x-labpulse-python-base: &labpulse-python-base
-  build: ./labpulse-python
-  depends_on:
-    - mosquitto
-  volumes:
-    - ./logs:/app/logs
-    - ./config.yaml:/app/config.yaml:ro
-    - /dev:/dev
-  privileged: true
-  environment:
-    MQTT_BROKER: mosquitto
-    MQTT_PORT: 1883
-    LABPULSE_LOG_DIR: /app/logs
-  restart: unless-stopped
-
-services:
-  homeassistant:
-    container_name: labpulse-homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
-    volumes:
-      - ./homeassistant/config:/config
-      - /etc/localtime:/etc/localtime:ro
-      - /run/dbus:/run/dbus:ro
-    restart: unless-stopped
-    privileged: true
-    network_mode: host
-    environment:
-      TZ: Europe/London
-
-  mosquitto:
-    container_name: labpulse-mqtt
-    image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    restart: unless-stopped
-
-  labpulse-sms:
-    <<: *labpulse-python-base
-    container_name: labpulse-sms
-    command: ["python", "labpulse_sms/sms_entry.py", "--config", "/app/config.yaml"]
-
-  labpulse-pressure-monitor:
-    <<: *labpulse-python-base
-    container_name: labpulse-pressure-monitor
-    command: ["python", "main.py", "--service", "pressure_monitor"]
-
-  labpulse-pump-room:
-    <<: *labpulse-python-base
-    container_name: labpulse-pump-room
-    command: ["python", "main.py", "--service", "pump_room"]
-
-  labpulse-turbo-pump:
-    <<: *labpulse-python-base
-    container_name: labpulse-turbo-pump
-    command: ["python", "main.py", "--service", "turbo_pump"]
-```
-
-## Mosquitto Config
-
-`~/labpulse-ha/mosquitto/config/mosquitto.conf`:
+Generated Mosquitto config:
 
 ```conf
 listener 1883
@@ -437,291 +243,54 @@ persistence_location /mosquitto/data/
 log_dest stdout
 ```
 
-This unauthenticated config is suitable for a private test Pi. A deployed lab system should use MQTT usernames/passwords.
+This is suitable for a private test Pi. A deployed lab system should use MQTT
+authentication.
 
-## Python Container
+## Rebuilding
 
-`~/labpulse-ha/labpulse-python/Dockerfile`:
-
-```dockerfile
-FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY main.py .
-COPY labpulse_common ./labpulse_common
-COPY labpulse_sms ./labpulse_sms
-
-CMD ["python", "main.py", "--service", "pressure_monitor"]
-```
-
-`~/labpulse-ha/labpulse-python/requirements.txt` should include:
-
-```text
-paho-mqtt
-pydantic
-pyyaml
-```
-
-Add any extra packages needed by the real LabPulse scripts.
-
-## Important MQTT Broker Name
-
-When LabPulse Python scripts run directly on the Raspberry Pi, this works:
-
-```yaml
-mqtt:
-  broker: "localhost"
-  port: 1883
-```
-
-Inside the `labpulse-python` container, `localhost` means the Python container itself. It does not mean the Mosquitto container.
-
-For the container setup, `config.yaml` must use the Docker Compose service name:
-
-```yaml
-mqtt:
-  broker: "mosquitto"
-  port: 1883
-```
-
-This is the most important config change.
-
-```text
-LabPulse Python containers -> mosquitto:1883
-```
-
-Home Assistant is different because this setup uses `network_mode: host`. In the Home Assistant MQTT integration, the broker can be:
-
-```text
-127.0.0.1
-```
-
-with port:
-
-```text
-1883
-```
-
-So the two MQTT addresses are:
-
-```text
-Live LabPulse config:       ~/labpulse-ha/config.yaml uses mosquitto
-Home Assistant integration: 127.0.0.1
-```
-
-## Start The System
-
-From the Pi:
+After changing Python code or container dependencies:
 
 ```bash
 cd ~/labpulse-ha
 docker compose up -d --build
 ```
 
-Check the containers:
-
-```bash
-docker compose ps
-```
-
-Expected containers:
-
-```text
-labpulse-homeassistant
-labpulse-mqtt
-labpulse-sms
-labpulse-pressure-monitor
-labpulse-pump-room
-labpulse-turbo-pump
-```
-
-Open Home Assistant from another computer on the same network:
-
-```text
-http://PI_IP_ADDRESS:8123
-```
-
-Example:
-
-```text
-http://10.32.100.195:8123
-```
-
-## Rebuild One Container
-
-After changing only the Python scripts or Python Dockerfile:
+Rebuild one service:
 
 ```bash
 docker compose up -d --build labpulse-pressure-monitor
 ```
 
-Watch one Python service log:
+Check final Compose validity:
 
 ```bash
-docker compose logs -f labpulse-pressure-monitor
+docker compose config
 ```
 
-The same Python logs are also written to files on the Pi:
-
-```text
-~/labpulse-ha/logs/
-```
-
-For example:
-
-```text
-~/labpulse-ha/logs/pressure_monitor.log
-~/labpulse-ha/logs/pump_room.log
-~/labpulse-ha/logs/turbo_pump.log
-~/labpulse-ha/logs/sms.log
-```
-
-Watch Mosquitto logs:
-
-```bash
-docker compose logs -f mosquitto
-```
-
-Watch Home Assistant logs:
-
-```bash
-docker compose logs -f homeassistant
-```
-
-## Test MQTT Manually
-
-Subscribe to all MQTT messages:
-
-```bash
-docker run --rm -it --network host eclipse-mosquitto:2 mosquitto_sub -h 127.0.0.1 -p 1883 -t '#' -v
-```
-
-Publish a test message:
-
-```bash
-docker run --rm --network host eclipse-mosquitto:2 mosquitto_pub -h 127.0.0.1 -p 1883 -t 'labpulse/test/hello' -m 'hello'
-```
-
-The subscriber should print:
-
-```text
-labpulse/test/hello hello
-```
-
-## Simulate Arduino Serial Devices
-
-For testing scripts that normally read from USB Arduinos, use:
-
-```bash
-cd ~/LabPulse/docker_refactor
-chmod +x simulate_arduinos.sh
-./simulate_arduinos.sh
-```
-
-The script uses `socat` to create fake serial devices and continuously writes Arduino-like readings to them.
-
-Install `socat` on the Pi if needed:
-
-```bash
-sudo apt install socat -y
-```
-
-Default fake serial paths:
-
-```text
-/tmp/labpulse-fake-serial/pressure
-/tmp/labpulse-fake-serial/pump_room
-/tmp/labpulse-fake-serial/turbo_pump
-```
-
-When `setup_container_fs.sh -fake_usb` is used, the generated Compose file mounts `/tmp/labpulse-fake-serial` and `/dev/pts` into the LabPulse Python containers so these fake serial links can be read from inside Docker.
-
-`generate_compose.sh` also enables those fake USB mounts automatically if any enabled service in `config.yaml` uses a serial path beginning with `/tmp/labpulse-fake-serial`.
-
-In fake USB mode, the setup script creates the `/tmp/labpulse-fake-serial` directory if it does not already exist. The actual fake device links, such as `/tmp/labpulse-fake-serial/pressure`, only exist while `simulate_arduinos.sh` is running.
-
-For fake serial testing, these values are written into the live config at `~/labpulse-ha/config.yaml`:
-
-```yaml
-pressure_monitor:
-  serial_port: "/tmp/labpulse-fake-serial/pressure"
-
-pump_room:
-  serial_port: "/tmp/labpulse-fake-serial/pump_room"
-
-turbo_pump:
-  serial_port: "/tmp/labpulse-fake-serial/turbo_pump"
-```
-
-The simulator writes serial lines matching the Arduino sketches in the repository.
-
-See [ARDUINO_SERIAL_FORMATS.md](ARDUINO_SERIAL_FORMATS.md) for the exact line formats and notes on which lines the current Python parsers handle.
-
-Stop the simulator with:
-
-```text
-Ctrl+C
-```
-
-Stopping and restarting the simulator also simulates serial devices disappearing and returning.
-
-## Stop The System
+## Stopping
 
 ```bash
 cd ~/labpulse-ha
 docker compose down
 ```
 
-This stops and removes the containers, but keeps the mounted config/data folders.
+This removes containers but keeps mounted config/data folders.
 
-## Useful Troubleshooting
+## Common Container Problems
 
-Check what is using port `8123`:
+If a Python container cannot import LabPulse modules, rerun setup so
+`labpulse_common/` and `labpulse_sms/` are copied into `labpulse-python/`.
 
-```bash
-sudo ss -ltnp | grep 8123
-```
-
-Check what is using port `1883`:
+If generated Home Assistant files cannot be written, the live folder may be
+owned by root from an earlier sudo run. Fix ownership:
 
 ```bash
-sudo ss -ltnp | grep 1883
+sudo chown -R "$(id -u):$(id -g)" ~/labpulse-ha
 ```
 
-If one LabPulse Python service repeatedly restarts, read its logs:
+If a service cannot see real USB devices, check the generated Compose file uses
+real USB mode and that the configured path exists on the host:
 
 ```bash
-docker compose logs -f labpulse-pressure-monitor
-```
-
-or check the persistent Python log files:
-
-```bash
-ls -la ~/labpulse-ha/logs
-tail -f ~/labpulse-ha/logs/pressure_monitor.log
-```
-
-Common causes:
-
-- `config.yaml` still says `broker: "localhost"` instead of `broker: "mosquitto"`.
-- `labpulse_common/` was not copied into the Python container image.
-- `requirements.txt` is missing a Python dependency.
-- The Python script has an import path that worked on the host but not inside `/app` in the container.
-
-If Home Assistant cannot connect to MQTT, check that its MQTT integration uses:
-
-```text
-Broker: 127.0.0.1
-Port: 1883
-```
-
-and check that Mosquitto is running:
-
-```bash
-docker compose ps
-docker compose logs --tail 50 mosquitto
+ls -l /dev/serial/by-id/
 ```
