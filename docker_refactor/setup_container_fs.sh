@@ -181,10 +181,9 @@ else
   echo "Preserving existing live config: $LIVE_CONFIG"
 fi
 
-# Normalize live config after creation:
-# - Python containers reach MQTT by Compose service name "mosquitto".
-# - Fake USB setup rewrites serial ports to simulator paths.
-# PyYAML is preferred; the text fallback keeps setup usable on minimal Pis.
+# Apply small setup-time defaults without structurally rewriting the live YAML.
+# The generators do full YAML parsing later; this block only handles starter
+# broker defaults and fake USB serial placeholders.
 python3 - "$LIVE_CONFIG" "$FAKE_USB" <<'PY'
 from pathlib import Path
 import sys
@@ -192,51 +191,25 @@ import sys
 path = Path(sys.argv[1])
 fake_usb = sys.argv[2] == "1"
 
-fake_ports = {
-    "pump_room": "/tmp/labpulse-fake-serial/pump_room",
-    "pressure_monitor": "/tmp/labpulse-fake-serial/pressure",
-    "turbo_pump": "/tmp/labpulse-fake-serial/turbo_pump",
-}
+text = path.read_text()
+text = text.replace('broker: "localhost"', 'broker: "mosquitto"')
+text = text.replace("broker: localhost", "broker: mosquitto")
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+if fake_usb:
+    replacements = {
+        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"':
+            'serial_port: "/tmp/labpulse-fake-serial/pump_room"',
+        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"':
+            'serial_port: "/tmp/labpulse-fake-serial/pressure"',
+        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"':
+            'serial_port: "/tmp/labpulse-fake-serial/turbo_pump"',
+        'serial_port: "/dev/serial/by-id/..."':
+            'serial_port: "/tmp/labpulse-fake-serial/pressure"',
+    }
+    for source, replacement in replacements.items():
+        text = text.replace(source, replacement, 1)
 
-if yaml is not None:
-    data = yaml.safe_load(path.read_text())
-
-    data.setdefault("mqtt", {})["broker"] = "mosquitto"
-
-    for service_config in data.get("services", {}).values():
-        service_config.setdefault("enabled", True)
-
-    if fake_usb:
-        for section, serial_port in fake_ports.items():
-            if section in data.get("services", {}):
-                data["services"][section]["serial_port"] = serial_port
-
-    path.write_text(yaml.safe_dump(data, sort_keys=False))
-else:
-    text = path.read_text()
-    text = text.replace('broker: "localhost"', 'broker: "mosquitto"')
-    text = text.replace("broker: localhost", "broker: mosquitto")
-
-    if fake_usb:
-        replacements = {
-            'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"':
-                'serial_port: "/tmp/labpulse-fake-serial/pump_room"',
-            'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"':
-                'serial_port: "/tmp/labpulse-fake-serial/pressure"',
-            'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"':
-                'serial_port: "/tmp/labpulse-fake-serial/turbo_pump"',
-            'serial_port: "/dev/serial/by-id/..."':
-                'serial_port: "/tmp/labpulse-fake-serial/pressure"',
-        }
-        for source, replacement in replacements.items():
-            text = text.replace(source, replacement, 1)
-
-    path.write_text(text)
+path.write_text(text)
 PY
 
 # Pass fake USB mode through to Compose generation so the right device mounts
