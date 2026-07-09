@@ -94,8 +94,9 @@ class HomeAssistantMqttPublisher:
         payload = {
             "name": "Status",
             "state_topic": self.status_topic(),
-            "unique_id": f"{self.service_name}_status",
+            "unique_id": self.discovery_id("status"),
             "object_id": self.object_id("status"),
+            "default_entity_id": self.default_entity_id("status"),
             "icon": "mdi:heart-pulse",
             "device": {
                 "identifiers": [self.service_name],
@@ -117,8 +118,9 @@ class HomeAssistantMqttPublisher:
             payload = {
                 "name": self.reading_label(reading_name, reading_config),
                 "state_topic": self.state_topic(reading_name),
-                "unique_id": f"{self.service_name}_{reading_name}",
+                "unique_id": self.discovery_id(reading_name),
                 "object_id": self.object_id(reading_name, reading_config),
+                "default_entity_id": self.default_entity_id(reading_name),
                 "device": {
                     "identifiers": [self.service_name],
                     "name": self.service_config.device_name,
@@ -171,21 +173,30 @@ class HomeAssistantMqttPublisher:
 
         return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_status/config"
 
-    def entity_prefix(self) -> str:
-        """Return the Home Assistant entity prefix for this service's device."""
+    def discovery_id(self, reading_name: str) -> str:
+        """Return the stable LabPulse MQTT discovery and object identifier."""
 
-        return slug(self.service_config.device_name)
+        return f"labpulse_{slug(self.service_name)}_{slug(reading_name)}"
 
     def object_id(self, reading_name: str, reading_config: ReadingConfig | None = None) -> str:
         """Return the Home Assistant object ID for one discovered entity.
 
-        The machine key stays in `unique_id`; the visible entity ID follows the
-        configured label because Home Assistant derives entity IDs from names
-        such as "Flow 1" -> "flow_1".
+        The object ID intentionally matches the stable discovery ID so Home
+        Assistant creates predictable entity IDs such as
+        `sensor.labpulse_pressure_monitor_pressure`.
         """
 
-        label = reading_config.label if reading_config and reading_config.label else reading_name
-        return f"{self.entity_prefix()}_{slug(label)}"
+        return self.discovery_id(reading_name)
+
+    def default_entity_id(self, reading_name: str) -> str:
+        """Return the preferred Home Assistant entity ID for discovery.
+
+        Home Assistant MQTT discovery uses `default_entity_id` to choose the
+        initial entity ID. `object_id` alone is not enough to make dashboard
+        entity IDs predictable.
+        """
+
+        return f"sensor.{self.discovery_id(reading_name)}"
 
     def reading_config_for(self, reading_name: str) -> ReadingConfig | None:
         """Return configured metadata for a published reading name."""

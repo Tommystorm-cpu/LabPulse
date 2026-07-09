@@ -73,7 +73,7 @@ It also automatically runs:
 
 ```bash
 ~/labpulse-ha/generate_compose.sh
-~/labpulse-ha/generate_homeassistant_config.sh
+~/labpulse-ha/generate_homeassistant_config.sh --reset-dashboard
 ```
 
 ## 3. Edit The Live Config
@@ -89,6 +89,10 @@ Edit:
 ```bash
 nano config.yaml
 ```
+
+Use this file for hardware, enabled services, serial paths, reading names, and
+labels. Tune alarm thresholds and delays later in Home Assistant; those values
+are dashboard-editable helpers, not `config.yaml` fields.
 
 For real hardware, set stable USB paths such as:
 
@@ -194,27 +198,20 @@ The LabPulse Python services publish Home Assistant MQTT discovery messages for:
 
 Wait for each Arduino hub to emit a full cycle of readings.
 
-Then refresh the dashboard from Home Assistant's real entity registry:
-
-```bash
-cd ~/labpulse-ha
-./generate_homeassistant_config.sh --refresh-dashboard
-docker compose restart homeassistant
-```
-
-This step fixes dashboard cards that would otherwise show:
+LabPulse uses stable MQTT discovery IDs, so entities should appear with names
+like:
 
 ```text
-Entity not found
+sensor.labpulse_pressure_monitor_pressure
+sensor.labpulse_pressure_monitor_status
+binary_sensor.labpulse_pressure_monitor_pressure_alarm
 ```
 
-The generator reads:
+If a dashboard card does not match an entity, inspect:
 
 ```text
-~/labpulse-ha/homeassistant/config/.storage/core.entity_registry
+~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
 ```
-
-and uses the entity IDs Home Assistant actually assigned.
 
 ## 8. Use The Dashboard
 
@@ -240,19 +237,13 @@ After editing the dashboard in Home Assistant, save a backup:
 
 ```bash
 cd ~/labpulse-ha
-./generate_homeassistant_config.sh --backup-homeassistant-ui
-```
-
-Short form:
-
-```bash
-./generate_homeassistant_config.sh --backup-ha-ui
+./generate_homeassistant_config.sh --backup-dashboard
 ```
 
 This writes:
 
 ```text
-~/labpulse-ha/homeassistant_backups/ui-latest/
+~/labpulse-ha/homeassistant_backups/dashboard-latest/
 ```
 
 It avoids copying Home Assistant auth/account storage.
@@ -263,14 +254,8 @@ To restore the latest saved Home Assistant UI/config backup:
 
 ```bash
 cd ~/labpulse-ha
-./generate_homeassistant_config.sh --restore-homeassistant-ui
+./generate_homeassistant_config.sh --load-dashboard
 docker compose restart homeassistant
-```
-
-Short form:
-
-```bash
-./generate_homeassistant_config.sh --restore-ha-ui
 ```
 
 ## 11. Fresh Home Assistant Reset
@@ -280,7 +265,9 @@ If Home Assistant config gets messy and you want a clean generated setup:
 ```bash
 cd ~/labpulse-ha
 docker compose stop homeassistant
-./generate_homeassistant_config.sh --fresh-homeassistant
+rm -rf ~/labpulse-ha/homeassistant/config
+mkdir -p ~/labpulse-ha/homeassistant/config
+./generate_homeassistant_config.sh --reset-dashboard
 docker compose up -d homeassistant
 ```
 
@@ -306,12 +293,8 @@ nano config.yaml
 docker compose up -d --build
 ```
 
-If new sensors/entities appear:
-
-```bash
-./generate_homeassistant_config.sh --refresh-dashboard
-docker compose restart homeassistant
-```
+If new sensors/entities appear, add or arrange them in the Home Assistant UI
+dashboard. Normal generation does not overwrite your edited dashboard.
 
 ## 13. Fake USB Test Path
 
@@ -391,18 +374,20 @@ mqtt:
 
 Configure MQTT through the Home Assistant UI instead.
 
-If dashboard cards say `Entity not found`, wait for MQTT discovery, then run:
+If dashboard cards say `Entity not found`, wait for MQTT discovery and compare
+the card entity IDs with:
 
-```bash
-./generate_homeassistant_config.sh --refresh-dashboard
-docker compose restart homeassistant
+```text
+~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
 ```
 
 If old dashboards keep coming back, stop Home Assistant before wiping config:
 
 ```bash
 docker compose stop homeassistant
-./generate_homeassistant_config.sh --fresh-homeassistant
+rm -rf ~/labpulse-ha/homeassistant/config
+mkdir -p ~/labpulse-ha/homeassistant/config
+./generate_homeassistant_config.sh --reset-dashboard
 docker compose up -d homeassistant
 ```
 

@@ -3,6 +3,7 @@ import json
 import sys
 from typing import Any
 
+sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
@@ -157,8 +158,9 @@ def test_publish_discovery_once_then_readings() -> None:
 
     payload = json.loads(str(discovery["payload"]))
     assert_equal(payload["name"], "Pressure", "entity name")
-    assert_equal(payload["unique_id"], "pressure_monitor_pressure", "unique id")
-    assert_equal(payload["object_id"], "air_pressure_sensor_hub_pressure", "object id")
+    assert_equal(payload["unique_id"], "labpulse_pressure_monitor_pressure", "unique id")
+    assert_equal(payload["object_id"], "labpulse_pressure_monitor_pressure", "object id")
+    assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_pressure", "default entity id")
     assert_equal(payload["unit_of_measurement"], "bar", "unit")
     assert_equal(payload["device"]["name"], "Air Pressure Sensor Hub", "device name")
 
@@ -196,7 +198,9 @@ def test_publish_status_discovery_once_then_status() -> None:
     payload = json.loads(str(discovery["payload"]))
     assert_equal(payload["name"], "Status", "status name")
     assert_equal(payload["state_topic"], "home/sensor/pressure_monitor/status", "status state topic")
-    assert_equal(payload["object_id"], "air_pressure_sensor_hub_status", "status object id")
+    assert_equal(payload["unique_id"], "labpulse_pressure_monitor_status", "status unique id")
+    assert_equal(payload["object_id"], "labpulse_pressure_monitor_status", "status object id")
+    assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_status", "status default entity id")
     assert_equal(payload["icon"], "mdi:heart-pulse", "status icon")
 
     assert_equal(first_status["topic"], "home/sensor/pressure_monitor/status", "first status topic")
@@ -237,8 +241,9 @@ def test_publish_discovery_for_new_readings() -> None:
                     {
                         "name": "Flow 1",
                         "state_topic": "home/sensor/pump_room/flow1/state",
-                        "unique_id": "pump_room_flow1",
-                        "object_id": "pump_room_sensor_hub_flow_1",
+                        "unique_id": "labpulse_pump_room_flow1",
+                        "object_id": "labpulse_pump_room_flow1",
+                        "default_entity_id": "sensor.labpulse_pump_room_flow1",
                         "device": {
                             "identifiers": ["pump_room"],
                             "name": "Pump Room Sensor Hub",
@@ -253,8 +258,9 @@ def test_publish_discovery_for_new_readings() -> None:
                     {
                         "name": "Temperature 0",
                         "state_topic": "home/sensor/pump_room/temp0/state",
-                        "unique_id": "pump_room_temp0",
-                        "object_id": "pump_room_sensor_hub_temperature_0",
+                        "unique_id": "labpulse_pump_room_temp0",
+                        "object_id": "labpulse_pump_room_temp0",
+                        "default_entity_id": "sensor.labpulse_pump_room_temp0",
                         "device": {
                             "identifiers": ["pump_room"],
                             "name": "Pump Room Sensor Hub",

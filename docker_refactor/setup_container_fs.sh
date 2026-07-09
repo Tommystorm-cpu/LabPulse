@@ -251,7 +251,8 @@ bash "$PROJECT_DIR/generate_compose.sh" \
 bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
   --config "$LIVE_CONFIG" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
-  --project-dir "$PROJECT_DIR"
+  --project-dir "$PROJECT_DIR" \
+  --reset-dashboard
 
 # Finish by printing the live paths and the normal next commands.
 cat <<EOF
@@ -264,8 +265,8 @@ Created/updated:
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
   $PROJECT_DIR/labpulse_homeassistant/
-  $PROJECT_DIR/homeassistant/config/packages/labpulse_thresholds.yaml
-  $PROJECT_DIR/homeassistant/config/labpulse_alarm_cards.yaml
+  $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml
+  $PROJECT_DIR/homeassistant/config/labpulse_entity_map.yaml
   $PROJECT_DIR/homeassistant/config/.storage/lovelace
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/

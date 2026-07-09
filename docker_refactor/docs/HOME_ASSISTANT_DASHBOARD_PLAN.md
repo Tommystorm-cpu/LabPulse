@@ -161,9 +161,9 @@ The intended flow is:
 
 ~/labpulse-ha/config.yaml
   -> generate_homeassistant_config.sh
-  -> homeassistant/config/.storage/lovelace
-  -> homeassistant/config/packages/labpulse_thresholds.yaml
-  -> homeassistant/config/labpulse_alarm_cards.yaml
+  -> homeassistant/config/packages/labpulse_generated.yaml
+  -> homeassistant/config/labpulse_entity_map.yaml
+  -> homeassistant/config/.storage/lovelace only when --reset-dashboard is used
 ```
 
 At first, generation can be dynamic by service.
@@ -184,7 +184,8 @@ services:
 
 The generated dashboard would include the pressure monitor and pump room sections, but omit the turbo pump section.
 
-Later, generation can become dynamic by reading. The config can describe the readings each service emits:
+Generation can become dynamic by reading. The config describes the readings each
+service emits, but not the alarm thresholds:
 
 ```yaml
 services:
@@ -194,11 +195,11 @@ services:
       - name: pressure
         label: Air Pressure
         unit: bar
-        threshold:
-          min: 5.0
 ```
 
-That allows the generator to create cards, helpers, template sensors, and warnings automatically for each reading.
+That allows the generator to create cards, editable threshold helpers, template
+alarm sensors, and warnings automatically for each reading while keeping the
+actual alarm values inside Home Assistant.
 
 ## Recommended Development Order
 
@@ -208,7 +209,8 @@ That allows the generator to create cards, helpers, template sensors, and warnin
 4. Add Home Assistant template files to `docker_refactor/homeassistant/`.
 5. Update setup so it can install those files into `~/labpulse-ha/homeassistant/config/`.
 6. Add a generator that creates dashboard YAML from enabled services in `~/labpulse-ha/config.yaml`.
-7. Extend `config.yaml` so each service describes its readings and default thresholds.
+7. Extend `config.yaml` so each service describes its readings, labels, units,
+   and display metadata. Keep threshold values in Home Assistant helpers.
 
 ## Key Design Principle
 

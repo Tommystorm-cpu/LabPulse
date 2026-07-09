@@ -1,12 +1,12 @@
 from pathlib import Path
 import sys
 
+sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
-from labpulse_homeassistant.entities import sensor_entity_id
-from labpulse_homeassistant.models import EntityRegistry
+from labpulse_homeassistant.model import build_render_model, stable_id
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -16,59 +16,71 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
-def test_uses_exact_mqtt_unique_id() -> None:
-    """Check dashboard entity lookup uses the exact MQTT unique ID."""
+def sample_config() -> dict[str, object]:
+    """Return a small LabPulse config for render-model tests."""
 
-    registry = EntityRegistry(
-        by_unique_id={
-            "pump_room_temp1": "sensor.pump_room_sensor_hub_temperature_1",
-        },
-        mqtt_entries=[],
-    )
+    return {
+        "services": {
+            "pump_room": {
+                "enabled": True,
+                "device_name": "Pump Room Sensor Hub",
+                "display": {"section": "Pump Room", "icon": "mdi:water-pump", "order": 10},
+                "readings": [
+                    {"name": "flow1", "label": "Flow 1", "unit": "L/min"},
+                    {"name": "temp0", "label": "Temperature 0", "unit": "\u00b0C"},
+                ],
+            },
+            "disabled_service": {
+                "enabled": False,
+                "device_name": "Disabled",
+                "readings": [{"name": "ignored"}],
+            },
+        }
+    }
 
-    entity_id = sensor_entity_id(
-        service_name="pump_room",
-        service_config={"device_name": "Pump Room Sensor Hub"},
-        reading_name="temp1",
-        reading_key="pump_room_temp1",
-        reading_label="Temperature 1",
-        entity_registry=registry,
-    )
 
+def test_stable_id_prefix() -> None:
+    """Check stable IDs always use the LabPulse prefix."""
+
+    assert_equal(stable_id("pump_room", "flow1"), "labpulse_pump_room_flow1", "stable id")
+
+
+def test_render_model_stable_entities() -> None:
+    """Check render model creates predictable Home Assistant entity IDs."""
+
+    model = build_render_model(sample_config())
+    service = model.services[0]
+    flow = service.readings[0]
+    temp = service.readings[1]
+
+    assert_equal(len(model.services), 1, "enabled services")
+    assert_equal(service.status_entity_id, "sensor.labpulse_pump_room_status", "status entity")
+    assert_equal(flow.expected_entity_id, "sensor.labpulse_pump_room_flow1", "flow entity")
+    assert_equal(flow.alarm_entity_id, "binary_sensor.labpulse_pump_room_flow1_alarm", "flow alarm")
+    assert_equal(flow.active_alert_entity, "input_boolean.labpulse_pump_room_flow1_alert_active", "flow active")
     assert_equal(
-        entity_id,
-        "sensor.pump_room_sensor_hub_temperature_1",
-        "resolved entity id",
+        flow.minimum_threshold_entity,
+        "input_number.labpulse_pump_room_flow1_minimum_threshold",
+        "flow threshold",
     )
-
-
-def test_fallback_uses_device_name_prefix() -> None:
-    """Check first-run dashboard guesses match Home Assistant entity names."""
-
-    registry = EntityRegistry(by_unique_id={}, mqtt_entries=[])
-
-    entity_id = sensor_entity_id(
-        service_name="pump_room",
-        service_config={"device_name": "Pump Room Sensor Hub"},
-        reading_name="flow1",
-        reading_key="pump_room_flow1",
-        reading_label="Flow 1",
-        entity_registry=registry,
+    assert_equal(
+        flow.maximum_threshold_entity,
+        "input_number.labpulse_pump_room_flow1_maximum_threshold",
+        "flow max threshold",
     )
-
-    assert_equal(entity_id, "sensor.pump_room_sensor_hub_flow_1", "fallback entity id")
+    assert_equal(temp.maximum_threshold_entity, "input_number.labpulse_pump_room_temp0_maximum_threshold", "temp max")
 
 
 TESTS = [
-    ("uses exact mqtt unique id", test_uses_exact_mqtt_unique_id),
-    ("fallback uses device name prefix", test_fallback_uses_device_name_prefix),
+    ("stable id prefix", test_stable_id_prefix),
+    ("render model stable entities", test_render_model_stable_entities),
 ]
 
 
 def main() -> None:
     """Run Home Assistant entity lookup tests."""
 
-    print("Running Home Assistant entity lookup tests")
+    print("Running Home Assistant render-model tests")
     print(f"Refactor dir: {REFACTOR_DIR}")
     print()
 

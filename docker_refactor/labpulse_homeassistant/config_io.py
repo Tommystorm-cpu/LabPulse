@@ -1,24 +1,18 @@
-"""Command-line and LabPulse config loading helpers.
-
-The shell wrapper owns user-facing flags. It passes a compact normalized set of
-arguments here so the Python package can focus on structured YAML/JSON work.
-"""
-
 from pathlib import Path
 import sys
 
 import yaml
 
-from .models import GeneratorOptions, GeneratorPaths, JsonDict
+from .model import GeneratorOptions, GeneratorPaths, JsonDict
 
 
 def parse_args(argv: list[str]) -> tuple[GeneratorPaths, GeneratorOptions]:
     """Parse the normalized arguments passed by the shell wrapper."""
 
-    if len(argv) != 5:
+    if len(argv) != 4:
         print(
-            "Usage: generate_homeassistant_config.py CONFIG_PATH HA_CONFIG_DIR "
-            "FRESH_HOMEASSISTANT REFRESH_DASHBOARD",
+            "Usage: python3 -m labpulse_homeassistant.generator "
+            "CONFIG_PATH HA_CONFIG_DIR RESET_DASHBOARD",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -29,8 +23,7 @@ def parse_args(argv: list[str]) -> tuple[GeneratorPaths, GeneratorOptions]:
             ha_config_dir=Path(argv[2]).expanduser().resolve(),
         ),
         GeneratorOptions(
-            fresh_homeassistant=argv[3] == "1",
-            refresh_dashboard=argv[4] == "1",
+            reset_dashboard=argv[3] == "1",
         ),
     )
 

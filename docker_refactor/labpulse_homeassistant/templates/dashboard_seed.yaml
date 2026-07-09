@@ -1,0 +1,89 @@
+# Editable starter dashboard seed.
+#
+# This file controls the dashboard created by:
+#
+#   ./generate_homeassistant_config.sh --reset-dashboard
+#
+# It is only used when resetting/seeding the dashboard. Once Home Assistant has
+# created .storage/lovelace, normal generator runs preserve the user's edited
+# dashboard exactly.
+
+lovelace:
+  version: 1
+  minor_version: 1
+  key: lovelace
+  view:
+    title: LabPulse
+    path: labpulse
+    type: sections
+
+system_health:
+  heading_card:
+    type: heading
+    heading: System Health
+    heading_style: title
+    icon: mdi:heart-cog
+  status_tile:
+    type: tile
+    entity: "{service.status_entity_id}"
+    grid_options:
+      columns: full
+
+service_sections:
+  heading_card:
+    type: heading
+    heading: "{service.section}"
+    heading_style: title
+    icon: "{service.icon}"
+  status_tile:
+    type: tile
+    entity: "{service.status_entity_id}"
+    grid_options:
+      columns: full
+  reading_tile:
+    type: tile
+    entity: "{reading.expected_entity_id}"
+    name: "{reading.label}"
+    grid_options:
+      columns: 6
+  alarm_tile:
+    type: tile
+    entity: "{reading.alarm_entity_id}"
+    name: Alarm
+    grid_options:
+      columns: 6
+  include_alarm_settings_card: true
+  include_alert_memory_card: true
+
+alarm_settings_card:
+  type: entities
+  title: "{service.label} Alarm Settings"
+  show_header_toggle: false
+  grid_options:
+    columns: full
+  service_rows:
+    - entity: "{service.alert_delay_entity}"
+      name: Alert delay
+    - entity: "{service.recovery_delay_entity}"
+      name: Recovery delay
+    - type: divider
+  reading_rows:
+    - entity: "{reading.expected_entity_id}"
+      name: "{reading.label} current"
+    - entity: "{reading.alarm_entity_id}"
+      name: "{reading.label} alarm"
+    - entity: "{reading.minimum_threshold_entity}"
+      name: "{reading.label} minimum"
+    - entity: "{reading.maximum_threshold_entity}"
+      name: "{reading.label} maximum"
+    - type: divider
+
+alert_memory_card:
+  type: entities
+  title: "{service.label} Alert Memory"
+  show_header_toggle: false
+  grid_options:
+    columns: full
+  reading_row:
+    entity: "{reading.active_alert_entity}"
+    name: "{reading.label}"

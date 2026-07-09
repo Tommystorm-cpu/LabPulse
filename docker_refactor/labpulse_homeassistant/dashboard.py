@@ -1,142 +1,119 @@
-"""Dashboard card builders for LabPulse's editable Home Assistant UI.
+"""Build the seeded Lovelace dashboard from editable YAML rules."""
 
-The generator writes Home Assistant's UI-storage dashboard format rather than
-YAML-mode Lovelace. These helpers keep that JSON-shaped card structure in one
-place so the build logic can talk in terms of services and readings.
-"""
+from pathlib import Path
+from typing import Any
 
-from .models import JsonDict, ReadingContext
+import yaml
 
-
-def tile_card(entity_id: str, columns: str = "full") -> JsonDict:
-    """Return a compact tile card for a sections dashboard.
-
-    `grid_options.columns = full` makes each sensor reading span the available
-    card width in a section, which is easier to scan on the Pi dashboard.
-    """
-
-    return {"type": "tile", "entity": entity_id, "grid_options": {"columns": columns}}
+from .model import RenderModel, ServiceModel
+from .template_utils import expand_template
 
 
-def heading_card(heading: str, icon: str) -> JsonDict:
-    """Return a section heading card for Home Assistant's sections layout."""
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+
+
+def lovelace_document(model: RenderModel) -> dict[str, object]:
+    """Return the starter Lovelace storage document."""
+
+    seed = load_dashboard_seed()
+    view = dict(seed["lovelace"]["view"])
+    view["sections"] = dashboard_sections(seed, model)
 
     return {
-        "type": "heading",
-        "heading": heading,
-        "heading_style": "title",
-        "icon": icon,
+        "version": seed["lovelace"]["version"],
+        "minor_version": seed["lovelace"]["minor_version"],
+        "key": seed["lovelace"]["key"],
+        "data": {"config": {"views": [view]}},
     }
 
 
-def alarm_settings_card(service_label: str, alarm_entities: list[JsonDict]) -> JsonDict:
-    """Return the dashboard card used to edit one service's alarm settings.
+def load_dashboard_seed() -> dict[str, Any]:
+    """Load editable dashboard seed rules."""
 
-    The generated dashboard remains editable in Home Assistant's UI; this card
-    simply seeds a sensible starting point with all helpers in one place.
-    """
-
-    return {
-        "type": "entities",
-        "title": f"{service_label} Alarm Settings",
-        "show_header_toggle": False,
-        "entities": alarm_entities,
-    }
+    return yaml.safe_load((TEMPLATE_DIR / "dashboard_seed.yaml").read_text(encoding="utf-8"))
 
 
-def make_delay_helpers(service_id: str, service_label: str) -> JsonDict:
-    """Build the shared alert/recovery delay helpers for a service.
+def dashboard_sections(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
+    """Expand configured dashboard sections for all enabled services."""
 
-    Delays are per hub rather than per reading to keep the dashboard compact
-    when a single Arduino publishes several readings.
-    """
-
-    return {
-        f"labpulse_{service_id}_{kind}_delay_seconds": delay_helper_config(service_label, kind)
-        for kind in ("alert", "recovery")
-    }
+    sections = [system_health_section(seed, model)]
+    sections.extend(service_section(seed, service) for service in model.services)
+    return sections
 
 
-def delay_helper_config(service_label: str, kind: str) -> JsonDict:
-    """Return one editable delay helper definition."""
+def system_health_section(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+    """Return the system health dashboard section."""
 
-    return {
-        "name": f"{service_label} {kind.title()} Delay",
-        "min": 0,
-        "max": 300,
-        "step": 1,
-        "initial": 2,
-        "unit_of_measurement": "s",
-        "mode": "box",
-    }
-
-
-def initial_alarm_entities(service_id: str) -> list[JsonDict]:
-    """Return the shared delay rows at the top of an alarm settings card."""
-
-    return [
-        entity_row(f"input_number.labpulse_{service_id}_alert_delay_seconds", "Alert delay"),
-        entity_row(f"input_number.labpulse_{service_id}_recovery_delay_seconds", "Recovery delay"),
-        {"type": "divider"},
-    ]
-
-
-def entity_row(entity_id: str, name: str) -> JsonDict:
-    """Return one row for a Home Assistant entities card."""
-
-    return {"entity": entity_id, "name": name}
-
-
-def append_reading_alarm_rows(alarm_entities: list[JsonDict], reading: ReadingContext) -> None:
-    """Add one reading's current value and threshold rows to the alarm card."""
-
-    alarm_entities.append(entity_row(reading.entity_id, f"{reading.label} current"))
-
-    if reading.mode in {"min", "range"}:
-        alarm_entities.append(threshold_row(reading, "minimum"))
-
-    if reading.mode in {"max", "range"}:
-        alarm_entities.append(threshold_row(reading, "maximum"))
-
-    alarm_entities.append({"type": "divider"})
-
-
-def threshold_row(reading: ReadingContext, kind: str) -> JsonDict:
-    """Return the dashboard row for one reading threshold helper."""
-
-    return entity_row(
-        f"input_number.labpulse_{reading.reading_id}_{kind}_threshold",
-        f"{reading.label} {kind}",
+    rules = seed["system_health"]
+    cards = [expand_template(rules["heading_card"], {})]
+    cards.extend(
+        expand_template(rules["status_tile"], {"service": service})
+        for service in model.services
     )
+    return {"type": "grid", "cards": cards}
 
 
-def remove_trailing_divider(entities: list[JsonDict]) -> None:
-    """Remove a final divider row from an entities card in place."""
+def service_section(seed: dict[str, Any], service: ServiceModel) -> dict[str, object]:
+    """Return one service dashboard section."""
+
+    rules = seed["service_sections"]
+    cards = [
+        expand_template(rules["heading_card"], {"service": service}),
+        expand_template(rules["status_tile"], {"service": service}),
+    ]
+    for reading in service.readings:
+        context = {"service": service, "reading": reading}
+        cards.append(expand_template(rules["reading_tile"], context))
+        cards.append(expand_template(rules["alarm_tile"], context))
+
+    if service.readings and rules.get("include_alarm_settings_card", True):
+        cards.append(alarm_settings_card(seed, service))
+    if service.readings and rules.get("include_alert_memory_card", True):
+        cards.append(alert_memory_card(seed, service))
+
+    return {"type": "grid", "cards": cards}
+
+
+def alarm_settings_card(seed: dict[str, Any], service: ServiceModel) -> dict[str, object]:
+    """Return a service alarm settings card from seed rules."""
+
+    rules = seed["alarm_settings_card"]
+    card = base_card(rules, {"service": service})
+    entities = [
+        expand_template(row, {"service": service})
+        for row in rules.get("service_rows", [])
+    ]
+    for reading in service.readings:
+        entities.extend(
+            expand_template(row, {"service": service, "reading": reading})
+            for row in rules.get("reading_rows", [])
+        )
 
     if entities and entities[-1] == {"type": "divider"}:
         entities.pop()
+    card["entities"] = entities
+    return card
 
 
-def make_sensor_section(
-    section_heading: str,
-    section_icon: str,
-    service_label: str,
-    status_entity: str,
-    readings: list[ReadingContext],
-    alarm_entities: list[JsonDict],
-) -> JsonDict:
-    """Build one Home Assistant dashboard section for a service.
+def alert_memory_card(seed: dict[str, Any], service: ServiceModel) -> dict[str, object]:
+    """Return the removable alert-memory card from seed rules."""
 
-    A section contains the status tile, one tile per sensor reading, and a full
-    width alarm settings card for editing thresholds/delays.
-    """
+    rules = seed["alert_memory_card"]
+    card = base_card(rules, {"service": service})
+    card["entities"] = [
+        expand_template(rules["reading_row"], {"service": service, "reading": reading})
+        for reading in service.readings
+    ]
+    return card
 
-    sensor_cards = [heading_card(section_heading, section_icon), tile_card(status_entity)]
 
-    sensor_cards.extend(tile_card(reading.entity_id) for reading in readings)
+def base_card(rules: dict[str, Any], context: dict[str, object]) -> dict[str, object]:
+    """Return card-level seed fields, excluding row templates."""
 
-    card = alarm_settings_card(service_label, alarm_entities)
-    card["grid_options"] = {"columns": "full"}
-    sensor_cards.append(card)
+    skipped = {"service_rows", "reading_rows", "reading_row"}
+    return {
+        key: expand_template(value, context)
+        for key, value in rules.items()
+        if key not in skipped
+    }
 
-    return {"type": "grid", "cards": sensor_cards}

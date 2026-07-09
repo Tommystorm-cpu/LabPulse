@@ -1,3 +1,0 @@
-input_number: !include input_numbers.yaml
-input_boolean: !include input_booleans.yaml
-automation: !include automations.yaml

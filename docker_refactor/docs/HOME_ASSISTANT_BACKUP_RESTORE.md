@@ -32,7 +32,7 @@ It also automatically runs:
 
 ```bash
 ~/labpulse-ha/generate_compose.sh
-~/labpulse-ha/generate_homeassistant_config.sh
+~/labpulse-ha/generate_homeassistant_config.sh --reset-dashboard
 ```
 
 ## Day-To-Day Workflow
@@ -73,9 +73,9 @@ The Home Assistant generator creates:
 
 ```text
 homeassistant/config/configuration.yaml
-homeassistant/config/packages/labpulse_thresholds.yaml
-homeassistant/config/labpulse_alarm_cards.yaml
-homeassistant/config/.storage/lovelace
+homeassistant/config/packages/labpulse_generated.yaml
+homeassistant/config/labpulse_entity_map.yaml
+homeassistant/config/.storage/lovelace only when --reset-dashboard is used
 ```
 
 The generated `configuration.yaml` includes the main Home Assistant pieces
@@ -115,7 +115,7 @@ managed by Home Assistant.
 
 ## Editable Dashboard
 
-The dashboard is generated into Home Assistant's UI storage:
+The starter dashboard is generated into Home Assistant's UI storage:
 
 ```text
 homeassistant/config/.storage/lovelace
@@ -123,6 +123,14 @@ homeassistant/config/.storage/lovelace
 
 That means it appears as a normal editable Home Assistant dashboard, not a
 YAML-mode dashboard.
+
+The seed layout comes from:
+
+```text
+docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
+```
+
+Edit that repository seed when changing what `--reset-dashboard` creates.
 
 The generator creates a layout with:
 
@@ -139,29 +147,36 @@ If a user has already edited the dashboard in Home Assistant, running:
 ./generate_homeassistant_config.sh
 ```
 
-preserves the existing UI dashboard.
+preserves the existing UI dashboard exactly.
 
-After MQTT has discovered the LabPulse devices, rebuild the dashboard from Home
-Assistant's real entity registry with:
+To intentionally replace the editable dashboard with the generated starter
+dashboard, run:
 
 ```bash
-./generate_homeassistant_config.sh --refresh-dashboard
+./generate_homeassistant_config.sh --reset-dashboard
 ```
 
-This is useful when the dashboard shows `Entity not found`. The generator reads:
+Stable MQTT discovery IDs mean generated entities use predictable IDs such as:
 
 ```text
-homeassistant/config/.storage/core.entity_registry
+sensor.labpulse_pressure_monitor_pressure
+binary_sensor.labpulse_pressure_monitor_pressure_alarm
 ```
 
-and uses the entity IDs Home Assistant actually assigned to the MQTT devices.
+When a dashboard entity looks wrong, inspect:
 
-To intentionally wipe the entire Home Assistant config folder and regenerate it
-from `config.yaml`, stop Home Assistant and use:
+```text
+homeassistant/config/labpulse_entity_map.yaml
+```
+
+To completely wipe the old Home Assistant config folder before installing the
+new generated setup, stop Home Assistant and remove the config folder:
 
 ```bash
 docker compose stop homeassistant
-./generate_homeassistant_config.sh --fresh-homeassistant
+rm -rf ~/labpulse-ha/homeassistant/config
+mkdir -p ~/labpulse-ha/homeassistant/config
+./generate_homeassistant_config.sh --reset-dashboard
 docker compose up -d homeassistant
 ```
 
@@ -171,64 +186,52 @@ This removes everything under:
 ~/labpulse-ha/homeassistant/config/
 ```
 
-including hidden `.storage` files, old dashboards, old helper definitions, and
-old generated packages. Use `--backup-homeassistant-ui` first if there is a UI
+including hidden `.storage` files, dashboards, helper definitions, and generated
+package files. Use `--backup-dashboard` first if there is a dashboard
 layout you might want back.
 
-## Backup The Current Home Assistant UI
+## Backup The Current Dashboard
 
 After editing dashboards in Home Assistant, run:
 
 ```bash
 cd ~/labpulse-ha
-./generate_homeassistant_config.sh --backup-homeassistant-ui
-```
-
-Short form:
-
-```bash
-./generate_homeassistant_config.sh --backup-ha-ui
+./generate_homeassistant_config.sh --backup-dashboard
 ```
 
 This creates a timestamped backup:
 
 ```text
-~/labpulse-ha/homeassistant_backups/ui-YYYYMMDD-HHMMSS/
+~/labpulse-ha/homeassistant_backups/dashboard-YYYYMMDD-HHMMSS/
 ```
 
 It also refreshes:
 
 ```text
-~/labpulse-ha/homeassistant_backups/ui-latest/
+~/labpulse-ha/homeassistant_backups/dashboard-latest/
 ```
 
-The backup includes the editable dashboard storage file and LabPulse YAML
-config, but it does not copy Home Assistant auth/account storage.
+The backup includes only the editable dashboard storage file. It does not copy
+Home Assistant auth/account storage.
 
-## Restore The Latest UI Backup
+## Load The Latest Dashboard Backup
 
-To restore the latest saved Home Assistant UI/config state:
+To restore the latest saved editable dashboard:
 
 ```bash
 cd ~/labpulse-ha
-./generate_homeassistant_config.sh --restore-homeassistant-ui
-```
-
-Short form:
-
-```bash
-./generate_homeassistant_config.sh --restore-ha-ui
+./generate_homeassistant_config.sh --load-dashboard
 ```
 
 Do not combine:
 
 ```bash
---fresh-homeassistant
---restore-homeassistant-ui
+--reset-dashboard
+--load-dashboard
 ```
 
-Those two options conflict because one clears generated Home Assistant state
-while the other restores it.
+Those two options conflict because one replaces the dashboard with the generated
+starter layout while the other restores the latest saved dashboard.
 
 ## Recommended Pattern
 
@@ -238,4 +241,4 @@ while the other restores it.
 4. Run `./generate_homeassistant_config.sh`.
 5. Restart Home Assistant or run `docker compose up -d --build`.
 6. Edit the dashboard in the Home Assistant UI.
-7. Save the edited UI state with `./generate_homeassistant_config.sh --backup-homeassistant-ui`.
+7. Save the edited dashboard with `./generate_homeassistant_config.sh --backup-dashboard`.

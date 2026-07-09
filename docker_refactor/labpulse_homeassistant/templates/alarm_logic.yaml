@@ -1,0 +1,127 @@
+# Editable Home Assistant alarm logic seed.
+#
+# This file controls the generated helpers, template alarm sensors, and
+# alert/recovery automations in packages/labpulse_generated.yaml.
+#
+# Common future edits can be made here:
+# - add service or reading input_numbers for re-arm timers or deadbands
+# - add input_booleans for alarm mute/enable controls
+# - add automation conditions such as a mute boolean being off
+# - change notification services or messages
+#
+# Placeholders available in strings:
+# - {service.label}, {service.service_id}, {service.alert_delay_entity}
+# - {reading.label}, {reading.expected_entity_id}, {reading.alarm_entity_id}
+# - {reading.threshold.minimum}, {reading.threshold.range_max}, etc.
+
+input_numbers:
+  service:
+    - id: "labpulse_{service.service_id}_alert_delay_seconds"
+      config:
+        name: "{service.label} Alert Delay"
+        min: 0
+        max: 300
+        step: 1
+        initial: 2
+        unit_of_measurement: s
+        mode: box
+    - id: "labpulse_{service.service_id}_recovery_delay_seconds"
+      config:
+        name: "{service.label} Recovery Delay"
+        min: 0
+        max: 300
+        step: 1
+        initial: 2
+        unit_of_measurement: s
+        mode: box
+  reading:
+    - id: "labpulse_{reading.reading_id}_minimum_threshold"
+      config:
+        name: "{reading.label} Minimum Threshold"
+        min: "{reading.threshold.range_min}"
+        max: "{reading.threshold.range_max}"
+        step: "{reading.threshold.step}"
+        initial: "{reading.threshold.minimum}"
+        unit_of_measurement: "{reading.threshold.unit}"
+        mode: box
+    - id: "labpulse_{reading.reading_id}_maximum_threshold"
+      config:
+        name: "{reading.label} Maximum Threshold"
+        min: "{reading.threshold.range_min}"
+        max: "{reading.threshold.range_max}"
+        step: "{reading.threshold.step}"
+        initial: "{reading.threshold.maximum}"
+        unit_of_measurement: "{reading.threshold.unit}"
+        mode: box
+
+input_booleans:
+  reading:
+    - id: "labpulse_{reading.reading_id}_alert_active"
+      config:
+        name: "{reading.label} Alert Active"
+        initial: false
+
+binary_sensors:
+  reading:
+    - name: "{reading.alarm_unique_id}"
+      unique_id: "{reading.alarm_unique_id}"
+      device_class: problem
+      state: >
+        {{ states('{reading.expected_entity_id}') | float(0)
+           < states('{reading.minimum_threshold_entity}') | float(0)
+           or states('{reading.expected_entity_id}') | float(0)
+           > states('{reading.maximum_threshold_entity}') | float(0) }}
+
+automations:
+  reading:
+    - alias: "LabPulse {reading.label} Alert"
+      mode: single
+      trigger:
+        - platform: state
+          entity_id: "{reading.alarm_entity_id}"
+          to: "on"
+          for:
+            seconds: "{{ states('{service.alert_delay_entity}') | int(2) }}"
+      condition:
+        - condition: state
+          entity_id: "{reading.active_alert_entity}"
+          state: "off"
+      action:
+        - service: input_boolean.turn_on
+          target:
+            entity_id: "{reading.active_alert_entity}"
+        - service: persistent_notification.create
+          data:
+            title: "LabPulse {reading.label} alert"
+            message: >
+              {reading.label} is outside its threshold.
+
+              Current reading: {{ states('{reading.expected_entity_id}') }}.
+              Min: {{ states('{reading.minimum_threshold_entity}') }}.
+              Max: {{ states('{reading.maximum_threshold_entity}') }}.
+            notification_id: "labpulse_{reading.reading_id}_status"
+
+    - alias: "LabPulse {reading.label} Recovery"
+      mode: single
+      trigger:
+        - platform: state
+          entity_id: "{reading.alarm_entity_id}"
+          to: "off"
+          for:
+            seconds: "{{ states('{service.recovery_delay_entity}') | int(2) }}"
+      condition:
+        - condition: state
+          entity_id: "{reading.active_alert_entity}"
+          state: "on"
+      action:
+        - service: input_boolean.turn_off
+          target:
+            entity_id: "{reading.active_alert_entity}"
+        - service: persistent_notification.create
+          data:
+            title: "LabPulse {reading.label} recovery"
+            message: >
+              {reading.label} has recovered.
+
+              Current reading: {{ states('{reading.expected_entity_id}') }}.
+            notification_id: "labpulse_{reading.reading_id}_status"
