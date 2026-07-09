@@ -50,6 +50,24 @@ class GeneratorPaths:
         return self.ha_config_dir / "configuration.yaml"
 
     @property
+    def ui_automations_path(self) -> Path:
+        """Return the Home Assistant UI-managed automations path."""
+
+        return self.ha_config_dir / "automations.yaml"
+
+    @property
+    def ui_scripts_path(self) -> Path:
+        """Return the Home Assistant UI-managed scripts path."""
+
+        return self.ha_config_dir / "scripts.yaml"
+
+    @property
+    def ui_scenes_path(self) -> Path:
+        """Return the Home Assistant UI-managed scenes path."""
+
+        return self.ha_config_dir / "scenes.yaml"
+
+    @property
     def storage_dir(self) -> Path:
         """Return Home Assistant's hidden UI storage directory."""
 

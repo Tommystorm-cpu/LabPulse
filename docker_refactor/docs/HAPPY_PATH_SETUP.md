@@ -1,8 +1,8 @@
 # LabPulse Happy Path Setup
 
 This is the normal setup path for running LabPulse on a Raspberry Pi with
-Docker Compose, Home Assistant, Mosquitto, and one Python container per enabled
-sensor hub.
+Docker Compose, Home Assistant, Mosquitto, one SMS container, and one Python
+container per enabled sensor hub.
 
 The important rule is:
 
@@ -157,6 +157,7 @@ Useful focused logs:
 ```bash
 docker compose logs -f homeassistant
 docker compose logs -f mosquitto
+docker compose logs -f labpulse-sms
 docker compose logs -f labpulse-pressure-monitor
 docker compose logs -f labpulse-pump-room
 docker compose logs -f labpulse-turbo-pump
@@ -357,6 +358,7 @@ docker compose logs homeassistant
 LabPulse service logs:
 
 ```bash
+docker compose logs labpulse-sms
 docker compose logs labpulse-pump-room
 docker compose logs labpulse-pressure-monitor
 docker compose logs labpulse-turbo-pump

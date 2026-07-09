@@ -1,6 +1,12 @@
 homeassistant:
   packages: !include_dir_named packages
 
+automation: !include automations.yaml
+
+script: !include scripts.yaml
+
+scene: !include scenes.yaml
+
 default_config:
 
 frontend:

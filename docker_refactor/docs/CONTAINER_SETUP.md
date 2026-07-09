@@ -9,6 +9,7 @@ Raspberry Pi
   Docker Compose project
     homeassistant container
     mosquitto container
+    one LabPulse SMS container
     one LabPulse Python container per enabled service
 ```
 
@@ -16,7 +17,17 @@ Each container has one job:
 
 - `homeassistant` runs the Home Assistant web interface.
 - `mosquitto` runs the MQTT broker.
+- `labpulse-sms` runs the shared SMS engine.
 - Each `labpulse-*` Python container runs one configured LabPulse service.
+
+The SMS container subscribes to:
+
+```text
+labpulse/sms/#
+```
+
+Use `labpulse/sms/send` for initial SMS request messages. The wider namespace
+leaves room for later topics such as test, status, or acknowledgement messages.
 
 ## Folder Layout
 
@@ -44,6 +55,7 @@ The Raspberry Pi working folder is:
     requirements.txt
     main.py
     labpulse_common/
+    labpulse_sms/
 ```
 
 `homeassistant/config/` is mounted into the Home Assistant container as `/config`.
@@ -62,7 +74,9 @@ Home Assistant dashboard.
 
 `labpulse-python/` is built into the Python container image.
 
-`compose.yaml` is generated from `~/labpulse-ha/config.yaml`. Each enabled service under `services:` becomes one container.
+`compose.yaml` is generated from `~/labpulse-ha/config.yaml`. It includes one
+SMS container, and each enabled service under `services:` becomes one sensor
+container.
 
 The repo file `docker_refactor/config.yaml` is only a starter template. Do not edit it to change the running Pi system.
 
@@ -208,6 +222,19 @@ homeassistant/config/configuration.yaml
 homeassistant/config/packages/labpulse_generated.yaml
 homeassistant/config/labpulse_entity_map.yaml
 ```
+
+It also creates these Home Assistant UI-managed files if they do not already
+exist:
+
+```text
+homeassistant/config/automations.yaml
+homeassistant/config/scripts.yaml
+homeassistant/config/scenes.yaml
+```
+
+Those files are included from `configuration.yaml` so automations, scripts, and
+scenes created in the Home Assistant UI can load correctly. The generator never
+overwrites them after creation.
 
 Normal generation does not touch the editable dashboard at:
 
@@ -359,6 +386,11 @@ services:
       - ./mosquitto/log:/mosquitto/log
     restart: unless-stopped
 
+  labpulse-sms:
+    <<: *labpulse-python-base
+    container_name: labpulse-sms
+    command: ["python", "labpulse_sms/sms_entry.py", "--config", "/app/config.yaml"]
+
   labpulse-pressure-monitor:
     <<: *labpulse-python-base
     container_name: labpulse-pressure-monitor
@@ -403,6 +435,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 COPY labpulse_common ./labpulse_common
+COPY labpulse_sms ./labpulse_sms
 
 CMD ["python", "main.py", "--service", "pressure_monitor"]
 ```
@@ -482,6 +515,7 @@ Expected containers:
 ```text
 labpulse-homeassistant
 labpulse-mqtt
+labpulse-sms
 labpulse-pressure-monitor
 labpulse-pump-room
 labpulse-turbo-pump
@@ -525,6 +559,7 @@ For example:
 ~/labpulse-ha/logs/pressure_monitor.log
 ~/labpulse-ha/logs/pump_room.log
 ~/labpulse-ha/logs/turbo_pump.log
+~/labpulse-ha/logs/sms.log
 ```
 
 Watch Mosquitto logs:

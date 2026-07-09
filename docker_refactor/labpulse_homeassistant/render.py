@@ -34,6 +34,7 @@ def render_all(paths: GeneratorPaths, options: GeneratorOptions, model: RenderMo
         paths.entity_map_path,
         {"entity_map": yaml.safe_dump(entity_map(model), sort_keys=False).rstrip()},
     )
+    ensure_ui_yaml_files(paths)
 
     if options.reset_dashboard:
         paths.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -49,6 +50,20 @@ def render_all(paths: GeneratorPaths, options: GeneratorOptions, model: RenderMo
     print(f"Generated {paths.configuration_path}")
     print(f"Generated {paths.package_path}")
     print(f"Generated {paths.entity_map_path}")
+
+
+def ensure_ui_yaml_files(paths: GeneratorPaths) -> None:
+    """Create Home Assistant UI-managed YAML files if they are missing.
+
+    Home Assistant's automation/script/scene editors write to these files.
+    They must be included by configuration.yaml, but the generator should never
+    overwrite them once a user has made UI edits.
+    """
+
+    for path in (paths.ui_automations_path, paths.ui_scripts_path, paths.ui_scenes_path):
+        if not path.exists():
+            path.write_text("[]\n", encoding="utf-8")
+            print(f"Created {path}")
 
 
 def write_template(template_name: str, destination: Path, context: dict[str, str]) -> None:

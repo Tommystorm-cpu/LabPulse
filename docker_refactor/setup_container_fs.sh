@@ -145,6 +145,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 COPY labpulse_common ./labpulse_common
+COPY labpulse_sms ./labpulse_sms
 
 CMD ["python", "main.py", "--service", "pressure_monitor"]
 EOF
@@ -166,6 +167,7 @@ chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
 replace_dir "$SCRIPT_DIR/labpulse_homeassistant" "$PROJECT_DIR/labpulse_homeassistant"
 find "$PROJECT_DIR/labpulse_homeassistant" -type d -name "__pycache__" -prune -exec rm -rf {} +
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
+replace_dir "$SCRIPT_DIR/labpulse_sms" "$PROJECT_DIR/labpulse-python/labpulse_sms"
 
 # Preserve the live user-edited config if it exists. The repo config is only a
 # starter template for new installations.
@@ -270,6 +272,7 @@ Created/updated:
   $PROJECT_DIR/homeassistant/config/.storage/lovelace
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/
+  $PROJECT_DIR/labpulse-python/labpulse_sms/
   $PROJECT_DIR/logs/
 
 USB mode:

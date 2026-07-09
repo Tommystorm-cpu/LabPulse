@@ -62,7 +62,14 @@ def test_generated_package_and_entity_map() -> None:
     paths = render_into(temp_root / f"generator-{uuid.uuid4().hex}", reset_dashboard=True)
     package = yaml.safe_load(paths.package_path.read_text(encoding="utf-8"))
     entity_map = yaml.safe_load(paths.entity_map_path.read_text(encoding="utf-8"))
+    configuration = paths.configuration_path.read_text(encoding="utf-8")
 
+    assert "automation: !include automations.yaml" in configuration
+    assert "script: !include scripts.yaml" in configuration
+    assert "scene: !include scenes.yaml" in configuration
+    assert_equal(paths.ui_automations_path.read_text(encoding="utf-8"), "[]\n", "empty UI automations")
+    assert_equal(paths.ui_scripts_path.read_text(encoding="utf-8"), "[]\n", "empty UI scripts")
+    assert_equal(paths.ui_scenes_path.read_text(encoding="utf-8"), "[]\n", "empty UI scenes")
     assert "labpulse_pressure_monitor_pressure_minimum_threshold" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_maximum_threshold" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_alert_active" in package["input_boolean"]
@@ -124,8 +131,14 @@ def test_dashboard_reset_and_preserve() -> None:
 
     edited_dashboard = '{"edited": true}'
     paths.lovelace_path.write_text(edited_dashboard, encoding="utf-8")
+    paths.ui_automations_path.write_text("- id: user_automation\n", encoding="utf-8")
     render_into(temp_dir, reset_dashboard=False)
     assert_equal(paths.lovelace_path.read_text(encoding="utf-8"), edited_dashboard, "preserved dashboard")
+    assert_equal(
+        paths.ui_automations_path.read_text(encoding="utf-8"),
+        "- id: user_automation\n",
+        "preserved UI automations",
+    )
 
     render_into(temp_dir, reset_dashboard=True)
     reset_dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))

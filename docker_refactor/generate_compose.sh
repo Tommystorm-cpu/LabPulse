@@ -117,6 +117,13 @@ def quoted_command(service_name: str) -> str:
     return json.dumps(command)
 
 
+def sms_command() -> str:
+    """Serialize the SMS service command as JSON."""
+
+    command = ["python", "labpulse_sms/sms_entry.py", "--config", "/app/config.yaml"]
+    return json.dumps(command)
+
+
 if not config_path.exists():
     print(f"ERROR: config file does not exist: {config_path}", file=sys.stderr)
     sys.exit(1)
@@ -216,6 +223,11 @@ lines.extend(
         "      - ./mosquitto/data:/mosquitto/data",
         "      - ./mosquitto/log:/mosquitto/log",
         "    restart: unless-stopped",
+        "",
+        "  labpulse-sms:",
+        "    <<: *labpulse-python-base",
+        "    container_name: labpulse-sms",
+        f"    command: {sms_command()}",
         "",
     ]
 )
