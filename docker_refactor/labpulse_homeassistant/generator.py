@@ -1,6 +1,8 @@
 import sys
 
-from .config_io import load_labpulse_config, parse_args
+from labpulse_common.config import load_config
+
+from .config_io import parse_args
 from .model import build_render_model
 from .render import render_all
 
@@ -13,7 +15,7 @@ def main(argv: list[str]) -> int:
     """
 
     paths, options = parse_args(argv)
-    config = load_labpulse_config(paths.config_path)
+    config = load_config(paths.config_path)
     model = build_render_model(config)
     render_all(paths, options, model)
     return 0

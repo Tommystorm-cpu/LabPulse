@@ -1,4 +1,4 @@
-"""Parse Arduino serial text into named LabPulse readings."""
+"""Parse temporary legacy Arduino serial formats into named readings."""
 
 import math
 import re

@@ -7,8 +7,8 @@ from typing import Any, Callable
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
-from labpulse_common.drivers import serial_driver
-from labpulse_common.drivers.serial_driver import Driver
+from labpulse_hardware.drivers import serial_driver
+from labpulse_hardware.drivers.serial_driver import Driver
 
 
 class FakeSerialPort:

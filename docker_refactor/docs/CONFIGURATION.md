@@ -319,7 +319,8 @@ open. The service container stays alive and periodically tries to reconnect.
 1. Add a new service under `services:` in `~/labpulse-ha/config.yaml`.
 2. Set `enabled: true`.
 3. Use `driver: serial`.
-4. Choose an existing parser or add a parser in `labpulse_common/parser.py`.
+4. Choose an existing compatibility parser or add one in
+   `labpulse_hardware/legacy_parsing/serial_parser.py`.
 5. Set `serial_port` to a stable `/dev/serial/by-id/...` path.
 6. Add `readings:` entries whose `name` values match parser output keys.
 7. Run:

@@ -212,6 +212,6 @@ fi
 # The Python generator reads config.yaml, builds a normalized render model, and
 # writes generated Home Assistant files. It only writes the editable dashboard
 # when RESET_DASHBOARD is 1.
-PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+PYTHONPATH="$SCRIPT_DIR:$SCRIPT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
   python3 -m labpulse_homeassistant.generator \
   "$CONFIG_PATH" "$HA_CONFIG_DIR" "$RESET_DASHBOARD"

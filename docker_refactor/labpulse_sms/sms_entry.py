@@ -4,18 +4,13 @@ import argparse
 from argparse import Namespace
 import logging
 from pathlib import Path
-import sys
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-APP_DIR = SCRIPT_DIR.parent
-if str(APP_DIR) not in sys.path:
-    sys.path.insert(0, str(APP_DIR))
 
 from labpulse_common.config import load_config
 from labpulse_common.logging_config import configure_logging
 from labpulse_sms.sender import build_sms_sender
 from labpulse_sms.sms_subscriber import SMSSubscriber
 
+APP_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = APP_DIR / "config.yaml"
 
 

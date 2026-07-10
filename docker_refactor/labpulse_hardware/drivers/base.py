@@ -1,4 +1,4 @@
-"""Base interface shared by all LabPulse sensor drivers."""
+"""Base interface implemented by all LabPulse hardware drivers."""
 
 from abc import ABC, abstractmethod
 from typing import Any, Optional

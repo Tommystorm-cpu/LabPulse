@@ -33,7 +33,7 @@ services:
     enabled: true
     driver: serial
     parser: pressure
-    serial_port: "/dev/serial/by-id/..."
+    serial_port: "FAKE_PRESSURE_PORT"
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
     display:
@@ -51,7 +51,7 @@ services:
     enabled: true
     driver: serial
     parser: pump_room
-    serial_port: "/dev/serial/by-id/..."
+    serial_port: "FAKE_PUMP_ROOM_PORT"
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
     display:
@@ -89,7 +89,7 @@ services:
     enabled: true
     driver: serial
     parser: water
-    serial_port: "/dev/serial/by-id/..."
+    serial_port: "FAKE_TURBO_PUMP_PORT"
     baud_rate: 9600
     device_name: "Turbo Pump Hub"
     display:

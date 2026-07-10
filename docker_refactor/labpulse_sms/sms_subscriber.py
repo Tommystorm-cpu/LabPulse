@@ -6,10 +6,8 @@ import logging
 import paho.mqtt.client as mqtt
 
 from labpulse_common.config import MqttConfig
+from labpulse_common.mqtt_contracts import SMS_SUBSCRIPTION_TOPIC
 from labpulse_sms.sender import SmsSender, format_sms_message
-
-
-SMS_TOPIC = "labpulse/sms/#"
 
 
 class SMSSubscriber:
@@ -57,8 +55,8 @@ class SMSSubscriber:
             self.logger.error("SMS MQTT connection failed: %s", reason_code)
             return
 
-        self.logger.info("SMS service subscribing to %s", SMS_TOPIC)
-        client.subscribe(SMS_TOPIC)
+        self.logger.info("SMS service subscribing to %s", SMS_SUBSCRIPTION_TOPIC)
+        client.subscribe(SMS_SUBSCRIPTION_TOPIC)
 
     def on_message(self, _client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
         """Handle one inbound MQTT message."""

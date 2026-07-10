@@ -7,8 +7,8 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import ServiceConfig
-from labpulse_common.drivers.serial_driver import Driver as SerialDriver
-from labpulse_common.sensor_factory import SensorFactory
+from labpulse_hardware.drivers.factory import SensorFactory
+from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
 
 TException = TypeVar("TException", bound=Exception)

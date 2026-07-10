@@ -3,7 +3,10 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-import re
+
+from labpulse_common.config import LabPulseConfig, ReadingConfig
+from labpulse_common.identity import entity_id, slug, stable_id
+from labpulse_common.mqtt_contracts import SMS_SEND_TOPIC
 
 
 JsonDict = dict[str, Any]
@@ -149,6 +152,7 @@ class RenderModel:
     """All data needed to render Home Assistant templates."""
 
     services: list[ServiceModel]
+    sms_send_topic: str = SMS_SEND_TOPIC
 
     @property
     def readings(self) -> list[tuple[ServiceModel, ReadingModel]]:
@@ -159,28 +163,6 @@ class RenderModel:
             for service in self.services
             for reading in service.readings
         ]
-
-
-def slug(value: str) -> str:
-    """Return a Home Assistant-safe lowercase identifier."""
-
-    return re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
-
-
-def title(value: str) -> str:
-    """Turn a config identifier into a readable label."""
-
-    return slug(value).replace("_", " ").title()
-
-
-def stable_id(*parts: str) -> str:
-    """Return the stable LabPulse ID for service/readings/helpers.
-
-    Labels and device names are intentionally excluded. They are user-facing
-    text and should be safe to change without renaming Home Assistant entities.
-    """
-
-    return "labpulse_" + "_".join(slug(part) for part in parts if slug(part))
 
 
 def reading_defaults(reading_name: str) -> JsonDict:
@@ -198,8 +180,8 @@ def reading_defaults(reading_name: str) -> JsonDict:
     return THRESHOLD_DEFAULTS["generic"]
 
 
-def build_render_model(config: JsonDict) -> RenderModel:
-    """Build the complete Home Assistant render model from config YAML.
+def build_render_model(config: LabPulseConfig) -> RenderModel:
+    """Build the complete Home Assistant render model from validated config.
 
     The render model is the boundary between user config and Home Assistant
     templates. Templates should not need to know how IDs are derived.
@@ -207,51 +189,48 @@ def build_render_model(config: JsonDict) -> RenderModel:
 
     services = []
     service_items = sorted(
-        (config.get("services") or {}).items(),
-        key=lambda item: ((item[1] or {}).get("display") or {}).get("order", 100),
+        config.services.items(),
+        key=lambda item: item[1].display.order,
     )
 
-    for service_name, raw_service in service_items:
-        service_config = raw_service or {}
-        if not service_config.get("enabled", True):
+    for service_name, service_config in service_items:
+        if not service_config.enabled:
             continue
 
         service_id = slug(service_name)
-        display = service_config.get("display") or {}
-        label = str(service_config.get("device_name") or title(service_name))
+        display = service_config.display
+        label = service_config.display_label
         service = ServiceModel(
             name=str(service_name),
             service_id=service_id,
             label=label,
-            section=str(display.get("section") or label),
-            icon=str(display.get("icon") or "mdi:chip"),
-            order=int(display.get("order", 100)),
+            section=service_config.dashboard_section,
+            icon=service_config.dashboard_icon,
+            order=display.order,
             status_unique_id=stable_id(service_name, "status"),
-            status_entity_id=f"sensor.{stable_id(service_name, 'status')}",
+            status_entity_id=entity_id("sensor", service_name, "status"),
             alert_delay_entity=f"input_number.{stable_id(service_name, 'alert_delay_seconds')}",
             recovery_delay_entity=f"input_number.{stable_id(service_name, 'recovery_delay_seconds')}",
         )
 
-        readings = service_config.get("readings")
-        if not isinstance(readings, list):
-            raise ValueError(f"Service {label} is missing a readings list")
-
-        for raw_reading in readings:
-            if not isinstance(raw_reading, dict) or not raw_reading.get("name"):
-                continue
-            service.readings.append(build_reading_model(service_name, service_id, raw_reading))
+        for reading in service_config.readings:
+            service.readings.append(build_reading_model(service_name, service_id, reading))
 
         services.append(service)
 
     return RenderModel(services=services)
 
 
-def build_reading_model(service_name: str, service_id: str, reading: JsonDict) -> ReadingModel:
+def build_reading_model(
+    service_name: str,
+    service_id: str,
+    reading: ReadingConfig,
+) -> ReadingModel:
     """Build template data for one configured reading."""
 
-    reading_name = slug(str(reading["name"]))
+    reading_name = slug(reading.name)
     reading_id = f"{service_id}_{reading_name}"
-    label = str(reading.get("label") or title(reading_name))
+    label = reading.display_label
     threshold = build_threshold(reading_name, reading)
     minimum = f"input_number.{stable_id(service_name, reading_name, 'minimum_threshold')}"
     maximum = f"input_number.{stable_id(service_name, reading_name, 'maximum_threshold')}"
@@ -261,17 +240,17 @@ def build_reading_model(service_name: str, service_id: str, reading: JsonDict) -
         label=label,
         reading_id=reading_id,
         mqtt_unique_id=stable_id(service_name, reading_name),
-        expected_entity_id=f"sensor.{stable_id(service_name, reading_name)}",
+        expected_entity_id=entity_id("sensor", service_name, reading_name),
         alarm_unique_id=stable_id(service_name, reading_name, "alarm"),
-        alarm_entity_id=f"binary_sensor.{stable_id(service_name, reading_name, 'alarm')}",
-        active_alert_entity=f"input_boolean.{stable_id(service_name, reading_name, 'alert_active')}",
+        alarm_entity_id=entity_id("binary_sensor", service_name, reading_name, "alarm"),
+        active_alert_entity=entity_id("input_boolean", service_name, reading_name, "alert_active"),
         minimum_threshold_entity=minimum,
         maximum_threshold_entity=maximum,
         threshold=threshold,
     )
 
 
-def build_threshold(reading_name: str, reading: JsonDict) -> ThresholdModel:
+def build_threshold(reading_name: str, reading: ReadingConfig) -> ThresholdModel:
     """Return default editable threshold helper settings for one reading.
 
     Threshold values intentionally do not come from `config.yaml`. Once
@@ -281,7 +260,7 @@ def build_threshold(reading_name: str, reading: JsonDict) -> ThresholdModel:
     defaults = reading_defaults(reading_name)
 
     return ThresholdModel(
-        unit=str(reading.get("unit", defaults["unit"])),
+        unit=reading.unit or str(defaults["unit"]),
         minimum=defaults["min"],
         maximum=defaults["max"],
         range_min=defaults["range_min"],

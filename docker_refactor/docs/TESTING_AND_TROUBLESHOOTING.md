@@ -13,17 +13,20 @@ docker_refactor/testing/
 Useful reading order:
 
 ```text
-test_parser.py
-  accepted Arduino serial formats and parser output keys
+test_legacy_serial_parser.py
+  temporary Arduino serial compatibility formats and output keys
 
-test_sensor_factory.py
+test_hardware_factory.py
   how config selects drivers
 
 test_serial_driver.py
   serial setup, read, reconnect, and status behavior
 
-test_homeassistant_mqtt.py
+test_homeassistant_publisher.py
   exact MQTT discovery topics, payloads, and entity IDs
+
+test_common_contracts.py
+  shared identity, sensor topic, and SMS payload contracts
 
 test_homeassistant_entities.py
   model/entity ID assumptions
@@ -33,6 +36,9 @@ test_homeassistant_generator.py
 
 test_sms_container.py
   SMS subscription, payload parsing, and sender backends
+
+test_deployment_generation.py
+  fake-USB Compose output and setup refresh/preservation contracts
 ```
 
 ## Run Tests
@@ -40,38 +46,42 @@ test_sms_container.py
 From the repository root:
 
 ```powershell
-python .\docker_refactor\testing\test_parser.py
-python .\docker_refactor\testing\test_sensor_factory.py
+python .\docker_refactor\testing\test_legacy_serial_parser.py
+python .\docker_refactor\testing\test_hardware_factory.py
 python .\docker_refactor\testing\test_serial_driver.py
-python .\docker_refactor\testing\test_homeassistant_mqtt.py
+python .\docker_refactor\testing\test_homeassistant_publisher.py
 python .\docker_refactor\testing\test_homeassistant_entities.py
 python .\docker_refactor\testing\test_homeassistant_generator.py
 python .\docker_refactor\testing\test_sms_container.py
+python .\docker_refactor\testing\test_common_contracts.py
+python .\docker_refactor\testing\test_deployment_generation.py
 ```
 
 From inside `docker_refactor/`:
 
 ```bash
-python testing/test_parser.py
-python testing/test_sensor_factory.py
+python testing/test_legacy_serial_parser.py
+python testing/test_hardware_factory.py
 python testing/test_serial_driver.py
-python testing/test_homeassistant_mqtt.py
+python testing/test_homeassistant_publisher.py
 python testing/test_homeassistant_entities.py
 python testing/test_homeassistant_generator.py
 python testing/test_sms_container.py
+python testing/test_common_contracts.py
+python testing/test_deployment_generation.py
 ```
 
 ## What To Test After Each Change
 
 | Change | Tests |
 | --- | --- |
-| Parser behavior | `test_parser.py` |
+| Legacy parser behavior | `test_legacy_serial_parser.py` |
 | Driver setup/reconnect | `test_serial_driver.py` |
-| Config schema | `test_sensor_factory.py` plus direct startup |
-| MQTT topics or IDs | `test_homeassistant_mqtt.py`, `test_homeassistant_entities.py` |
+| Config schema | `test_hardware_factory.py` plus direct startup |
+| MQTT topics or IDs | `test_common_contracts.py`, `test_homeassistant_publisher.py`, `test_homeassistant_entities.py` |
 | Dashboard seed or alarm template | `test_homeassistant_generator.py` |
 | SMS payload or delivery | `test_sms_container.py` |
-| Compose generation | `./generate_compose.sh` and `docker compose config` on the Pi |
+| Compose/setup generation | `test_deployment_generation.py`, then `docker compose config` on the Pi |
 
 ## Layered Debugging
 
@@ -130,7 +140,7 @@ and recreate the container.
 Run or inspect parser tests:
 
 ```bash
-python testing/test_parser.py
+python testing/test_legacy_serial_parser.py
 ```
 
 Check the serial line format against:
@@ -292,7 +302,7 @@ No serial:
   USB path, Compose mounts, SerialDriver
 
 No parsed reading:
-  parser.py, Arduino serial format, readings[].name
+  legacy_parsing/serial_parser.py, Arduino serial format, readings[].name
 
 No MQTT:
   broker name, Mosquitto logs, HomeAssistantMqttPublisher

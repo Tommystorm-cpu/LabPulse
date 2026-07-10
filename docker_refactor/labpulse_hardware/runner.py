@@ -5,12 +5,12 @@ from argparse import Namespace
 from pathlib import Path
 
 from labpulse_common.config import get_service_config, load_config
-from labpulse_common.homeassistant_mqtt import HomeAssistantMqttPublisher
 from labpulse_common.logging_config import configure_logging
-from labpulse_common.sensor_factory import SensorFactory
+from labpulse_hardware.drivers.factory import SensorFactory
+from labpulse_hardware.homeassistant_publisher import HomeAssistantMqttPublisher
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.yaml"
+APP_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = APP_DIR / "config.yaml"
 
 def parse_args() -> Namespace:
     """Parse CLI options for running one configured LabPulse service."""
@@ -55,7 +55,7 @@ def main() -> None:
 
     args = parse_args()
     configure_logging(args.service)
-    logger = logging.getLogger("Main")
+    logger = logging.getLogger("HardwareRunner")
 
     config_path = Path(args.config).expanduser().resolve()
     cfg = load_config(config_path)

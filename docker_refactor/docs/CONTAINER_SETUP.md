@@ -55,8 +55,8 @@ Folder layout:
   labpulse-python/
     Dockerfile
     requirements.txt
-    main.py
     labpulse_common/
+    labpulse_hardware/
     labpulse_sms/
 
   labpulse_homeassistant/
@@ -92,16 +92,14 @@ The script:
 2. Writes Mosquitto config.
 3. Writes `labpulse-python/Dockerfile`.
 4. Writes `labpulse-python/requirements.txt`.
-5. Copies `main.py`.
-6. Copies `labpulse_common/`.
-7. Copies `labpulse_sms/`.
-8. Copies `labpulse_homeassistant/`.
-9. Copies generator shell scripts.
-10. Creates `config.yaml` from the repo template only if missing.
-11. Converts the starter MQTT broker from `localhost` to `mosquitto`.
-12. Applies fake serial paths in fake USB mode.
-13. Runs Compose generation.
-14. Runs Home Assistant generation with `--reset-dashboard`.
+5. Copies `labpulse_common/`, `labpulse_hardware/`, and `labpulse_sms/`.
+6. Copies `labpulse_homeassistant/`.
+7. Copies generator shell scripts.
+8. Creates `config.yaml` from the repo template only if missing.
+9. Converts the starter MQTT broker from `localhost` to `mosquitto`.
+10. Applies fake serial paths in fake USB mode.
+11. Runs Compose generation.
+12. Runs Home Assistant generation with `--reset-dashboard`.
 
 Existing live `config.yaml` is preserved.
 
@@ -279,7 +277,8 @@ This removes containers but keeps mounted config/data folders.
 ## Common Container Problems
 
 If a Python container cannot import LabPulse modules, rerun setup so
-`labpulse_common/` and `labpulse_sms/` are copied into `labpulse-python/`.
+`labpulse_common/`, `labpulse_hardware/`, and `labpulse_sms/` are copied into
+`labpulse-python/`.
 
 If generated Home Assistant files cannot be written, the live folder may be
 owned by root from an earlier sudo run. Fix ownership:

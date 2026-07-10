@@ -28,13 +28,13 @@ labpulse-<service>
   One Python container per enabled sensor hub
 ```
 
-Each sensor container runs the same Python entry point with a different service
-key:
+Each sensor container runs the hardware package entry point with a different
+service key:
 
 ```bash
-python main.py --service pressure_monitor
-python main.py --service pump_room
-python main.py --service turbo_pump
+python -m labpulse_hardware.runner --service pressure_monitor
+python -m labpulse_hardware.runner --service pump_room
+python -m labpulse_hardware.runner --service turbo_pump
 ```
 
 The service key selects one entry under `services:` in `config.yaml`.
@@ -91,6 +91,9 @@ It creates or refreshes:
   generate_compose.sh
   generate_homeassistant_config.sh
   labpulse-python/
+    labpulse_common/
+    labpulse_hardware/
+    labpulse_sms/
   labpulse_homeassistant/
   homeassistant/config/
   mosquitto/
@@ -223,8 +226,13 @@ Use this table when deciding where a change belongs:
 | Change displayed hub/reading label | `~/labpulse-ha/config.yaml` |
 | Change section order or icon | `~/labpulse-ha/config.yaml` |
 | Add a container mount or command rule | `generate_compose.sh` |
-| Change parser behavior | `labpulse_common/parser.py` |
-| Change MQTT discovery IDs/topics | `labpulse_common/homeassistant_mqtt.py` and `labpulse_homeassistant/model.py` |
+| Change shared config validation | `labpulse_common/config.py` |
+| Change shared identity rules | `labpulse_common/identity.py` |
+| Change shared MQTT topics/contracts | `labpulse_common/mqtt_contracts.py` |
+| Change a hardware driver | `labpulse_hardware/drivers/` |
+| Change temporary serial parsing | `labpulse_hardware/legacy_parsing/serial_parser.py` |
+| Change MQTT discovery publishing | `labpulse_hardware/homeassistant_publisher.py` |
+| Change Home Assistant entity modelling | `labpulse_homeassistant/model.py` |
 | Change live dashboard arrangement | Home Assistant UI |
 | Change reset dashboard starter layout | `labpulse_homeassistant/templates/dashboard_seed.yaml` |
 | Change generated alarm helpers/automations | `labpulse_homeassistant/templates/alarm_logic.yaml` |

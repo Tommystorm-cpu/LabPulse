@@ -146,11 +146,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
 COPY labpulse_common ./labpulse_common
+COPY labpulse_hardware ./labpulse_hardware
 COPY labpulse_sms ./labpulse_sms
 
-CMD ["python", "main.py", "--service", "pressure_monitor"]
+CMD ["python", "-m", "labpulse_hardware.runner", "--service", "pressure_monitor"]
 EOF
 
 # Keep the runtime dependency list small for Raspberry Pi builds.
@@ -162,7 +162,6 @@ pyserial
 EOF
 
 # Copy the scripts and Python service code that the live Compose project uses.
-copy_file "$SCRIPT_DIR/main.py" "$PROJECT_DIR/labpulse-python/main.py"
 copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
@@ -170,7 +169,10 @@ chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
 replace_dir "$SCRIPT_DIR/labpulse_homeassistant" "$PROJECT_DIR/labpulse_homeassistant"
 find "$PROJECT_DIR/labpulse_homeassistant" -type d -name "__pycache__" -prune -exec rm -rf {} +
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
+replace_dir "$SCRIPT_DIR/labpulse_hardware" "$PROJECT_DIR/labpulse-python/labpulse_hardware"
 replace_dir "$SCRIPT_DIR/labpulse_sms" "$PROJECT_DIR/labpulse-python/labpulse_sms"
+find "$PROJECT_DIR/labpulse-python" -type d -name "__pycache__" -prune -exec rm -rf {} +
+rm -f "$PROJECT_DIR/labpulse-python/main.py"
 
 # Preserve the live user-edited config if it exists. The repo config is only a
 # starter template for new installations.
@@ -197,14 +199,9 @@ text = text.replace("broker: localhost", "broker: mosquitto")
 
 if fake_usb:
     replacements = {
-        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_03536383236351403122-if00"':
-            'serial_port: "/tmp/labpulse-fake-serial/pump_room"',
-        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635131E2C3-if00"':
-            'serial_port: "/tmp/labpulse-fake-serial/pressure"',
-        'serial_port: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_0353638323635140B172-if00"':
-            'serial_port: "/tmp/labpulse-fake-serial/turbo_pump"',
-        'serial_port: "/dev/serial/by-id/..."':
-            'serial_port: "/tmp/labpulse-fake-serial/pressure"',
+      "FAKE_PUMP_ROOM_PORT": "/tmp/labpulse-fake-serial/pump_room",
+      "FAKE_PRESSURE_PORT": "/tmp/labpulse-fake-serial/pressure",
+      "FAKE_TURBO_PUMP_PORT": "/tmp/labpulse-fake-serial/turbo_pump",
     }
     for source, replacement in replacements.items():
         text = text.replace(source, replacement, 1)
@@ -248,6 +245,8 @@ Created/updated:
   $PROJECT_DIR/homeassistant/config/.storage/lovelace
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/
+  $PROJECT_DIR/labpulse-python/labpulse_common/
+  $PROJECT_DIR/labpulse-python/labpulse_hardware/
   $PROJECT_DIR/labpulse-python/labpulse_sms/
   $PROJECT_DIR/logs/
 

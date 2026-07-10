@@ -73,7 +73,7 @@ def automations(seed: dict[str, Any], model: RenderModel) -> list[dict[str, obje
     result = []
     rules = seed["automations"]
     for service, reading in model.readings:
-        context = {"service": service, "reading": reading}
+        context = {"service": service, "reading": reading, "model": model}
         result.extend(expand_template(item, context) for item in rules.get("reading", []))
     return result
 

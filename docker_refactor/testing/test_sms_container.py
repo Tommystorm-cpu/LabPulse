@@ -9,7 +9,8 @@ sys.path.insert(0, str(REFACTOR_DIR))
 from labpulse_common.config import MqttConfig
 from labpulse_sms.sender import LogSmsSender, MmcliSmsSender, format_sms_message, quote_mmcli_value
 from labpulse_sms.sms_entry import DEFAULT_CONFIG_PATH, parse_args
-from labpulse_sms.sms_subscriber import SMS_TOPIC, SMSSubscriber, parse_sms_payload
+from labpulse_common.mqtt_contracts import SMS_SUBSCRIPTION_TOPIC
+from labpulse_sms.sms_subscriber import SMSSubscriber, parse_sms_payload
 
 
 class FakeSmsClient:
@@ -62,6 +63,7 @@ def test_setup_copies_sms_package_into_image() -> None:
     """Check setup copies the SMS package into the Docker build context."""
 
     setup_script = (REFACTOR_DIR / "setup_container_fs.sh").read_text(encoding="utf-8")
+    assert_contains(setup_script, "COPY labpulse_hardware ./labpulse_hardware", "Dockerfile copies hardware package")
     assert_contains(setup_script, "COPY labpulse_sms ./labpulse_sms", "Dockerfile copies SMS package")
     assert_contains(
         setup_script,
@@ -76,7 +78,8 @@ def test_compose_generates_one_sms_container() -> None:
     compose_script = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
     assert_contains(compose_script, "labpulse-sms:", "SMS service")
     assert_contains(compose_script, "container_name: labpulse-sms", "SMS container name")
-    assert_contains(compose_script, '["python", "labpulse_sms/sms_entry.py"', "SMS entry command")
+    assert_contains(compose_script, '["python", "-m", "labpulse_sms.sms_entry"', "SMS entry command")
+    assert_contains(compose_script, 'labpulse_hardware.runner', "hardware module command")
     assert_contains(compose_script, 'sms_backend = str(sms_config.get("backend", "log")).lower()', "SMS backend read")
     assert_contains(compose_script, "- /run/dbus:/run/dbus:ro", "mmcli D-Bus mount")
 
@@ -112,7 +115,7 @@ def test_sms_subscriber_subscribes_to_sms_topic() -> None:
         raise AssertionError("message callback should be registered")
 
     subscriber.on_connect(fake_client, None, None, 0, None)
-    assert_equal(fake_client.subscriptions, [SMS_TOPIC], "SMS topic subscription")
+    assert_equal(fake_client.subscriptions, [SMS_SUBSCRIPTION_TOPIC], "SMS topic subscription")
 
 
 def test_sms_payload_parser_keeps_service_and_reading() -> None:

@@ -3,8 +3,8 @@ import time
 
 import serial
 
-from labpulse_common.parser import SerialParser
-from labpulse_common.sensor_base import BaseSensorDriver
+from labpulse_hardware.drivers.base import BaseSensorDriver
+from labpulse_hardware.legacy_parsing.serial_parser import SerialParser
 
 class Driver(BaseSensorDriver):
     """

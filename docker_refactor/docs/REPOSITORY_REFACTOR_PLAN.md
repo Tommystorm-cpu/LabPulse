@@ -1,5 +1,9 @@
 # Repository Refactor Plan
 
+Status: implemented on 10 July 2026. The package layout, shared contracts,
+module entry points, tests, deployment generators, and documentation described
+below are now the current repository structure.
+
 ## Objective
 
 Reorganise `docker_refactor/` around three clear responsibilities without

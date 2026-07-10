@@ -76,7 +76,7 @@ Once it exists, Home Assistant owns it.
 | Change what a fresh/reset dashboard looks like | `dashboard_seed.yaml` |
 | Change threshold helper names/defaults/ranges | `alarm_logic.yaml` and sometimes `model.py` |
 | Add mute controls, deadband, or extra alarm conditions | `alarm_logic.yaml` |
-| Change default entity IDs | `homeassistant_mqtt.py`, `model.py`, and tests |
+| Change default entity IDs | `labpulse_common/identity.py` and contract tests |
 | Change dashboard section names/order/icons | `~/labpulse-ha/config.yaml` |
 | Change live threshold values | Home Assistant dashboard helpers |
 

@@ -1,9 +1,7 @@
 from pathlib import Path
 import sys
 
-import yaml
-
-from .model import GeneratorOptions, GeneratorPaths, JsonDict
+from .model import GeneratorOptions, GeneratorPaths
 
 
 def parse_args(argv: list[str]) -> tuple[GeneratorPaths, GeneratorOptions]:
@@ -26,13 +24,3 @@ def parse_args(argv: list[str]) -> tuple[GeneratorPaths, GeneratorOptions]:
             reset_dashboard=argv[3] == "1",
         ),
     )
-
-
-def load_labpulse_config(config_path: Path) -> JsonDict:
-    """Read the LabPulse YAML config file and return an empty dict if blank."""
-
-    if not config_path.exists():
-        print(f"ERROR: config file does not exist: {config_path}", file=sys.stderr)
-        sys.exit(1)
-
-    return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}

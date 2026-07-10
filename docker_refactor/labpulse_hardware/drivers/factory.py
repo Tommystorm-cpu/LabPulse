@@ -3,8 +3,8 @@
 import logging
 
 from labpulse_common.config import ServiceConfig
-from labpulse_common.drivers.serial_driver import Driver as SerialDriver
-from labpulse_common.sensor_base import BaseSensorDriver
+from labpulse_hardware.drivers.base import BaseSensorDriver
+from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
 class SensorFactory:
     """

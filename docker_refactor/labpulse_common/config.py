@@ -8,6 +8,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from labpulse_common.identity import title
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
 logger = logging.getLogger("Config")
@@ -37,6 +39,12 @@ class ReadingConfig(BaseModel):
     device_class: str | None = None
     state_class: str | None = "measurement"
 
+    @property
+    def display_label(self) -> str:
+        """Return the configured label or the shared readable-name fallback."""
+
+        return self.label or title(self.name)
+
 class DisplayConfig(BaseModel):
     """Dashboard display hints for one LabPulse service."""
 
@@ -56,6 +64,24 @@ class ServiceConfig(BaseModel):
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     readings: list[ReadingConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
+
+    @property
+    def display_label(self) -> str:
+        """Return the user-facing label for this hardware service."""
+
+        return self.device_name
+
+    @property
+    def dashboard_section(self) -> str:
+        """Return the normalized Home Assistant dashboard section label."""
+
+        return self.display.section or self.display_label
+
+    @property
+    def dashboard_icon(self) -> str:
+        """Return the normalized Home Assistant dashboard section icon."""
+
+        return self.display.icon or "mdi:chip"
 
 class LabPulseConfig(BaseModel):
     """Validated top-level LabPulse configuration object."""

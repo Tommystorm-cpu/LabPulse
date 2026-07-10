@@ -15,6 +15,9 @@ If you are new to this folder, read in this order:
 4. [HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md](HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md) - how dashboard layout and alarm automations are generated and edited.
 5. [CODE_READING_GUIDE.md](CODE_READING_GUIDE.md) - code-level guide to every module and execution path.
 
+The implemented package-boundary design and acceptance criteria are recorded
+in [REPOSITORY_REFACTOR_PLAN.md](REPOSITORY_REFACTOR_PLAN.md).
+
 ## Task Guides
 
 - [CONTAINER_SETUP.md](CONTAINER_SETUP.md) explains the generated `~/labpulse-ha/` filesystem and Docker Compose project.

@@ -6,7 +6,7 @@ from typing import Any
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
-from labpulse_common.parser import SerialParser
+from labpulse_hardware.legacy_parsing.serial_parser import SerialParser
 
 
 TEST_CASES = [

@@ -26,13 +26,14 @@ python3 -m labpulse_homeassistant.generator
 
 `generator.py`
 
-Coordinates the generation flow: read config, normalize the render model, and
-render files.
+Coordinates the generation flow: load the shared validated config, normalize
+the render model, and render files.
 
 `config_io.py`
 
-Reads command-line arguments passed by `generate_homeassistant_config.sh` and
-loads the LabPulse YAML config.
+Reads command-line arguments and resolves paths passed by
+`generate_homeassistant_config.sh`. Configuration loading belongs to
+`labpulse_common.config`.
 
 `model.py`
 
@@ -99,7 +100,7 @@ Marks this folder as a Python package.
 generate_homeassistant_config.sh
   -> python3 -m labpulse_homeassistant.generator
     -> config_io.parse_args()
-    -> config_io.load_labpulse_config()
+    -> labpulse_common.config.load_config()
     -> model.build_render_model()
     -> render.render_all()
       -> alarm.package_context()

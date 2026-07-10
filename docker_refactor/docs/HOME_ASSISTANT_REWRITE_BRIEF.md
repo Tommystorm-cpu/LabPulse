@@ -54,7 +54,7 @@ generate_homeassistant_config.sh
   -> check config directory is writable
   -> python3 -m labpulse_homeassistant.generator
     -> config_io.parse_args()
-    -> config_io.load_labpulse_config()
+    -> labpulse_common.config.load_config()
     -> model.build_render_model()
     -> render.render_all()
       -> alarm.package_context()
@@ -83,7 +83,8 @@ labpulse_homeassistant/
 
 ## Model Layer
 
-`model.py` converts raw YAML dictionaries into dataclasses:
+`model.py` converts the shared validated `LabPulseConfig` into Home
+Assistant-specific render dataclasses:
 
 ```text
 GeneratorPaths
@@ -132,7 +133,7 @@ active-alert memory:
 The MQTT publisher must generate matching IDs in:
 
 ```text
-labpulse_common/homeassistant_mqtt.py
+labpulse_hardware/homeassistant_publisher.py
 ```
 
 If these two sides drift, dashboards and automations will point at entities
@@ -272,7 +273,7 @@ When changing generator behavior, check:
 ```text
 testing/test_homeassistant_generator.py
 testing/test_homeassistant_entities.py
-testing/test_homeassistant_mqtt.py
+testing/test_homeassistant_publisher.py
 ```
 
 Use tests as executable contracts for:

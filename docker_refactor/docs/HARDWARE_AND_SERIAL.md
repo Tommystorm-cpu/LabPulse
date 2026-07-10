@@ -86,7 +86,7 @@ an enabled service's `serial_port` starts with `/tmp/labpulse-fake-serial`.
 Arduino serial text must parse into keys that match `config.yaml`:
 
 ```text
-serial text -> parser.py -> {"reading_name": value}
+serial text -> legacy_parsing/serial_parser.py -> {"reading_name": value}
 ```
 
 The output key must exist in:
@@ -96,7 +96,9 @@ readings:
   - name: "reading_name"
 ```
 
-Unconfigured keys are ignored by MQTT publishing.
+Unconfigured keys are ignored by MQTT publishing. This parser is an isolated
+compatibility layer; new Arduino firmware should move toward one consistent,
+machine-readable output contract so it can eventually be removed.
 
 ## Pressure Arduino
 

@@ -11,6 +11,8 @@ sys.dont_write_bytecode = True
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
+from labpulse_common.config import LabPulseConfig
+from labpulse_common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
 from labpulse_homeassistant.model import GeneratorOptions, GeneratorPaths, build_render_model
 from labpulse_homeassistant.render import render_all
 
@@ -26,9 +28,13 @@ def sample_config() -> dict[str, object]:
     """Return a minimal LabPulse config with one enabled service."""
 
     return {
+        "mqtt": {"broker": "mosquitto"},
         "services": {
             "pressure_monitor": {
                 "enabled": True,
+                "driver": "serial",
+                "parser": "pressure",
+                "serial_port": "/tmp/labpulse-fake-serial/pressure",
                 "device_name": "Air Pressure Sensor Hub",
                 "display": {"section": "Air Pressure", "icon": "mdi:gauge", "order": 40},
                 "readings": [
@@ -50,7 +56,8 @@ def render_into(temp_dir: Path, reset_dashboard: bool) -> GeneratorPaths:
     config_path = temp_dir / "config.yaml"
     config_path.write_text(yaml.safe_dump(sample_config(), sort_keys=False), encoding="utf-8")
     paths = GeneratorPaths(config_path=config_path, ha_config_dir=temp_dir / "homeassistant" / "config")
-    render_all(paths, GeneratorOptions(reset_dashboard=reset_dashboard), build_render_model(sample_config()))
+    config = LabPulseConfig(**sample_config())
+    render_all(paths, GeneratorOptions(reset_dashboard=reset_dashboard), build_render_model(config))
     return paths
 
 
@@ -101,7 +108,11 @@ def test_generated_package_and_entity_map() -> None:
     assert_equal(package["automation"][0]["action"][0]["service"], "input_boolean.turn_on", "alert toggles memory")
     sms_action = package["automation"][0]["action"][2]
     assert_equal(sms_action["service"], "mqtt.publish", "alert publishes SMS MQTT")
-    assert_equal(sms_action["data"]["topic"], "labpulse/sms/send", "SMS MQTT topic")
+    assert_equal(sms_action["data"]["topic"], SMS_SEND_TOPIC, "SMS MQTT topic")
+    sms_payload = sms_action["data"]["payload"]
+    for field in SMS_ALERT_PAYLOAD_FIELDS:
+        if f'"{field}"' not in sms_payload:
+            raise AssertionError(f"SMS payload is missing contract field {field!r}")
     sms_payload = sms_action["data"]["payload"]
     if '"service": "pressure_monitor"' not in sms_payload:
         raise AssertionError("SMS payload should include service key")

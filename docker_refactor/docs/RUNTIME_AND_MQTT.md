@@ -25,7 +25,7 @@ labpulse-pressure-monitor
 Container command:
 
 ```bash
-python main.py --service pressure_monitor
+python -m labpulse_hardware.runner --service pressure_monitor
 ```
 
 The same code runs for every sensor hub. The `--service` value selects the
@@ -33,7 +33,7 @@ service-specific config.
 
 ## Entry Point Flow
 
-`main.py` owns orchestration:
+`labpulse_hardware/runner.py` owns orchestration:
 
 ```text
 parse command-line args
@@ -53,12 +53,12 @@ finally:
   disconnect driver and MQTT client
 ```
 
-`main.py` should stay boring. It should not contain parser details, Home
+The runner should stay boring. It should not contain parser details, Home
 Assistant YAML details, threshold logic, or SMS delivery logic.
 
 ## Serial Driver
 
-`labpulse_common/drivers/serial_driver.py` owns:
+`labpulse_hardware/drivers/serial_driver.py` owns:
 
 - opening the configured serial path
 - reconnecting after failures
@@ -85,7 +85,8 @@ disconnected, and tries again after `reconnect_interval_seconds`.
 
 ## Parser Contract
 
-`labpulse_common/parser.py` turns Arduino text into:
+`labpulse_hardware/legacy_parsing/serial_parser.py` temporarily turns legacy
+Arduino text into:
 
 ```python
 dict[str, float]
@@ -209,19 +210,26 @@ stable ID = labpulse_pressure_monitor_pressure
 entity ID = sensor.labpulse_pressure_monitor_pressure
 ```
 
-The Home Assistant generator independently predicts the same IDs in:
+Both sides use the shared identity functions in:
+
+```text
+labpulse_common/identity.py
+```
+
+The Home Assistant generator builds entity references in:
 
 ```text
 labpulse_homeassistant/model.py
 ```
 
-The MQTT publisher generates them in:
+The hardware MQTT publisher uses them in:
 
 ```text
-labpulse_common/homeassistant_mqtt.py
+labpulse_hardware/homeassistant_publisher.py
 ```
 
-If you change ID rules, update both files and the tests.
+If you change ID rules, change the shared helper and update both contract test
+suites.
 
 ## Entity Map
 

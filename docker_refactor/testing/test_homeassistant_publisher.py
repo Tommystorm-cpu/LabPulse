@@ -9,7 +9,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import MqttConfig, ServiceConfig
-from labpulse_common.homeassistant_mqtt import HomeAssistantMqttPublisher
+from labpulse_hardware.homeassistant_publisher import HomeAssistantMqttPublisher
 
 
 class FakeMqttClient:

@@ -4,11 +4,11 @@ from typing import Any
 import re
 
 
-PLACEHOLDER_PATTERN = re.compile(r"\{(service|reading)\.([a-zA-Z0-9_.]+)\}")
+PLACEHOLDER_PATTERN = re.compile(r"\{(service|reading|model)\.([a-zA-Z0-9_.]+)\}")
 
 
 def expand_template(value: Any, context: dict[str, object]) -> Any:
-    """Expand `{service.foo}` and `{reading.foo}` placeholders in seed data."""
+    """Expand supported dotted placeholders in seed data."""
 
     if isinstance(value, dict):
         return {

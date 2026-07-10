@@ -1,16 +1,18 @@
-"""Publish LabPulse readings to Home Assistant via MQTT discovery."""
+"""Hand hardware readings to Home Assistant through MQTT discovery/state."""
 
 import json
 import logging
-import re
 
 import paho.mqtt.client as mqtt
 
 from labpulse_common.config import MqttConfig, ReadingConfig, ServiceConfig
-
-
-DISCOVERY_PREFIX = "homeassistant"
-STATE_TOPIC_PREFIX = "home/sensor"
+from labpulse_common.identity import entity_id, stable_id
+from labpulse_common.mqtt_contracts import (
+    sensor_discovery_topic,
+    sensor_state_topic,
+    service_status_topic,
+    status_discovery_topic,
+)
 
 
 class HomeAssistantMqttPublisher:
@@ -119,7 +121,7 @@ class HomeAssistantMqttPublisher:
                 "name": self.reading_label(reading_name, reading_config),
                 "state_topic": self.state_topic(reading_name),
                 "unique_id": self.discovery_id(reading_name),
-                "object_id": self.object_id(reading_name, reading_config),
+                "object_id": self.object_id(reading_name),
                 "default_entity_id": self.default_entity_id(reading_name),
                 "device": {
                     "identifiers": [self.service_name],
@@ -157,28 +159,28 @@ class HomeAssistantMqttPublisher:
 
     def state_topic(self, reading_name: str) -> str:
         """Return the MQTT state topic for one reading."""
-        return f"{STATE_TOPIC_PREFIX}/{self.service_name}/{reading_name}/state"
+        return sensor_state_topic(self.service_name, reading_name)
 
     def status_topic(self) -> str:
         """Return the MQTT state topic for this service's health status."""
 
-        return f"{STATE_TOPIC_PREFIX}/{self.service_name}/status"
+        return service_status_topic(self.service_name)
 
     def discovery_topic(self, reading_name: str) -> str:
         """Return the Home Assistant discovery topic for one reading."""
-        return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_{reading_name}/config"
+        return sensor_discovery_topic(self.service_name, reading_name)
 
     def status_discovery_topic(self) -> str:
         """Return the Home Assistant discovery topic for service status."""
 
-        return f"{DISCOVERY_PREFIX}/sensor/{self.service_name}_status/config"
+        return status_discovery_topic(self.service_name)
 
     def discovery_id(self, reading_name: str) -> str:
         """Return the stable LabPulse MQTT discovery and object identifier."""
 
-        return f"labpulse_{slug(self.service_name)}_{slug(reading_name)}"
+        return stable_id(self.service_name, reading_name)
 
-    def object_id(self, reading_name: str, reading_config: ReadingConfig | None = None) -> str:
+    def object_id(self, reading_name: str) -> str:
         """Return the Home Assistant object ID for one discovered entity.
 
         The object ID intentionally matches the stable discovery ID so Home
@@ -196,7 +198,7 @@ class HomeAssistantMqttPublisher:
         entity IDs predictable.
         """
 
-        return f"sensor.{self.discovery_id(reading_name)}"
+        return entity_id("sensor", self.service_name, reading_name)
 
     def reading_config_for(self, reading_name: str) -> ReadingConfig | None:
         """Return configured metadata for a published reading name."""
@@ -208,16 +210,13 @@ class HomeAssistantMqttPublisher:
         return None
 
     @staticmethod
-    def reading_label(reading_name: str, reading_config) -> str:
+    def reading_label(
+        reading_name: str,
+        reading_config: ReadingConfig | None,
+    ) -> str:
         """Return the configured label, or a title-cased fallback."""
 
-        if reading_config and reading_config.label:
-            return reading_config.label
+        if reading_config:
+            return reading_config.display_label
 
         return reading_name.replace("_", " ").title()
-
-
-def slug(value: str) -> str:
-    """Return a Home Assistant-safe lowercase identifier."""
-
-    return re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()

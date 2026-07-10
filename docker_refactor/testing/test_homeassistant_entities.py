@@ -6,7 +6,9 @@ sys.dont_write_bytecode = True
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
-from labpulse_homeassistant.model import build_render_model, stable_id
+from labpulse_common.config import LabPulseConfig
+from labpulse_common.identity import stable_id
+from labpulse_homeassistant.model import build_render_model
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -16,13 +18,17 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
-def sample_config() -> dict[str, object]:
+def sample_config() -> LabPulseConfig:
     """Return a small LabPulse config for render-model tests."""
 
-    return {
+    return LabPulseConfig(**{
+        "mqtt": {"broker": "mosquitto"},
         "services": {
             "pump_room": {
                 "enabled": True,
+                "driver": "serial",
+                "parser": "pump_room",
+                "serial_port": "/tmp/labpulse-fake-serial/pump_room",
                 "device_name": "Pump Room Sensor Hub",
                 "display": {"section": "Pump Room", "icon": "mdi:water-pump", "order": 10},
                 "readings": [
@@ -32,11 +38,14 @@ def sample_config() -> dict[str, object]:
             },
             "disabled_service": {
                 "enabled": False,
+                "driver": "serial",
+                "parser": "pressure",
+                "serial_port": "/tmp/labpulse-fake-serial/disabled",
                 "device_name": "Disabled",
                 "readings": [{"name": "ignored"}],
             },
         }
-    }
+    })
 
 
 def test_stable_id_prefix() -> None:

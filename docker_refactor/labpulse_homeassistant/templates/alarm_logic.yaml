@@ -13,6 +13,7 @@
 # - {service.label}, {service.service_id}, {service.alert_delay_entity}
 # - {reading.label}, {reading.expected_entity_id}, {reading.alarm_entity_id}
 # - {reading.threshold.minimum}, {reading.threshold.range_max}, etc.
+# - {model.sms_send_topic}
 
 input_numbers:
   service:
@@ -102,7 +103,7 @@ automations:
             notification_id: "labpulse_{reading.reading_id}_status"
         - service: mqtt.publish
           data:
-            topic: labpulse/sms/send
+            topic: "{model.sms_send_topic}"
             qos: 1
             retain: false
             payload: >

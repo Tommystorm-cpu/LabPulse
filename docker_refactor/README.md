@@ -8,6 +8,11 @@ It runs:
 - One `labpulse-sms` container for alert delivery.
 - One Python sensor container for each enabled sensor hub in `config.yaml`.
 
+Source ownership is split between `labpulse_common` (shared validated config
+and contracts), `labpulse_hardware` (drivers and MQTT publishing),
+`labpulse_homeassistant` (dashboard/alarm generation), and `labpulse_sms`
+(alert delivery).
+
 The live Raspberry Pi system is generated into:
 
 ```text
