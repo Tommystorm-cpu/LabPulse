@@ -35,7 +35,7 @@ class ReadingConfig(BaseModel):
     label: str | None = None
     unit: str | None = None
     device_class: str | None = None
-    state_class: str | None = None
+    state_class: str | None = "measurement"
 
 class DisplayConfig(BaseModel):
     """Dashboard display hints for one LabPulse service."""

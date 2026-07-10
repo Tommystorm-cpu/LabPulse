@@ -301,8 +301,9 @@ pressure
 humidity
 ```
 
-`state_class` can also be supplied when a reading should opt into Home
-Assistant long-term statistics behavior.
+`state_class` defaults to `measurement`, opting current readings into Home
+Assistant long-term statistics. Set it explicitly to another valid Home
+Assistant state class when needed, or to `null` to omit it from MQTT discovery.
 
 ## Reconnect Interval
 

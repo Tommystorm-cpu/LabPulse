@@ -162,6 +162,7 @@ def test_publish_discovery_once_then_readings() -> None:
     assert_equal(payload["object_id"], "labpulse_pressure_monitor_pressure", "object id")
     assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_pressure", "default entity id")
     assert_equal(payload["unit_of_measurement"], "bar", "unit")
+    assert_equal(payload["state_class"], "measurement", "state class")
     assert_equal(payload["device"]["name"], "Air Pressure Sensor Hub", "device name")
 
     assert_equal(
@@ -249,6 +250,7 @@ def test_publish_discovery_for_new_readings() -> None:
                             "name": "Pump Room Sensor Hub",
                         },
                         "unit_of_measurement": "L/min",
+                        "state_class": "measurement",
                     }
                 ),
             ),
@@ -266,6 +268,7 @@ def test_publish_discovery_for_new_readings() -> None:
                             "name": "Pump Room Sensor Hub",
                         },
                         "unit_of_measurement": "\u00b0C",
+                        "state_class": "measurement",
                     }
                 ),
             ),
