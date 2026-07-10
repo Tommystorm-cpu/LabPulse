@@ -7,6 +7,8 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import ServiceConfig
+from labpulse_hardware.drivers.dht11_driver import Driver as Dht11Driver
+from labpulse_hardware.drivers.fake_dht11_driver import Driver as FakeDht11Driver
 from labpulse_hardware.drivers.factory import SensorFactory
 from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
@@ -100,17 +102,72 @@ def test_serial_config_requires_parser() -> None:
     )
 
 
-def test_gpio_slot_exists_but_is_not_implemented() -> None:
-    """Check that the GPIO factory slot exists as a placeholder."""
+def test_gpio_dht11_driver_builds() -> None:
+    """Check that a GPIO DHT11 service creates a Dht11Driver."""
 
     factory = SensorFactory()
-    service_config = make_service_config(driver="gpio", parser=None, serial_port=None)
+    service_config = make_service_config(
+        driver="gpio",
+        gpio_sensor="dht11",
+        gpio_pin="D4",
+        parser=None,
+        serial_port=None,
+        read_interval_seconds=3.0,
+        readings=[
+            {"name": "temperature", "label": "Temperature", "unit": "\u00b0C"},
+            {"name": "humidity", "label": "Humidity", "unit": "%"},
+        ],
+    )
+
+    driver = factory.build("room_environment", service_config)
+
+    assert_equal(isinstance(driver, Dht11Driver), True, "driver type")
+    assert_equal(driver.name, "room_environment", "driver name")
+    assert_equal(driver.config["pin"], "D4", "pin")
+    assert_equal(driver.config["read_interval_seconds"], 3.0, "read interval")
+
+
+def test_gpio_dht11_requires_pin() -> None:
+    """Check that DHT11 services fail clearly without gpio_pin."""
+
+    factory = SensorFactory()
+    service_config = make_service_config(
+        driver="gpio",
+        gpio_sensor="dht11",
+        gpio_pin=None,
+        parser=None,
+        serial_port=None,
+    )
 
     assert_raises(
-        NotImplementedError,
-        "GPIO driver support is not implemented yet",
-        lambda: factory.build("dht_room_sensor", service_config),
+        ValueError,
+        "missing gpio_pin",
+        lambda: factory.build("room_environment", service_config),
     )
+
+
+def test_gpio_fake_dht11_driver_builds() -> None:
+    """Check that a fake DHT11 GPIO service creates a file-backed driver."""
+
+    factory = SensorFactory()
+    service_config = make_service_config(
+        driver="gpio",
+        gpio_sensor="fake_dht11",
+        fake_state_file="/tmp/labpulse-fake-dht11/room_environment.env",
+        parser=None,
+        serial_port=None,
+        read_interval_seconds=1.5,
+        readings=[
+            {"name": "temperature", "label": "Temperature", "unit": "\u00b0C"},
+            {"name": "humidity", "label": "Humidity", "unit": "%"},
+        ],
+    )
+
+    driver = factory.build("room_environment", service_config)
+
+    assert_equal(isinstance(driver, FakeDht11Driver), True, "driver type")
+    assert_equal(driver.config["state_file"], "/tmp/labpulse-fake-dht11/room_environment.env", "state file")
+    assert_equal(driver.config["read_interval_seconds"], 1.5, "read interval")
 
 
 def test_i2c_slot_exists_but_is_not_implemented() -> None:
@@ -130,7 +187,9 @@ TESTS = [
     ("serial driver builds", test_serial_driver_builds),
     ("serial config requires port", test_serial_config_requires_port),
     ("serial config requires parser", test_serial_config_requires_parser),
-    ("gpio slot exists but is not implemented", test_gpio_slot_exists_but_is_not_implemented),
+    ("gpio DHT11 driver builds", test_gpio_dht11_driver_builds),
+    ("gpio DHT11 requires pin", test_gpio_dht11_requires_pin),
+    ("gpio fake DHT11 driver builds", test_gpio_fake_dht11_driver_builds),
     ("i2c slot exists but is not implemented", test_i2c_slot_exists_but_is_not_implemented),
 ]
 

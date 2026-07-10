@@ -60,6 +60,21 @@ cd ~/LabPulse/docker_refactor
 ./simulate_arduinos.sh
 ```
 
+To deliberately test an alarm path, pass a scenario such as:
+
+```bash
+./simulate_arduinos.sh --scenario pump_room.flow1=danger-low
+./simulate_arduinos.sh --scenario pump_room.flow1=recover
+./simulate_arduinos.sh --scenario pump_room.flow1=stale
+```
+
+While the simulator is running, change scenarios without recreating the fake
+serial devices by editing:
+
+```text
+/tmp/labpulse-fake-serial/scenarios.txt
+```
+
 Then in another terminal:
 
 ```bash

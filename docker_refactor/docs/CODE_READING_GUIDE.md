@@ -199,6 +199,8 @@ test_legacy_serial_parser.py
 test_hardware_factory.py
 test_serial_driver.py
   driver selection and behaviour
+test_dht11_driver.py
+  DHT11 GPIO setup, throttling, and read behavior
 
 test_homeassistant_publisher.py
   hardware-to-MQTT discovery and state hand-off

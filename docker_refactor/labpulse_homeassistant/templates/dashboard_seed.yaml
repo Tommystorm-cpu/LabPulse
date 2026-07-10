@@ -12,9 +12,13 @@ lovelace:
   version: 1
   minor_version: 1
   key: lovelace
-  view:
-    title: LabPulse
-    path: labpulse
+  monitor_view:
+    title: LabPulse Monitor
+    path: labpulse-monitor
+    type: sections
+  alarm_setup_view:
+    title: LabPulse Alarm Setup
+    path: labpulse-alarm-setup
     type: sections
 
 system_health:
@@ -29,7 +33,7 @@ system_health:
     grid_options:
       columns: full
 
-service_sections:
+monitor_sections:
   heading_card:
     type: heading
     heading: "{service.section}"
@@ -45,45 +49,84 @@ service_sections:
     entity: "{reading.expected_entity_id}"
     name: "{reading.label}"
     grid_options:
-      columns: 6
-  alarm_tile:
+      columns: 4
+  state_tile:
     type: tile
-    entity: "{reading.alarm_entity_id}"
-    name: Alarm
+    entity: "{reading.alarm_state_entity}"
+    name: State
     grid_options:
-      columns: 6
-  include_alarm_settings_card: true
-  include_alert_memory_card: true
+      columns: 4
+  mute_tile:
+    type: tile
+    entity: "{reading.alarm_muted_entity}"
+    name: Muted
+    grid_options:
+      columns: 4
 
-alarm_settings_card:
-  type: entities
-  title: "{service.label} Alarm Settings"
-  show_header_toggle: false
-  grid_options:
-    columns: full
-  service_rows:
-    - entity: "{service.alert_delay_entity}"
-      name: Alert delay
-    - entity: "{service.recovery_delay_entity}"
-      name: Recovery delay
-    - type: divider
-  reading_rows:
-    - entity: "{reading.expected_entity_id}"
-      name: "{reading.label} current"
-    - entity: "{reading.alarm_entity_id}"
-      name: "{reading.label} alarm"
-    - entity: "{reading.minimum_threshold_entity}"
-      name: "{reading.label} minimum"
-    - entity: "{reading.maximum_threshold_entity}"
-      name: "{reading.label} maximum"
-    - type: divider
-
-alert_memory_card:
-  type: entities
-  title: "{service.label} Alert Memory"
-  show_header_toggle: false
-  grid_options:
-    columns: full
-  reading_row:
-    entity: "{reading.active_alert_entity}"
-    name: "{reading.label}"
+alarm_setup_sections:
+  heading_card:
+    type: heading
+    heading: "{service.label} Alarm Setup"
+    heading_style: title
+    icon: mdi:tune-variant
+  controls_toggle_tile:
+    type: tile
+    entity: "{service.alarm_controls_expanded_entity}"
+    name: Show controls
+    grid_options:
+      columns: full
+  service_tuning_card:
+    type: conditional
+    conditions:
+      - entity: "{service.alarm_controls_expanded_entity}"
+        state: "on"
+    grid_options:
+      columns: full
+    card:
+      type: entities
+      title: "{service.label} Timing"
+      show_header_toggle: false
+      entities:
+        - entity: "{service.danger_ratio_percent_entity}"
+          name: Danger ratio
+        - entity: "{service.danger_window_seconds_entity}"
+          name: Danger window
+        - entity: "{service.recovery_seconds_entity}"
+          name: Recovery time
+        - entity: "{service.stale_timeout_seconds_entity}"
+          name: Stale timeout
+  reading_settings_card:
+    type: conditional
+    conditions:
+      - entity: "{service.alarm_controls_expanded_entity}"
+        state: "on"
+    grid_options:
+      columns: full
+    card:
+      type: entities
+      title: "{reading.label} Alarm"
+      show_header_toggle: false
+      entities:
+        - entity: "{reading.expected_entity_id}"
+          name: Current reading
+        - entity: "{reading.alarm_state_entity}"
+          name: Alarm state
+        - entity: "{reading.alarm_mode_entity}"
+          name: Alarm mode
+        - entity: "{reading.alarm_muted_entity}"
+          name: Muted
+        - entity: "{reading.minimum_threshold_entity}"
+          name: Minimum threshold
+        - entity: "{reading.maximum_threshold_entity}"
+          name: Maximum threshold
+        - entity: "{reading.recovery_deadband_entity}"
+          name: Recovery deadband
+        - type: divider
+        - entity: "{reading.danger_ratio_entity}"
+          name: Danger ratio
+        - entity: "{reading.danger_zone_entity}"
+          name: Danger zone
+        - entity: "{reading.recovery_zone_entity}"
+          name: Recovery zone
+        - entity: "{reading.sensor_fault_zone_entity}"
+          name: Sensor fault zone

@@ -151,6 +151,9 @@ if not fake_usb:
         str((services.get(service_name) or {}).get("serial_port", "")).startswith(
             "/tmp/labpulse-fake-serial"
         )
+        or str((services.get(service_name) or {}).get("fake_state_file", "")).startswith(
+            "/tmp/labpulse-fake-dht11"
+        )
         for service_name in enabled_services
     )
 
@@ -162,10 +165,11 @@ device_mounts = ["      - ./logs:/app/logs"]
 device_mounts.append("      - ./config.yaml:/app/config.yaml:ro")
 
 if fake_usb:
-    # Simulator mode only exposes fake serial links and /dev/pts.
+    # Simulator mode exposes fake serial links, fake DHT state, and /dev/pts.
     device_mounts.extend(
         [
             "      - /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
+            "      - /tmp/labpulse-fake-dht11:/tmp/labpulse-fake-dht11",
             "      - /dev/pts:/dev/pts",
         ]
     )

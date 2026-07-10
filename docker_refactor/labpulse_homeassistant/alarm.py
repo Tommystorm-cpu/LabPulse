@@ -18,7 +18,9 @@ def package_context(model: RenderModel) -> dict[str, str]:
     seed = load_alarm_seed()
     return {
         "input_numbers": indented_yaml(input_numbers(seed, model), 2),
+        "input_selects": indented_yaml(input_selects(seed, model), 2),
         "input_booleans": indented_yaml(input_booleans(seed, model), 2),
+        "sensors": indented_yaml(sensors(seed, model), 2),
         "binary_sensors": indented_yaml(binary_sensors(seed, model), 2),
         "automations": indented_yaml(automations(seed, model), 2),
     }
@@ -48,9 +50,35 @@ def input_booleans(seed: dict[str, Any], model: RenderModel) -> dict[str, object
 
     helpers: dict[str, object] = {}
     rules = seed["input_booleans"]
+    for service in model.services:
+        if service.readings:
+            helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
     for service, reading in model.readings:
         helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
     return helpers
+
+
+def input_selects(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+    """Return generated input_select helpers."""
+
+    helpers: dict[str, object] = {}
+    rules = seed["input_selects"]
+    for service, reading in model.readings:
+        helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
+    return helpers
+
+
+def sensors(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
+    """Return generated sensor platform entries."""
+
+    result = []
+    rules = seed["sensors"]
+    for service, reading in model.readings:
+        result.extend(
+            expand_template(item, {"service": service, "reading": reading})
+            for item in rules.get("reading", [])
+        )
+    return result
 
 
 def binary_sensors(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:

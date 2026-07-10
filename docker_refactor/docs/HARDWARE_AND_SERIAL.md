@@ -1,7 +1,8 @@
 # Hardware And Serial
 
-This guide documents Arduino serial formats, parser expectations, fake USB
-testing, and the stable USB path strategy for real hardware.
+This guide documents Arduino serial formats, DHT11 GPIO setup, parser
+expectations, fake USB testing, and the stable USB path strategy for real
+hardware.
 
 ## Serial Path Rule
 
@@ -47,6 +48,87 @@ docker compose up -d --build
 
 Real USB mode mounts `/dev` into the Python containers.
 
+## DHT11 GPIO Sensor
+
+The DHT11 driver is configured as a normal service in:
+
+```text
+~/labpulse-ha/config.yaml
+```
+
+Example:
+
+```yaml
+services:
+  room_environment:
+    enabled: true
+    driver: gpio
+    gpio_sensor: dht11
+    gpio_pin: "D4"
+    device_name: "Room Environment Sensor"
+    readings:
+      - name: "temperature"
+        label: "Temperature"
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "humidity"
+        label: "Humidity"
+        unit: "%"
+        device_class: "humidity"
+    read_interval_seconds: 2
+```
+
+`gpio_pin` is the Adafruit Blinka board pin name. The old DHT setup used `D4`,
+which maps to Raspberry Pi GPIO4.
+
+After enabling the service:
+
+```bash
+cd ~/labpulse-ha
+./generate_compose.sh
+./generate_homeassistant_config.sh
+docker compose up -d --build
+```
+
+Run without `-fake_usb` for real DHT11 testing, because the container needs
+privileged `/dev` access for GPIO.
+
+### Fake DHT11 Input
+
+On a test Pi without the DHT11 connected, use:
+
+```yaml
+services:
+  room_environment:
+    enabled: true
+    driver: gpio
+    gpio_sensor: fake_dht11
+    fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+```
+
+In fake USB mode the generated Compose file mounts:
+
+```text
+/tmp/labpulse-fake-dht11:/tmp/labpulse-fake-dht11
+```
+
+The fake driver creates the state file if it does not exist. You can change it
+while the container is running:
+
+```bash
+printf 'mode=live\ntemperature=21.5\nhumidity=48.0\n' \
+  > /tmp/labpulse-fake-dht11/room_environment.env
+
+printf 'mode=live\ntemperature=5.0\nhumidity=48.0\n' \
+  > /tmp/labpulse-fake-dht11/room_environment.env
+
+printf 'mode=stale\ntemperature=21.5\nhumidity=48.0\n' \
+  > /tmp/labpulse-fake-dht11/room_environment.env
+```
+
+`mode=live` adds a small 0.1 wobble to keep Home Assistant `last_updated`
+fresh. `mode=stale` emits fixed values for stale sensor-fault testing.
+
 ## Fake USB Serial Testing
 
 The simulator is:
@@ -77,6 +159,41 @@ Fake serial paths:
 /tmp/labpulse-fake-serial/pump_room
 /tmp/labpulse-fake-serial/turbo_pump
 ```
+
+To push a specific reading into an alarm test condition, start the simulator
+with a scenario:
+
+```bash
+./simulate_arduinos.sh --scenario pressure_monitor.pressure=danger-low
+./simulate_arduinos.sh --scenario pump_room.flow1=danger-low
+./simulate_arduinos.sh --scenario pump_room.temp0=danger-high
+./simulate_arduinos.sh --scenario pump_room.flow1=stale
+```
+
+The simulator writes those startup scenarios into a live control file:
+
+```text
+/tmp/labpulse-fake-serial/scenarios.txt
+```
+
+To change scenario without unplugging the fake serial devices, edit that file
+while the simulator is still running:
+
+```bash
+printf 'pump_room.flow1=recover\n' > /tmp/labpulse-fake-serial/scenarios.txt
+printf 'pump_room.flow1=danger-low\n' > /tmp/labpulse-fake-serial/scenarios.txt
+printf 'pump_room.flow1=stale\n' > /tmp/labpulse-fake-serial/scenarios.txt
+```
+
+Supported scenario states are `normal`, `recover`, `danger-low`, `danger-high`,
+and `stale`. Active scenarios emit changing values that stay inside the chosen
+zone, so Home Assistant does not mistake an alarm test for stale data. The
+`stale` scenario emits one valid constant value, which keeps the fake serial
+link alive while letting Home Assistant's `last_updated` age past the stale
+timeout.
+
+These only change the fake Arduino values; Home Assistant still uses its
+editable alarm mode, danger ratio window, stale timeout, and recovery timer.
 
 `generate_compose.sh` enables fake USB mounts if fake mode is requested or if
 an enabled service's `serial_port` starts with `/tmp/labpulse-fake-serial`.

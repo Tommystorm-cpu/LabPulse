@@ -145,12 +145,16 @@ This allows serial paths such as:
 
 to work inside containers.
 
+Real GPIO-backed services such as DHT11 also require real USB mode because the
+Python container needs `/dev` access and privileged GPIO access.
+
 ## Fake USB Mode
 
 Fake USB setup mounts:
 
 ```text
 /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial
+/tmp/labpulse-fake-dht11:/tmp/labpulse-fake-dht11
 /dev/pts:/dev/pts
 ```
 
@@ -173,6 +177,12 @@ Install `socat` if needed:
 
 ```bash
 sudo apt install socat -y
+```
+
+Fake USB mode also supports file-backed DHT11 input through:
+
+```text
+/tmp/labpulse-fake-dht11/room_environment.env
 ```
 
 ## SMS Container Mounts
@@ -204,6 +214,23 @@ privileged: true
 so `mmcli` inside the container can talk to host ModemManager.
 
 Regenerate Compose after changing `sms.backend`.
+
+## Python Runtime Dependencies
+
+The generated LabPulse Python image installs:
+
+```text
+paho-mqtt
+pydantic
+pyyaml
+pyserial
+adafruit-blinka
+adafruit-circuitpython-dht
+lgpio
+```
+
+The Adafruit and `lgpio` packages are needed for the DHT11 GPIO driver on the
+Raspberry Pi.
 
 ## Home Assistant Container
 

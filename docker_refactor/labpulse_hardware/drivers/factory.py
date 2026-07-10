@@ -4,6 +4,8 @@ import logging
 
 from labpulse_common.config import ServiceConfig
 from labpulse_hardware.drivers.base import BaseSensorDriver
+from labpulse_hardware.drivers.dht11_driver import Driver as Dht11Driver
+from labpulse_hardware.drivers.fake_dht11_driver import Driver as FakeDht11Driver
 from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
 class SensorFactory:
@@ -57,10 +59,20 @@ class SensorFactory:
         service_config: ServiceConfig,
     ) -> BaseSensorDriver:
         """
-        Placeholder for Raspberry Pi GPIO-backed services.
+        Build a Raspberry Pi GPIO-backed service driver.
         """
-        raise NotImplementedError(
-            f"GPIO driver support is not implemented yet for service '{service_name}'."
+        if service_config.gpio_sensor == "dht11":
+            driver_config = self._build_dht11_driver_config(service_name, service_config)
+            self.logger.info("Loaded DHT11 GPIO driver for %s", service_name)
+            return Dht11Driver(name=service_name, config=driver_config)
+
+        if service_config.gpio_sensor == "fake_dht11":
+            driver_config = self._build_fake_dht11_driver_config(service_name, service_config)
+            self.logger.info("Loaded fake DHT11 GPIO driver for %s", service_name)
+            return FakeDht11Driver(name=service_name, config=driver_config)
+
+        raise ValueError(
+            f"GPIO service '{service_name}' must set gpio_sensor to a supported value: dht11, fake_dht11"
         )
 
     def _build_i2c_driver(
@@ -96,4 +108,32 @@ class SensorFactory:
             "baud_rate": service_config.baud_rate,
             "parser": service_config.parser,
             "reconnect_interval_seconds": service_config.reconnect_interval_seconds,
+        }
+
+    def _build_dht11_driver_config(
+        self,
+        service_name: str,
+        service_config: ServiceConfig,
+    ) -> dict[str, object]:
+        """Convert service config into dht11_driver.py's config shape."""
+
+        if not service_config.gpio_pin:
+            raise ValueError(f"DHT11 GPIO service '{service_name}' is missing gpio_pin")
+
+        return {
+            "pin": service_config.gpio_pin,
+            "read_interval_seconds": service_config.read_interval_seconds or 2.0,
+        }
+
+    def _build_fake_dht11_driver_config(
+        self,
+        service_name: str,
+        service_config: ServiceConfig,
+    ) -> dict[str, object]:
+        """Convert service config into fake_dht11_driver.py's config shape."""
+
+        state_file = service_config.fake_state_file or f"/tmp/labpulse-fake-dht11/{service_name}.env"
+        return {
+            "state_file": state_file,
+            "read_interval_seconds": service_config.read_interval_seconds or 2.0,
         }

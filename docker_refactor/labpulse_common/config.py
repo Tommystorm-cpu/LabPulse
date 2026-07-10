@@ -57,6 +57,9 @@ class ServiceConfig(BaseModel):
 
     enabled: bool = True
     driver: Literal["serial", "gpio", "i2c"]
+    gpio_sensor: Literal["dht11", "fake_dht11"] | None = None
+    gpio_pin: str | None = None
+    fake_state_file: str | None = None
     parser: str | None = None
     serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
@@ -64,6 +67,7 @@ class ServiceConfig(BaseModel):
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     readings: list[ReadingConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
+    read_interval_seconds: float | None = Field(default=None, gt=0)
 
     @property
     def display_label(self) -> str:

@@ -84,18 +84,27 @@ def entity_map(model: RenderModel) -> dict[str, object]:
             "status": {
                 "mqtt_unique_id": service.status_unique_id,
                 "expected_entity_id": service.status_entity_id,
-            }
+            },
+            "alarm_controls_expanded": service.alarm_controls_expanded_entity,
         }
         for reading in service.readings:
             service_map[reading.name] = {
                 "mqtt_unique_id": reading.mqtt_unique_id,
                 "expected_entity_id": reading.expected_entity_id,
-                "alarm_entity_id": reading.alarm_entity_id,
-                "active_alert": reading.active_alert_entity,
+                "alarm_state": reading.alarm_state_entity,
+                "alarm_mode": reading.alarm_mode_entity,
+                "alarm_muted": reading.alarm_muted_entity,
                 "minimum_threshold": reading.minimum_threshold_entity,
                 "maximum_threshold": reading.maximum_threshold_entity,
-                "alert_delay": service.alert_delay_entity,
-                "recovery_delay": service.recovery_delay_entity,
+                "recovery_deadband": reading.recovery_deadband_entity,
+                "danger_zone": reading.danger_zone_entity,
+                "recovery_zone": reading.recovery_zone_entity,
+                "sensor_fault_zone": reading.sensor_fault_zone_entity,
+                "danger_ratio": reading.danger_ratio_entity,
+                "danger_ratio_percent": service.danger_ratio_percent_entity,
+                "danger_window_seconds": service.danger_window_seconds_entity,
+                "recovery_seconds": service.recovery_seconds_entity,
+                "stale_timeout_seconds": service.stale_timeout_seconds_entity,
             }
         result[service.name] = service_map
     return result

@@ -62,7 +62,7 @@ and automations.
 
 `template_utils.py`
 
-Expands placeholders such as `{service.label}` and `{reading.alarm_entity_id}`
+Expands placeholders such as `{service.label}` and `{reading.alarm_state_entity}`
 inside editable seed YAML files. Home Assistant Jinja like `{{ states(...) }}`
 is left intact.
 
@@ -79,16 +79,17 @@ Contains the readable Home Assistant artifacts:
 
 `dashboard_seed.yaml` is the file to edit when changing the initial dashboard
 layout created by `--reset-dashboard`. It contains card templates such as the
-system-health section, per-service heading/status tiles, reading/alarm tile
-rules, alarm settings cards, and the optional alert-memory card. The Python
-code only expands placeholders such as `{service.section}` and
-`{reading.expected_entity_id}`.
+system-health section, per-service heading/status tiles, monitor reading/state
+tiles, and alarm setup cards. The Alarm Setup view uses a generated native
+`Show controls` toggle per service plus native conditional cards so timing and
+per-reading controls can be hidden until needed. The Python code only expands
+placeholders such as `{service.section}` and `{reading.expected_entity_id}`.
 
 `alarm_logic.yaml` is the file to edit when changing generated alarm behavior.
-It contains the seed rules for threshold helpers, alert-memory booleans,
-template alarm binary sensors, and alert/recovery automations. Future features
-such as mute controls, re-arm timers, trigger-reset deadbands, or alternate
-notification services should usually start as edits to this YAML file.
+It contains the seed rules for threshold/deadband helpers, alarm
+state/mode/mute helpers, zone binary sensors, danger history sensors, and
+state-transition automations. Future features such as re-arm timers or
+alternate notification services should usually start as edits to this YAML file.
 
 `__init__.py`
 
@@ -137,23 +138,27 @@ The generator reads sensor/service definitions from:
 The repo copy at `docker_refactor/config.yaml` is only the starter template.
 
 Keep `config.yaml` focused on hardware, labels, and display metadata. Alarm
-threshold values and delays are Home Assistant helpers, so they are edited from
-the dashboard after generation.
+thresholds, modes, mute toggles, and timing helpers are Home Assistant entities,
+so they are edited from the dashboard after generation.
 
 ## Design Rule
 
 Python services publish MQTT readings and health with stable `labpulse_*`
 `unique_id`, `object_id`, and `default_entity_id` discovery values. Home
-Assistant owns dashboard layout, thresholds, template alarm binary sensors, and
-local user-facing notifications.
+Assistant owns dashboard layout, thresholds, zone binary sensors, alarm state
+transitions, and local user-facing notifications.
 
-Every reading gets the same Home Assistant alarm shape: a minimum threshold, a
-maximum threshold, and a range-check binary sensor. Readings that are mostly
-"minimum only", such as pressure or flow, use a high default maximum that can be
-edited or ignored in Home Assistant.
+Every reading gets an editable Home Assistant alarm state machine:
 
-Each generated reading has a template alarm binary sensor and an input boolean
-that remembers whether an alert has already fired. Recovery automations require
-that boolean to be on before sending a recovery notification, which prevents
-healthy startup states from producing recovery spam. The starter dashboard keeps
-those booleans in a separate `Alert Memory` card for easy removal.
+- `input_select` alarm state: `Normal`, `Danger`, or `Sensor Fault`
+- `input_select` alarm mode: `Disabled`, `Low Only`, `High Only`, or `Range`
+- mute toggle
+- minimum and maximum threshold helpers
+- recovery deadband helper
+- danger, recovery, and sensor-fault zone binary sensors
+- `history_stats` danger ratio sensor
+
+Every service gets timing helpers for danger ratio percent, danger window
+seconds, recovery seconds, stale timeout seconds, and the Alarm Setup
+`Show controls` toggle. Notifications and SMS are suppressed while muted, but
+the state machine keeps calculating visibly.

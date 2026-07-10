@@ -123,10 +123,30 @@ services:
         device_class: "temperature"
     reconnect_interval_seconds: 5
 
-#dht11:
-#  pin: "D4" 
-#  device_id: "dht11_pi_sensor"
-#  state_topic: "home/sensor/dht11"
+  room_environment:
+    enabled: false
+    driver: gpio
+    gpio_sensor: fake_dht11
+    fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+    gpio_pin: "D4"
+    # For fake DHT testing, set:
+    # gpio_sensor: fake_dht11
+    # fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+    device_name: "Room Environment Sensor"
+    display:
+      section: "Room Environment"
+      icon: "mdi:home-thermometer"
+      order: 50
+    readings:
+      - name: "temperature"
+        label: "Temperature"
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "humidity"
+        label: "Humidity"
+        unit: "%"
+        device_class: "humidity"
+    read_interval_seconds: 2
 
 #ups_monitor:
 #  i2c_addr: 0x42

@@ -115,6 +115,7 @@ mkdir -p "$PROJECT_DIR/logs"
 
 if [ "$FAKE_USB" -eq 1 ]; then
   mkdir -p /tmp/labpulse-fake-serial
+  mkdir -p /tmp/labpulse-fake-dht11
 fi
 
 # Keep a plain-English USB mode for the final summary output.
@@ -159,6 +160,9 @@ paho-mqtt
 pydantic
 pyyaml
 pyserial
+adafruit-blinka
+adafruit-circuitpython-dht
+lgpio
 EOF
 
 # Copy the scripts and Python service code that the live Compose project uses.
@@ -205,6 +209,9 @@ if fake_usb:
     }
     for source, replacement in replacements.items():
         text = text.replace(source, replacement, 1)
+
+    text = text.replace("gpio_sensor: dht11", "gpio_sensor: fake_dht11", 1)
+    text = text.replace('gpio_pin: "D4"', 'fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"', 1)
 
 path.write_text(text)
 PY

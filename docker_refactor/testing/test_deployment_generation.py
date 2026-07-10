@@ -102,6 +102,7 @@ services:
         base_mounts = compose["x-labpulse-python-base"]["volumes"]
         for mount in (
             "/tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
+            "/tmp/labpulse-fake-dht11:/tmp/labpulse-fake-dht11",
             "/dev/pts:/dev/pts",
         ):
             if mount not in base_mounts:
@@ -128,6 +129,11 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
         'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
+        'mkdir -p /tmp/labpulse-fake-dht11',
+        'gpio_sensor: fake_dht11',
+        'adafruit-circuitpython-dht',
+        'adafruit-blinka',
+        'lgpio',
     )
     for fragment in required_fragments:
         if fragment not in source:

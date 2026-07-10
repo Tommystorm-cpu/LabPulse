@@ -13,11 +13,11 @@ JsonDict = dict[str, Any]
 
 
 THRESHOLD_DEFAULTS: dict[str, JsonDict] = {
-    "temp": {"unit": "\u00b0C", "min": 5, "max": 35, "range_min": -20, "range_max": 80, "step": 0.1},
-    "hum": {"unit": "%", "min": 20, "max": 80, "range_min": 0, "range_max": 100, "step": 1},
-    "flow": {"unit": "L/min", "min": 1, "max": 999, "range_min": 0, "range_max": 999, "step": 0.1},
-    "pressure": {"unit": "bar", "min": 1, "max": 999, "range_min": 0, "range_max": 999, "step": 0.1},
-    "generic": {"unit": "", "min": 0, "max": 999, "range_min": 0, "range_max": 999, "step": 1},
+    "temp": {"unit": "\u00b0C", "min": 5, "max": 35, "deadband": 1, "range_min": -20, "range_max": 80, "step": 0.1},
+    "hum": {"unit": "%", "min": 20, "max": 80, "deadband": 5, "range_min": 0, "range_max": 100, "step": 1},
+    "flow": {"unit": "L/min", "min": 1, "max": 999, "deadband": 0.5, "range_min": 0, "range_max": 999, "step": 0.1},
+    "pressure": {"unit": "bar", "min": 1, "max": 999, "deadband": 0.1, "range_min": 0, "range_max": 999, "step": 0.1},
+    "generic": {"unit": "", "min": 0, "max": 999, "deadband": 1, "range_min": 0, "range_max": 999, "step": 1},
 }
 
 
@@ -94,14 +94,14 @@ class GeneratorOptions:
 class ThresholdModel:
     """Default Home Assistant helper settings for one reading.
 
-    User config describes hardware and labels only. Alarm behavior is always a
-    Home Assistant min/max range check, with editable helper values rendered
-    from these defaults.
+    User config describes hardware and labels only. Alarm behavior is rendered
+    as Home Assistant helpers for min/max thresholds and recovery deadband.
     """
 
     unit: str
     minimum: float | int
     maximum: float | int
+    deadband: float | int
     range_min: float | int
     range_max: float | int
     step: float | int
@@ -109,24 +109,29 @@ class ThresholdModel:
 
 @dataclass
 class ReadingModel:
-    """Template data for one Home Assistant reading.
-
-    `active_alert_entity` is separate from the alarm binary sensor. The binary
-    sensor represents current threshold state; the boolean records whether an
-    alert notification has already fired so recovery notifications only happen
-    after a real alert.
-    """
+    """Template data for one Home Assistant reading."""
 
     name: str
     label: str
     reading_id: str
     mqtt_unique_id: str
     expected_entity_id: str
-    alarm_unique_id: str
-    alarm_entity_id: str
-    active_alert_entity: str
+    expected_object_id: str
+    alarm_state_entity: str
+    alarm_mode_entity: str
+    alarm_muted_entity: str
+    danger_zone_unique_id: str
+    danger_zone_entity: str
+    recovery_zone_unique_id: str
+    recovery_zone_entity: str
+    sensor_fault_zone_unique_id: str
+    sensor_fault_zone_entity: str
+    danger_ratio_unique_id: str
+    danger_ratio_entity: str
+    default_alarm_mode: str
     minimum_threshold_entity: str
     maximum_threshold_entity: str
+    recovery_deadband_entity: str
     threshold: ThresholdModel
 
 
@@ -142,8 +147,11 @@ class ServiceModel:
     order: int
     status_unique_id: str
     status_entity_id: str
-    alert_delay_entity: str
-    recovery_delay_entity: str
+    alarm_controls_expanded_entity: str
+    danger_ratio_percent_entity: str
+    danger_window_seconds_entity: str
+    recovery_seconds_entity: str
+    stale_timeout_seconds_entity: str
     readings: list[ReadingModel] = field(default_factory=list)
 
 
@@ -209,8 +217,11 @@ def build_render_model(config: LabPulseConfig) -> RenderModel:
             order=display.order,
             status_unique_id=stable_id(service_name, "status"),
             status_entity_id=entity_id("sensor", service_name, "status"),
-            alert_delay_entity=f"input_number.{stable_id(service_name, 'alert_delay_seconds')}",
-            recovery_delay_entity=f"input_number.{stable_id(service_name, 'recovery_delay_seconds')}",
+            alarm_controls_expanded_entity=entity_id("input_boolean", service_name, "alarm_controls_expanded"),
+            danger_ratio_percent_entity=entity_id("input_number", service_name, "danger_ratio_percent"),
+            danger_window_seconds_entity=entity_id("input_number", service_name, "danger_window_seconds"),
+            recovery_seconds_entity=entity_id("input_number", service_name, "recovery_seconds"),
+            stale_timeout_seconds_entity=entity_id("input_number", service_name, "stale_timeout_seconds"),
         )
 
         for reading in service_config.readings:
@@ -234,6 +245,7 @@ def build_reading_model(
     threshold = build_threshold(reading_name, reading)
     minimum = f"input_number.{stable_id(service_name, reading_name, 'minimum_threshold')}"
     maximum = f"input_number.{stable_id(service_name, reading_name, 'maximum_threshold')}"
+    deadband = f"input_number.{stable_id(service_name, reading_name, 'recovery_deadband')}"
 
     return ReadingModel(
         name=reading_name,
@@ -241,13 +253,33 @@ def build_reading_model(
         reading_id=reading_id,
         mqtt_unique_id=stable_id(service_name, reading_name),
         expected_entity_id=entity_id("sensor", service_name, reading_name),
-        alarm_unique_id=stable_id(service_name, reading_name, "alarm"),
-        alarm_entity_id=entity_id("binary_sensor", service_name, reading_name, "alarm"),
-        active_alert_entity=entity_id("input_boolean", service_name, reading_name, "alert_active"),
+        expected_object_id=stable_id(service_name, reading_name),
+        alarm_state_entity=entity_id("input_select", service_name, reading_name, "alarm_state"),
+        alarm_mode_entity=entity_id("input_select", service_name, reading_name, "alarm_mode"),
+        alarm_muted_entity=entity_id("input_boolean", service_name, reading_name, "alarm_muted"),
+        danger_zone_unique_id=stable_id(service_name, reading_name, "danger_zone"),
+        danger_zone_entity=entity_id("binary_sensor", service_name, reading_name, "danger_zone"),
+        recovery_zone_unique_id=stable_id(service_name, reading_name, "recovery_zone"),
+        recovery_zone_entity=entity_id("binary_sensor", service_name, reading_name, "recovery_zone"),
+        sensor_fault_zone_unique_id=stable_id(service_name, reading_name, "sensor_fault_zone"),
+        sensor_fault_zone_entity=entity_id("binary_sensor", service_name, reading_name, "sensor_fault_zone"),
+        danger_ratio_unique_id=stable_id(service_name, reading_name, "danger_ratio"),
+        danger_ratio_entity=entity_id("sensor", service_name, reading_name, "danger_ratio"),
+        default_alarm_mode=default_alarm_mode(reading_name),
         minimum_threshold_entity=minimum,
         maximum_threshold_entity=maximum,
+        recovery_deadband_entity=deadband,
         threshold=threshold,
     )
+
+
+def default_alarm_mode(reading_name: str) -> str:
+    """Infer the initial Home Assistant alarm mode for one reading."""
+
+    name = slug(reading_name)
+    if "flow" in name or "press" in name or "pressure" in name:
+        return "Low Only"
+    return "Range"
 
 
 def build_threshold(reading_name: str, reading: ReadingConfig) -> ThresholdModel:
@@ -263,6 +295,7 @@ def build_threshold(reading_name: str, reading: ReadingConfig) -> ThresholdModel
         unit=reading.unit or str(defaults["unit"]),
         minimum=defaults["min"],
         maximum=defaults["max"],
+        deadband=defaults["deadband"],
         range_min=defaults["range_min"],
         range_max=defaults["range_max"],
         step=defaults["step"],

@@ -281,6 +281,45 @@ Fake serial paths:
 /tmp/labpulse-fake-serial/turbo_pump
 ```
 
+Alarm scenarios are available from the simulator. For example, this drives pump
+room flow 1 below the default minimum threshold:
+
+```bash
+./simulate_arduinos.sh --scenario pump_room.flow1=danger-low
+```
+
+Once the simulator is running, use the live scenario file to change state
+without recreating the fake serial devices:
+
+```bash
+printf 'pump_room.flow1=danger-low\n' > /tmp/labpulse-fake-serial/scenarios.txt
+printf 'pump_room.flow1=recover\n' > /tmp/labpulse-fake-serial/scenarios.txt
+```
+
+To test stale detection without breaking the fake serial link:
+
+```bash
+printf 'pump_room.flow1=stale\n' > /tmp/labpulse-fake-serial/scenarios.txt
+```
+
+Wait for Home Assistant's danger ratio window and recovery timer when checking
+the state machine. For stale tests, wait for the service stale timeout helper.
+
+For fake DHT11 input on a test Pi, enable `room_environment` with:
+
+```yaml
+driver: gpio
+gpio_sensor: fake_dht11
+fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+```
+
+Then change the fake DHT values live:
+
+```bash
+printf 'mode=live\ntemperature=21.5\nhumidity=48.0\n' \
+  > /tmp/labpulse-fake-dht11/room_environment.env
+```
+
 Stopping and restarting `simulate_arduinos.sh` simulates USB devices
 disappearing and returning.
 

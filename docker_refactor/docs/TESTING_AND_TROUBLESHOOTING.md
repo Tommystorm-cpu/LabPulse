@@ -22,6 +22,12 @@ test_hardware_factory.py
 test_serial_driver.py
   serial setup, read, reconnect, and status behavior
 
+test_dht11_driver.py
+  DHT11 GPIO setup, throttling, and read behavior without Pi hardware
+
+test_fake_dht11_driver.py
+  file-backed fake DHT11 input behavior for test Pi deployments
+
 test_homeassistant_publisher.py
   exact MQTT discovery topics, payloads, and entity IDs
 
@@ -48,6 +54,8 @@ From the repository root:
 ```powershell
 python .\docker_refactor\testing\test_legacy_serial_parser.py
 python .\docker_refactor\testing\test_hardware_factory.py
+python .\docker_refactor\testing\test_dht11_driver.py
+python .\docker_refactor\testing\test_fake_dht11_driver.py
 python .\docker_refactor\testing\test_serial_driver.py
 python .\docker_refactor\testing\test_homeassistant_publisher.py
 python .\docker_refactor\testing\test_homeassistant_entities.py
@@ -62,6 +70,8 @@ From inside `docker_refactor/`:
 ```bash
 python testing/test_legacy_serial_parser.py
 python testing/test_hardware_factory.py
+python testing/test_dht11_driver.py
+python testing/test_fake_dht11_driver.py
 python testing/test_serial_driver.py
 python testing/test_homeassistant_publisher.py
 python testing/test_homeassistant_entities.py
@@ -77,6 +87,8 @@ python testing/test_deployment_generation.py
 | --- | --- |
 | Legacy parser behavior | `test_legacy_serial_parser.py` |
 | Driver setup/reconnect | `test_serial_driver.py` |
+| DHT11 GPIO behavior | `test_dht11_driver.py`, `test_hardware_factory.py` |
+| Fake DHT11 input | `test_fake_dht11_driver.py`, `test_hardware_factory.py` |
 | Config schema | `test_hardware_factory.py` plus direct startup |
 | MQTT topics or IDs | `test_common_contracts.py`, `test_homeassistant_publisher.py`, `test_homeassistant_entities.py` |
 | Dashboard seed or alarm template | `test_homeassistant_generator.py` |

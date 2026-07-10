@@ -29,6 +29,7 @@ docker compose up -d --build
 - SMS backend and recipient numbers
 - enabled sensor services
 - serial ports and baud rates
+- GPIO sensor type and pin for GPIO-backed services
 - parser selection
 - device names
 - reading names, labels, units, and Home Assistant metadata
@@ -181,12 +182,13 @@ Implemented driver:
 
 ```text
 serial
+gpio with gpio_sensor: dht11
+gpio with gpio_sensor: fake_dht11
 ```
 
 Reserved but not implemented yet:
 
 ```text
-gpio
 i2c
 ```
 
@@ -217,6 +219,81 @@ readings:
 
 If the parser returns a key that is not configured, MQTT publishing ignores it
 and logs a warning.
+
+## DHT11 GPIO Service
+
+The DHT11 driver reads temperature and humidity directly from a Raspberry Pi
+GPIO pin. It uses the same MQTT/Home Assistant publishing path as serial
+services.
+
+Example:
+
+```yaml
+services:
+  room_environment:
+    enabled: true
+    driver: gpio
+    gpio_sensor: dht11
+    gpio_pin: "D4"
+    device_name: "Room Environment Sensor"
+    display:
+      section: "Room Environment"
+      icon: "mdi:home-thermometer"
+      order: 50
+    readings:
+      - name: "temperature"
+        label: "Temperature"
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "humidity"
+        label: "Humidity"
+        unit: "%"
+        device_class: "humidity"
+    read_interval_seconds: 2
+```
+
+The DHT driver publishes exactly these reading keys:
+
+```text
+temperature
+humidity
+```
+
+`gpio_pin` is the Adafruit Blinka board pin name, such as `D4`.
+
+For a test Pi without a DHT11 sensor, use the file-backed fake DHT driver:
+
+```yaml
+services:
+  room_environment:
+    enabled: true
+    driver: gpio
+    gpio_sensor: fake_dht11
+    fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+    device_name: "Room Environment Sensor"
+    readings:
+      - name: "temperature"
+        label: "Temperature"
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "humidity"
+        label: "Humidity"
+        unit: "%"
+        device_class: "humidity"
+    read_interval_seconds: 2
+```
+
+The fake state file is edited live:
+
+```text
+mode=live
+temperature=21.5
+humidity=48.0
+```
+
+`mode=live` nudges values slightly so Home Assistant does not treat the fake
+reading as stale. Use `mode=stale` when you intentionally want to test stale
+sensor-fault behavior.
 
 ## Serial Port
 

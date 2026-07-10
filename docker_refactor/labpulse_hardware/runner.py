@@ -66,7 +66,7 @@ def main() -> None:
 
     factory = SensorFactory()
     driver = factory.build(args.service, service_cfg)
-    logger.info("Created serial driver for %s: %s", args.service, driver)
+    logger.info("Created hardware driver for %s: %s", args.service, driver)
 
     publisher = None
 

@@ -205,10 +205,16 @@ For service `pressure_monitor` and reading `pressure`:
 MQTT unique_id:       labpulse_pressure_monitor_pressure
 MQTT object_id:       labpulse_pressure_monitor_pressure
 default entity_id:    sensor.labpulse_pressure_monitor_pressure
-alarm entity_id:      binary_sensor.labpulse_pressure_monitor_pressure_alarm
+alarm state:          input_select.labpulse_pressure_monitor_pressure_alarm_state
+alarm mode:           input_select.labpulse_pressure_monitor_pressure_alarm_mode
+alarm muted:          input_boolean.labpulse_pressure_monitor_pressure_alarm_muted
 minimum threshold:    input_number.labpulse_pressure_monitor_pressure_minimum_threshold
 maximum threshold:    input_number.labpulse_pressure_monitor_pressure_maximum_threshold
-active alert memory:  input_boolean.labpulse_pressure_monitor_pressure_alert_active
+recovery deadband:    input_number.labpulse_pressure_monitor_pressure_recovery_deadband
+danger zone:          binary_sensor.labpulse_pressure_monitor_pressure_danger_zone
+recovery zone:        binary_sensor.labpulse_pressure_monitor_pressure_recovery_zone
+sensor fault zone:    binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone
+danger ratio:         sensor.labpulse_pressure_monitor_pressure_danger_ratio
 ```
 
 Labels are safe to change. Stable service keys and reading names are more

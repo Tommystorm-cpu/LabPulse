@@ -249,12 +249,20 @@ pressure_monitor:
   pressure:
     mqtt_unique_id: labpulse_pressure_monitor_pressure
     expected_entity_id: sensor.labpulse_pressure_monitor_pressure
-    alarm_entity_id: binary_sensor.labpulse_pressure_monitor_pressure_alarm
-    active_alert: input_boolean.labpulse_pressure_monitor_pressure_alert_active
+    alarm_state: input_select.labpulse_pressure_monitor_pressure_alarm_state
+    alarm_mode: input_select.labpulse_pressure_monitor_pressure_alarm_mode
+    alarm_muted: input_boolean.labpulse_pressure_monitor_pressure_alarm_muted
+    danger_zone: binary_sensor.labpulse_pressure_monitor_pressure_danger_zone
+    recovery_zone: binary_sensor.labpulse_pressure_monitor_pressure_recovery_zone
+    sensor_fault_zone: binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone
+    danger_ratio: sensor.labpulse_pressure_monitor_pressure_danger_ratio
     minimum_threshold: input_number.labpulse_pressure_monitor_pressure_minimum_threshold
     maximum_threshold: input_number.labpulse_pressure_monitor_pressure_maximum_threshold
-    alert_delay: input_number.labpulse_pressure_monitor_alert_delay_seconds
-    recovery_delay: input_number.labpulse_pressure_monitor_recovery_delay_seconds
+    recovery_deadband: input_number.labpulse_pressure_monitor_pressure_recovery_deadband
+    danger_ratio_percent: input_number.labpulse_pressure_monitor_danger_ratio_percent
+    danger_window_seconds: input_number.labpulse_pressure_monitor_danger_window_seconds
+    recovery_seconds: input_number.labpulse_pressure_monitor_recovery_seconds
+    stale_timeout_seconds: input_number.labpulse_pressure_monitor_stale_timeout_seconds
 ```
 
 Use this file when a dashboard card points at the wrong entity.

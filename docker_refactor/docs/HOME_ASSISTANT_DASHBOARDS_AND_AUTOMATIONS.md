@@ -74,11 +74,12 @@ Once it exists, Home Assistant owns it.
 | Save a UI dashboard before experimenting | `./generate_homeassistant_config.sh --backup-dashboard` |
 | Restore the latest saved UI dashboard | `./generate_homeassistant_config.sh --load-dashboard` |
 | Change what a fresh/reset dashboard looks like | `dashboard_seed.yaml` |
-| Change threshold helper names/defaults/ranges | `alarm_logic.yaml` and sometimes `model.py` |
-| Add mute controls, deadband, or extra alarm conditions | `alarm_logic.yaml` |
+| Change generated alarm behavior | `alarm_logic.yaml` |
+| Change helper names/defaults/ranges | `alarm_logic.yaml` and sometimes `model.py` |
+| Change mute behavior, deadband, or extra alarm conditions | `alarm_logic.yaml` |
 | Change default entity IDs | `labpulse_common/identity.py` and contract tests |
 | Change dashboard section names/order/icons | `~/labpulse-ha/config.yaml` |
-| Change live threshold values | Home Assistant dashboard helpers |
+| Change live thresholds, modes, mutes, or timing values | Home Assistant dashboard helpers |
 
 ## Live Dashboard Editing
 
@@ -139,40 +140,47 @@ lovelace:
   version: 1
   minor_version: 1
   key: lovelace
-  view:
-    title: LabPulse
+  monitor_view:
+    title: LabPulse Monitor
     path: labpulse
+    type: sections
+  alarm_setup_view:
+    title: LabPulse Alarm Setup
+    path: labpulse-alarm-setup
     type: sections
 
 system_health:
   heading_card: ...
   status_tile: ...
 
-service_sections:
-  heading_card: ...
-  status_tile: ...
-  reading_tile: ...
-  alarm_tile: ...
-  include_alarm_settings_card: true
-  include_alert_memory_card: true
+monitor:
+  service_sections:
+    heading_card: ...
+    status_tile: ...
+    reading_tile: ...
+    alarm_state_tile: ...
+    alarm_muted_tile: ...
 
-alarm_settings_card:
-  ...
-
-alert_memory_card:
-  ...
+alarm_setup:
+  service_sections:
+    heading_card: ...
+    controls_toggle_tile: ...
+    service_tuning_card: ...
+    reading_settings_card: ...
 ```
 
-The generated dashboard uses a Home Assistant `sections` view. The Python code
-creates:
+The generated dashboard uses native Home Assistant `sections` views. The Python
+code creates:
 
-- one System Health section
-- one section for each enabled service
-- service status tile
-- one reading tile per configured reading
-- one alarm tile per configured reading
-- optional alarm settings card per service
-- optional alert memory card per service
+- a `LabPulse Monitor` view for day-to-day readings and visible alarm state
+- a `LabPulse Alarm Setup` view for threshold, mode, mute, and timing helpers
+- one System Health section in the monitor view
+- one monitor section for each enabled service
+- one alarm setup section for each enabled service
+- one reading/state/mute tile group per configured reading
+- one native `Show controls` toggle per service on the Alarm Setup view
+- conditional service timing and reading setup cards that appear when the
+  service toggle is on
 
 ## Dashboard Placeholders
 
@@ -185,17 +193,26 @@ The seed supports placeholders in strings:
 {service.section}
 {service.icon}
 {service.status_entity_id}
-{service.alert_delay_entity}
-{service.recovery_delay_entity}
+{service.alarm_controls_expanded_entity}
+{service.danger_ratio_percent_entity}
+{service.danger_window_seconds_entity}
+{service.recovery_seconds_entity}
+{service.stale_timeout_seconds_entity}
 
 {reading.name}
 {reading.label}
 {reading.reading_id}
 {reading.expected_entity_id}
-{reading.alarm_entity_id}
-{reading.active_alert_entity}
+{reading.alarm_state_entity}
+{reading.alarm_mode_entity}
+{reading.alarm_muted_entity}
+{reading.danger_zone_entity}
+{reading.recovery_zone_entity}
+{reading.sensor_fault_zone_entity}
+{reading.danger_ratio_entity}
 {reading.minimum_threshold_entity}
 {reading.maximum_threshold_entity}
+{reading.recovery_deadband_entity}
 ```
 
 Example:
@@ -206,7 +223,7 @@ reading_tile:
   entity: "{reading.expected_entity_id}"
   name: "{reading.label}"
   grid_options:
-    columns: 6
+    columns: 4
 ```
 
 For pressure, this becomes something like:
@@ -216,7 +233,7 @@ type: tile
 entity: sensor.labpulse_pressure_monitor_pressure
 name: Pressure
 grid_options:
-  columns: 6
+  columns: 4
 ```
 
 ## How To Change A Reset Dashboard Layout
@@ -275,35 +292,31 @@ labpulse_homeassistant/alarm.py
 
 Every reading gets:
 
+- alarm state helper: `Normal`, `Danger`, or `Sensor Fault`
+- alarm mode helper: `Disabled`, `Low Only`, `High Only`, or `Range`
+- alarm muted helper
 - minimum threshold helper
 - maximum threshold helper
-- visible template binary sensor
-- active-alert memory boolean
-- alert automation
-- recovery automation
+- recovery deadband helper
+- danger zone binary sensor
+- recovery zone binary sensor
+- sensor-fault zone binary sensor
+- `history_stats` danger ratio sensor
+- state transition automations
 
 Every service with readings gets:
 
-- alert delay helper
-- recovery delay helper
+- alarm controls expanded helper for the native Alarm Setup toggle
+- danger ratio percent helper
+- danger window seconds helper
+- recovery seconds helper
+- stale timeout seconds helper
 
-## Why Alert Memory Exists
-
-The alarm binary sensor means:
-
-```text
-the current reading is outside its threshold range
-```
-
-The active-alert input boolean means:
-
-```text
-an alert notification has already fired for this alarm
-```
-
-Recovery automations check that the active-alert boolean is on before sending a
-recovery notification. This prevents healthy startup states from repeatedly
-sending "recovered" messages.
+The danger transition uses the `history_stats` ratio sensor over the editable
+service danger window. Recovery uses the per-reading recovery deadband plus Home
+Assistant `for:` timing over the editable service recovery seconds helper.
+Muting suppresses SMS and persistent notifications, but does not stop state
+calculation.
 
 ## Alarm Seed Structure
 
@@ -318,10 +331,23 @@ input_numbers:
     - id: ...
       config: ...
 
-input_booleans:
+input_selects:
   reading:
     - id: ...
       config: ...
+
+input_booleans:
+  service:
+    - id: ...
+      config: ...
+  reading:
+    - id: ...
+      config: ...
+
+sensors:
+  reading:
+    - platform: history_stats
+      name: ...
 
 binary_sensors:
   reading:
@@ -331,10 +357,6 @@ binary_sensors:
 
 automations:
   reading:
-    - alias: ...
-      trigger: ...
-      condition: ...
-      action: ...
     - alias: ...
       trigger: ...
       condition: ...
@@ -359,6 +381,7 @@ Look for:
 THRESHOLD_DEFAULTS
 reading_defaults()
 build_threshold()
+default_alarm_mode()
 ```
 
 The current default families are:
@@ -377,43 +400,16 @@ If you only want to change the helper shape, label, range, or mode, edit:
 alarm_logic.yaml
 ```
 
-If you want to change the inferred default numeric values, edit:
+If you want to change the inferred default numeric values or default mode, edit:
 
 ```text
 model.py
 ```
 
 Once helpers exist in Home Assistant, changing the generated initial value may
-not overwrite Home Assistant's stored state. Tune live thresholds in the
-dashboard.
+not overwrite Home Assistant's stored state. Tune live values in the dashboard.
 
-## Adding A Mute Control
-
-A typical mute feature belongs in Home Assistant, not Python.
-
-The likely steps are:
-
-1. Add an `input_boolean` in `alarm_logic.yaml`, probably under `service` or `reading`.
-2. Add a condition to alert automations requiring the mute boolean to be off.
-3. Add the mute boolean to `dashboard_seed.yaml` so reset dashboards expose it.
-4. Regenerate Home Assistant config.
-5. Reset the dashboard only if you want the generated layout to include the new control.
-
-For a per-service mute, the helper ID might follow:
-
-```text
-input_boolean.labpulse_pump_room_alerts_muted
-```
-
-For a per-reading mute:
-
-```text
-input_boolean.labpulse_pump_room_flow1_alert_muted
-```
-
-Prefer per-service controls unless operators need per-reading control.
-
-## Adding Deadband Or Re-Arm Logic
+## Changing Deadband Or Adding Re-Arm Logic
 
 Start in:
 
@@ -421,12 +417,14 @@ Start in:
 alarm_logic.yaml
 ```
 
-Possible approaches:
+Recovery deadband already exists as a per-reading helper. To change how it is
+applied, edit the recovery zone expression in `alarm_logic.yaml`.
 
-- add a deadband `input_number`
-- change the template binary sensor state expression
+Possible re-arm approaches:
+
+- change the danger/recovery zone template expressions
 - add an automation condition
-- add another memory boolean if the state machine needs it
+- add another helper if the state machine needs it
 
 Keep the current separation:
 

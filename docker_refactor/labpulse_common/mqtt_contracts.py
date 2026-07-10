@@ -13,6 +13,7 @@ SMS_ALERT_PAYLOAD_FIELDS = frozenset(
         "reading",
         "reading_label",
         "entity_id",
+        "state",
         "title",
         "message",
         "current",
