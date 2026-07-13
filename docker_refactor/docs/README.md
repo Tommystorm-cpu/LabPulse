@@ -1,9 +1,9 @@
 # LabPulse Docker Refactor Documentation
 
 This directory documents the implemented system under `docker_refactor/`.
-It deliberately contains only four guides. Design proposals, completed
-refactor plans, and duplicate task-specific notes have been removed so that an
-implemented feature has one authoritative explanation.
+It contains four reference guides plus one maintained software roadmap. Design
+proposals, completed refactor plans, and duplicate task-specific notes have
+been removed so that an implemented feature has one authoritative explanation.
 
 ## Reading order
 
@@ -19,6 +19,8 @@ implemented feature has one authoritative explanation.
 4. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the Arduino serial
    contracts, how Python currently tolerates them, known sketch problems, and
    clearly labelled firmware improvements.
+5. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,
+   user-facing, engineering-maturity, and open-source work.
 
 ## Which guide answers what?
 
@@ -33,6 +35,7 @@ implemented feature has one authoritative explanation.
 | How do I test without hardware? | `SETUP_AND_TROUBLESHOOTING.md` |
 | Why is an entity or dashboard card missing? | `SETUP_AND_TROUBLESHOOTING.md` |
 | What exactly do the Arduino sketches print? | `ARDUINO_AND_CPP.md` |
+| What software work remains and what is already implemented? | `SOFTWARE_TODO.md` |
 
 ## Sources of truth
 
@@ -49,4 +52,3 @@ problems.
 
 Do not hand-edit `compose.yaml`, `labpulse_generated.yaml`, or
 `labpulse_entity_map.yaml` as permanent changes. They are generated outputs.
-

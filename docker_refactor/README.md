@@ -4,12 +4,13 @@ This is the active Docker-based LabPulse implementation for Raspberry Pi. It
 runs Home Assistant, Mosquitto, one SMS worker, and one Python container per
 enabled sensor service.
 
-The complete documentation has four guides:
+The complete documentation has four reference guides and one roadmap:
 
 1. [Architecture](docs/ARCHITECTURE.md)
 2. [Code internals](docs/CODE_INTERNALS.md)
 3. [Setup and troubleshooting](docs/SETUP_AND_TROUBLESHOOTING.md)
 4. [Arduino and C++ notes](docs/ARDUINO_AND_CPP.md)
+5. [Software roadmap](docs/SOFTWARE_TODO.md)
 
 The [documentation index](docs/README.md) explains which guide answers each
 type of question.
@@ -64,4 +65,3 @@ docs/                     the four maintained guides
 
 Home Assistant owns alarm decisions and operator settings. Hardware services
 publish readings and health; the SMS worker delivers validated requests.
-
