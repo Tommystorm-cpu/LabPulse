@@ -1,10 +1,26 @@
-"""Small placeholder expansion helpers for editable Home Assistant seeds."""
+"""Placeholder expansion and file-rendering helpers for Home Assistant templates."""
 
+from pathlib import Path
 from typing import Any
 import re
 
 
-PLACEHOLDER_PATTERN = re.compile(r"\{(service|reading|model)\.([a-zA-Z0-9_.]+)\}")
+PLACEHOLDER_PATTERN = re.compile(
+    r"\[\[\s*(service|reading|model)\.([a-zA-Z0-9_.]+)\s*\]\]"
+)
+
+
+def render_template_file(
+    template_path: Path,
+    destination: Path,
+    context: dict[str, str],
+) -> None:
+    """Render a simple placeholder template to a destination file."""
+
+    text = template_path.read_text(encoding="utf-8")
+    for key, value in context.items():
+        text = text.replace("[[ " + key + " ]]", value)
+    destination.write_text(text.rstrip() + "\n", encoding="utf-8")
 
 
 def expand_template(value: Any, context: dict[str, object]) -> Any:

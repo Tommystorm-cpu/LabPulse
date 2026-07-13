@@ -10,19 +10,19 @@ config.yaml
   -> labpulse_common.config
        one typed configuration model used by every Python service
 
-labpulse_hardware.runner
+labpulse_hardware
   -> labpulse_hardware.drivers.factory
   -> labpulse_hardware.drivers.serial_driver
   -> labpulse_hardware.legacy_parsing.serial_parser
   -> labpulse_hardware.homeassistant_publisher
 
 generate_homeassistant_config.sh
-  -> labpulse_homeassistant.generator
-  -> labpulse_homeassistant.model
-  -> labpulse_homeassistant.dashboard / alarm / render
+  -> labpulse_homeassistant
+  -> labpulse_homeassistant.data_models
+  -> labpulse_homeassistant.dashboard / alarm / write_yaml
   -> labpulse_homeassistant/templates/
 
-labpulse_sms.sms_entry
+labpulse_sms
   -> labpulse_sms.sms_subscriber
   -> labpulse_sms.sender
 
@@ -47,19 +47,19 @@ The four package boundaries are intentional:
 2. `labpulse_common/config.py`
 3. `labpulse_common/identity.py`
 4. `labpulse_common/mqtt_contracts.py`
-5. `labpulse_hardware/runner.py`
+5. `labpulse_hardware/cli.py`
 6. `labpulse_hardware/drivers/factory.py`
 7. `labpulse_hardware/drivers/base.py`
 8. `labpulse_hardware/drivers/serial_driver.py`
 9. `labpulse_hardware/legacy_parsing/serial_parser.py`
 10. `labpulse_hardware/homeassistant_publisher.py`
-11. `labpulse_homeassistant/generator.py`
-12. `labpulse_homeassistant/model.py`
+11. `labpulse_homeassistant/cli.py`
+12. `labpulse_homeassistant/data_models.py`
 13. `labpulse_homeassistant/dashboard.py`
 14. `labpulse_homeassistant/alarm.py`
-15. `labpulse_homeassistant/render.py`
+15. `labpulse_homeassistant/write_yaml.py`
 16. `labpulse_homeassistant/templates/`
-17. `labpulse_sms/sms_entry.py`
+17. `labpulse_sms/cli.py`
 18. `labpulse_sms/sms_subscriber.py`
 19. `labpulse_sms/sender.py`
 20. `generate_compose.sh` and `setup_container_fs.sh`
@@ -98,7 +98,7 @@ rendering, and SMS delivery backends are not common infrastructure.
 Every enabled sensor container starts with:
 
 ```bash
-python -m labpulse_hardware.runner --service pressure_monitor
+python -m labpulse_hardware --service pressure_monitor
 ```
 
 The runner loads typed config, selects one service, builds its driver, connects
@@ -122,12 +122,12 @@ YAML or decide whether a reading is alarming.
 ## Home Assistant Generation
 
 `generate_homeassistant_config.sh` makes the live shared package available and
-runs `python -m labpulse_homeassistant.generator`.
+runs `python -m labpulse_homeassistant`.
 
 The generator loads the same typed `LabPulseConfig` as the hardware and SMS
-services. `model.py` converts it into a render model with predictable entity
-IDs. `dashboard.py` and `alarm.py` build template contexts. `render.py` writes
-generated files.
+services. `data_models.py` converts it into a render model with predictable
+entity IDs. `dashboard.py` and `alarm.py` build template contexts.
+`write_yaml.py` writes the core YAML files.
 
 Generated alarm automations own threshold decisions and publish alert requests
 to the shared SMS send topic. The SMS payload fields and topic must remain
@@ -141,7 +141,7 @@ is written only when `--reset-dashboard` is requested.
 The Compose command is:
 
 ```bash
-python -m labpulse_sms.sms_entry --config /app/config.yaml
+python -m labpulse_sms --config /app/config.yaml
 ```
 
 The entry point loads typed config and builds a sender. The subscriber listens
@@ -178,8 +178,8 @@ worker, and one hardware container per enabled service.
 | Temporary Arduino text support | `labpulse_hardware/legacy_parsing/serial_parser.py` |
 | MQTT discovery/state publishing | `labpulse_hardware/homeassistant_publisher.py` |
 | Dashboard or automation model | `labpulse_homeassistant/` |
-| Starter dashboard layout | `labpulse_homeassistant/templates/dashboard_seed.yaml` |
-| Alarm helpers and automations | `labpulse_homeassistant/templates/alarm_logic.yaml` |
+| Starter dashboard layout | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
+| Alarm helpers and automations | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
 | SMS parsing or delivery | `labpulse_sms/` |
 | Containers and mounts | `generate_compose.sh` |
 | Live filesystem bootstrap | `setup_container_fs.sh` |

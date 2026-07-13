@@ -204,7 +204,7 @@ docker compose logs -f labpulse-sms
 
 ## Code Ownership
 
-`labpulse_sms/sms_entry.py`:
+`labpulse_sms/cli.py`:
 
 - parses CLI args
 - loads config

@@ -8,7 +8,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import MqttConfig
 from labpulse_sms.sender import LogSmsSender, MmcliSmsSender, format_sms_message, quote_mmcli_value
-from labpulse_sms.sms_entry import DEFAULT_CONFIG_PATH, parse_args
+from labpulse_sms.cli import DEFAULT_CONFIG_PATH, parse_args
 from labpulse_common.mqtt_contracts import SMS_SUBSCRIPTION_TOPIC
 from labpulse_sms.sms_subscriber import SMSSubscriber, parse_sms_payload
 
@@ -78,21 +78,21 @@ def test_compose_generates_one_sms_container() -> None:
     compose_script = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
     assert_contains(compose_script, "labpulse-sms:", "SMS service")
     assert_contains(compose_script, "container_name: labpulse-sms", "SMS container name")
-    assert_contains(compose_script, '["python", "-m", "labpulse_sms.sms_entry"', "SMS entry command")
-    assert_contains(compose_script, 'labpulse_hardware.runner', "hardware module command")
+    assert_contains(compose_script, '["python", "-m", "labpulse_sms"', "SMS entry command")
+    assert_contains(compose_script, '"labpulse_hardware"', "hardware module command")
     assert_contains(compose_script, 'sms_backend = str(sms_config.get("backend", "log")).lower()', "SMS backend read")
     assert_contains(compose_script, "- /run/dbus:/run/dbus:ro", "mmcli D-Bus mount")
 
 
 def test_sms_entry_defaults_to_app_config() -> None:
-    """Check sms_entry.py defaults to /app-style package-parent config."""
+    """Check the SMS CLI defaults to the package-parent config path."""
 
     assert_equal(DEFAULT_CONFIG_PATH.name, "config.yaml", "default config filename")
     assert_equal(DEFAULT_CONFIG_PATH.parent.name, "docker_refactor", "repo default config parent")
 
     original_argv = sys.argv[:]
     try:
-        sys.argv = ["sms_entry.py", "--config", "custom.yaml"]
+        sys.argv = ["labpulse_sms", "--config", "custom.yaml"]
         args = parse_args()
     finally:
         sys.argv = original_argv

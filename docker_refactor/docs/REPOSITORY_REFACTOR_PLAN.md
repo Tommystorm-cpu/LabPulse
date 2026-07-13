@@ -49,7 +49,8 @@ docker_refactor/
     mqtt_contracts.py         shared MQTT topic and alert-payload contracts
 
   labpulse_hardware/
-    runner.py                 one configured hardware service process
+    __main__.py               executable package adapter
+    cli.py                    one configured hardware service process
     drivers/
       base.py
       factory.py
@@ -59,17 +60,18 @@ docker_refactor/
     homeassistant_publisher.py
 
   labpulse_homeassistant/
-    generator.py
-    config_io.py              generator CLI/path parsing only
-    model.py                  Home Assistant-specific render model
+    __main__.py
+    cli.py
+    data_models.py            Home Assistant-specific render model
     alarm.py
     dashboard.py
-    render.py
+    write_yaml.py
     template_utils.py
     templates/
 
   labpulse_sms/
-    sms_entry.py
+    __main__.py
+    cli.py
     sms_subscriber.py
     sender.py
 
@@ -80,7 +82,7 @@ docker_refactor/
   generate_homeassistant_config.sh
 ```
 
-Use `python -m labpulse_hardware.runner --service <service>` as the hardware
+Use `python -m labpulse_hardware --service <service>` as the hardware
 container command. Update the Dockerfile, Compose generator, setup script, and
 tests accordingly; do not retain the old top-level `main.py` solely for
 compatibility.
@@ -129,7 +131,7 @@ command-line renderer unless structured logging is useful there.
 
 ## Hardware Contract
 
-Every driver presents the same interface to `runner.py`:
+Every driver presents the same interface to `labpulse_hardware/cli.py`:
 
 ```text
 setup() -> bool

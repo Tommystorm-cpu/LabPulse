@@ -1,0 +1,385 @@
+# Editable Home Assistant alarm state-machine seed.
+#
+# This file controls the generated helpers, zone sensors, history_stats sensors,
+# and transition automations in packages/labpulse_generated.yaml.
+#
+# V1 states:
+# - Normal
+# - Danger
+# - Sensor Fault
+#
+# Placeholders available in strings:
+# - [[ service.name ]], [[ service.label ]], [[ service.service_id ]]
+# - [[ service.alarm_controls_expanded_entity ]]
+# - [[ service.danger_ratio_percent_entity ]], [[ service.danger_window_seconds_entity ]]
+# - [[ service.recovery_seconds_entity ]], [[ service.stale_timeout_seconds_entity ]]
+# - [[ reading.label ]], [[ reading.expected_entity_id ]], [[ reading.expected_object_id ]]
+# - [[ reading.alarm_state_entity ]]
+# - [[ reading.alarm_mode_entity ]], [[ reading.alarm_muted_entity ]]
+# - [[ reading.danger_zone_entity ]], [[ reading.recovery_zone_entity ]]
+# - [[ reading.sensor_fault_zone_entity ]], [[ reading.danger_ratio_entity ]]
+# - [[ reading.minimum_threshold_entity ]], [[ reading.maximum_threshold_entity ]]
+# - [[ reading.recovery_deadband_entity ]]
+# - [[ model.sms_send_topic ]]
+
+input_numbers:
+  service:
+    - id: "labpulse_[[ service.service_id ]]_danger_ratio_percent"
+      config:
+        name: "[[ service.label ]] Danger Ratio"
+        min: 1
+        max: 100
+        step: 1
+        initial: 70
+        unit_of_measurement: "%"
+        mode: box
+    - id: "labpulse_[[ service.service_id ]]_danger_window_seconds"
+      config:
+        name: "[[ service.label ]] Danger Window"
+        min: 10
+        max: 3600
+        step: 10
+        initial: 120
+        unit_of_measurement: s
+        mode: box
+    - id: "labpulse_[[ service.service_id ]]_recovery_seconds"
+      config:
+        name: "[[ service.label ]] Recovery Time"
+        min: 0
+        max: 3600
+        step: 10
+        initial: 120
+        unit_of_measurement: s
+        mode: box
+    - id: "labpulse_[[ service.service_id ]]_stale_timeout_seconds"
+      config:
+        name: "[[ service.label ]] Stale Timeout"
+        min: 30
+        max: 86400
+        step: 30
+        initial: 300
+        unit_of_measurement: s
+        mode: box
+  reading:
+    - id: "labpulse_[[ reading.reading_id ]]_minimum_threshold"
+      config:
+        name: "[[ reading.label ]] Minimum Threshold"
+        min: "[[ reading.threshold.range_min ]]"
+        max: "[[ reading.threshold.range_max ]]"
+        step: "[[ reading.threshold.step ]]"
+        initial: "[[ reading.threshold.minimum ]]"
+        unit_of_measurement: "[[ reading.threshold.unit ]]"
+        mode: box
+    - id: "labpulse_[[ reading.reading_id ]]_maximum_threshold"
+      config:
+        name: "[[ reading.label ]] Maximum Threshold"
+        min: "[[ reading.threshold.range_min ]]"
+        max: "[[ reading.threshold.range_max ]]"
+        step: "[[ reading.threshold.step ]]"
+        initial: "[[ reading.threshold.maximum ]]"
+        unit_of_measurement: "[[ reading.threshold.unit ]]"
+        mode: box
+    - id: "labpulse_[[ reading.reading_id ]]_recovery_deadband"
+      config:
+        name: "[[ reading.label ]] Recovery Deadband"
+        min: 0
+        max: "[[ reading.threshold.range_max ]]"
+        step: "[[ reading.threshold.step ]]"
+        initial: "[[ reading.threshold.deadband ]]"
+        unit_of_measurement: "[[ reading.threshold.unit ]]"
+        mode: box
+
+input_selects:
+  reading:
+    - id: "labpulse_[[ reading.reading_id ]]_alarm_state"
+      config:
+        name: "[[ reading.label ]] Alarm State"
+        options:
+          - Normal
+          - Danger
+          - Sensor Fault
+        initial: Normal
+    - id: "labpulse_[[ reading.reading_id ]]_alarm_mode"
+      config:
+        name: "[[ reading.label ]] Alarm Mode"
+        options:
+          - Disabled
+          - Low Only
+          - High Only
+          - Range
+        initial: "[[ reading.default_alarm_mode ]]"
+
+input_booleans:
+  service:
+    - id: "labpulse_[[ service.service_id ]]_alarm_controls_expanded"
+      config:
+        name: "[[ service.label ]] Show Alarm Controls"
+        initial: false
+  reading:
+    - id: "labpulse_[[ reading.reading_id ]]_alarm_muted"
+      config:
+        name: "[[ reading.label ]] Alarm Muted"
+        initial: false
+
+sensors:
+  reading:
+    - platform: history_stats
+      name: "[[ reading.danger_ratio_unique_id ]]"
+      unique_id: "[[ reading.danger_ratio_unique_id ]]"
+      entity_id: "[[ reading.danger_zone_entity ]]"
+      state: "on"
+      type: ratio
+      start: >
+        {{ now() - timedelta(seconds=states('[[ service.danger_window_seconds_entity ]]') | int(120)) }}
+      end: "{{ now() }}"
+
+binary_sensors:
+  reading:
+    - name: "[[ reading.danger_zone_unique_id ]]"
+      unique_id: "[[ reading.danger_zone_unique_id ]]"
+      device_class: problem
+      state: >
+        {% set mode = states('[[ reading.alarm_mode_entity ]]') %}
+        {% set raw = states('[[ reading.expected_entity_id ]]') %}
+        {% if mode == 'Disabled' or not is_number(raw) %}
+          false
+        {% else %}
+          {% set value = raw | float %}
+          {% set minimum = states('[[ reading.minimum_threshold_entity ]]') | float(0) %}
+          {% set maximum = states('[[ reading.maximum_threshold_entity ]]') | float(0) %}
+          {{ (mode == 'Low Only' and value < minimum)
+             or (mode == 'High Only' and value > maximum)
+             or (mode == 'Range' and (value < minimum or value > maximum)) }}
+        {% endif %}
+    - name: "[[ reading.recovery_zone_unique_id ]]"
+      unique_id: "[[ reading.recovery_zone_unique_id ]]"
+      state: >
+        {% set mode = states('[[ reading.alarm_mode_entity ]]') %}
+        {% set raw = states('[[ reading.expected_entity_id ]]') %}
+        {% if not is_number(raw) %}
+          false
+        {% elif mode == 'Disabled' %}
+          true
+        {% else %}
+          {% set value = raw | float %}
+          {% set minimum = states('[[ reading.minimum_threshold_entity ]]') | float(0) %}
+          {% set maximum = states('[[ reading.maximum_threshold_entity ]]') | float(0) %}
+          {% set deadband = states('[[ reading.recovery_deadband_entity ]]') | float(0) %}
+          {% set recovery_minimum = minimum + deadband %}
+          {% set recovery_maximum = maximum - deadband %}
+          {{ (mode == 'Low Only' and value >= recovery_minimum)
+             or (mode == 'High Only' and value <= recovery_maximum)
+             or (mode == 'Range' and value >= recovery_minimum and value <= recovery_maximum) }}
+        {% endif %}
+    - name: "[[ reading.sensor_fault_zone_unique_id ]]"
+      unique_id: "[[ reading.sensor_fault_zone_unique_id ]]"
+      device_class: problem
+      state: >
+        {% set raw = states('[[ reading.expected_entity_id ]]') %}
+        {% set stale_seconds = states('[[ service.stale_timeout_seconds_entity ]]') | int(300) %}
+        {% set service_status = states('[[ service.status_entity_id ]]') %}
+        {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
+           or not is_number(raw)
+           or (as_timestamp(now()) - as_timestamp(states.sensor.[[ reading.expected_object_id ]].last_updated, 0)) > stale_seconds
+           or service_status in ['disconnected', 'reconnecting', 'error', 'unavailable', 'unknown'] }}
+
+automations:
+  reading:
+    - alias: "LabPulse [[ reading.label ]] Sensor Fault"
+      mode: single
+      trigger:
+        - platform: state
+          entity_id: "[[ reading.sensor_fault_zone_entity ]]"
+          to: "on"
+      condition:
+        - condition: template
+          value_template: "{{ not is_state('[[ reading.alarm_state_entity ]]', 'Sensor Fault') }}"
+      action:
+        - service: input_select.select_option
+          target:
+            entity_id: "[[ reading.alarm_state_entity ]]"
+          data:
+            option: "Sensor Fault"
+        - choose:
+            - conditions:
+                - condition: state
+                  entity_id: "[[ reading.alarm_muted_entity ]]"
+                  state: "off"
+              sequence:
+                - service: persistent_notification.create
+                  data:
+                    title: "LabPulse [[ reading.label ]] sensor fault"
+                    message: >
+                      [[ service.label ]] / [[ reading.label ]] has a sensor fault.
+
+                      Current reading: {{ states('[[ reading.expected_entity_id ]]') }}.
+                    notification_id: "labpulse_[[ reading.reading_id ]]_status"
+                - service: mqtt.publish
+                  data:
+                    topic: "[[ model.sms_send_topic ]]"
+                    qos: 1
+                    retain: false
+                    payload: >
+                      {
+                        "event": "sensor_fault",
+                        "service": "[[ service.name ]]",
+                        "service_label": "[[ service.label ]]",
+                        "reading": "[[ reading.name ]]",
+                        "reading_label": "[[ reading.label ]]",
+                        "entity_id": "[[ reading.alarm_state_entity ]]",
+                        "state": "Sensor Fault",
+                        "title": "LabPulse [[ reading.label ]] sensor fault",
+                        "message": "[[ service.label ]] / [[ reading.label ]] has a sensor fault.",
+                        "current": "{{ states('[[ reading.expected_entity_id ]]') }}",
+                        "minimum_threshold": "{{ states('[[ reading.minimum_threshold_entity ]]') }}",
+                        "maximum_threshold": "{{ states('[[ reading.maximum_threshold_entity ]]') }}"
+                      }
+
+    - alias: "LabPulse [[ reading.label ]] Danger"
+      mode: single
+      trigger:
+        - platform: template
+          value_template: >
+            {{ states('[[ reading.danger_ratio_entity ]]') | float(0)
+               >= states('[[ service.danger_ratio_percent_entity ]]') | float(70) }}
+      condition:
+        - condition: state
+          entity_id: "[[ reading.alarm_state_entity ]]"
+          state: "Normal"
+        - condition: state
+          entity_id: "[[ reading.sensor_fault_zone_entity ]]"
+          state: "off"
+        - condition: template
+          value_template: "{{ not is_state('[[ reading.alarm_mode_entity ]]', 'Disabled') }}"
+      action:
+        - service: input_select.select_option
+          target:
+            entity_id: "[[ reading.alarm_state_entity ]]"
+          data:
+            option: Danger
+        - choose:
+            - conditions:
+                - condition: state
+                  entity_id: "[[ reading.alarm_muted_entity ]]"
+                  state: "off"
+              sequence:
+                - service: persistent_notification.create
+                  data:
+                    title: "LabPulse [[ reading.label ]] warning"
+                    message: >
+                      [[ service.label ]] / [[ reading.label ]] is in Danger.
+
+                      Current reading: {{ states('[[ reading.expected_entity_id ]]') }}.
+                      Min: {{ states('[[ reading.minimum_threshold_entity ]]') }}.
+                      Max: {{ states('[[ reading.maximum_threshold_entity ]]') }}.
+                    notification_id: "labpulse_[[ reading.reading_id ]]_status"
+                - service: mqtt.publish
+                  data:
+                    topic: "[[ model.sms_send_topic ]]"
+                    qos: 1
+                    retain: false
+                    payload: >
+                      {
+                        "event": "warning",
+                        "service": "[[ service.name ]]",
+                        "service_label": "[[ service.label ]]",
+                        "reading": "[[ reading.name ]]",
+                        "reading_label": "[[ reading.label ]]",
+                        "entity_id": "[[ reading.alarm_state_entity ]]",
+                        "state": "Danger",
+                        "title": "LabPulse [[ reading.label ]] warning",
+                        "message": "[[ service.label ]] / [[ reading.label ]] is in Danger.",
+                        "current": "{{ states('[[ reading.expected_entity_id ]]') }}",
+                        "minimum_threshold": "{{ states('[[ reading.minimum_threshold_entity ]]') }}",
+                        "maximum_threshold": "{{ states('[[ reading.maximum_threshold_entity ]]') }}"
+                      }
+
+    - alias: "LabPulse [[ reading.label ]] Recovery"
+      mode: single
+      trigger:
+        - platform: template
+          value_template: "{{ is_state('[[ reading.recovery_zone_entity ]]', 'on') }}"
+          for:
+            seconds: "{{ states('[[ service.recovery_seconds_entity ]]') | int(120) }}"
+      condition:
+        - condition: state
+          entity_id: "[[ reading.alarm_state_entity ]]"
+          state: "Danger"
+        - condition: state
+          entity_id: "[[ reading.sensor_fault_zone_entity ]]"
+          state: "off"
+      action:
+        - service: input_select.select_option
+          target:
+            entity_id: "[[ reading.alarm_state_entity ]]"
+          data:
+            option: Normal
+        - choose:
+            - conditions:
+                - condition: state
+                  entity_id: "[[ reading.alarm_muted_entity ]]"
+                  state: "off"
+              sequence:
+                - service: persistent_notification.create
+                  data:
+                    title: "LabPulse [[ reading.label ]] recovery"
+                    message: >
+                      [[ service.label ]] / [[ reading.label ]] has recovered.
+
+                      Current reading: {{ states('[[ reading.expected_entity_id ]]') }}.
+                    notification_id: "labpulse_[[ reading.reading_id ]]_status"
+                - service: mqtt.publish
+                  data:
+                    topic: "[[ model.sms_send_topic ]]"
+                    qos: 1
+                    retain: false
+                    payload: >
+                      {
+                        "event": "recovery",
+                        "service": "[[ service.name ]]",
+                        "service_label": "[[ service.label ]]",
+                        "reading": "[[ reading.name ]]",
+                        "reading_label": "[[ reading.label ]]",
+                        "entity_id": "[[ reading.alarm_state_entity ]]",
+                        "state": "Normal",
+                        "title": "LabPulse [[ reading.label ]] recovery",
+                        "message": "[[ service.label ]] / [[ reading.label ]] has recovered.",
+                        "current": "{{ states('[[ reading.expected_entity_id ]]') }}",
+                        "minimum_threshold": "{{ states('[[ reading.minimum_threshold_entity ]]') }}",
+                        "maximum_threshold": "{{ states('[[ reading.maximum_threshold_entity ]]') }}"
+                      }
+
+    - alias: "LabPulse [[ reading.label ]] Sensor Fault Clear"
+      mode: single
+      trigger:
+        - platform: state
+          entity_id: "[[ reading.sensor_fault_zone_entity ]]"
+          to: "off"
+      condition:
+        - condition: state
+          entity_id: "[[ reading.alarm_state_entity ]]"
+          state: "Sensor Fault"
+      action:
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: >
+                    {{ not is_state('[[ reading.alarm_mode_entity ]]', 'Disabled')
+                       and states('[[ reading.danger_ratio_entity ]]') | float(0)
+                       >= states('[[ service.danger_ratio_percent_entity ]]') | float(70) }}
+              sequence:
+                - service: input_select.select_option
+                  target:
+                    entity_id: "[[ reading.alarm_state_entity ]]"
+                  data:
+                    option: Danger
+            - conditions:
+                - condition: state
+                  entity_id: "[[ reading.recovery_zone_entity ]]"
+                  state: "on"
+              sequence:
+                - service: input_select.select_option
+                  target:
+                    entity_id: "[[ reading.alarm_state_entity ]]"
+                  data:
+                    option: Normal

@@ -8,7 +8,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import LabPulseConfig
 from labpulse_common.identity import stable_id
-from labpulse_homeassistant.model import build_render_model
+from labpulse_homeassistant.data_models import build_render_model
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:

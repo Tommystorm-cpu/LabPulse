@@ -219,7 +219,7 @@ If the live dashboard has old card IDs, edit the dashboard in Home Assistant.
 If the reset dashboard seed is wrong, edit:
 
 ```text
-labpulse_homeassistant/templates/dashboard_seed.yaml
+labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
 ```
 
 Then run:
@@ -240,13 +240,13 @@ Inspect generated package:
 Change source behavior in:
 
 ```text
-labpulse_homeassistant/templates/alarm_logic.yaml
+labpulse_homeassistant/templates/alarm/alarm_logic.yaml
 ```
 
 Change default threshold values in:
 
 ```text
-labpulse_homeassistant/model.py
+labpulse_homeassistant/data_models.py
 ```
 
 Tune live thresholds in the dashboard helpers.

@@ -204,7 +204,7 @@ load_dashboard
 check_homeassistant_config_writable
 
 GENERATOR_PACKAGE="$SCRIPT_DIR/labpulse_homeassistant"
-if [ ! -f "$GENERATOR_PACKAGE/generator.py" ]; then
+if [ ! -f "$GENERATOR_PACKAGE/__main__.py" ]; then
   echo "ERROR: Home Assistant Python generator package not found: $GENERATOR_PACKAGE" >&2
   exit 1
 fi
@@ -213,5 +213,5 @@ fi
 # writes generated Home Assistant files. It only writes the editable dashboard
 # when RESET_DASHBOARD is 1.
 PYTHONPATH="$SCRIPT_DIR:$SCRIPT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
-  python3 -m labpulse_homeassistant.generator \
+  python3 -m labpulse_homeassistant \
   "$CONFIG_PATH" "$HA_CONFIG_DIR" "$RESET_DASHBOARD"

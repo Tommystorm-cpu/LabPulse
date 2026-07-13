@@ -10,9 +10,9 @@ HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md
 In short:
 
 - edit the running dashboard in the Home Assistant UI
-- edit `labpulse_homeassistant/templates/dashboard_seed.yaml` to change the
+- edit `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` to change the
   generated dashboard created by `--reset-dashboard`
-- edit `labpulse_homeassistant/templates/alarm_logic.yaml` to change generated
+- edit `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` to change generated
   threshold helpers, alarm binary sensors, alert automations, and recovery
   automations
 - keep threshold values in Home Assistant helpers, not in `config.yaml`

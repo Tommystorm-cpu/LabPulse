@@ -16,13 +16,13 @@ Live dashboard layout is edited in the Home Assistant UI.
 Generated starter layout is edited in:
 
 ```text
-docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
+docker_refactor/labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
 ```
 
 Generated alarm helpers and automations are edited in:
 
 ```text
-docker_refactor/labpulse_homeassistant/templates/alarm_logic.yaml
+docker_refactor/labpulse_homeassistant/templates/alarm/alarm_logic.yaml
 ```
 
 Normal generation preserves the live Home Assistant dashboard:
@@ -75,7 +75,7 @@ Once it exists, Home Assistant owns it.
 | Restore the latest saved UI dashboard | `./generate_homeassistant_config.sh --load-dashboard` |
 | Change what a fresh/reset dashboard looks like | `dashboard_seed.yaml` |
 | Change generated alarm behavior | `alarm_logic.yaml` |
-| Change helper names/defaults/ranges | `alarm_logic.yaml` and sometimes `model.py` |
+| Change helper names/defaults/ranges | `alarm_logic.yaml` and sometimes `data_models.py` |
 | Change mute behavior, deadband, or extra alarm conditions | `alarm_logic.yaml` |
 | Change default entity IDs | `labpulse_common/identity.py` and contract tests |
 | Change dashboard section names/order/icons | `~/labpulse-ha/config.yaml` |
@@ -120,7 +120,7 @@ The reset dashboard is a seed. It is useful for:
 The seed file is:
 
 ```text
-docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
+docker_refactor/labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
 ```
 
 The generator loads it in:
@@ -187,32 +187,32 @@ code creates:
 The seed supports placeholders in strings:
 
 ```text
-{service.name}
-{service.service_id}
-{service.label}
-{service.section}
-{service.icon}
-{service.status_entity_id}
-{service.alarm_controls_expanded_entity}
-{service.danger_ratio_percent_entity}
-{service.danger_window_seconds_entity}
-{service.recovery_seconds_entity}
-{service.stale_timeout_seconds_entity}
+[[ service.name ]]
+[[ service.service_id ]]
+[[ service.label ]]
+[[ service.section ]]
+[[ service.icon ]]
+[[ service.status_entity_id ]]
+[[ service.alarm_controls_expanded_entity ]]
+[[ service.danger_ratio_percent_entity ]]
+[[ service.danger_window_seconds_entity ]]
+[[ service.recovery_seconds_entity ]]
+[[ service.stale_timeout_seconds_entity ]]
 
-{reading.name}
-{reading.label}
-{reading.reading_id}
-{reading.expected_entity_id}
-{reading.alarm_state_entity}
-{reading.alarm_mode_entity}
-{reading.alarm_muted_entity}
-{reading.danger_zone_entity}
-{reading.recovery_zone_entity}
-{reading.sensor_fault_zone_entity}
-{reading.danger_ratio_entity}
-{reading.minimum_threshold_entity}
-{reading.maximum_threshold_entity}
-{reading.recovery_deadband_entity}
+[[ reading.name ]]
+[[ reading.label ]]
+[[ reading.reading_id ]]
+[[ reading.expected_entity_id ]]
+[[ reading.alarm_state_entity ]]
+[[ reading.alarm_mode_entity ]]
+[[ reading.alarm_muted_entity ]]
+[[ reading.danger_zone_entity ]]
+[[ reading.recovery_zone_entity ]]
+[[ reading.sensor_fault_zone_entity ]]
+[[ reading.danger_ratio_entity ]]
+[[ reading.minimum_threshold_entity ]]
+[[ reading.maximum_threshold_entity ]]
+[[ reading.recovery_deadband_entity ]]
 ```
 
 Example:
@@ -220,8 +220,8 @@ Example:
 ```yaml
 reading_tile:
   type: tile
-  entity: "{reading.expected_entity_id}"
-  name: "{reading.label}"
+  entity: "[[ reading.expected_entity_id ]]"
+  name: "[[ reading.label ]]"
   grid_options:
     columns: 4
 ```
@@ -241,7 +241,7 @@ grid_options:
 1. Edit:
 
    ```text
-   docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
+   docker_refactor/labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
    ```
 
 2. Re-run setup or copy the updated generator package into the live folder:
@@ -281,7 +281,7 @@ homeassistant/config/packages/labpulse_generated.yaml
 The source template is:
 
 ```text
-docker_refactor/labpulse_homeassistant/templates/alarm_logic.yaml
+docker_refactor/labpulse_homeassistant/templates/alarm/alarm_logic.yaml
 ```
 
 The generator loads it in:
@@ -372,7 +372,7 @@ automations:
 Default threshold values are inferred in:
 
 ```text
-labpulse_homeassistant/model.py
+labpulse_homeassistant/data_models.py
 ```
 
 Look for:
@@ -403,7 +403,7 @@ alarm_logic.yaml
 If you want to change the inferred default numeric values or default mode, edit:
 
 ```text
-model.py
+data_models.py
 ```
 
 Once helpers exist in Home Assistant, changing the generated initial value may

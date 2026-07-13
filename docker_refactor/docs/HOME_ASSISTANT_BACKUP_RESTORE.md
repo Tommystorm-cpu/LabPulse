@@ -100,7 +100,7 @@ homeassistant/config/.storage/lovelace
 with a newly generated dashboard from:
 
 ```text
-docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
+docker_refactor/labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
 ```
 
 Use this when you intentionally want to discard the current live dashboard

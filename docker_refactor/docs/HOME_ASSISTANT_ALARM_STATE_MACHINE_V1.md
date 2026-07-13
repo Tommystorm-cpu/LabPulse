@@ -515,13 +515,13 @@ systems.
 Likely files to change:
 
 ```text
-docker_refactor/labpulse_homeassistant/model.py
+docker_refactor/labpulse_homeassistant/data_models.py
 docker_refactor/labpulse_homeassistant/alarm.py
 docker_refactor/labpulse_homeassistant/dashboard.py
-docker_refactor/labpulse_homeassistant/render.py
-docker_refactor/labpulse_homeassistant/templates/alarm_logic.yaml
-docker_refactor/labpulse_homeassistant/templates/dashboard_seed.yaml
-docker_refactor/labpulse_homeassistant/templates/package.yaml.j2
+docker_refactor/labpulse_homeassistant/write_yaml.py
+docker_refactor/labpulse_homeassistant/templates/alarm/alarm_logic.yaml
+docker_refactor/labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
+docker_refactor/labpulse_homeassistant/templates/alarm/package.yaml.j2
 docker_refactor/labpulse_homeassistant/README.md
 docker_refactor/docs/CONTAINER_SETUP.md
 docker_refactor/docs/HAPPY_PATH_SETUP.md

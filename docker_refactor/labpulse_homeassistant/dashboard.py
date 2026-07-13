@@ -1,15 +1,35 @@
 """Build the seeded Lovelace dashboard from editable YAML rules."""
 
+import json
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from .model import RenderModel, ServiceModel
-from .template_utils import expand_template
+from .data_models import GeneratorOptions, GeneratorPaths, RenderModel, ServiceModel
+from .template_utils import expand_template, render_template_file
 
 
-TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "dashboard"
+
+
+def render_dashboard(
+    paths: GeneratorPaths,
+    options: GeneratorOptions,
+    model: RenderModel,
+) -> None:
+    """Reset the editable dashboard when requested, otherwise preserve it."""
+
+    if options.reset_dashboard:
+        paths.storage_dir.mkdir(parents=True, exist_ok=True)
+        render_template_file(
+            TEMPLATE_DIR / "initial_lovelace.json.j2",
+            paths.lovelace_path,
+            {"dashboard_json": json.dumps(lovelace_document(model), indent=2)},
+        )
+        print(f"Reset editable dashboard {paths.lovelace_path}")
+    else:
+        print(f"Preserved editable dashboard {paths.lovelace_path}")
 
 
 def lovelace_document(model: RenderModel) -> dict[str, object]:

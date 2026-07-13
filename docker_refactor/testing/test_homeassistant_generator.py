@@ -11,10 +11,9 @@ sys.dont_write_bytecode = True
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
-from labpulse_common.config import LabPulseConfig
 from labpulse_common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
-from labpulse_homeassistant.model import GeneratorOptions, GeneratorPaths, build_render_model
-from labpulse_homeassistant.render import render_all
+from labpulse_homeassistant.cli import main as generate_homeassistant
+from labpulse_homeassistant.data_models import GeneratorPaths
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -55,9 +54,17 @@ def render_into(temp_dir: Path, reset_dashboard: bool) -> GeneratorPaths:
     temp_dir.mkdir(parents=True, exist_ok=True)
     config_path = temp_dir / "config.yaml"
     config_path.write_text(yaml.safe_dump(sample_config(), sort_keys=False), encoding="utf-8")
-    paths = GeneratorPaths(config_path=config_path, ha_config_dir=temp_dir / "homeassistant" / "config")
-    config = LabPulseConfig(**sample_config())
-    render_all(paths, GeneratorOptions(reset_dashboard=reset_dashboard), build_render_model(config))
+    ha_config_dir = temp_dir / "homeassistant" / "config"
+    paths = GeneratorPaths(config_path=config_path, ha_config_dir=ha_config_dir)
+    result = generate_homeassistant(
+        [
+            "generator",
+            str(config_path),
+            str(ha_config_dir),
+            "1" if reset_dashboard else "0",
+        ]
+    )
+    assert_equal(result, 0, "generator result")
     return paths
 
 
@@ -67,9 +74,20 @@ def test_generated_package_and_entity_map() -> None:
     temp_root = REFACTOR_DIR / "testing" / "tmp"
     temp_root.mkdir(exist_ok=True)
     paths = render_into(temp_root / f"generator-{uuid.uuid4().hex}", reset_dashboard=True)
-    package = yaml.safe_load(paths.package_path.read_text(encoding="utf-8"))
-    entity_map = yaml.safe_load(paths.entity_map_path.read_text(encoding="utf-8"))
+    package_text = paths.package_path.read_text(encoding="utf-8")
+    entity_map_text = paths.entity_map_path.read_text(encoding="utf-8")
+    dashboard_text = paths.lovelace_path.read_text(encoding="utf-8")
+    package = yaml.safe_load(package_text)
+    entity_map = yaml.safe_load(entity_map_text)
     configuration = paths.configuration_path.read_text(encoding="utf-8")
+
+    for label, generated_text in (
+        ("package", package_text),
+        ("entity map", entity_map_text),
+        ("dashboard", dashboard_text),
+    ):
+        if "[[" in generated_text or "]]" in generated_text:
+            raise AssertionError(f"{label} contains an unexpanded LabPulse placeholder")
 
     assert "automation: !include automations.yaml" in configuration
     assert "script: !include scripts.yaml" in configuration

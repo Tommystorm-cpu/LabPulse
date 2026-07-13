@@ -32,9 +32,9 @@ Each sensor container runs the hardware package entry point with a different
 service key:
 
 ```bash
-python -m labpulse_hardware.runner --service pressure_monitor
-python -m labpulse_hardware.runner --service pump_room
-python -m labpulse_hardware.runner --service turbo_pump
+python -m labpulse_hardware --service pressure_monitor
+python -m labpulse_hardware --service pump_room
+python -m labpulse_hardware --service turbo_pump
 ```
 
 The service key selects one entry under `services:` in `config.yaml`.
@@ -238,10 +238,10 @@ Use this table when deciding where a change belongs:
 | Change a hardware driver | `labpulse_hardware/drivers/` |
 | Change temporary serial parsing | `labpulse_hardware/legacy_parsing/serial_parser.py` |
 | Change MQTT discovery publishing | `labpulse_hardware/homeassistant_publisher.py` |
-| Change Home Assistant entity modelling | `labpulse_homeassistant/model.py` |
+| Change Home Assistant entity modelling | `labpulse_homeassistant/data_models.py` |
 | Change live dashboard arrangement | Home Assistant UI |
-| Change reset dashboard starter layout | `labpulse_homeassistant/templates/dashboard_seed.yaml` |
-| Change generated alarm helpers/automations | `labpulse_homeassistant/templates/alarm_logic.yaml` |
+| Change reset dashboard starter layout | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
+| Change generated alarm helpers/automations | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
 | Change SMS delivery backend behavior | `labpulse_sms/sender.py` |
 | Change SMS MQTT parsing | `labpulse_sms/sms_subscriber.py` |
 

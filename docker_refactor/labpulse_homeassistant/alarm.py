@@ -5,11 +5,23 @@ from typing import Any
 
 import yaml
 
-from .model import RenderModel, ServiceModel
-from .template_utils import expand_template
+from .data_models import GeneratorPaths, RenderModel, ServiceModel
+from .template_utils import expand_template, render_template_file
 
 
-TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "alarm"
+
+
+def render_alarm(paths: GeneratorPaths, model: RenderModel) -> None:
+    """Write the generated Home Assistant alarm package."""
+
+    paths.packages_dir.mkdir(parents=True, exist_ok=True)
+    render_template_file(
+        TEMPLATE_DIR / "package.yaml.j2",
+        paths.package_path,
+        package_context(model),
+    )
+    print(f"Generated {paths.package_path}")
 
 
 def package_context(model: RenderModel) -> dict[str, str]:

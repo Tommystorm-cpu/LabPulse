@@ -113,14 +113,14 @@ def service_slug(service_name: str) -> str:
 def quoted_command(service_name: str) -> str:
     """Serialize the command as JSON so Compose receives clean list syntax."""
 
-    command = ["python", "-m", "labpulse_hardware.runner", "--service", service_name]
+    command = ["python", "-m", "labpulse_hardware", "--service", service_name]
     return json.dumps(command)
 
 
 def sms_command() -> str:
     """Serialize the SMS service command as JSON."""
 
-    command = ["python", "-m", "labpulse_sms.sms_entry", "--config", "/app/config.yaml"]
+    command = ["python", "-m", "labpulse_sms", "--config", "/app/config.yaml"]
     return json.dumps(command)
 
 

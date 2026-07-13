@@ -83,7 +83,7 @@ services:
         if hardware["command"] != [
             "python",
             "-m",
-            "labpulse_hardware.runner",
+            "labpulse_hardware",
             "--service",
             "pressure_monitor",
         ]:
@@ -93,7 +93,7 @@ services:
         if sms["command"] != [
             "python",
             "-m",
-            "labpulse_sms.sms_entry",
+            "labpulse_sms",
             "--config",
             "/app/config.yaml",
         ]:

@@ -151,7 +151,7 @@ COPY labpulse_common ./labpulse_common
 COPY labpulse_hardware ./labpulse_hardware
 COPY labpulse_sms ./labpulse_sms
 
-CMD ["python", "-m", "labpulse_hardware.runner", "--service", "pressure_monitor"]
+CMD ["python", "-m", "labpulse_hardware", "--service", "pressure_monitor"]
 EOF
 
 # Keep the runtime dependency list small for Raspberry Pi builds.

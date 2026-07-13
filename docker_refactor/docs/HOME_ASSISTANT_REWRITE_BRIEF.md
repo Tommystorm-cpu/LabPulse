@@ -41,7 +41,7 @@ generate_homeassistant_config.sh
 Python entry point:
 
 ```text
-labpulse_homeassistant/generator.py
+labpulse_homeassistant/cli.py
 ```
 
 Flow:
@@ -52,38 +52,41 @@ generate_homeassistant_config.sh
   -> optionally back up dashboard
   -> optionally load dashboard backup
   -> check config directory is writable
-  -> python3 -m labpulse_homeassistant.generator
-    -> config_io.parse_args()
+  -> python3 -m labpulse_homeassistant
+    -> generator.parse_args()
     -> labpulse_common.config.load_config()
     -> model.build_render_model()
-    -> render.render_all()
-      -> alarm.package_context()
-      -> dashboard.lovelace_document() only for --reset-dashboard
+    -> render.render_core()
+    -> alarm.render_alarm()
+    -> dashboard.render_dashboard()
 ```
 
 ## Package Files
 
 ```text
 labpulse_homeassistant/
-  generator.py
-  config_io.py
-  model.py
-  render.py
+  __main__.py
+  cli.py
+  data_models.py
+  write_yaml.py
   dashboard.py
   alarm.py
   template_utils.py
   templates/
-    configuration.yaml.j2
-    package.yaml.j2
-    entity_map.yaml.j2
-    initial_lovelace.json.j2
-    dashboard_seed.yaml
-    alarm_logic.yaml
+    core/
+      configuration.yaml.j2
+      entity_map.yaml.j2
+    alarm/
+      package.yaml.j2
+      alarm_logic.yaml
+    dashboard/
+      initial_lovelace.json.j2
+      dashboard_seed.yaml
 ```
 
 ## Model Layer
 
-`model.py` converts the shared validated `LabPulseConfig` into Home
+`data_models.py` converts the shared validated `LabPulseConfig` into Home
 Assistant-specific render dataclasses:
 
 ```text
@@ -141,11 +144,10 @@ that Home Assistant does not create.
 
 ## Render Layer
 
-`render.py` writes:
+`write_yaml.py` writes:
 
 ```text
 configuration.yaml
-packages/labpulse_generated.yaml
 labpulse_entity_map.yaml
 ```
 
@@ -160,15 +162,16 @@ scenes.yaml
 Those files are managed by Home Assistant's UI editors, so the generator never
 overwrites them after creation.
 
-`render.py` writes `.storage/lovelace` only when `GeneratorOptions.reset_dashboard`
-is true.
+`dashboard.py` writes `.storage/lovelace` only when
+`GeneratorOptions.reset_dashboard` is true. `alarm.py` writes
+`packages/labpulse_generated.yaml`.
 
 ## Dashboard Layer
 
 `dashboard.py` loads:
 
 ```text
-templates/dashboard_seed.yaml
+templates/dashboard/dashboard_seed.yaml
 ```
 
 It creates one Home Assistant `sections` dashboard view with:
@@ -184,10 +187,10 @@ It creates one Home Assistant `sections` dashboard view with:
 It uses `template_utils.expand_template()` to replace placeholders such as:
 
 ```text
-{service.section}
-{service.status_entity_id}
-{reading.expected_entity_id}
-{reading.alarm_entity_id}
+[[ service.section ]]
+[[ service.status_entity_id ]]
+[[ reading.expected_entity_id ]]
+[[ reading.alarm_entity_id ]]
 ```
 
 ## Alarm Layer
@@ -195,7 +198,7 @@ It uses `template_utils.expand_template()` to replace placeholders such as:
 `alarm.py` loads:
 
 ```text
-templates/alarm_logic.yaml
+templates/alarm/alarm_logic.yaml
 ```
 
 It expands seed items over services and readings, then renders package sections:
@@ -219,8 +222,8 @@ lists, keys, and string values.
 Supported placeholder roots:
 
 ```text
-{service....}
-{reading....}
+[[ service.... ]]
+[[ reading.... ]]
 ```
 
 The expander deliberately leaves Home Assistant Jinja intact:

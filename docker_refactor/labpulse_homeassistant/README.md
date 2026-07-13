@@ -19,35 +19,32 @@ That wrapper handles dashboard backup/load/reset flags and path setup. It then
 runs:
 
 ```bash
-python3 -m labpulse_homeassistant.generator
+python3 -m labpulse_homeassistant
 ```
 
 ## File Map
 
-`generator.py`
+`__main__.py` and `cli.py`
 
-Coordinates the generation flow: load the shared validated config, normalize
-the render model, and render files.
+`__main__.py` makes the package executable with `python -m
+labpulse_homeassistant`. `cli.py` parses the normalized paths/options passed by
+`generate_homeassistant_config.sh`, loads the shared validated config, builds
+the render model, and coordinates the three rendering operations. Configuration
+loading belongs to `labpulse_common.config`.
 
-`config_io.py`
-
-Reads command-line arguments and resolves paths passed by
-`generate_homeassistant_config.sh`. Configuration loading belongs to
-`labpulse_common.config`.
-
-`model.py`
+`data_models.py`
 
 Defines the normalized render model: services, readings, default helper ranges,
 stable `labpulse_*` entity IDs, and generated helper IDs.
 
-`render.py`
+`write_yaml.py`
 
-Renders template files and writes:
+Writes the core YAML files:
 
 - `configuration.yaml`
-- `packages/labpulse_generated.yaml`
 - `labpulse_entity_map.yaml`
-- `.storage/lovelace` only when `--reset-dashboard` is used
+
+It also creates the Home Assistant UI-managed YAML files when they are missing.
 
 `dashboard.py`
 
@@ -62,20 +59,24 @@ and automations.
 
 `template_utils.py`
 
-Expands placeholders such as `{service.label}` and `{reading.alarm_state_entity}`
+Expands placeholders such as `[[ service.label ]]` and `[[ reading.alarm_state_entity ]]`
 inside editable seed YAML files. Home Assistant Jinja like `{{ states(...) }}`
-is left intact.
+is left intact. The outer output templates use the same LabPulse delimiter for
+section insertion, for example `[[ input_numbers ]]`; `{{ ... }}` and `{% ... %}`
+are reserved for Home Assistant runtime templates. `render_template_file()`
+reads an outer template, substitutes its section values, and writes the rendered
+result to its destination.
 
 `templates/`
 
 Contains the readable Home Assistant artifacts:
 
-- `configuration.yaml.j2`
-- `package.yaml.j2`
-- `entity_map.yaml.j2`
-- `initial_lovelace.json.j2`
-- `dashboard_seed.yaml`
-- `alarm_logic.yaml`
+- `core/configuration.yaml.j2`
+- `core/entity_map.yaml.j2`
+- `alarm/package.yaml.j2`
+- `alarm/alarm_logic.yaml`
+- `dashboard/initial_lovelace.json.j2`
+- `dashboard/dashboard_seed.yaml`
 
 `dashboard_seed.yaml` is the file to edit when changing the initial dashboard
 layout created by `--reset-dashboard`. It contains card templates such as the
@@ -83,7 +84,7 @@ system-health section, per-service heading/status tiles, monitor reading/state
 tiles, and alarm setup cards. The Alarm Setup view uses a generated native
 `Show controls` toggle per service plus native conditional cards so timing and
 per-reading controls can be hidden until needed. The Python code only expands
-placeholders such as `{service.section}` and `{reading.expected_entity_id}`.
+placeholders such as `[[ service.section ]]` and `[[ reading.expected_entity_id ]]`.
 
 `alarm_logic.yaml` is the file to edit when changing generated alarm behavior.
 It contains the seed rules for threshold/deadband helpers, alarm
@@ -99,13 +100,13 @@ Marks this folder as a Python package.
 
 ```text
 generate_homeassistant_config.sh
-  -> python3 -m labpulse_homeassistant.generator
-    -> config_io.parse_args()
+  -> python3 -m labpulse_homeassistant
+    -> generator.parse_args()
     -> labpulse_common.config.load_config()
     -> model.build_render_model()
-    -> render.render_all()
-      -> alarm.package_context()
-      -> dashboard.lovelace_document() only for --reset-dashboard
+    -> render.render_core()
+    -> alarm.render_alarm()
+    -> dashboard.render_dashboard()
 ```
 
 ## Dashboard Flags

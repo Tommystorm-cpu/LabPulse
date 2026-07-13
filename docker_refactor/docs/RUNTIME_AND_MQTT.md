@@ -25,7 +25,7 @@ labpulse-pressure-monitor
 Container command:
 
 ```bash
-python -m labpulse_hardware.runner --service pressure_monitor
+python -m labpulse_hardware --service pressure_monitor
 ```
 
 The same code runs for every sensor hub. The `--service` value selects the
@@ -33,7 +33,7 @@ service-specific config.
 
 ## Entry Point Flow
 
-`labpulse_hardware/runner.py` owns orchestration:
+`labpulse_hardware/cli.py` owns orchestration:
 
 ```text
 parse command-line args
@@ -219,7 +219,7 @@ labpulse_common/identity.py
 The Home Assistant generator builds entity references in:
 
 ```text
-labpulse_homeassistant/model.py
+labpulse_homeassistant/data_models.py
 ```
 
 The hardware MQTT publisher uses them in:

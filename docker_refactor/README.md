@@ -90,14 +90,14 @@ The generated starter dashboard, used only when `--reset-dashboard` is passed,
 comes from:
 
 ```text
-labpulse_homeassistant/templates/dashboard_seed.yaml
+labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
 ```
 
 Generated alarm helpers, binary sensors, and alert/recovery automations come
 from:
 
 ```text
-labpulse_homeassistant/templates/alarm_logic.yaml
+labpulse_homeassistant/templates/alarm/alarm_logic.yaml
 ```
 
 See [docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md](docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md)
