@@ -91,7 +91,6 @@ Assistant-specific render dataclasses:
 
 ```text
 GeneratorPaths
-GeneratorOptions
 ThresholdModel
 ReadingModel
 ServiceModel
@@ -162,8 +161,8 @@ scenes.yaml
 Those files are managed by Home Assistant's UI editors, so the generator never
 overwrites them after creation.
 
-`dashboard.py` writes `.storage/lovelace` only when
-`GeneratorOptions.reset_dashboard` is true. `alarm.py` writes
+`dashboard.py` writes `.storage/lovelace` only when its `reset_dashboard`
+argument is true. `alarm.py` writes
 `packages/labpulse_generated.yaml`.
 
 ## Dashboard Layer

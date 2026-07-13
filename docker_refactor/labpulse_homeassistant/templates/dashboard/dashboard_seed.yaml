@@ -49,7 +49,7 @@ monitor_sections:
     entity: "[[ reading.expected_entity_id ]]"
     name: "[[ reading.label ]]"
     grid_options:
-      columns: 4
+      columns: 6
   state_tile:
     type: tile
     entity: "[[ reading.alarm_state_entity ]]"

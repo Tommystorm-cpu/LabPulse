@@ -1,7 +1,7 @@
 """Base interface implemented by all LabPulse hardware drivers."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Optional
 import logging
 
 class BaseSensorDriver(ABC):
@@ -11,12 +11,10 @@ class BaseSensorDriver(ABC):
     and implement these core methods.
     """
 
-    def __init__(self, name: str, config: dict[str, Any]) -> None:
-        """
-        Initialize the sensor driver with its unique name and YAML config parameters.
-        """
+    def __init__(self, name: str) -> None:
+        """Initialize the common identity and status for one sensor driver."""
+
         self.name = name
-        self.config = config
         self.connected = False
         self.status = "disconnected"
         self.logger = logging.getLogger(f"Driver.{self.name}")

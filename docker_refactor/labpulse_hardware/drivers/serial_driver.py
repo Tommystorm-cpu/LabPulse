@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 import time
 
 import serial
@@ -14,20 +14,23 @@ class Driver(BaseSensorDriver):
     SerialParser.
     """
 
-    def __init__(self, name: str, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        name: str,
+        port: str,
+        baud_rate: int,
+        parser_type: str,
+        reconnect_interval_seconds: float,
+    ) -> None:
         """Store serial settings and create the parser for this service."""
 
-        super().__init__(name, config)
-
-        # SensorFactory translates ServiceConfig into this driver-specific shape.
-        self.port = self.config.get("port")
-        self.baud_rate = self.config.get("baud_rate", 9600)
+        super().__init__(name)
+        self.port = port
+        self.baud_rate = baud_rate
         self.ser = None
-        self.parser_type = self.config.get("parser")
+        self.parser_type = parser_type
         self.parser = SerialParser(name, self.parser_type)
-        self.reconnect_interval_seconds = float(
-            self.config.get("reconnect_interval_seconds", 5.0)
-        )
+        self.reconnect_interval_seconds = reconnect_interval_seconds
         self.last_reconnect_attempt = 0.0
 
     def setup(self) -> bool:

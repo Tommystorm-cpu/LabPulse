@@ -42,16 +42,16 @@ class FakeSerialException(Exception):
 
 
 def make_driver(**overrides: Any) -> Driver:
-    """Build a pressure parser serial driver with optional config overrides."""
+    """Build a pressure parser serial driver with optional setting overrides."""
 
-    config = {
+    settings = {
         "port": "/tmp/labpulse-fake-serial/pressure",
         "baud_rate": 9600,
-        "parser": "pressure",
+        "parser_type": "pressure",
         "reconnect_interval_seconds": 5.0,
     }
-    config.update(overrides)
-    return Driver("pressure_monitor", config)
+    settings.update(overrides)
+    return Driver(name="pressure_monitor", **settings)
 
 
 def install_fake_serial(factory: Callable[..., FakeSerialPort]) -> None:

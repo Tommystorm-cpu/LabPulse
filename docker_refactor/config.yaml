@@ -124,14 +124,10 @@ services:
     reconnect_interval_seconds: 5
 
   room_environment:
-    enabled: false
+    enabled: true
     driver: gpio
-    gpio_sensor: fake_dht11
-    fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+    gpio_sensor: dht11
     gpio_pin: "D4"
-    # For fake DHT testing, set:
-    # gpio_sensor: fake_dht11
-    # fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
     device_name: "Room Environment Sensor"
     display:
       section: "Room Environment"

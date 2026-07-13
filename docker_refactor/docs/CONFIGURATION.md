@@ -183,7 +183,6 @@ Implemented driver:
 ```text
 serial
 gpio with gpio_sensor: dht11
-gpio with gpio_sensor: fake_dht11
 ```
 
 Reserved but not implemented yet:
@@ -261,15 +260,17 @@ humidity
 
 `gpio_pin` is the Adafruit Blinka board pin name, such as `D4`.
 
-For a test Pi without a DHT11 sensor, use the file-backed fake DHT driver:
+For a test Pi without a DHT11 sensor, represent the room sensor as another
+simulated serial service:
 
 ```yaml
 services:
   room_environment:
     enabled: true
-    driver: gpio
-    gpio_sensor: fake_dht11
-    fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+    driver: serial
+    parser: pipe
+    serial_port: "/tmp/labpulse-fake-serial/room_environment"
+    baud_rate: 9600
     device_name: "Room Environment Sensor"
     readings:
       - name: "temperature"
@@ -280,20 +281,11 @@ services:
         label: "Humidity"
         unit: "%"
         device_class: "humidity"
-    read_interval_seconds: 2
 ```
 
-The fake state file is edited live:
-
-```text
-mode=live
-temperature=21.5
-humidity=48.0
-```
-
-`mode=live` nudges values slightly so Home Assistant does not treat the fake
-reading as stale. Use `mode=stale` when you intentionally want to test stale
-sensor-fault behavior.
+`setup_container_fs.sh -fake_usb` makes this driver substitution automatically.
+`simulate_serial.py` emits `temperature` and `humidity` through the same
+pseudo-serial mechanism used by the other fake devices.
 
 ## Serial Port
 
@@ -321,6 +313,8 @@ pump_room:
   serial_port: "/tmp/labpulse-fake-serial/pump_room"
 turbo_pump:
   serial_port: "/tmp/labpulse-fake-serial/turbo_pump"
+room_environment:
+  serial_port: "/tmp/labpulse-fake-serial/room_environment"
 ```
 
 ## Device Name

@@ -5,11 +5,11 @@ from labpulse_common.config import load_config
 
 from .alarm import render_alarm
 from .dashboard import render_dashboard
-from .data_models import GeneratorOptions, GeneratorPaths, build_render_model
+from .data_models import GeneratorPaths, build_render_model
 from .write_yaml import render_core
 
 
-def parse_args(argv: list[str]) -> tuple[GeneratorPaths, GeneratorOptions]:
+def parse_args(argv: list[str]) -> tuple[GeneratorPaths, bool]:
     """Parse the normalized arguments passed by the shell wrapper."""
 
     if len(argv) != 4:
@@ -25,9 +25,7 @@ def parse_args(argv: list[str]) -> tuple[GeneratorPaths, GeneratorOptions]:
             config_path=Path(argv[1]).expanduser().resolve(),
             ha_config_dir=Path(argv[2]).expanduser().resolve(),
         ),
-        GeneratorOptions(
-            reset_dashboard=argv[3] == "1",
-        ),
+        argv[3] == "1",
     )
 
 
@@ -38,12 +36,12 @@ def main(argv: list[str]) -> int:
     shell wrapper owns dashboard backup/load behavior before this entry point.
     """
 
-    paths, options = parse_args(argv)
+    paths, reset_dashboard = parse_args(argv)
     config = load_config(paths.config_path)
     model = build_render_model(config)
     render_core(paths, model)
     render_alarm(paths, model)
-    render_dashboard(paths, options, model)
+    render_dashboard(paths, reset_dashboard, model)
     return 0
 
 

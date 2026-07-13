@@ -57,28 +57,30 @@ For fake USB testing:
 ```bash
 cd ~/LabPulse/docker_refactor
 ./setup_container_fs.sh -fake_usb
-./simulate_arduinos.sh
+cd ~/labpulse-ha
+python3 simulate_serial.py start
 ```
 
-To deliberately test an alarm path, pass a scenario such as:
+Change simulated behavior while the background service is running:
 
 ```bash
-./simulate_arduinos.sh --scenario pump_room.flow1=danger-low
-./simulate_arduinos.sh --scenario pump_room.flow1=recover
-./simulate_arduinos.sh --scenario pump_room.flow1=stale
+python3 simulate_serial.py set pump_room.flow1 danger-low
+python3 simulate_serial.py set pump_room.flow1 recover
+python3 simulate_serial.py set pump_room.flow1 stale
+python3 simulate_serial.py set room_environment.temperature danger-high
 ```
 
-While the simulator is running, change scenarios without recreating the fake
-serial devices by editing:
+Inspect or clear the in-memory scenarios with:
 
-```text
-/tmp/labpulse-fake-serial/scenarios.txt
+```bash
+python3 simulate_serial.py status
+python3 simulate_serial.py clear pump_room.flow1
+python3 simulate_serial.py reset
 ```
 
 Then in another terminal:
 
 ```bash
-cd ~/labpulse-ha
 docker compose up -d --build
 ```
 

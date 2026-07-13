@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from .data_models import GeneratorOptions, GeneratorPaths, RenderModel, ServiceModel
+from .data_models import GeneratorPaths, RenderModel, ServiceModel
 from .template_utils import expand_template, render_template_file
 
 
@@ -15,12 +15,12 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "dashboard"
 
 def render_dashboard(
     paths: GeneratorPaths,
-    options: GeneratorOptions,
+    reset_dashboard: bool,
     model: RenderModel,
 ) -> None:
     """Reset the editable dashboard when requested, otherwise preserve it."""
 
-    if options.reset_dashboard:
+    if reset_dashboard:
         paths.storage_dir.mkdir(parents=True, exist_ok=True)
         render_template_file(
             TEMPLATE_DIR / "initial_lovelace.json.j2",

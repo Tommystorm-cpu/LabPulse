@@ -154,7 +154,6 @@ Fake USB setup mounts:
 
 ```text
 /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial
-/tmp/labpulse-fake-dht11:/tmp/labpulse-fake-dht11
 /dev/pts:/dev/pts
 ```
 
@@ -164,26 +163,26 @@ It uses paths such as:
 /tmp/labpulse-fake-serial/pressure
 /tmp/labpulse-fake-serial/pump_room
 /tmp/labpulse-fake-serial/turbo_pump
+/tmp/labpulse-fake-serial/room_environment
 ```
 
-The simulator is:
+Start the simulator as a background service from the live project:
 
 ```bash
-cd ~/LabPulse/docker_refactor
-./simulate_arduinos.sh
+cd ~/labpulse-ha
+python3 simulate_serial.py start
 ```
 
-Install `socat` if needed:
+Control it without restarting the pseudo-serial devices:
 
 ```bash
-sudo apt install socat -y
+python3 simulate_serial.py set pump_room.flow1 danger-low
+python3 simulate_serial.py status
+python3 simulate_serial.py stop
 ```
 
-Fake USB mode also supports file-backed DHT11 input through:
-
-```text
-/tmp/labpulse-fake-dht11/room_environment.env
-```
+Fake USB mode represents room temperature and humidity as a fourth simulated
+serial device, so it needs no separate DHT state-file mount or fake driver.
 
 ## SMS Container Mounts
 

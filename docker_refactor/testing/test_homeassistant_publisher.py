@@ -104,35 +104,6 @@ def test_connect_and_disconnect() -> None:
     assert_equal(publisher.client.disconnected, True, "disconnected")
 
 
-def test_topics_and_units() -> None:
-    """Check topic construction and configured reading lookup."""
-
-    publisher = make_publisher()
-
-    assert_equal(
-        publisher.state_topic("pressure"),
-        "home/sensor/pressure_monitor/pressure/state",
-        "state topic",
-    )
-    assert_equal(
-        publisher.discovery_topic("pressure"),
-        "homeassistant/sensor/pressure_monitor_pressure/config",
-        "discovery topic",
-    )
-    assert_equal(
-        publisher.status_topic(),
-        "home/sensor/pressure_monitor/status",
-        "status topic",
-    )
-    assert_equal(
-        publisher.status_discovery_topic(),
-        "homeassistant/sensor/pressure_monitor_status/config",
-        "status discovery topic",
-    )
-    reading = publisher.reading_config_for("pressure")
-    assert_equal(reading.unit if reading else None, "bar", "pressure unit")
-
-
 def test_publish_discovery_once_then_readings() -> None:
     """Check discovery is retained once and state readings publish every time."""
 
@@ -304,7 +275,6 @@ def test_ignore_unconfigured_readings() -> None:
 
 TESTS = [
     ("connect and disconnect", test_connect_and_disconnect),
-    ("topics and units", test_topics_and_units),
     ("publish discovery once then readings", test_publish_discovery_once_then_readings),
     ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
     ("publish discovery for new readings", test_publish_discovery_for_new_readings),

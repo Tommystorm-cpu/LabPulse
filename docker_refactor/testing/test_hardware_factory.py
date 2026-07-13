@@ -8,8 +8,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import ServiceConfig
 from labpulse_hardware.drivers.dht11_driver import Driver as Dht11Driver
-from labpulse_hardware.drivers.fake_dht11_driver import Driver as FakeDht11Driver
-from labpulse_hardware.drivers.factory import SensorFactory
+from labpulse_hardware.drivers.factory import build_driver
 from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
 
@@ -63,49 +62,45 @@ def assert_raises(
 def test_serial_driver_builds() -> None:
     """Check that a serial service creates a SerialDriver with driver config."""
 
-    factory = SensorFactory()
     service_config = make_service_config()
 
-    driver = factory.build("pump_room", service_config)
+    driver = build_driver("pump_room", service_config)
 
     assert_equal(isinstance(driver, SerialDriver), True, "driver type")
     assert_equal(driver.name, "pump_room", "driver name")
-    assert_equal(driver.config["port"], "/tmp/labpulse-fake-serial/pump_room", "port")
-    assert_equal(driver.config["baud_rate"], 9600, "baud rate")
-    assert_equal(driver.config["parser"], "pump_room", "parser")
-    assert_equal(driver.config["reconnect_interval_seconds"], 5.0, "reconnect interval")
+    assert_equal(driver.port, "/tmp/labpulse-fake-serial/pump_room", "port")
+    assert_equal(driver.baud_rate, 9600, "baud rate")
+    assert_equal(driver.parser_type, "pump_room", "parser")
+    assert_equal(driver.reconnect_interval_seconds, 5.0, "reconnect interval")
 
 
 def test_serial_config_requires_port() -> None:
     """Check that serial services fail clearly without serial_port."""
 
-    factory = SensorFactory()
     service_config = make_service_config(serial_port=None)
 
     assert_raises(
         ValueError,
         "missing serial_port",
-        lambda: factory.build("pump_room", service_config),
+        lambda: build_driver("pump_room", service_config),
     )
 
 
 def test_serial_config_requires_parser() -> None:
     """Check that serial services fail clearly without parser."""
 
-    factory = SensorFactory()
     service_config = make_service_config(parser=None)
 
     assert_raises(
         ValueError,
         "missing parser",
-        lambda: factory.build("pump_room", service_config),
+        lambda: build_driver("pump_room", service_config),
     )
 
 
 def test_gpio_dht11_driver_builds() -> None:
     """Check that a GPIO DHT11 service creates a Dht11Driver."""
 
-    factory = SensorFactory()
     service_config = make_service_config(
         driver="gpio",
         gpio_sensor="dht11",
@@ -119,18 +114,17 @@ def test_gpio_dht11_driver_builds() -> None:
         ],
     )
 
-    driver = factory.build("room_environment", service_config)
+    driver = build_driver("room_environment", service_config)
 
     assert_equal(isinstance(driver, Dht11Driver), True, "driver type")
     assert_equal(driver.name, "room_environment", "driver name")
-    assert_equal(driver.config["pin"], "D4", "pin")
-    assert_equal(driver.config["read_interval_seconds"], 3.0, "read interval")
+    assert_equal(driver.pin_name, "D4", "pin")
+    assert_equal(driver.read_interval_seconds, 3.0, "read interval")
 
 
 def test_gpio_dht11_requires_pin() -> None:
     """Check that DHT11 services fail clearly without gpio_pin."""
 
-    factory = SensorFactory()
     service_config = make_service_config(
         driver="gpio",
         gpio_sensor="dht11",
@@ -142,44 +136,19 @@ def test_gpio_dht11_requires_pin() -> None:
     assert_raises(
         ValueError,
         "missing gpio_pin",
-        lambda: factory.build("room_environment", service_config),
+        lambda: build_driver("room_environment", service_config),
     )
-
-
-def test_gpio_fake_dht11_driver_builds() -> None:
-    """Check that a fake DHT11 GPIO service creates a file-backed driver."""
-
-    factory = SensorFactory()
-    service_config = make_service_config(
-        driver="gpio",
-        gpio_sensor="fake_dht11",
-        fake_state_file="/tmp/labpulse-fake-dht11/room_environment.env",
-        parser=None,
-        serial_port=None,
-        read_interval_seconds=1.5,
-        readings=[
-            {"name": "temperature", "label": "Temperature", "unit": "\u00b0C"},
-            {"name": "humidity", "label": "Humidity", "unit": "%"},
-        ],
-    )
-
-    driver = factory.build("room_environment", service_config)
-
-    assert_equal(isinstance(driver, FakeDht11Driver), True, "driver type")
-    assert_equal(driver.config["state_file"], "/tmp/labpulse-fake-dht11/room_environment.env", "state file")
-    assert_equal(driver.config["read_interval_seconds"], 1.5, "read interval")
 
 
 def test_i2c_slot_exists_but_is_not_implemented() -> None:
     """Check that the I2C factory slot exists as a placeholder."""
 
-    factory = SensorFactory()
     service_config = make_service_config(driver="i2c", parser=None, serial_port=None)
 
     assert_raises(
         NotImplementedError,
         "I2C driver support is not implemented yet",
-        lambda: factory.build("ups_hat", service_config),
+        lambda: build_driver("ups_hat", service_config),
     )
 
 
@@ -189,15 +158,14 @@ TESTS = [
     ("serial config requires parser", test_serial_config_requires_parser),
     ("gpio DHT11 driver builds", test_gpio_dht11_driver_builds),
     ("gpio DHT11 requires pin", test_gpio_dht11_requires_pin),
-    ("gpio fake DHT11 driver builds", test_gpio_fake_dht11_driver_builds),
     ("i2c slot exists but is not implemented", test_i2c_slot_exists_but_is_not_implemented),
 ]
 
 
 def main() -> None:
-    """Run all SensorFactory test cases."""
+    """Run all driver factory test cases."""
 
-    print("Running SensorFactory tests")
+    print("Running driver factory tests")
     print(f"Refactor dir: {REFACTOR_DIR}")
     print()
 

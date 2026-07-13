@@ -91,17 +91,19 @@ Output:
 FlowRate:1.234,TotalLitres:0.567
 ```
 
-This is not currently one of the three main simulated LabPulse links.
+This is not currently one of the simulated LabPulse links.
 
 ## Simulator
 
-`simulate_arduinos.sh` creates:
+`simulate_serial.py start` creates:
 
 ```text
 /tmp/labpulse-fake-serial/pressure
 /tmp/labpulse-fake-serial/pump_room
 /tmp/labpulse-fake-serial/turbo_pump
+/tmp/labpulse-fake-serial/room_environment
 ```
 
 The simulator should match the formats above closely enough that parser tests
 and fake USB runs exercise the same assumptions as real Arduino serial output.
+Its behavior is changed live through `simulate_serial.py set`, not a state file.

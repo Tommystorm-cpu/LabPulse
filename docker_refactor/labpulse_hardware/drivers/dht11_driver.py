@@ -16,12 +16,17 @@ except ImportError:
 class Driver(BaseSensorDriver):
     """Read temperature and humidity from an Adafruit-compatible DHT11 sensor."""
 
-    def __init__(self, name: str, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        name: str,
+        pin_name: str,
+        read_interval_seconds: float,
+    ) -> None:
         """Create a DHT11 driver from GPIO pin and timing configuration."""
 
-        super().__init__(name, config)
-        self.pin_name = str(config["pin"])
-        self.read_interval_seconds = float(config.get("read_interval_seconds", 2.0))
+        super().__init__(name)
+        self.pin_name = pin_name
+        self.read_interval_seconds = read_interval_seconds
         self.device: Any | None = None
         self.last_read_at = 0.0
 

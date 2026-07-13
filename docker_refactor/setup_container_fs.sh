@@ -25,7 +25,7 @@ Override target:
   LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 
 Options:
-  -fake_usb  Mount socat fake USB serial paths for simulator testing.
+  -fake_usb  Mount pseudo-serial paths for simulator testing.
   --backup  Create .bak timestamp copies before replacing generated files.
 
 After this script has run once, work from ~/labpulse-ha:
@@ -115,7 +115,6 @@ mkdir -p "$PROJECT_DIR/logs"
 
 if [ "$FAKE_USB" -eq 1 ]; then
   mkdir -p /tmp/labpulse-fake-serial
-  mkdir -p /tmp/labpulse-fake-dht11
 fi
 
 # Keep a plain-English USB mode for the final summary output.
@@ -170,6 +169,8 @@ copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
+copy_file "$SCRIPT_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
+chmod +x "$PROJECT_DIR/simulate_serial.py"
 replace_dir "$SCRIPT_DIR/labpulse_homeassistant" "$PROJECT_DIR/labpulse_homeassistant"
 find "$PROJECT_DIR/labpulse_homeassistant" -type d -name "__pycache__" -prune -exec rm -rf {} +
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
@@ -189,7 +190,7 @@ fi
 
 # Apply small setup-time defaults without structurally rewriting the live YAML.
 # The generators do full YAML parsing later; this block only handles starter
-# broker defaults and fake USB serial placeholders.
+# broker defaults and fake serial device paths.
 python3 - "$LIVE_CONFIG" "$FAKE_USB" <<'PY'
 from pathlib import Path
 import sys
@@ -210,8 +211,14 @@ if fake_usb:
     for source, replacement in replacements.items():
         text = text.replace(source, replacement, 1)
 
-    text = text.replace("gpio_sensor: dht11", "gpio_sensor: fake_dht11", 1)
-    text = text.replace('gpio_pin: "D4"', 'fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"', 1)
+    real_room_environment = '''    driver: gpio
+    gpio_sensor: dht11
+    gpio_pin: "D4"'''
+    simulated_room_environment = '''    driver: serial
+    parser: pipe
+    serial_port: "/tmp/labpulse-fake-serial/room_environment"
+    baud_rate: 9600'''
+    text = text.replace(real_room_environment, simulated_room_environment, 1)
 
 path.write_text(text)
 PY
@@ -246,6 +253,7 @@ Created/updated:
   $PROJECT_DIR/config.yaml
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
+  $PROJECT_DIR/simulate_serial.py
   $PROJECT_DIR/labpulse_homeassistant/
   $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml
   $PROJECT_DIR/homeassistant/config/labpulse_entity_map.yaml

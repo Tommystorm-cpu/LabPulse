@@ -49,6 +49,13 @@ TEST_CASES = [
         },
     },
     {
+        "name": "simulated room environment pipe line",
+        "service_name": "room_environment",
+        "parser_type": "pipe",
+        "line": "temperature:21.5|humidity:48.0",
+        "expected": {"temperature": 21.5, "humidity": 48.0},
+    },
+    {
         "name": "full water combined flow and temperature line",
         "service_name": "turbo_pump",
         "parser_type": "water",

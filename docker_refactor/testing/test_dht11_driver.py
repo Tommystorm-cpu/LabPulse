@@ -79,11 +79,11 @@ class FakeAdafruitDht:
 
 
 def make_driver(**overrides: Any) -> Driver:
-    """Build a DHT11 driver with optional config overrides."""
+    """Build a DHT11 driver with optional setting overrides."""
 
-    config = {"pin": "D4", "read_interval_seconds": 2.0}
-    config.update(overrides)
-    return Driver("room_environment", config)
+    settings = {"pin_name": "D4", "read_interval_seconds": 2.0}
+    settings.update(overrides)
+    return Driver(name="room_environment", **settings)
 
 
 def install_fake_modules(device: FakeDhtDevice | None = None, board: object | None = None) -> None:
@@ -138,7 +138,7 @@ def test_unknown_pin_fails_setup() -> None:
     """Check a bad board pin fails clearly."""
 
     install_fake_modules(board=object())
-    driver = make_driver(pin="D99")
+    driver = make_driver(pin_name="D99")
 
     assert_equal(driver.setup(), False, "setup")
     assert_equal(driver.connected, False, "connected")

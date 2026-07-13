@@ -6,7 +6,7 @@ from pathlib import Path
 
 from labpulse_common.config import get_service_config, load_config
 from labpulse_common.logging_config import configure_logging
-from labpulse_hardware.drivers.factory import SensorFactory
+from labpulse_hardware.drivers.factory import build_driver
 from labpulse_hardware.homeassistant_publisher import HomeAssistantMqttPublisher
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -64,8 +64,7 @@ def main() -> None:
     logger.info("Loaded config: %s", config_path)
     logger.info("Selected service: %s", args.service)
 
-    factory = SensorFactory()
-    driver = factory.build(args.service, service_cfg)
+    driver = build_driver(args.service, service_cfg)
     logger.info("Created hardware driver for %s: %s", args.service, driver)
 
     publisher = None

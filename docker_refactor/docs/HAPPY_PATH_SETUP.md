@@ -262,7 +262,8 @@ Terminal 1:
 ```bash
 cd ~/LabPulse/docker_refactor
 ./setup_container_fs.sh -fake_usb
-./simulate_arduinos.sh
+cd ~/labpulse-ha
+python3 simulate_serial.py start
 ```
 
 Terminal 2:
@@ -279,49 +280,51 @@ Fake serial paths:
 /tmp/labpulse-fake-serial/pressure
 /tmp/labpulse-fake-serial/pump_room
 /tmp/labpulse-fake-serial/turbo_pump
+/tmp/labpulse-fake-serial/room_environment
 ```
 
 Alarm scenarios are available from the simulator. For example, this drives pump
 room flow 1 below the default minimum threshold:
 
 ```bash
-./simulate_arduinos.sh --scenario pump_room.flow1=danger-low
+python3 simulate_serial.py set pump_room.flow1 danger-low
 ```
 
-Once the simulator is running, use the live scenario file to change state
-without recreating the fake serial devices:
+Issue further commands to the running service without recreating the fake
+serial devices:
 
 ```bash
-printf 'pump_room.flow1=danger-low\n' > /tmp/labpulse-fake-serial/scenarios.txt
-printf 'pump_room.flow1=recover\n' > /tmp/labpulse-fake-serial/scenarios.txt
+python3 simulate_serial.py set pump_room.flow1 danger-low
+python3 simulate_serial.py set pump_room.flow1 recover
 ```
 
 To test stale detection without breaking the fake serial link:
 
 ```bash
-printf 'pump_room.flow1=stale\n' > /tmp/labpulse-fake-serial/scenarios.txt
+python3 simulate_serial.py set pump_room.flow1 stale
 ```
 
 Wait for Home Assistant's danger ratio window and recovery timer when checking
 the state machine. For stale tests, wait for the service stale timeout helper.
 
-For fake DHT11 input on a test Pi, enable `room_environment` with:
+For fake room temperature and humidity, enable `room_environment`. Fake setup
+automatically changes its hardware settings to:
 
 ```yaml
-driver: gpio
-gpio_sensor: fake_dht11
-fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+driver: serial
+parser: pipe
+serial_port: "/tmp/labpulse-fake-serial/room_environment"
 ```
 
-Then change the fake DHT values live:
+Use the same control interface to change either reading live:
 
 ```bash
-printf 'mode=live\ntemperature=21.5\nhumidity=48.0\n' \
-  > /tmp/labpulse-fake-dht11/room_environment.env
+python3 simulate_serial.py set room_environment.temperature danger-high
+python3 simulate_serial.py set room_environment.humidity danger-low
 ```
 
-Stopping and restarting `simulate_arduinos.sh` simulates USB devices
-disappearing and returning.
+Running `python3 simulate_serial.py stop` and then `start` simulates USB devices
+disappearing and returning. `status`, `clear`, and `reset` are also available.
 
 ## Useful Logs
 

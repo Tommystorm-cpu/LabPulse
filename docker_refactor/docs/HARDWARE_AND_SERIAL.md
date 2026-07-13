@@ -93,7 +93,7 @@ docker compose up -d --build
 Run without `-fake_usb` for real DHT11 testing, because the container needs
 privileged `/dev` access for GPIO.
 
-### Fake DHT11 Input
+### Simulated Room Environment Input
 
 On a test Pi without the DHT11 connected, use:
 
@@ -101,40 +101,28 @@ On a test Pi without the DHT11 connected, use:
 services:
   room_environment:
     enabled: true
-    driver: gpio
-    gpio_sensor: fake_dht11
-    fake_state_file: "/tmp/labpulse-fake-dht11/room_environment.env"
+    driver: serial
+    parser: pipe
+    serial_port: "/tmp/labpulse-fake-serial/room_environment"
+    baud_rate: 9600
 ```
 
-In fake USB mode the generated Compose file mounts:
-
-```text
-/tmp/labpulse-fake-dht11:/tmp/labpulse-fake-dht11
-```
-
-The fake driver creates the state file if it does not exist. You can change it
-while the container is running:
+`setup_container_fs.sh -fake_usb` applies this substitution automatically. The
+room sensor then uses the normal serial driver and pipe parser. Change its
+values through the running simulator service:
 
 ```bash
-printf 'mode=live\ntemperature=21.5\nhumidity=48.0\n' \
-  > /tmp/labpulse-fake-dht11/room_environment.env
-
-printf 'mode=live\ntemperature=5.0\nhumidity=48.0\n' \
-  > /tmp/labpulse-fake-dht11/room_environment.env
-
-printf 'mode=stale\ntemperature=21.5\nhumidity=48.0\n' \
-  > /tmp/labpulse-fake-dht11/room_environment.env
+python3 simulate_serial.py set room_environment.temperature danger-high
+python3 simulate_serial.py set room_environment.humidity danger-low
+python3 simulate_serial.py set room_environment.temperature stale
 ```
-
-`mode=live` adds a small 0.1 wobble to keep Home Assistant `last_updated`
-fresh. `mode=stale` emits fixed values for stale sensor-fault testing.
 
 ## Fake USB Serial Testing
 
 The simulator is:
 
 ```text
-docker_refactor/simulate_arduinos.sh
+docker_refactor/simulate_serial.py
 ```
 
 Run:
@@ -142,7 +130,8 @@ Run:
 ```bash
 cd ~/LabPulse/docker_refactor
 ./setup_container_fs.sh -fake_usb
-./simulate_arduinos.sh
+cd ~/labpulse-ha
+python3 simulate_serial.py start
 ```
 
 In another terminal:
@@ -158,31 +147,28 @@ Fake serial paths:
 /tmp/labpulse-fake-serial/pressure
 /tmp/labpulse-fake-serial/pump_room
 /tmp/labpulse-fake-serial/turbo_pump
+/tmp/labpulse-fake-serial/room_environment
 ```
 
-To push a specific reading into an alarm test condition, start the simulator
-with a scenario:
+To push a specific reading into an alarm test condition, issue a command to the
+running simulator:
 
 ```bash
-./simulate_arduinos.sh --scenario pressure_monitor.pressure=danger-low
-./simulate_arduinos.sh --scenario pump_room.flow1=danger-low
-./simulate_arduinos.sh --scenario pump_room.temp0=danger-high
-./simulate_arduinos.sh --scenario pump_room.flow1=stale
+python3 simulate_serial.py set pressure_monitor.pressure danger-low
+python3 simulate_serial.py set pump_room.flow1 danger-low
+python3 simulate_serial.py set pump_room.temp0 danger-high
+python3 simulate_serial.py set room_environment.temperature danger-high
+python3 simulate_serial.py set pump_room.flow1 stale
 ```
 
-The simulator writes those startup scenarios into a live control file:
-
-```text
-/tmp/labpulse-fake-serial/scenarios.txt
-```
-
-To change scenario without unplugging the fake serial devices, edit that file
-while the simulator is still running:
+The service keeps scenarios in memory and listens on a local Unix control
+socket. Useful management commands are:
 
 ```bash
-printf 'pump_room.flow1=recover\n' > /tmp/labpulse-fake-serial/scenarios.txt
-printf 'pump_room.flow1=danger-low\n' > /tmp/labpulse-fake-serial/scenarios.txt
-printf 'pump_room.flow1=stale\n' > /tmp/labpulse-fake-serial/scenarios.txt
+python3 simulate_serial.py status
+python3 simulate_serial.py clear pump_room.flow1
+python3 simulate_serial.py reset
+python3 simulate_serial.py stop
 ```
 
 Supported scenario states are `normal`, `recover`, `danger-low`, `danger-high`,
@@ -192,7 +178,7 @@ zone, so Home Assistant does not mistake an alarm test for stale data. The
 link alive while letting Home Assistant's `last_updated` age past the stale
 timeout.
 
-These only change the fake Arduino values; Home Assistant still uses its
+These only change the simulated sensor values; Home Assistant still uses its
 editable alarm mode, danger ratio window, stale timeout, and recovery timer.
 
 `generate_compose.sh` enables fake USB mounts if fake mode is requested or if
