@@ -1,60 +1,52 @@
 # LabPulse Docker Refactor Documentation
 
-This documentation explains the `docker_refactor/` system from operator setup
-through code changes. It is written for someone who needs to understand how the
-system works, how to safely change it, and especially how to edit Home Assistant
-dashboard and automation layouts.
+This directory documents the implemented system under `docker_refactor/`.
+It deliberately contains only four guides. Design proposals, completed
+refactor plans, and duplicate task-specific notes have been removed so that an
+implemented feature has one authoritative explanation.
 
-## Reading Path
+## Reading order
 
-If you are new to this folder, read in this order:
+1. [ARCHITECTURE.md](ARCHITECTURE.md) explains the system at container and
+   package level: what runs, how data moves, and which component owns each
+   decision.
+2. [CODE_INTERNALS.md](CODE_INTERNALS.md) follows the code itself: models,
+   functions, runtime data structures, Home Assistant rendering, the alarm
+   state machine, MQTT, SMS, and the simulator.
+3. [SETUP_AND_TROUBLESHOOTING.md](SETUP_AND_TROUBLESHOOTING.md) is the operator
+   guide: first installation, normal updates, fake hardware, dashboard safety,
+   SMS setup, testing, and fault isolation.
+4. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the Arduino serial
+   contracts, how Python currently tolerates them, known sketch problems, and
+   clearly labelled firmware improvements.
 
-1. [HAPPY_PATH_SETUP.md](HAPPY_PATH_SETUP.md) - the normal Raspberry Pi setup and update loop.
-2. [ARCHITECTURE.md](ARCHITECTURE.md) - how containers, MQTT, Python services, Home Assistant, and SMS fit together.
-3. [CONFIGURATION.md](CONFIGURATION.md) - every important `config.yaml` field and what it controls.
-4. [HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md](HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md) - how dashboard layout and alarm automations are generated and edited.
-5. [CODE_READING_GUIDE.md](CODE_READING_GUIDE.md) - code-level guide to every module and execution path.
+## Which guide answers what?
 
-The implemented package-boundary design and acceptance criteria are recorded
-in [REPOSITORY_REFACTOR_PLAN.md](REPOSITORY_REFACTOR_PLAN.md).
+| Question | Guide |
+| --- | --- |
+| Why are there several containers and packages? | `ARCHITECTURE.md` |
+| Where does a reading travel from USB to Home Assistant? | `ARCHITECTURE.md`, then `CODE_INTERNALS.md` |
+| Which model contains a service, reading, or entity ID? | `CODE_INTERNALS.md` |
+| How are `[[ ... ]]` and `{{ ... }}` different? | `CODE_INTERNALS.md` |
+| How does Normal/Danger/Sensor Fault work? | `CODE_INTERNALS.md` |
+| What do I edit on the Raspberry Pi? | `SETUP_AND_TROUBLESHOOTING.md` |
+| How do I test without hardware? | `SETUP_AND_TROUBLESHOOTING.md` |
+| Why is an entity or dashboard card missing? | `SETUP_AND_TROUBLESHOOTING.md` |
+| What exactly do the Arduino sketches print? | `ARDUINO_AND_CPP.md` |
 
-## Task Guides
+## Sources of truth
 
-- [CONTAINER_SETUP.md](CONTAINER_SETUP.md) explains the generated `~/labpulse-ha/` filesystem and Docker Compose project.
-- [RUNTIME_AND_MQTT.md](RUNTIME_AND_MQTT.md) explains serial reading, parsing, MQTT discovery, state topics, and entity IDs.
-- [HOME_ASSISTANT_BACKUP_RESTORE.md](HOME_ASSISTANT_BACKUP_RESTORE.md) explains dashboard backup, restore, reset, and preservation behavior.
-- [SMS_SETUP.md](SMS_SETUP.md) explains log-mode SMS testing and real `mmcli` modem delivery.
-- [HARDWARE_AND_SERIAL.md](HARDWARE_AND_SERIAL.md) explains Arduino serial formats, parser compatibility, and stable USB paths.
-- [FUTURE_HARDWARE_USB_SETUP.md](FUTURE_HARDWARE_USB_SETUP.md) preserves the future USB detection plan.
-- [TESTING_AND_TROUBLESHOOTING.md](TESTING_AND_TROUBLESHOOTING.md) gives tests, debug commands, and failure isolation.
+There are three kinds of configuration; confusing them causes most setup
+problems.
 
-## Historical Notes Rewritten As Current Guides
+| Concern | Source of truth |
+| --- | --- |
+| Running Pi services, hardware, labels, and recipients | `~/labpulse-ha/config.yaml` |
+| Fresh-install starter values | repository `docker_refactor/config.yaml` |
+| Live dashboard arrangement and helper values | Home Assistant UI/state |
+| Generated starter dashboard structure | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
+| Generated alarm behavior | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
 
-These files are kept because existing links may point at them, but they now
-describe the current implementation rather than old plans:
+Do not hand-edit `compose.yaml`, `labpulse_generated.yaml`, or
+`labpulse_entity_map.yaml` as permanent changes. They are generated outputs.
 
-- [HOME_ASSISTANT_DASHBOARD_PLAN.md](HOME_ASSISTANT_DASHBOARD_PLAN.md)
-- [HOME_ASSISTANT_REWRITE_BRIEF.md](HOME_ASSISTANT_REWRITE_BRIEF.md)
-- [CPP_REVIEW_NOTES.md](CPP_REVIEW_NOTES.md)
-
-## Source Of Truth
-
-On a running Raspberry Pi:
-
-```text
-~/labpulse-ha/config.yaml
-```
-
-In the repository:
-
-```text
-docker_refactor/config.yaml
-```
-
-The repository file is a starter template. The live Pi file is the one users
-edit for enabled services, serial paths, labels, display sections, and SMS
-recipients.
-
-Generated files such as `compose.yaml`, `labpulse_generated.yaml`, and
-`labpulse_entity_map.yaml` should not be hand-edited. Change the generator,
-template, or live config, then regenerate.

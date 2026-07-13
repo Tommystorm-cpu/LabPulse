@@ -1,45 +1,22 @@
-# LabPulse Docker Refactor
+# LabPulse Docker Runtime
 
-This folder contains the Docker-based LabPulse runtime for the Raspberry Pi.
-It runs:
+This is the active Docker-based LabPulse implementation for Raspberry Pi. It
+runs Home Assistant, Mosquitto, one SMS worker, and one Python container per
+enabled sensor service.
 
-- Home Assistant for the operator dashboard, threshold helpers, and automations.
-- Mosquitto for MQTT.
-- One `labpulse-sms` container for alert delivery.
-- One Python sensor container for each enabled sensor hub in `config.yaml`.
+The complete documentation has four guides:
 
-Source ownership is split between `labpulse_common` (shared validated config
-and contracts), `labpulse_hardware` (drivers and MQTT publishing),
-`labpulse_homeassistant` (dashboard/alarm generation), and `labpulse_sms`
-(alert delivery).
+1. [Architecture](docs/ARCHITECTURE.md)
+2. [Code internals](docs/CODE_INTERNALS.md)
+3. [Setup and troubleshooting](docs/SETUP_AND_TROUBLESHOOTING.md)
+4. [Arduino and C++ notes](docs/ARDUINO_AND_CPP.md)
 
-The live Raspberry Pi system is generated into:
+The [documentation index](docs/README.md) explains which guide answers each
+type of question.
 
-```text
-~/labpulse-ha/
-```
+## Quick start
 
-After the first bootstrap, edit the live file:
-
-```text
-~/labpulse-ha/config.yaml
-```
-
-Do not edit `docker_refactor/config.yaml` to change a running Pi. The repo copy
-is only a starter template.
-
-## Start Here
-
-Read [docs/README.md](docs/README.md) for the full documentation map.
-
-The shortest useful path is:
-
-1. [docs/HAPPY_PATH_SETUP.md](docs/HAPPY_PATH_SETUP.md)
-2. [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
-3. [docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md](docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md)
-4. [docs/CODE_READING_GUIDE.md](docs/CODE_READING_GUIDE.md)
-
-## Normal Workflow
+Real hardware:
 
 ```bash
 cd ~/LabPulse/docker_refactor
@@ -49,58 +26,42 @@ cd ~/labpulse-ha
 nano config.yaml
 ./generate_compose.sh
 ./generate_homeassistant_config.sh
+docker compose config
 docker compose up -d --build
 ```
 
-For fake USB testing:
+Fake hardware:
 
 ```bash
 cd ~/LabPulse/docker_refactor
 ./setup_container_fs.sh -fake_usb
+
 cd ~/labpulse-ha
 python3 simulate_serial.py start
-```
-
-Change simulated behavior while the background service is running:
-
-```bash
-python3 simulate_serial.py set pump_room.flow1 danger-low
-python3 simulate_serial.py set pump_room.flow1 recover
-python3 simulate_serial.py set pump_room.flow1 stale
-python3 simulate_serial.py set room_environment.temperature danger-high
-```
-
-Inspect or clear the in-memory scenarios with:
-
-```bash
-python3 simulate_serial.py status
-python3 simulate_serial.py clear pump_room.flow1
-python3 simulate_serial.py reset
-```
-
-Then in another terminal:
-
-```bash
 docker compose up -d --build
 ```
 
-## Editing Dashboards And Automations
-
-Live dashboard layout is edited in the Home Assistant UI.
-
-The generated starter dashboard, used only when `--reset-dashboard` is passed,
-comes from:
+The running Pi is configured through:
 
 ```text
-labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml
+~/labpulse-ha/config.yaml
 ```
 
-Generated alarm helpers, binary sensors, and alert/recovery automations come
-from:
+The repository `config.yaml` is only a new-install starter. Generated
+`compose.yaml` and Home Assistant package/entity-map files are outputs, not
+permanent editing targets.
+
+## Source layout
 
 ```text
-labpulse_homeassistant/templates/alarm/alarm_logic.yaml
+labpulse_common/          typed config, identity, MQTT contracts, logging
+labpulse_hardware/        drivers, parsing, hardware loop, MQTT publishing
+labpulse_homeassistant/   dashboard/alarm/core configuration generator
+labpulse_sms/             MQTT alert subscriber and SMS delivery
+testing/                  script-based contract tests
+docs/                     the four maintained guides
 ```
 
-See [docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md](docs/HOME_ASSISTANT_DASHBOARDS_AND_AUTOMATIONS.md)
-for the detailed editing guide.
+Home Assistant owns alarm decisions and operator settings. Hardware services
+publish readings and health; the SMS worker delivers validated requests.
+

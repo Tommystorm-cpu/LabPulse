@@ -1,272 +1,281 @@
-# LabPulse Docker Architecture
+# LabPulse Architecture
 
-The Docker refactor separates LabPulse into small services with clear ownership.
-The goal is that hardware reading, operator display, alarm decisions, and SMS
-delivery can each change without becoming tangled together.
+LabPulse is a Raspberry Pi monitoring system. Sensor services acquire facts,
+MQTT transports them, Home Assistant decides whether they are dangerous, and a
+separate SMS worker delivers alerts. The split keeps hardware failures,
+operator settings, presentation, and modem behavior independently testable.
 
-## Runtime Components
+This document describes the implemented `docker_refactor/` architecture. Code
+and function details are in [CODE_INTERNALS.md](CODE_INTERNALS.md).
 
-The generated Raspberry Pi project lives at:
+## System at a glance
 
-```text
-~/labpulse-ha/
-```
-
-It contains one Docker Compose project:
-
-```text
-homeassistant
-  Home Assistant web UI, helpers, alarms, dashboard, history, logbook
-
-mosquitto
-  MQTT broker used by all LabPulse services
-
-labpulse-sms
-  Reliable SMS worker with delivery status and duplicate protection
-
-labpulse-<service>
-  One Python container per enabled sensor hub
-```
-
-Each sensor container runs the hardware package entry point with a different
-service key:
-
-```bash
-python -m labpulse_hardware --service pressure_monitor
-python -m labpulse_hardware --service pump_room
-python -m labpulse_hardware --service turbo_pump
-```
-
-The service key selects one entry under `services:` in `config.yaml`.
-
-## Main Data Flow
-
-```text
-Arduino USB serial device
-  -> labpulse-<service> container
-  -> SerialDriver
-  -> SerialParser
-  -> HomeAssistantMqttPublisher
-  -> Mosquitto
-  -> Home Assistant MQTT discovery/entities
-  -> Home Assistant generated alarm logic
-  -> mqtt.publish labpulse/sms/send
-  -> labpulse-sms container
-  -> dry-run log or mmcli modem delivery
-  -> labpulse/sms/result/<request_id>
-```
-
-The Python sensor service publishes facts:
-
-- current reading values
-- service connection status
-- Home Assistant MQTT discovery metadata
-
-Home Assistant decides what those facts mean:
-
-- threshold values
-- alarm state
-- alert delay
-- recovery delay
-- persistent notifications
-- SMS automation payloads
-- dashboard layout
-
-That split is deliberate. Do not add threshold decision-making to the Python
-sensor services unless the whole design is intentionally changing.
-
-## Generated Setup Flow
-
-The bootstrap script is:
-
-```text
-docker_refactor/setup_container_fs.sh
-```
-
-It creates or refreshes:
+The repository is used to generate a live Compose project at:
 
 ```text
 ~/labpulse-ha/
-  config.yaml
-  compose.yaml
-  generate_compose.sh
-  generate_homeassistant_config.sh
-  labpulse-python/
-    labpulse_common/
-    labpulse_hardware/
-    labpulse_sms/
-  labpulse_homeassistant/
-  homeassistant/config/
-  mosquitto/
-  logs/
 ```
 
-It copies the Python packages and generator scripts into the live folder so the
-Pi can run from `~/labpulse-ha` without needing Docker build context outside
-that folder.
+The running system is:
 
-The live update loop is:
+```text
+Physical or simulated sensors
+        |
+        v
+labpulse-<service> containers       one per enabled service
+        |
+        | MQTT discovery, values, and health
+        v
+Mosquitto
+   |                         |
+   v                         v
+Home Assistant          labpulse-sms
+   |                         |
+   | alarm transition        | dry-run log or mmcli
+   +---- labpulse/sms/send -->+----> cellular modem
+```
+
+Home Assistant and Mosquitto are infrastructure containers. Each configured
+sensor service and the SMS worker run the project’s Python code.
+
+## The two main flows
+
+### Deployment and generation
+
+```text
+repository docker_refactor/
+  -> setup_container_fs.sh
+  -> ~/labpulse-ha/
+       config.yaml                  live user configuration
+       generate_compose.sh
+       generate_homeassistant_config.sh
+  -> compose.yaml                   generated deployment
+  -> Home Assistant YAML/dashboard generated from config.yaml
+  -> docker compose up
+```
+
+`setup_container_fs.sh` is the bootstrap and code-copy step. After it has run,
+normal operator work happens from `~/labpulse-ha`, not from the checkout.
+
+### Runtime readings and alerts
+
+```text
+sensor
+  -> driver
+  -> normalized dict[str, float]
+  -> configured-reading filter
+  -> MQTT discovery and state topics
+  -> Home Assistant sensor entities
+  -> zone sensors and history statistics
+  -> alarm-state automations
+  -> persistent notification and MQTT SMS request
+  -> validated SMS queue
+  -> dry-run log or ModemManager
+```
+
+The key boundary is between facts and decisions:
+
+- Python hardware services publish values and connection health.
+- Home Assistant owns thresholds, timing, mute controls, alarm state, and
+  operator-facing notifications.
+- The SMS worker validates and delivers an already-decided alert. It does not
+  decide whether a reading is dangerous.
+
+## Runtime containers
+
+### `labpulse-homeassistant`
+
+Home Assistant provides the UI, entity registry, recorder/history, editable
+helpers, template sensors, alarm transition automations, and dashboard. It uses
+host networking so its MQTT integration connects to `127.0.0.1:1883`.
+
+### `labpulse-mqtt`
+
+Mosquitto is the message boundary between components. Compose exposes it only
+on the Pi loopback address. LabPulse Python containers connect through the
+Compose hostname `mosquitto`; Home Assistant connects through the host address
+`127.0.0.1`.
+
+### `labpulse-<service>`
+
+Every enabled key under `services:` becomes one container, for example:
+
+```text
+pressure_monitor -> labpulse-pressure-monitor
+pump_room        -> labpulse-pump-room
+```
+
+All use the same entry point:
 
 ```bash
-cd ~/labpulse-ha
-nano config.yaml
-./generate_compose.sh
-./generate_homeassistant_config.sh
-docker compose up -d --build
+python -m labpulse_hardware --service <service-key>
 ```
 
-## Compose Generation
+The service key selects configuration and therefore its driver, parser,
+readings, labels, and hardware path. One container per service isolates device
+disconnects and restarts.
 
-`generate_compose.sh` reads `~/labpulse-ha/config.yaml` and writes:
+### `labpulse-sms`
 
-```text
-~/labpulse-ha/compose.yaml
-```
+The SMS worker has a persistent MQTT session and a bounded background delivery
+queue. In safe `dry_run` mode it only logs masked recipients. In real mode it
+uses `mmcli`, so Compose additionally exposes D-Bus and devices to this one
+container.
 
-It creates:
+## Python package boundaries
 
-- `homeassistant`
-- `mosquitto`
-- `labpulse-sms`
-- one `labpulse-<service>` container for each enabled service
+### `labpulse_common`
 
-If a service has:
+Shared contracts only:
 
-```yaml
-services:
-  pump_room:
-    enabled: false
-```
+- Pydantic configuration models and the one config loader
+- stable slug/entity identity rules
+- MQTT topic and SMS payload contracts
+- common logging setup
 
-then no `labpulse-pump-room` container is generated.
+It must not acquire hardware, render dashboards, or send messages.
 
-The Compose file is generated output. If a service, mount, command, or container
-name is wrong, change `config.yaml` or `generate_compose.sh`, then regenerate.
+### `labpulse_hardware`
 
-## Home Assistant Generation
+Owns the live acquisition process:
 
-`generate_homeassistant_config.sh` reads `~/labpulse-ha/config.yaml` and writes:
+- service-loop orchestration
+- driver selection
+- serial and DHT11 drivers
+- compatibility parsing of current Arduino text
+- MQTT discovery, state, and service-health publishing
 
-```text
-~/labpulse-ha/homeassistant/config/configuration.yaml
-~/labpulse-ha/homeassistant/config/packages/labpulse_generated.yaml
-~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
-```
+Its output boundary is a normalized `dict[str, float]` plus a health string.
 
-It creates these UI-managed files only if missing:
+### `labpulse_homeassistant`
 
-```text
-automations.yaml
-scripts.yaml
-scenes.yaml
-```
+Runs as an offline generator on the Pi host, not as a long-running sensor
+container. It turns typed config into:
 
-It writes the editable dashboard storage file only when explicitly requested:
+- Home Assistant core configuration
+- the generated alarm package
+- a diagnostic entity map
+- an optional/reset starter dashboard
 
-```bash
-./generate_homeassistant_config.sh --reset-dashboard
-```
+It may optionally query the live Home Assistant entity registry to discover
+renamed MQTT entity IDs.
 
-Normal generation preserves:
+### `labpulse_sms`
 
-```text
-homeassistant/config/.storage/lovelace
-```
+Owns alert-request validation, duplicate/flood protection, recipient fan-out,
+the bounded delivery queue, dry-run logging, `mmcli` retries, and result/status
+publishing.
 
-This is what lets users keep editing the dashboard in the Home Assistant UI.
+## Configuration and state ownership
 
-## MQTT Network Names
-
-Inside LabPulse Python containers, the broker is the Compose service name:
-
-```yaml
-mqtt:
-  broker: "mosquitto"
-  port: 1883
-```
-
-Inside Home Assistant, the MQTT integration should use:
-
-```text
-Broker: 127.0.0.1
-Port: 1883
-```
-
-This is because Home Assistant runs with `network_mode: host`, while the Python
-containers run on the Compose network.
-
-## Stable Entity Identity
-
-LabPulse uses stable machine IDs so generated dashboards and automations can
-predict Home Assistant entity names.
-
-For service `pressure_monitor` and reading `pressure`:
-
-```text
-MQTT unique_id:       labpulse_pressure_monitor_pressure
-MQTT object_id:       labpulse_pressure_monitor_pressure
-default entity_id:    sensor.labpulse_pressure_monitor_pressure
-alarm state:          input_select.labpulse_pressure_monitor_pressure_alarm_state
-alarm mode:           input_select.labpulse_pressure_monitor_pressure_alarm_mode
-alarm muted:          input_boolean.labpulse_pressure_monitor_pressure_alarm_muted
-minimum threshold:    input_number.labpulse_pressure_monitor_pressure_minimum_threshold
-maximum threshold:    input_number.labpulse_pressure_monitor_pressure_maximum_threshold
-recovery deadband:    input_number.labpulse_pressure_monitor_pressure_recovery_deadband
-danger zone:          binary_sensor.labpulse_pressure_monitor_pressure_danger_zone
-recovery zone:        binary_sensor.labpulse_pressure_monitor_pressure_recovery_zone
-sensor fault zone:    binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone
-observed danger:      sensor.labpulse_pressure_monitor_pressure_observed_danger_percent
-```
-
-Labels are safe to change. Stable service keys and reading names are more
-expensive to change because they affect entity IDs, dashboard references, and
-historical continuity.
-
-## Ownership Boundaries
-
-Use this table when deciding where a change belongs:
-
-| Change | Edit here |
-| --- | --- |
-| Enable/disable a hub | `~/labpulse-ha/config.yaml` |
-| Change USB serial path | `~/labpulse-ha/config.yaml` |
-| Change displayed hub/reading label | `~/labpulse-ha/config.yaml` |
-| Change section order or icon | `~/labpulse-ha/config.yaml` |
-| Add a container mount or command rule | `generate_compose.sh` |
-| Change shared config validation | `labpulse_common/config.py` |
-| Change shared identity rules | `labpulse_common/identity.py` |
-| Change shared MQTT topics/contracts | `labpulse_common/mqtt_contracts.py` |
-| Change a hardware driver | `labpulse_hardware/drivers/` |
-| Change temporary serial parsing | `labpulse_hardware/legacy_parsing/serial_parser.py` |
-| Change MQTT discovery publishing | `labpulse_hardware/homeassistant_publisher.py` |
-| Change Home Assistant entity modelling | `labpulse_homeassistant/data_models.py` |
-| Change live dashboard arrangement | Home Assistant UI |
-| Change reset dashboard starter layout | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
-| Change generated alarm helpers/automations | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
-| Change SMS delivery behavior | `labpulse_sms/sender.py` |
-| Change SMS MQTT parsing | `labpulse_sms/subscriber.py` |
-
-## Safety Rules
-
-Do not hand-edit generated files for lasting changes:
-
-```text
-~/labpulse-ha/compose.yaml
-~/labpulse-ha/homeassistant/config/packages/labpulse_generated.yaml
-~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
-```
-
-Do hand-edit:
+The live config describes deployment facts:
 
 ```text
 ~/labpulse-ha/config.yaml
 ```
 
-Do use the Home Assistant UI for:
+It owns enabled services, hardware access, parser choice, readings, display
+metadata, MQTT connection settings, SMS mode, and recipients.
 
+Home Assistant owns operator state after generation:
+
+- minimum/maximum thresholds
+- alarm mode and mute state
+- observation, recovery, and stale-data timing
 - live dashboard layout
-- helper values such as thresholds and delays
-- user accounts
-- integration setup
+- accounts and integrations
 
-Use repository templates when changing what a fresh or reset system generates.
+This distinction prevents a normal regeneration from destroying tuned values
+or dashboard edits.
+
+## Generated versus user-owned files
+
+| File | Owner | Normal regeneration |
+| --- | --- | --- |
+| `compose.yaml` | Compose generator | replaced |
+| `configuration.yaml` | Home Assistant generator | replaced |
+| `packages/labpulse_generated.yaml` | alarm generator | replaced |
+| `labpulse_entity_map.yaml` | core generator | replaced |
+| `automations.yaml`, `scripts.yaml`, `scenes.yaml` | Home Assistant UI | created only if missing |
+| `.storage/lovelace` | Home Assistant UI/user | preserved unless reset or synchronized explicitly |
+
+The dashboard seed is intentionally different from live dashboard state. It is
+used only when `--reset-dashboard` is requested.
+
+## Identity contract
+
+Machine identifiers are derived from the service key and reading name. For:
+
+```yaml
+services:
+  pressure_monitor:
+    readings:
+      - name: pressure
+```
+
+the shared identity functions produce:
+
+```text
+stable unique ID: labpulse_pressure_monitor_pressure
+default entity:  sensor.labpulse_pressure_monitor_pressure
+state topic:     home/sensor/pressure_monitor/pressure/state
+```
+
+Labels such as `Pressure` are presentation and can change safely. Renaming the
+service key or reading name changes MQTT topics, unique IDs, generated helper
+IDs, and history continuity.
+
+Home Assistant is allowed to rename an entity ID while retaining its unique
+ID. The optional registry resolver therefore reconciles by
+`(platform, unique_id)`, not by display name.
+
+## Home Assistant alarm ownership
+
+Each reading has a persistent state:
+
+```text
+Normal
+Danger
+Sensor Fault
+```
+
+Instantaneous binary sensors describe whether the reading is in the danger,
+recovery, or fault zone. A `history_stats` sensor measures the percentage of
+the observation window spent in danger. Automations write the persistent state
+only when the timing and zone conditions are met.
+
+Muting suppresses persistent notifications and SMS requests; it does not stop
+zone calculation or state transitions. This keeps the dashboard truthful while
+silencing delivery.
+
+## Failure behavior
+
+- A missing serial device does not terminate the service loop. The driver
+  reports disconnected/reconnecting and periodically retries.
+- Individual DHT11 timing failures are ignored; sustained missing updates are
+  caught by Home Assistant stale detection.
+- Parser output not declared in config is ignored instead of creating surprise
+  MQTT entities.
+- A missing/invalid SMS field is rejected before it reaches the delivery queue.
+- Duplicate SMS request IDs and rapid repeated events are suppressed.
+- Normal Home Assistant generation preserves the live dashboard.
+- Strict entity-registry resolution fails before writing if an expected entity
+  is missing, disabled, or ambiguous.
+
+## Where changes belong
+
+| Change | Owning source |
+| --- | --- |
+| Enable hardware or change a live USB path | `~/labpulse-ha/config.yaml` |
+| Add/validate a config field | `labpulse_common/config.py` |
+| Change stable IDs | `labpulse_common/identity.py` |
+| Change topics or SMS request fields | `labpulse_common/mqtt_contracts.py` |
+| Change acquisition or reconnect behavior | `labpulse_hardware/drivers/` |
+| Adapt current Arduino text | `labpulse_hardware/legacy_parsing/serial_parser.py` |
+| Change discovery/state publishing | `labpulse_hardware/homeassistant_publisher.py` |
+| Change Home Assistant model/IDs | `labpulse_homeassistant/data_models.py` |
+| Change generated alarm behavior | `templates/alarm/alarm_logic.yaml` |
+| Change reset-dashboard layout | `templates/dashboard/dashboard_seed.yaml` |
+| Change alert transport/delivery | `labpulse_sms/` |
+| Change containers or mounts | `generate_compose.sh` |
+
