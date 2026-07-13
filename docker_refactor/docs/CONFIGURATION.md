@@ -26,7 +26,7 @@ docker compose up -d --build
 `config.yaml` owns:
 
 - MQTT broker connection for LabPulse Python containers
-- SMS backend and recipient numbers
+- SMS dry-run mode and recipient numbers
 - enabled sensor services
 - serial ports and baud rates
 - GPIO sensor type and pin for GPIO-backed services
@@ -54,7 +54,7 @@ mqtt:
   port: 1883
 
 sms:
-  backend: "log"
+  dry_run: true
   recipients:
     - "+447700900000"
 
@@ -113,16 +113,20 @@ Port: 1883
 
 ```yaml
 sms:
-  backend: "log"
+  dry_run: true
   recipients:
     - "+447700900000"
 ```
 
-`backend: "log"` is safe for development. It receives MQTT SMS requests and
+`dry_run: true` is safe for development. It receives MQTT SMS requests and
 logs what would have been sent.
 
-`backend: "mmcli"` sends real SMS messages through ModemManager. Use it only on
-the Pi with the modem installed. After switching to `mmcli`, regenerate Compose
+`dry_run: false` sends real SMS messages through ModemManager and `mmcli`. Use it only on
+the Pi with the modem installed. Recipients are normalized and must be unique
+international numbers beginning with `+` and containing 8 to 15 digits. Real
+numbers belong only in the live `~/labpulse-ha/config.yaml`; keep repository
+templates populated with examples. At least one recipient is required in
+real-delivery mode. After setting `dry_run: false`, regenerate Compose
 so the SMS container gets `/run/dbus`, `/dev`, and privileged modem access:
 
 ```bash

@@ -261,14 +261,14 @@ pressure_monitor:
     danger_zone: binary_sensor.labpulse_pressure_monitor_pressure_danger_zone
     recovery_zone: binary_sensor.labpulse_pressure_monitor_pressure_recovery_zone
     sensor_fault_zone: binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone
-    danger_ratio: sensor.labpulse_pressure_monitor_pressure_danger_ratio
+    observed_danger_percent: sensor.labpulse_pressure_monitor_pressure_observed_danger_percent
     minimum_threshold: input_number.labpulse_pressure_monitor_pressure_minimum_threshold
     maximum_threshold: input_number.labpulse_pressure_monitor_pressure_maximum_threshold
     recovery_deadband: input_number.labpulse_pressure_monitor_pressure_recovery_deadband
-    danger_ratio_percent: input_number.labpulse_pressure_monitor_danger_ratio_percent
-    danger_window_seconds: input_number.labpulse_pressure_monitor_danger_window_seconds
-    recovery_seconds: input_number.labpulse_pressure_monitor_recovery_seconds
-    stale_timeout_seconds: input_number.labpulse_pressure_monitor_stale_timeout_seconds
+    required_danger_percent: input_number.labpulse_pressure_monitor_required_danger_percent
+    observation_window_seconds: input_number.labpulse_pressure_monitor_observation_window_seconds
+    required_recovery_seconds: input_number.labpulse_pressure_monitor_required_recovery_seconds
+    maximum_reading_age_seconds: input_number.labpulse_pressure_monitor_maximum_reading_age_seconds
 ```
 
 Use this file when a dashboard card points at the wrong entity.

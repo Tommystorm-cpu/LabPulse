@@ -190,7 +190,7 @@ With:
 
 ```yaml
 sms:
-  backend: "log"
+  dry_run: true
 ```
 
 the SMS container uses the normal LabPulse Python base service.
@@ -199,7 +199,7 @@ With:
 
 ```yaml
 sms:
-  backend: "mmcli"
+  dry_run: false
 ```
 
 the generated SMS service gets:
@@ -212,7 +212,7 @@ privileged: true
 
 so `mmcli` inside the container can talk to host ModemManager.
 
-Regenerate Compose after changing `sms.backend`.
+Regenerate Compose after changing `sms.dry_run`.
 
 ## Python Runtime Dependencies
 
@@ -267,8 +267,11 @@ persistence_location /mosquitto/data/
 log_dest stdout
 ```
 
-This is suitable for a private test Pi. A deployed lab system should use MQTT
-authentication.
+Generated Compose publishes that listener only as `127.0.0.1:1883`. This lets
+host-networked Home Assistant connect without exposing anonymous MQTT directly
+to the lab LAN. LabPulse containers connect through the internal `mosquitto`
+service. Sites that intentionally need remote MQTT access should add
+authentication and topic ACLs before widening the host bind.
 
 ## Rebuilding
 

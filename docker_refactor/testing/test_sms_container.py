@@ -1,52 +1,134 @@
+"""Integration and unit checks for the LabPulse SMS service."""
+
 from pathlib import Path
+import json
+import subprocess
 import sys
+
+from pydantic import ValidationError
 
 sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
-from labpulse_common.config import MqttConfig
-from labpulse_sms.sender import LogSmsSender, MmcliSmsSender, format_sms_message, quote_mmcli_value
+from labpulse_common.config import MqttConfig, SmsConfig
+from labpulse_common.mqtt_contracts import (
+    SMS_STATUS_DISCOVERY_TOPIC,
+    SMS_STATUS_TOPIC,
+    SMS_SUBSCRIPTION_TOPIC,
+    SmsRequest,
+    sms_result_topic,
+)
 from labpulse_sms.cli import DEFAULT_CONFIG_PATH, parse_args
-from labpulse_common.mqtt_contracts import SMS_SUBSCRIPTION_TOPIC
-from labpulse_sms.sms_subscriber import SMSSubscriber, parse_sms_payload
+from labpulse_sms.sender import (
+    DeliveryResult,
+    SmsSender,
+    format_sms_message,
+    mask_phone_number,
+    quote_mmcli_value,
+)
+from labpulse_sms.subscriber import (
+    RecentRequestCache,
+    SMSSubscriber,
+    SmsPayloadError,
+    parse_sms_payload,
+)
 
 
 class FakeSmsClient:
     """Small MQTT client stand-in for SMS subscriber tests."""
 
-    def __init__(self) -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.constructor_args = args
+        self.constructor_kwargs = kwargs
         self.on_connect = None
         self.on_message = None
         self.connected_to: tuple[str, int, int] | None = None
-        self.subscriptions: list[str] = []
+        self.subscriptions: list[tuple[str, int]] = []
+        self.published: list[tuple[str, str, int, bool]] = []
+        self.will: tuple[str, str, int, bool] | None = None
+        self.disconnected = False
+
+    def will_set(self, topic: str, payload: str, qos: int, retain: bool) -> None:
+        self.will = (topic, payload, qos, retain)
 
     def connect(self, broker: str, port: int, keepalive: int) -> None:
-        """Record MQTT connection arguments."""
-
         self.connected_to = (broker, port, keepalive)
 
-    def subscribe(self, topic: str) -> None:
-        """Record MQTT subscription topics."""
+    def subscribe(self, topic: str, qos: int = 0) -> None:
+        self.subscriptions.append((topic, qos))
 
-        self.subscriptions.append(topic)
+    def publish(self, topic: str, payload: str, qos: int, retain: bool) -> None:
+        self.published.append((topic, payload, qos, retain))
+
+    def disconnect(self) -> None:
+        self.disconnected = True
+
+    def loop_forever(self) -> None:
+        return
 
 
 class FakeSender:
-    """Small SMS sender stand-in for subscriber tests."""
+    """Small sender stand-in for subscriber tests."""
 
-    def __init__(self) -> None:
-        self.messages: list[str] = []
+    def __init__(self, accepted: bool = True) -> None:
+        self.requests: list[SmsRequest] = []
+        self.accepted = accepted
+        self.result_handler = None
+        self.closed = False
 
-    def broadcast(self, message: str) -> None:
-        """Record outbound SMS messages."""
+    def set_result_handler(self, handler: object) -> None:
+        self.result_handler = handler
 
-        self.messages.append(message)
+    def broadcast(self, request: SmsRequest) -> bool:
+        self.requests.append(request)
+        return self.accepted
+
+    def close(self, timeout: float = 15) -> None:
+        self.closed = True
+
+
+def quiet_logger() -> object:
+    """Return a logger-like object suitable for isolated backend tests."""
+
+    return type(
+        "Logger",
+        (),
+        {
+            "info": lambda *_args: None,
+            "warning": lambda *_args: None,
+            "error": lambda *_args: None,
+            "exception": lambda *_args: None,
+        },
+    )()
+
+
+def request_payload(request_id: str = "request-1", event: str = "warning") -> dict[str, str]:
+    """Return one complete valid SMS request payload."""
+
+    return {
+        "request_id": request_id,
+        "event": event,
+        "service": "pump_room",
+        "service_label": "Pump Room",
+        "reading": "flow1",
+        "reading_label": "Flow 1",
+        "state": "Danger",
+        "title": "LabPulse Flow warning",
+        "message": "Pump Room / Flow 1 is in Danger.",
+        "current": "0.2",
+    }
+
+
+def request(request_id: str = "request-1", event: str = "warning") -> SmsRequest:
+    """Return one validated SMS request."""
+
+    return SmsRequest.model_validate(request_payload(request_id, event))
 
 
 def assert_contains(text: str, expected: str, label: str) -> None:
-    """Raise AssertionError when expected text is missing."""
+    """Raise AssertionError when expected text is absent."""
 
     if expected not in text:
         raise AssertionError(f"{label}: missing {expected!r}")
@@ -59,196 +141,343 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
-def test_setup_copies_sms_package_into_image() -> None:
-    """Check setup copies the SMS package into the Docker build context."""
+def test_setup_and_compose_contract() -> None:
+    """Check deployment copies SMS code and limits host MQTT exposure."""
 
-    setup_script = (REFACTOR_DIR / "setup_container_fs.sh").read_text(encoding="utf-8")
-    assert_contains(setup_script, "COPY labpulse_hardware ./labpulse_hardware", "Dockerfile copies hardware package")
-    assert_contains(setup_script, "COPY labpulse_sms ./labpulse_sms", "Dockerfile copies SMS package")
+    setup = (REFACTOR_DIR / "setup_container_fs.sh").read_text(encoding="utf-8")
+    compose = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
+    assert_contains(setup, "COPY labpulse_sms ./labpulse_sms", "Dockerfile SMS copy")
     assert_contains(
-        setup_script,
+        setup,
         'replace_dir "$SCRIPT_DIR/labpulse_sms" "$PROJECT_DIR/labpulse-python/labpulse_sms"',
-        "setup copies SMS package",
+        "setup SMS copy",
     )
+    assert_contains(compose, "labpulse-sms:", "SMS service")
+    assert_contains(compose, "container_name: labpulse-sms", "SMS container name")
+    assert_contains(compose, "127.0.0.1:1883:1883", "localhost-only MQTT port")
+    assert_contains(compose, "- /run/dbus:/run/dbus:ro", "mmcli D-Bus mount")
 
 
-def test_compose_generates_one_sms_container() -> None:
-    """Check generated Compose includes one SMS container command."""
-
-    compose_script = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
-    assert_contains(compose_script, "labpulse-sms:", "SMS service")
-    assert_contains(compose_script, "container_name: labpulse-sms", "SMS container name")
-    assert_contains(compose_script, '["python", "-m", "labpulse_sms"', "SMS entry command")
-    assert_contains(compose_script, '"labpulse_hardware"', "hardware module command")
-    assert_contains(compose_script, 'sms_backend = str(sms_config.get("backend", "log")).lower()', "SMS backend read")
-    assert_contains(compose_script, "- /run/dbus:/run/dbus:ro", "mmcli D-Bus mount")
-
-
-def test_sms_entry_defaults_to_app_config() -> None:
-    """Check the SMS CLI defaults to the package-parent config path."""
+def test_sms_entry_accepts_explicit_argv() -> None:
+    """Check the CLI path default and directly injectable argument parsing."""
 
     assert_equal(DEFAULT_CONFIG_PATH.name, "config.yaml", "default config filename")
-    assert_equal(DEFAULT_CONFIG_PATH.parent.name, "docker_refactor", "repo default config parent")
-
-    original_argv = sys.argv[:]
-    try:
-        sys.argv = ["labpulse_sms", "--config", "custom.yaml"]
-        args = parse_args()
-    finally:
-        sys.argv = original_argv
-
+    args = parse_args(["--config", "custom.yaml"])
     assert_equal(args.config, "custom.yaml", "custom config argument")
 
 
-def test_sms_subscriber_subscribes_to_sms_topic() -> None:
-    """Check the SMS subscriber subscribes to the SMS MQTT namespace."""
+def test_sms_config_validates_recipients() -> None:
+    """Check normalization and production-recipient validation."""
 
-    subscriber = SMSSubscriber(MqttConfig(broker="mosquitto", port=1883), FakeSender())
-    fake_client = FakeSmsClient()
-    subscriber.client = fake_client
-
-    subscriber.connect()
-    assert_equal(fake_client.connected_to, ("mosquitto", 1883, 60), "MQTT connection")
-    if fake_client.on_connect is None:
-        raise AssertionError("connect callback should be registered")
-    if fake_client.on_message is None:
-        raise AssertionError("message callback should be registered")
-
-    subscriber.on_connect(fake_client, None, None, 0, None)
-    assert_equal(fake_client.subscriptions, [SMS_SUBSCRIPTION_TOPIC], "SMS topic subscription")
-
-
-def test_sms_payload_parser_keeps_service_and_reading() -> None:
-    """Check SMS JSON payloads preserve alarm identity fields."""
-
-    payload = (
-        b'{"event":"alert","service":"pressure_monitor","reading":"pressure",'
-        b'"entity_id":"binary_sensor.labpulse_pressure_monitor_pressure_alarm",'
-        b'"message":"Pressure tripped"}'
-    )
-    parsed = parse_sms_payload(payload)
-
-    assert_equal(parsed["service"], "pressure_monitor", "payload service")
-    assert_equal(parsed["reading"], "pressure", "payload reading")
-    assert_equal(
-        parsed["entity_id"],
-        "binary_sensor.labpulse_pressure_monitor_pressure_alarm",
-        "payload entity",
-    )
-
-    fallback = parse_sms_payload(b"plain text")
-    assert_equal(fallback["message"], "plain text", "plain text fallback")
+    config = SmsConfig(dry_run=False, recipients=[" +447700900000 "])
+    assert_equal(config.recipients, ["+447700900000"], "normalized recipient")
+    for recipients in ([], [""], ["+447700900000", "+447700900000"], ["07700900000"]):
+        try:
+            SmsConfig(dry_run=False, recipients=recipients)
+        except ValidationError:
+            continue
+        raise AssertionError(f"invalid recipients accepted: {recipients!r}")
+    try:
+        SmsConfig(dry_run="false", recipients=["+447700900000"])  # type: ignore[arg-type]
+    except ValidationError:
+        return
+    raise AssertionError("quoted dry_run value was accepted as a boolean")
 
 
-def test_sms_subscriber_broadcasts_formatted_message() -> None:
-    """Check inbound MQTT payloads are formatted and queued for sending."""
+def test_subscriber_uses_persistent_qos_one_session() -> None:
+    """Check persistent client settings, last will, exact topic, and QoS."""
 
     sender = FakeSender()
-    subscriber = SMSSubscriber(MqttConfig(broker="mosquitto", port=1883), sender)
+    client = FakeSmsClient()
+    constructor: dict[str, object] = {}
 
-    message = type("Message", (), {})()
-    message.payload = (
-        b'{"title":"LabPulse alarm","service_label":"Pump Room",'
-        b'"reading_label":"Flow 1","message":"Flow 1 alarm is active.",'
-        b'"current":"0.2"}'
+    def client_factory(*args: object, **kwargs: object) -> FakeSmsClient:
+        """Record persistent-session constructor arguments."""
+
+        constructor["args"] = args
+        constructor["kwargs"] = kwargs
+        return client
+
+    subscriber = SMSSubscriber(
+        MqttConfig(broker="mosquitto", port=1883),
+        sender,
+        client_factory=client_factory,
     )
-    subscriber.on_message(None, None, message)
+    assert_equal(constructor["kwargs"]["client_id"], "LabPulse-SMS", "stable client ID")
+    assert_equal(constructor["kwargs"]["clean_session"], False, "persistent session")
+    assert_equal(client.will[0], SMS_STATUS_TOPIC, "status last-will topic")
+    assert_equal(client.will[2:], (1, True), "status last-will delivery")
 
-    assert_equal(len(sender.messages), 1, "broadcast count")
-    assert_contains(sender.messages[0], "Pump Room / Flow 1", "formatted identity")
-    assert_contains(sender.messages[0], "Current: 0.2", "formatted current value")
-
-
-def test_log_sender_queues_one_message_per_recipient() -> None:
-    """Check log backend accepts messages without contacting hardware."""
-
-    logger = type("Logger", (), {"info": lambda *_args: None, "warning": lambda *_args: None})()
-    sender = LogSmsSender(["+441", "+442"], logger)
-
-    assert_equal(sender.send_sms("+441", "hello"), True, "log sender success")
+    subscriber.connect()
+    assert_equal(client.connected_to, ("mosquitto", 1883, 60), "MQTT connection")
+    subscriber.on_connect(client, None, None, 0, None)
+    assert_equal(client.subscriptions, [(SMS_SUBSCRIPTION_TOPIC, 1)], "QoS 1 subscription")
+    assert_equal(client.published[-2][0], SMS_STATUS_DISCOVERY_TOPIC, "status discovery topic")
+    assert_equal(client.published[-1][0], SMS_STATUS_TOPIC, "online status topic")
+    assert_equal(client.published[-1][2:], (1, True), "retained online status")
 
 
-def test_mmcli_sender_uses_modemmanager_commands() -> None:
-    """Check mmcli backend creates and sends an SMS without real hardware."""
+def test_payload_parser_is_strict() -> None:
+    """Check typed parsing and rejection of malformed or unexpected payloads."""
+
+    parsed = parse_sms_payload(json.dumps(request_payload()).encode())
+    assert_equal(parsed.service, "pump_room", "payload service")
+    assert_equal(parsed.reading, "flow1", "payload reading")
+
+    invalid_payloads = [
+        b"plain text",
+        b"\xff",
+        b'{"request_id":"missing-fields"}',
+        json.dumps({**request_payload(), "unexpected": "field"}).encode(),
+    ]
+    for payload in invalid_payloads:
+        try:
+            parse_sms_payload(payload)
+        except SmsPayloadError:
+            continue
+        raise AssertionError(f"invalid payload accepted: {payload!r}")
+
+
+def test_subscriber_deduplicates_and_rate_limits() -> None:
+    """Check accepted requests, duplicate IDs, and repeated-event cooldown."""
+
+    now = [1_000.0]
+    sender = FakeSender()
+    client = FakeSmsClient()
+    subscriber = SMSSubscriber(
+        MqttConfig(broker="mosquitto"),
+        sender,
+        client_factory=lambda *args, **kwargs: client,
+        request_cache=RecentRequestCache(clock=lambda: now[0]),
+    )
+
+    message = type("Message", (), {"payload": json.dumps(request_payload()).encode()})()
+    subscriber.on_message(client, None, message)
+    assert_equal(len(sender.requests), 1, "accepted request")
+    subscriber.on_message(client, None, message)
+    assert_equal(len(sender.requests), 1, "duplicate suppressed")
+    assert_equal(json.loads(client.published[-1][1])["status"], "duplicate", "duplicate result")
+
+    repeated = type(
+        "Message",
+        (),
+        {"payload": json.dumps(request_payload("request-2")).encode()},
+    )()
+    subscriber.on_message(client, None, repeated)
+    assert_equal(len(sender.requests), 1, "event cooldown")
+    assert_equal(json.loads(client.published[-1][1])["status"], "rate_limited", "rate result")
+
+
+def test_recent_request_cache_persists() -> None:
+    """Check request IDs survive service reconstruction."""
+
+    temp_dir = REFACTOR_DIR / "testing" / "tmp" / "sms-cache-test"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = temp_dir / "requests.json"
+    try:
+        first = RecentRequestCache(path=cache_path, clock=lambda: 1_000.0)
+        first.remember(request())
+        second = RecentRequestCache(path=cache_path, clock=lambda: 1_001.0)
+        assert_equal(second.rejection_reason(request()), "duplicate", "persistent duplicate")
+    finally:
+        if cache_path.exists():
+            cache_path.unlink()
+        if temp_dir.exists():
+            temp_dir.rmdir()
+
+
+def test_delivery_results_are_published() -> None:
+    """Check sender outcomes are published with masked recipient data."""
+
+    sender = FakeSender()
+    client = FakeSmsClient()
+    subscriber = SMSSubscriber(
+        MqttConfig(broker="mosquitto"),
+        sender,
+        client_factory=lambda *args, **kwargs: client,
+    )
+    subscriber.publish_delivery_result(
+        DeliveryResult("request-1", "+44*******000", "sent")
+    )
+    topic, payload, qos, retain = client.published[-1]
+    assert_equal(topic, sms_result_topic("request-1"), "result topic")
+    assert_equal(json.loads(payload)["status"], "sent", "result status")
+    assert_equal((qos, retain), (1, False), "result delivery settings")
+
+
+def test_subscriber_closes_gracefully() -> None:
+    """Check shutdown drains the sender, publishes offline, and disconnects."""
+
+    sender = FakeSender()
+    client = FakeSmsClient()
+    subscriber = SMSSubscriber(
+        MqttConfig(broker="mosquitto"),
+        sender,
+        client_factory=lambda *args, **kwargs: client,
+    )
+    subscriber.close()
+    assert_equal(sender.closed, True, "sender closed")
+    assert_equal(json.loads(client.published[-1][1])["state"], "offline", "offline status")
+    assert_equal(client.disconnected, True, "MQTT disconnected")
+
+
+def test_queue_fans_out_and_stops_cleanly() -> None:
+    """Check the real worker delivers once per recipient and joins on close."""
+
+    sender = SmsSender(
+        ["+447700900000", "+447700900001"], quiet_logger(), dry_run=True
+    )
+    results: list[DeliveryResult] = []
+    sender.set_result_handler(results.append)
+    assert_equal(sender.broadcast(request()), True, "queue accepted")
+    sender.queue.join()
+    sender.close()
+    assert_equal(len(results), 2, "recipient fan-out")
+    assert_equal(
+        [result.status for result in results], ["logged", "logged"], "delivery results"
+    )
+    assert_equal(sender.worker.is_alive(), False, "worker stopped")
+
+
+def test_dry_run_reports_logged_not_sent() -> None:
+    """Check dry-run delivery results cannot be mistaken for a real SMS."""
+
+    sender = SmsSender(["+447700900000"], quiet_logger(), dry_run=True)
+    results: list[DeliveryResult] = []
+    sender.set_result_handler(results.append)
+    sender.broadcast(request())
+    sender.queue.join()
+    sender.close()
+    assert_equal(results[0].status, "logged", "dry-run status")
+
+
+def test_mmcli_sends_and_deletes_created_object() -> None:
+    """Check ModemManager create, send, and storage cleanup commands."""
 
     calls: list[list[str]] = []
 
-    def runner(command: list[str], **_kwargs: object):
+    def runner(command: list[str], **_kwargs: object) -> object:
+        """Return deterministic mmcli output and record commands."""
+
         calls.append(command)
         if command == ["mmcli", "-L"]:
             stdout = "/org/freedesktop/ModemManager1/Modem/7 [Test Modem]\n"
         elif command[:4] == ["mmcli", "-m", "7", "--messaging-create-sms"]:
             stdout = "Successfully created new SMS: /org/freedesktop/ModemManager1/SMS/12\n"
-        elif command == ["mmcli", "-s", "/org/freedesktop/ModemManager1/SMS/12", "--send"]:
-            stdout = ""
         else:
-            raise AssertionError(f"unexpected command: {command!r}")
+            stdout = ""
         return type("Completed", (), {"stdout": stdout, "stderr": "", "returncode": 0})()
 
-    logger = type(
-        "Logger",
-        (),
-        {
-            "info": lambda *_args: None,
-            "warning": lambda *_args: None,
-            "error": lambda *_args: None,
-            "exception": lambda *_args: None,
-        },
-    )()
-    sender = MmcliSmsSender(["+441"], logger, runner=runner, retries=1, retry_delay_seconds=0)
+    sender = SmsSender(
+        ["+447700900000"],
+        quiet_logger(),
+        dry_run=False,
+        runner=runner,
+        retries=1,
+    )
+    try:
+        assert_equal(sender.send_sms("+447700900000", "hello"), True, "mmcli send")
+    finally:
+        sender.close()
+    assert_equal(calls[0], ["mmcli", "-L"], "list modems")
+    assert_equal(
+        calls[-2],
+        ["mmcli", "-s", "/org/freedesktop/ModemManager1/SMS/12", "--send"],
+        "send command",
+    )
+    assert_equal(
+        calls[-1],
+        [
+            "mmcli",
+            "-m",
+            "7",
+            "--messaging-delete-sms=/org/freedesktop/ModemManager1/SMS/12",
+        ],
+        "delete command",
+    )
 
-    assert_equal(sender.send_sms("+441", "hello"), True, "mmcli send success")
-    assert_equal(calls[0], ["mmcli", "-L"], "list modems command")
-    assert_equal(calls[-1], ["mmcli", "-s", "/org/freedesktop/ModemManager1/SMS/12", "--send"], "send command")
+
+def test_retry_does_not_sleep_after_final_failure() -> None:
+    """Check retry delays occur only between attempts."""
+
+    sleeps: list[float] = []
+
+    def runner(command: list[str], **_kwargs: object) -> object:
+        """Fail SMS creation while allowing modem discovery."""
+
+        if command == ["mmcli", "-L"]:
+            return type(
+                "Completed",
+                (),
+                {
+                    "stdout": "/org/freedesktop/ModemManager1/Modem/7\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+            )()
+        raise subprocess.CalledProcessError(1, command, stderr="failed")
+
+    sender = SmsSender(
+        ["+447700900000"],
+        quiet_logger(),
+        dry_run=False,
+        runner=runner,
+        retries=2,
+        retry_delay_seconds=3,
+        sleeper=sleeps.append,
+    )
+    try:
+        assert_equal(sender.send_sms("+447700900000", "hello"), False, "failed send")
+    finally:
+        sender.close()
+    assert_equal(sleeps, [3], "between-attempt sleep")
 
 
-def test_sms_message_helpers_quote_and_format() -> None:
-    """Check mmcli quoting and user-facing message formatting."""
+def test_message_formatting_and_privacy_helpers() -> None:
+    """Check concise formatting, mmcli quoting, and recipient masking."""
 
+    formatted = format_sms_message(request())
+    assert_equal(formatted.count("Pump Room / Flow 1"), 1, "identity not duplicated")
+    assert_contains(formatted, "Current: 0.2", "current reading")
+    assert_equal(mask_phone_number("+447700900000"), "+44*******000", "masked number")
     assert_equal(quote_mmcli_value("Dave's lab"), "'Dave\\'s lab'", "mmcli quote")
-    formatted = format_sms_message({"title": "Title", "service": "pump", "reading": "flow"})
-    assert_contains(formatted, "pump / flow", "fallback labels")
 
 
 TESTS = [
-    ("setup copies SMS package into image", test_setup_copies_sms_package_into_image),
-    ("compose generates one SMS container", test_compose_generates_one_sms_container),
-    ("SMS entry defaults to app config", test_sms_entry_defaults_to_app_config),
-    ("SMS subscriber subscribes to SMS topic", test_sms_subscriber_subscribes_to_sms_topic),
-    ("SMS payload parser keeps service and reading", test_sms_payload_parser_keeps_service_and_reading),
-    ("SMS subscriber broadcasts formatted message", test_sms_subscriber_broadcasts_formatted_message),
-    ("log sender queues one message per recipient", test_log_sender_queues_one_message_per_recipient),
-    ("mmcli sender uses ModemManager commands", test_mmcli_sender_uses_modemmanager_commands),
-    ("SMS message helpers quote and format", test_sms_message_helpers_quote_and_format),
+    ("setup and Compose contract", test_setup_and_compose_contract),
+    ("SMS entry accepts explicit argv", test_sms_entry_accepts_explicit_argv),
+    ("SMS config validates recipients", test_sms_config_validates_recipients),
+    ("subscriber uses persistent QoS 1 session", test_subscriber_uses_persistent_qos_one_session),
+    ("payload parser is strict", test_payload_parser_is_strict),
+    ("subscriber deduplicates and rate limits", test_subscriber_deduplicates_and_rate_limits),
+    ("recent request cache persists", test_recent_request_cache_persists),
+    ("delivery results are published", test_delivery_results_are_published),
+    ("subscriber closes gracefully", test_subscriber_closes_gracefully),
+    ("queue fans out and stops cleanly", test_queue_fans_out_and_stops_cleanly),
+    ("dry run reports logged not sent", test_dry_run_reports_logged_not_sent),
+    ("mmcli sends and deletes created object", test_mmcli_sends_and_deletes_created_object),
+    ("retry does not sleep after final failure", test_retry_does_not_sleep_after_final_failure),
+    ("message formatting and privacy helpers", test_message_formatting_and_privacy_helpers),
 ]
 
 
 def main() -> None:
-    """Run SMS container setup tests."""
+    """Run SMS container and service tests."""
 
     print("Running SMS container tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed_count = 0
+    print(f"Refactor dir: {REFACTOR_DIR}\n")
+    passed = 0
     for name, test_func in TESTS:
         try:
             test_func()
         except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
+            print(f"[FAIL] {name}\n  error: {type(error).__name__}: {error}\n")
             continue
-
-        print(f"[PASS] {name}")
-        print()
-        passed_count += 1
-
-    total = len(TESTS)
-    failed_count = total - passed_count
-    print(f"Summary: {passed_count}/{total} passed, {failed_count} failed")
-
-    if failed_count:
+        print(f"[PASS] {name}\n")
+        passed += 1
+    failed = len(TESTS) - passed
+    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
+    if failed:
         sys.exit(1)
 
 

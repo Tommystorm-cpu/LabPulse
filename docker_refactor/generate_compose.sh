@@ -131,8 +131,11 @@ if not config_path.exists():
 data = yaml.safe_load(config_path.read_text()) or {}
 services = data.get("services", {})
 sms_config = data.get("sms", {}) or {}
-sms_backend = str(sms_config.get("backend", "log")).lower()
-sms_needs_modem = sms_backend == "mmcli"
+sms_dry_run = sms_config.get("dry_run", True)
+if not isinstance(sms_dry_run, bool):
+    print("ERROR: sms.dry_run must be true or false", file=sys.stderr)
+    sys.exit(1)
+sms_needs_modem = not sms_dry_run
 
 enabled_services = [
     service_name
@@ -256,7 +259,7 @@ lines.extend(
         "    container_name: labpulse-mqtt",
         "    image: eclipse-mosquitto:2",
         "    ports:",
-        '      - "1883:1883"',
+        '      - "127.0.0.1:1883:1883"',
         "    volumes:",
         "      - ./mosquitto/config:/mosquitto/config",
         "      - ./mosquitto/data:/mosquitto/data",

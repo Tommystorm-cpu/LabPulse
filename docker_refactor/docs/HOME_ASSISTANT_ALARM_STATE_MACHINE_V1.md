@@ -205,7 +205,7 @@ Sensor fault should include:
 
 Stale detection should be implemented with Home Assistant-native logic. A
 practical v1 approach is to use the source sensor's `last_changed` or
-`last_updated` in a template and compare it with a stale timeout helper.
+`last_updated` in a template and compare it with the maximum reading age helper.
 
 ## Timing And Filtering
 
@@ -219,19 +219,19 @@ To avoid clutter, timing controls are generated per service rather than per
 reading:
 
 ```text
-input_number.labpulse_<service>_danger_ratio_percent
-input_number.labpulse_<service>_danger_window_seconds
-input_number.labpulse_<service>_recovery_seconds
-input_number.labpulse_<service>_stale_timeout_seconds
+input_number.labpulse_<service>_required_danger_percent
+input_number.labpulse_<service>_observation_window_seconds
+input_number.labpulse_<service>_required_recovery_seconds
+input_number.labpulse_<service>_maximum_reading_age_seconds
 ```
 
 Suggested defaults:
 
 ```text
-danger_ratio_percent: 70
-danger_window_seconds: 120
-recovery_seconds: 120
-stale_timeout_seconds: 300
+required_danger_percent: 70
+observation_window_seconds: 120
+required_recovery_seconds: 120
+maximum_reading_age_seconds: 300
 ```
 
 These helpers can be placed on the Alarm Setup view, grouped by service.
@@ -241,7 +241,7 @@ These helpers can be placed on the Alarm Setup view, grouped by service.
 For each reading, generate a `history_stats` sensor:
 
 ```text
-sensor.labpulse_<service>_<reading>_danger_ratio
+sensor.labpulse_<service>_<reading>_observed_danger_percent
 ```
 
 This tracks the percentage of the recent window where the danger zone was `on`.
@@ -257,12 +257,12 @@ Example shape:
 
 ```yaml
 - platform: history_stats
-  name: LabPulse Pressure Danger Ratio
+  name: LabPulse Pressure Observed Danger
   entity_id: binary_sensor.labpulse_pressure_monitor_pressure_danger_zone
   state: "on"
   type: ratio
   start: >
-    {{ now() - timedelta(seconds=states('input_number.labpulse_pressure_monitor_danger_window_seconds')|int(120)) }}
+    {{ now() - timedelta(seconds=states('input_number.labpulse_pressure_monitor_observation_window_seconds')|int(120)) }}
   end: "{{ now() }}"
 ```
 
@@ -270,7 +270,7 @@ Notes:
 
 - `history_stats` updates when the source entity changes, or once per minute if
   there is no source change.
-- This is suitable for a two-minute Danger window.
+- This is suitable for a two-minute observation window.
 - If future short windows are introduced, update frequency must be tested.
 
 ### Normal To Danger
@@ -278,7 +278,7 @@ Notes:
 Transition from `Normal` to `Danger` when:
 
 ```text
-danger_ratio >= service danger_ratio_percent
+observed_danger_percent >= service required_danger_percent
 ```
 
 and:
@@ -302,7 +302,7 @@ Only send if mute is off.
 Transition from `Danger` to `Normal` when:
 
 ```text
-recovery_zone is continuously on for service recovery_seconds
+recovery_zone is continuously on for service required_recovery_seconds
 ```
 
 Use a Home Assistant template/state trigger with a templated `for:` value.
@@ -344,7 +344,7 @@ When sensor fault clears, do not blindly return to Normal.
 Instead, recalculate based on current conditions:
 
 ```text
-if danger_ratio >= service danger_ratio_percent:
+if observed_danger_percent >= service required_danger_percent:
   Sensor Fault -> Danger
 else if recovery_zone is on:
   Sensor Fault -> Normal
@@ -395,22 +395,26 @@ The payload should include at least:
 
 ```json
 {
+  "request_id": "labpulse_pressure_monitor_pressure_warning_20260713T140501123456",
   "event": "warning",
   "service": "pressure_monitor",
   "service_label": "Air Pressure Sensor Hub",
   "reading": "pressure",
   "reading_label": "Pressure",
-  "entity_id": "input_select.labpulse_pressure_monitor_pressure_alarm_state",
   "state": "Danger",
   "title": "LabPulse warning",
   "message": "Air Pressure Sensor Hub / Pressure is in Danger."
 }
 ```
 
-Existing SMS backend behavior can remain:
+Requests are published at QoS 1 and JSON-encoded with Home Assistant's
+`to_json` filter. The request ID lets the persistent SMS worker suppress MQTT
+redelivery duplicates and correlate per-recipient results.
 
-- `sms.backend: "log"` logs messages on test systems.
-- `sms.backend: "mmcli"` sends real SMS on the modem Pi.
+SMS delivery mode is configured directly:
+
+- `sms.dry_run: true` logs messages on test systems.
+- `sms.dry_run: false` sends real SMS through `mmcli` on the modem Pi.
 
 ## Dashboard Design
 
@@ -443,18 +447,18 @@ This is the configuration/tuning view.
 
 Group by service.
 
-Each service section includes a native `Show controls` toggle. The service
-timing card and each reading setup card are native conditional cards that appear
-only while that toggle is on. This gives a collapsible working shape without
-depending on custom Lovelace cards.
+Each service section includes one always-visible timing card. Every reading has
+its own native `Show controls` toggle and conditional setup card, so expanding
+one reading does not expose controls for the others. This gives a collapsible
+working shape without depending on custom Lovelace cards.
 
 For each service, show service-level timing helpers:
 
 ```text
-danger_ratio_percent
-danger_window_seconds
-recovery_seconds
-stale_timeout_seconds
+required_danger_percent
+observation_window_seconds
+required_recovery_seconds
+maximum_reading_age_seconds
 ```
 
 For each reading, show reading-level controls:
@@ -466,7 +470,7 @@ alarm_muted
 minimum_threshold
 maximum_threshold
 recovery_deadband
-danger_ratio sensor
+observed_danger_percent sensor
 danger_zone
 recovery_zone
 sensor_fault_zone
@@ -483,16 +487,16 @@ Do not depend on custom cards for v1.
 Per service:
 
 ```text
-input_boolean.labpulse_<service>_alarm_controls_expanded
-input_number.labpulse_<service>_danger_ratio_percent
-input_number.labpulse_<service>_danger_window_seconds
-input_number.labpulse_<service>_recovery_seconds
-input_number.labpulse_<service>_stale_timeout_seconds
+input_number.labpulse_<service>_required_danger_percent
+input_number.labpulse_<service>_observation_window_seconds
+input_number.labpulse_<service>_required_recovery_seconds
+input_number.labpulse_<service>_maximum_reading_age_seconds
 ```
 
 Per reading:
 
 ```text
+input_boolean.labpulse_<service>_<reading>_alarm_controls_expanded
 input_select.labpulse_<service>_<reading>_alarm_state
 input_select.labpulse_<service>_<reading>_alarm_mode
 input_boolean.labpulse_<service>_<reading>_alarm_muted
@@ -502,7 +506,7 @@ input_number.labpulse_<service>_<reading>_recovery_deadband
 binary_sensor.labpulse_<service>_<reading>_danger_zone
 binary_sensor.labpulse_<service>_<reading>_recovery_zone
 binary_sensor.labpulse_<service>_<reading>_sensor_fault_zone
-sensor.labpulse_<service>_<reading>_danger_ratio
+sensor.labpulse_<service>_<reading>_observed_danger_percent
 ```
 
 The existing entity map should be expanded to include these entities.

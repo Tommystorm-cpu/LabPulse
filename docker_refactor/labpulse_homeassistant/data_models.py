@@ -82,8 +82,9 @@ class ReadingModel:
     # predictable names used by generated dashboards and automations.
     mqtt_entity: EntityReference
 
-    # User-editable Home Assistant helpers that hold the alarm state, selected
+    # User-editable Home Assistant helpers that hold the expansion, alarm state, selected
     # alarm mode, mute setting, thresholds, and recovery deadband.
+    alarm_controls_expanded_entity: str
     alarm_state_entity: str
     alarm_mode_entity: str
     alarm_muted_entity: str
@@ -92,16 +93,16 @@ class ReadingModel:
     recovery_deadband_entity: str
 
     # Derived Home Assistant entities used by the alarm state machine. Zone
-    # entities report current conditions; the ratio sensor measures how much
-    # of the configured history window has been in the danger zone.
+    # entities report current conditions; the observed percentage sensor
+    # measures how much of the configured window has been in the danger zone.
     danger_zone_unique_id: str
     danger_zone_entity: str
     recovery_zone_unique_id: str
     recovery_zone_entity: str
     sensor_fault_zone_unique_id: str
     sensor_fault_zone_entity: str
-    danger_ratio_unique_id: str
-    danger_ratio_entity: str
+    observed_danger_percent_unique_id: str
+    observed_danger_percent_entity: str
 
     # Initial helper behavior and editable numeric limits generated for the
     # reading before users tune them through Home Assistant.
@@ -143,13 +144,12 @@ class ServiceModel:
     status_entity: EntityReference
 
     # Home Assistant helpers shared by every reading in this service. They
-    # control dashboard expansion, danger timing, recovery, and stale-data
+    # control danger timing, recovery, and stale-data
     # detection for the generated alarm state machines.
-    alarm_controls_expanded_entity: str
-    danger_ratio_percent_entity: str
-    danger_window_seconds_entity: str
-    recovery_seconds_entity: str
-    stale_timeout_seconds_entity: str
+    required_danger_percent_entity: str
+    observation_window_seconds_entity: str
+    required_recovery_seconds_entity: str
+    maximum_reading_age_seconds_entity: str
 
     # Per-reading template models generated from the service configuration.
     readings: list[ReadingModel] = field(default_factory=list)
@@ -245,11 +245,10 @@ def build_render_model(config: LabPulseConfig) -> RenderModel:
                 unique_id=stable_id(service_name, "status"),
                 default_entity_id=entity_id("sensor", service_name, "status"),
             ),
-            alarm_controls_expanded_entity = entity_id("input_boolean", service_name, "alarm_controls_expanded"),
-            danger_ratio_percent_entity    = entity_id("input_number", service_name, "danger_ratio_percent"),
-            danger_window_seconds_entity   = entity_id("input_number", service_name, "danger_window_seconds"),
-            recovery_seconds_entity        = entity_id("input_number", service_name, "recovery_seconds"),
-            stale_timeout_seconds_entity   = entity_id("input_number", service_name, "stale_timeout_seconds"),
+            required_danger_percent_entity      = entity_id("input_number", service_name, "required_danger_percent"),
+            observation_window_seconds_entity  = entity_id("input_number", service_name, "observation_window_seconds"),
+            required_recovery_seconds_entity   = entity_id("input_number", service_name, "required_recovery_seconds"),
+            maximum_reading_age_seconds_entity = entity_id("input_number", service_name, "maximum_reading_age_seconds"),
         )
 
         for reading in service_config.readings:
@@ -284,6 +283,7 @@ def build_reading_model(
             unique_id=stable_id(service_name, reading_name),
             default_entity_id=entity_id("sensor", service_name, reading_name),
         ),
+        alarm_controls_expanded_entity = entity_id("input_boolean", service_name, reading_name, "alarm_controls_expanded"),
         alarm_state_entity          = entity_id("input_select", service_name, reading_name, "alarm_state"),
         alarm_mode_entity           = entity_id("input_select", service_name, reading_name, "alarm_mode"),
         alarm_muted_entity          = entity_id("input_boolean", service_name, reading_name, "alarm_muted"),
@@ -293,8 +293,8 @@ def build_reading_model(
         recovery_zone_entity        = entity_id("binary_sensor", service_name, reading_name, "recovery_zone"),
         sensor_fault_zone_unique_id = stable_id(service_name, reading_name, "sensor_fault_zone"),
         sensor_fault_zone_entity    = entity_id("binary_sensor", service_name, reading_name, "sensor_fault_zone"),
-        danger_ratio_unique_id      = stable_id(service_name, reading_name, "danger_ratio"),
-        danger_ratio_entity         = entity_id("sensor", service_name, reading_name, "danger_ratio"),
+        observed_danger_percent_unique_id = stable_id(service_name, reading_name, "observed_danger_percent"),
+        observed_danger_percent_entity    = entity_id("sensor", service_name, reading_name, "observed_danger_percent"),
         default_alarm_mode          = default_alarm_mode(reading_name),
         minimum_threshold_entity    = minimum,
         maximum_threshold_entity    = maximum,

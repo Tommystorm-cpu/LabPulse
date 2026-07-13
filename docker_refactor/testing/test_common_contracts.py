@@ -12,8 +12,13 @@ sys.path.insert(0, str(REFACTOR_DIR))
 from labpulse_common.identity import entity_id, stable_id
 from labpulse_common.mqtt_contracts import (
     SMS_ALERT_PAYLOAD_FIELDS,
+    SMS_RESULT_TOPIC_PREFIX,
     SMS_SEND_TOPIC,
+    SMS_STATUS_DISCOVERY_TOPIC,
+    SMS_STATUS_TOPIC,
     SMS_SUBSCRIPTION_TOPIC,
+    SmsRequest,
+    sms_result_topic,
     sensor_discovery_topic,
     sensor_state_topic,
     service_status_topic,
@@ -72,20 +77,39 @@ def test_sms_contract() -> None:
     """Check the shared alert topic and required payload fields."""
 
     assert_equal(SMS_SEND_TOPIC, "labpulse/sms/send", "SMS send topic")
-    assert_equal(SMS_SUBSCRIPTION_TOPIC, "labpulse/sms/#", "SMS subscription topic")
+    assert_equal(SMS_SUBSCRIPTION_TOPIC, SMS_SEND_TOPIC, "SMS subscription topic")
+    assert_equal(SMS_STATUS_TOPIC, "labpulse/sms/status", "SMS status topic")
+    assert_equal(
+        SMS_STATUS_DISCOVERY_TOPIC,
+        "homeassistant/sensor/labpulse_sms_status/config",
+        "SMS status discovery topic",
+    )
+    assert_equal(SMS_RESULT_TOPIC_PREFIX, "labpulse/sms/result", "SMS result prefix")
+    assert_equal(sms_result_topic("request-1"), "labpulse/sms/result/request-1", "SMS result topic")
     required = {
+        "request_id",
         "event",
         "service",
         "reading",
-        "entity_id",
+        "state",
         "title",
         "message",
         "current",
-        "minimum_threshold",
-        "maximum_threshold",
     }
     if not required.issubset(SMS_ALERT_PAYLOAD_FIELDS):
         raise AssertionError("SMS alert contract is missing required fields")
+    request = SmsRequest.model_validate(
+        {
+            "request_id": "request-1",
+            "event": "test",
+            "service": "manual",
+            "reading": "sms",
+            "state": "Test",
+            "title": "Test",
+            "message": "Test message",
+        }
+    )
+    assert_equal(request.event, "test", "validated SMS request")
 
 
 TESTS = [

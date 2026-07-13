@@ -83,11 +83,12 @@ removed merely to reduce line count:
 - the common driver lifecycle used by the hardware runner;
 - one fake serial simulator for all hardware-free sensor testing;
 - separation between hardware, Home Assistant generation, and SMS delivery;
-- the log and `mmcli` SMS backends;
+- one SMS sender with dry-run and `mmcli` delivery paths;
 - tests for parsing, reconnection, MQTT contracts, and generated configuration.
 
-The SMS sender protocol can remain small. It does not need a dynamic plugin or
-backend registration system unless another real delivery mechanism is added.
+The SMS sender can remain one concrete class. It does not need a protocol,
+subclass hierarchy, or backend registration system while `mmcli` is the only
+planned production delivery mechanism.
 
 ## Recommended Order
 

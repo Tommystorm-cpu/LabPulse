@@ -26,7 +26,7 @@ hardware source -> driver -> normalised readings -> MQTT publisher
 
 config.yaml -> Home Assistant render model -> dashboards, helpers, alarms
 
-Home Assistant alert automation -> MQTT SMS request -> SMS sender backend
+Home Assistant alert automation -> MQTT SMS request -> SMS sender
 ```
 
 The MQTT publisher belongs to the hardware runtime. It is the final stage that
@@ -72,7 +72,7 @@ docker_refactor/
   labpulse_sms/
     __main__.py
     cli.py
-    sms_subscriber.py
+    subscriber.py
     sender.py
 
   testing/
@@ -187,7 +187,7 @@ Before completing the refactor:
    move.
 3. Run `docker compose config` against generated Compose output.
 4. Run the fake-USB happy path and confirm readings, Home Assistant discovery,
-   generated alarms, and SMS test-backend messages still work.
+   generated alarms, and SMS dry-run messages still work.
 5. Confirm `setup_container_fs.sh` refreshes runtime code while preserving an
    existing live config and dashboard.
 

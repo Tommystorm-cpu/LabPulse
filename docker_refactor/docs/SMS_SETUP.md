@@ -1,65 +1,47 @@
 # SMS Setup
 
-LabPulse sends SMS alerts through the `labpulse-sms` container.
-
-Home Assistant does not talk to the modem directly. Generated Home Assistant
-alert automations publish MQTT messages to:
+LabPulse sends SMS alerts through the `labpulse-sms` container. Home Assistant
+decides when an alarm transition warrants a message and publishes a validated
+request to:
 
 ```text
 labpulse/sms/send
 ```
 
-The SMS container subscribes to:
-
-```text
-labpulse/sms/#
-```
-
-Then it formats and sends or logs the message depending on:
-
-```yaml
-sms:
-  backend: "log"
-```
-
-in:
+The SMS worker subscribes to that exact topic at QoS 1, formats the request,
+and either logs or sends it according to `sms.dry_run` in the live Pi config:
 
 ```text
 ~/labpulse-ha/config.yaml
 ```
 
-## Backends
+## Configuration
 
-`log`:
-
-- safe default
-- no modem required
-- writes the would-send message to logs
-- best for development and test Pis
-
-`mmcli`:
-
-- sends real SMS messages
-- requires ModemManager on the Pi host
-- requires a visible modem/SIM
-- causes Compose generation to give `labpulse-sms` modem access
-
-## Config
+Safe development configuration:
 
 ```yaml
 sms:
-  backend: "log"
+  dry_run: true
   recipients:
     - "+447700900000"
 ```
 
-Change recipient numbers only in the live Pi config:
+Real modem configuration:
 
-```text
-~/labpulse-ha/config.yaml
+```yaml
+sms:
+  dry_run: false
+  recipients:
+    - "+447700900000"
 ```
 
-After changing `sms.backend`, regenerate Compose:
+Recipients must be unique international numbers beginning with `+` and
+containing 8 to 15 digits. At least one recipient is required when `dry_run` is
+`false`.
+Keep real contact numbers only in the live Pi config; the repository
+`docker_refactor/config.yaml` is a starter template.
+
+After changing the delivery mode or recipients:
 
 ```bash
 cd ~/labpulse-ha
@@ -67,185 +49,149 @@ cd ~/labpulse-ha
 docker compose up -d --build
 ```
 
-## MQTT Payload Shape
+## Delivery Modes
 
-Generated alert automations publish JSON like:
+`dry_run: true` is the safe default. It needs no modem and logs the message with
+recipient numbers masked.
+
+`dry_run: false` sends through ModemManager using `mmcli`. Generated Compose gives only the SMS worker
+the additional D-Bus, device, and privileged access required by the modem.
+Created ModemManager SMS objects are removed after each attempt so modem storage
+does not fill over time.
+
+## Reliable Request Flow
+
+Generated Home Assistant automations publish at QoS 1 with `retain: false`.
+Every request has a stable unique `request_id`. The worker uses a persistent
+MQTT session with client ID `LabPulse-SMS`, so Mosquitto can hold QoS 1 requests
+while the worker is briefly offline.
+
+Accepted request IDs are retained for 24 hours in:
+
+```text
+~/labpulse-ha/logs/sms_processed_requests.json
+```
+
+This prevents MQTT redelivery from sending the same SMS twice across worker
+restarts. A 30-second per-service, reading, and event cooldown also protects
+against accidental alert floods. The sender queue is bounded and drains during
+normal container shutdown.
+
+## MQTT Payload
+
+Requests are strict JSON. Plain text, invalid UTF-8, missing fields, extra
+fields, and unsupported events are rejected without sending an SMS.
 
 ```json
 {
-  "event": "alert",
+  "request_id": "labpulse_pressure_monitor_pressure_warning_20260713T140501123456",
+  "event": "warning",
   "service": "pressure_monitor",
   "service_label": "Air Pressure Sensor Hub",
   "reading": "pressure",
   "reading_label": "Pressure",
-  "entity_id": "binary_sensor.labpulse_pressure_monitor_pressure_alarm",
-  "title": "LabPulse Pressure alert",
-  "message": "Air Pressure Sensor Hub / Pressure alarm is active.",
-  "current": "0.8",
-  "minimum_threshold": "1.0",
-  "maximum_threshold": "999"
+  "state": "Danger",
+  "title": "LabPulse Pressure warning",
+  "message": "Air Pressure Sensor Hub / Pressure is in Danger.",
+  "current": "0.8"
 }
 ```
 
-`sms_subscriber.py` accepts JSON payloads and falls back to plain text if the
-payload is not JSON.
+Required fields are `request_id`, `event`, `service`, `reading`, `state`,
+`title`, and `message`. Labels and `current` are optional. Supported events are
+`sensor_fault`, `warning`, `recovery`, and `test`.
 
-## Test Pi Setup
+## Status And Results
 
-Use log mode:
+The worker publishes retained availability to:
 
-```yaml
-sms:
-  backend: "log"
-  recipients:
-    - "+447700900000"
+```text
+labpulse/sms/status
 ```
 
-Regenerate and restart:
+It also publishes Home Assistant MQTT discovery for
+`sensor.labpulse_sms_status`. An unexpected disconnect uses the MQTT last will
+to set the service offline.
 
-```bash
-cd ~/labpulse-ha
-./generate_compose.sh
-docker compose up -d --build
+Each recipient outcome is published at QoS 1 to:
+
+```text
+labpulse/sms/result/<request_id>
 ```
 
-Publish a manual test:
+The result contains the request ID, masked recipient, `logged`, `sent`, or
+`failed` status, optional detail, and a timestamp. Duplicate and rate-limited requests
+also produce results explaining why they were rejected.
+
+## Test In Dry-Run Mode
+
+Create a unique ID and publish a complete test request:
 
 ```bash
 docker compose exec mosquitto mosquitto_pub \
   -h mosquitto \
+  -q 1 \
   -t labpulse/sms/send \
-  -m '{"title":"LabPulse SMS test","message":"Manual test from test Pi","service":"manual","reading":"sms"}'
+  -m '{"request_id":"manual-test-001","event":"test","service":"manual","reading":"sms","state":"Test","title":"LabPulse SMS test","message":"Manual test from LabPulse"}'
 ```
 
-Watch logs:
+Use a new `request_id` for every manual test, then watch:
 
 ```bash
 docker compose logs -f labpulse-sms
 ```
 
-You should see that the log backend would send the SMS. No real SMS is sent.
+No real SMS is sent in log mode.
 
-## Real Modem Pi Setup
+## Real Modem Setup
 
-Use this only on the Raspberry Pi with the modem installed.
-
-Install ModemManager on the host:
+Install and start ModemManager on the Raspberry Pi host:
 
 ```bash
 sudo apt update
 sudo apt install -y modemmanager
 sudo systemctl enable --now ModemManager
-```
-
-Confirm the host sees the modem:
-
-```bash
 mmcli -L
 ```
 
-Expected output contains a modem path such as:
-
-```text
-/org/freedesktop/ModemManager1/Modem/0
-```
-
-Edit live config:
-
-```bash
-nano ~/labpulse-ha/config.yaml
-```
-
-Set:
-
-```yaml
-sms:
-  backend: "mmcli"
-  recipients:
-    - "+447700900000"
-```
-
-Regenerate and restart:
-
-```bash
-cd ~/labpulse-ha
-./generate_compose.sh
-docker compose up -d --build
-```
-
-When `backend: "mmcli"` is set, generated Compose gives `labpulse-sms`:
-
-```text
-/run/dbus:/run/dbus:ro
-/dev:/dev
-privileged: true
-```
-
-Check that the container sees the modem:
+Set `sms.dry_run: false`, regenerate Compose, recreate the stack, and confirm
+the worker can see the modem:
 
 ```bash
 docker compose exec labpulse-sms mmcli -L
 ```
 
-Publish a manual test:
-
-```bash
-docker compose exec mosquitto mosquitto_pub \
-  -h mosquitto \
-  -t labpulse/sms/send \
-  -m '{"title":"LabPulse SMS test","message":"Manual test from LabPulse","service":"manual","reading":"sms"}'
-```
-
-Watch:
-
-```bash
-docker compose logs -f labpulse-sms
-```
+The generated Mosquitto host port is bound to `127.0.0.1`, so it is available
+to host-networked Home Assistant but not exposed directly to the lab LAN.
+LabPulse containers continue to connect through the internal `mosquitto`
+Compose service.
 
 ## Code Ownership
 
-`labpulse_sms/cli.py`:
+- `labpulse_sms/cli.py` loads config and owns graceful process shutdown.
+- `labpulse_sms/subscriber.py` owns MQTT sessions, request validation,
+  duplicate/flood protection, status, and results.
+- `labpulse_sms/sender.py` owns formatting, the bounded queue, recipient fan-out,
+  dry-run logging, ModemManager delivery, retries, and cleanup.
+- `labpulse_common/mqtt_contracts.py` owns topics and the typed `SmsRequest`.
+- `labpulse_common/config.py` owns delivery-mode and recipient validation.
 
-- parses CLI args
-- loads config
-- creates sender
-- creates subscriber
-- loops forever
-
-`labpulse_sms/sms_subscriber.py`:
-
-- connects to MQTT
-- subscribes to `labpulse/sms/#`
-- parses payloads
-- asks sender to broadcast messages
-
-`labpulse_sms/sender.py`:
-
-- formats SMS text
-- queues outbound sends
-- implements `log` backend
-- implements `mmcli` backend
-
-Home Assistant owns when alerts/recoveries happen. The SMS container only
-delivers requests it receives.
+Home Assistant remains the owner of alarm timing and transition decisions.
 
 ## Troubleshooting
 
-If no SMS log appears:
+If no request appears in SMS logs:
 
-1. Check `labpulse-sms` is running.
-2. Check Mosquitto is running.
-3. Publish a manual MQTT test.
-4. Watch `docker compose logs -f labpulse-sms`.
-5. Confirm Home Assistant automation publishes to `labpulse/sms/send`.
+1. Check `docker compose ps` and `docker compose logs labpulse-sms`.
+2. Confirm Mosquitto is running.
+3. Confirm the payload includes a new valid `request_id` and all required fields.
+4. Check `labpulse/sms/status` and the Home Assistant SMS status entity.
+5. Inspect `labpulse/sms/result/<request_id>` for delivery outcomes.
 
-If real SMS does not send:
+If real delivery fails:
 
-1. Confirm `sms.backend: "mmcli"` in live config.
-2. Run `./generate_compose.sh` after changing backend.
-3. Confirm `mmcli -L` works on the host.
-4. Confirm `docker compose exec labpulse-sms mmcli -L` works in the container.
-5. Check SIM, signal, and modem status with ModemManager tools.
-
-If the host sees the modem but the container does not, Compose was likely not
-regenerated after switching to `mmcli`, or the container was not recreated.
+1. Confirm `sms.dry_run: false` and valid recipients in the live config.
+2. Regenerate Compose after changing the delivery mode.
+3. Run `mmcli -L` on the host.
+4. Run `docker compose exec labpulse-sms mmcli -L` in the worker.
+5. Check the SIM, signal, registration state, and ModemManager logs.

@@ -44,24 +44,22 @@ monitor_sections:
     entity: "[[ service.status_entity_id ]]"
     grid_options:
       columns: full
-  reading_tile:
-    type: tile
-    entity: "[[ reading.expected_entity_id ]]"
-    name: "[[ reading.label ]]"
+  reading_row:
+    type: grid
+    columns: 3
+    square: false
     grid_options:
-      columns: 6
-  state_tile:
-    type: tile
-    entity: "[[ reading.alarm_state_entity ]]"
-    name: State
-    grid_options:
-      columns: 4
-  mute_tile:
-    type: tile
-    entity: "[[ reading.alarm_muted_entity ]]"
-    name: Muted
-    grid_options:
-      columns: 4
+      columns: full
+    cards:
+      - type: tile
+        entity: "[[ reading.expected_entity_id ]]"
+        name: "[[ reading.label ]]"
+      - type: tile
+        entity: "[[ reading.alarm_state_entity ]]"
+        name: State
+      - type: tile
+        entity: "[[ reading.alarm_muted_entity ]]"
+        name: Muted
 
 alarm_setup_sections:
   heading_card:
@@ -71,34 +69,27 @@ alarm_setup_sections:
     icon: mdi:tune-variant
   controls_toggle_tile:
     type: tile
-    entity: "[[ service.alarm_controls_expanded_entity ]]"
-    name: Show controls
+    entity: "[[ reading.alarm_controls_expanded_entity ]]"
+    name: "[[ reading.label ]]: Show Controls"
     grid_options:
       columns: full
   service_tuning_card:
-    type: conditional
-    conditions:
-      - entity: "[[ service.alarm_controls_expanded_entity ]]"
-        state: "on"
-    grid_options:
-      columns: full
-    card:
-      type: entities
-      title: "[[ service.label ]] Timing"
-      show_header_toggle: false
-      entities:
-        - entity: "[[ service.danger_ratio_percent_entity ]]"
-          name: Danger ratio
-        - entity: "[[ service.danger_window_seconds_entity ]]"
-          name: Danger window
-        - entity: "[[ service.recovery_seconds_entity ]]"
-          name: Recovery time
-        - entity: "[[ service.stale_timeout_seconds_entity ]]"
-          name: Stale timeout
+    type: entities
+    title: "[[ service.label ]] Timing"
+    show_header_toggle: false
+    entities:
+      - entity: "[[ service.required_danger_percent_entity ]]"
+        name: Required danger
+      - entity: "[[ service.observation_window_seconds_entity ]]"
+        name: Observation window
+      - entity: "[[ service.required_recovery_seconds_entity ]]"
+        name: Required recovery
+      - entity: "[[ service.maximum_reading_age_seconds_entity ]]"
+        name: Maximum reading age
   reading_settings_card:
     type: conditional
     conditions:
-      - entity: "[[ service.alarm_controls_expanded_entity ]]"
+      - entity: "[[ reading.alarm_controls_expanded_entity ]]"
         state: "on"
     grid_options:
       columns: full
@@ -122,8 +113,8 @@ alarm_setup_sections:
         - entity: "[[ reading.recovery_deadband_entity ]]"
           name: Recovery deadband
         - type: divider
-        - entity: "[[ reading.danger_ratio_entity ]]"
-          name: Danger ratio
+        - entity: "[[ reading.observed_danger_percent_entity ]]"
+          name: Observed danger
         - entity: "[[ reading.danger_zone_entity ]]"
           name: Danger zone
         - entity: "[[ reading.recovery_zone_entity ]]"

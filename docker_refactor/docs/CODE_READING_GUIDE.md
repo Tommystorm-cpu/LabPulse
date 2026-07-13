@@ -23,7 +23,7 @@ generate_homeassistant_config.sh
   -> labpulse_homeassistant/templates/
 
 labpulse_sms
-  -> labpulse_sms.sms_subscriber
+  -> labpulse_sms.subscriber
   -> labpulse_sms.sender
 
 Cross-service rules
@@ -60,7 +60,7 @@ The four package boundaries are intentional:
 15. `labpulse_homeassistant/write_yaml.py`
 16. `labpulse_homeassistant/templates/`
 17. `labpulse_sms/cli.py`
-18. `labpulse_sms/sms_subscriber.py`
+18. `labpulse_sms/subscriber.py`
 19. `labpulse_sms/sender.py`
 20. `generate_compose.sh` and `setup_container_fs.sh`
 21. `testing/`
@@ -91,7 +91,7 @@ Assistant discovery topic construction, the SMS send/subscription topics, and
 the fields expected in an SMS alert payload.
 
 Keep this package small. Driver implementations, parser details, dashboard
-rendering, and SMS delivery backends are not common infrastructure.
+rendering, and SMS delivery are not common infrastructure.
 
 ## Hardware Runtime
 
@@ -146,8 +146,8 @@ python -m labpulse_sms --config /app/config.yaml
 
 The entry point loads typed config and builds a sender. The subscriber listens
 to the shared SMS subscription topic, parses the shared alert fields, and sends
-one formatted message per configured recipient. The `log` backend is safe for
-tests; `mmcli` is the Pi modem backend.
+one formatted message per configured recipient. Dry-run mode is safe for tests;
+disabling it uses `mmcli` on the modem Pi.
 
 ## Deployment Generation
 
@@ -239,5 +239,5 @@ Alarm wrong
   -> Home Assistant helpers -> alarm_logic.yaml -> generated package
 
 SMS missing
-  -> alarm payload -> mqtt_contracts.py -> sms_subscriber.py -> sender.py
+  -> alarm payload -> mqtt_contracts.py -> subscriber.py -> sender.py
 ```

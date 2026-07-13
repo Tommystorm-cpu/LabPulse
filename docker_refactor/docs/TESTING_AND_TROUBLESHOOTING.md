@@ -41,7 +41,7 @@ test_homeassistant_generator.py
   generated Home Assistant files and dashboard behavior
 
 test_sms_container.py
-  SMS subscription, payload parsing, and sender backends
+  SMS subscription, payload parsing, and delivery modes
 
 test_deployment_generation.py
   fake-USB Compose output and setup refresh/preservation contracts
@@ -329,5 +329,5 @@ Wrong alarm behavior:
   alarm_logic.yaml, generated package, helper values
 
 No SMS:
-  Home Assistant automation payload, MQTT topic, labpulse-sms logs, sender backend
+  Home Assistant automation payload, MQTT topic, labpulse-sms logs, delivery mode
 ```

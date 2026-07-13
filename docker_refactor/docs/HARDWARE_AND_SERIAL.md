@@ -179,7 +179,7 @@ link alive while letting Home Assistant's `last_updated` age past the stale
 timeout.
 
 These only change the simulated sensor values; Home Assistant still uses its
-editable alarm mode, danger ratio window, stale timeout, and recovery timer.
+editable alarm mode, observation window, maximum reading age, and required recovery time.
 
 `generate_compose.sh` enables fake USB mounts if fake mode is requested or if
 an enabled service's `serial_port` starts with `/tmp/labpulse-fake-serial`.

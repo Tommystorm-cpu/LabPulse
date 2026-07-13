@@ -15,18 +15,11 @@ mqtt:
   port: 1883
 
 sms:
-  # Use "log" on test systems. Use "mmcli" on the real Pi with a modem.
-  backend: "log"
+  # Keep true for safe testing; set false on the real Pi to send through mmcli.
+  dry_run: true
   # Emergency contact numbers for system alerts
   recipients:
-    - "+447955656806"
-    - "+447753180741"
-    - "+447474510525"
-    - "+4915204304823"
-    - "+447873257640"
-    - "+447724548990"
-    - "+447864783617"
-    - "+447568737172"
+    - "+447700900000"
 
 services:
   pressure_monitor:

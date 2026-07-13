@@ -144,9 +144,7 @@ def monitor_service_section(seed: dict[str, Any], service: ServiceModel) -> dict
     ]
     for reading in service.readings:
         context = {"service": service, "reading": reading}
-        cards.append(expand_template(rules["reading_tile"], context))
-        cards.append(expand_template(rules["state_tile"], context))
-        cards.append(expand_template(rules["mute_tile"], context))
+        cards.append(expand_template(rules["reading_row"], context))
 
     return {"type": "grid", "cards": cards}
 
@@ -157,16 +155,11 @@ def alarm_setup_service_section(seed: dict[str, Any], service: ServiceModel) -> 
     rules = seed["alarm_setup_sections"]
     cards = [
         expand_template(rules["heading_card"], {"service": service}),
-        expand_template(rules["controls_toggle_tile"], {"service": service}),
         expand_template(rules["service_tuning_card"], {"service": service}),
     ]
     for reading in service.readings:
-        cards.append(
-            expand_template(
-                rules["reading_settings_card"],
-                {"service": service, "reading": reading},
-            )
-        )
+        context = {"service": service, "reading": reading}
+        cards.append(expand_template(rules["controls_toggle_tile"], context))
+        cards.append(expand_template(rules["reading_settings_card"], context))
 
     return {"type": "grid", "cards": cards}
-

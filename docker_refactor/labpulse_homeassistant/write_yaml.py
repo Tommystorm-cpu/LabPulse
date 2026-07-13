@@ -57,8 +57,7 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "resolved_entity_id": service.status_entity.resolved_entity_id,
                 "effective_entity_id": service.status_entity_id,
                 "resolution_status": service.status_entity.resolution_status,
-            },
-            "alarm_controls_expanded": service.alarm_controls_expanded_entity,
+            }
         }
         for reading in service.readings:
             service_map[reading.name] = {
@@ -76,11 +75,12 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "danger_zone": reading.danger_zone_entity,
                 "recovery_zone": reading.recovery_zone_entity,
                 "sensor_fault_zone": reading.sensor_fault_zone_entity,
-                "danger_ratio": reading.danger_ratio_entity,
-                "danger_ratio_percent": service.danger_ratio_percent_entity,
-                "danger_window_seconds": service.danger_window_seconds_entity,
-                "recovery_seconds": service.recovery_seconds_entity,
-                "stale_timeout_seconds": service.stale_timeout_seconds_entity,
+                "observed_danger_percent": reading.observed_danger_percent_entity,
+                "required_danger_percent": service.required_danger_percent_entity,
+                "observation_window_seconds": service.observation_window_seconds_entity,
+                "required_recovery_seconds": service.required_recovery_seconds_entity,
+                "maximum_reading_age_seconds": service.maximum_reading_age_seconds_entity,
+                "alarm_controls_expanded": reading.alarm_controls_expanded_entity,
             }
         result[service.name] = service_map
     return result

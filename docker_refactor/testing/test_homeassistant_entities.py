@@ -73,12 +73,17 @@ def test_render_model_stable_entities() -> None:
 
     assert_equal(len(model.services), 1, "enabled services")
     assert_equal(service.status_entity_id, "sensor.labpulse_pump_room_status", "status entity")
-    assert_equal(
-        service.alarm_controls_expanded_entity,
-        "input_boolean.labpulse_pump_room_alarm_controls_expanded",
-        "service alarm controls toggle",
-    )
     assert_equal(flow.expected_entity_id, "sensor.labpulse_pump_room_flow1", "flow entity")
+    assert_equal(
+        flow.alarm_controls_expanded_entity,
+        "input_boolean.labpulse_pump_room_flow1_alarm_controls_expanded",
+        "flow alarm controls toggle",
+    )
+    assert_equal(
+        temp.alarm_controls_expanded_entity,
+        "input_boolean.labpulse_pump_room_temp0_alarm_controls_expanded",
+        "temperature alarm controls toggle",
+    )
     assert_equal(flow.alarm_state_entity, "input_select.labpulse_pump_room_flow1_alarm_state", "flow state")
     assert_equal(flow.alarm_mode_entity, "input_select.labpulse_pump_room_flow1_alarm_mode", "flow mode")
     assert_equal(flow.alarm_muted_entity, "input_boolean.labpulse_pump_room_flow1_alarm_muted", "flow mute")
@@ -89,7 +94,11 @@ def test_render_model_stable_entities() -> None:
         "binary_sensor.labpulse_pump_room_flow1_sensor_fault_zone",
         "flow fault",
     )
-    assert_equal(flow.danger_ratio_entity, "sensor.labpulse_pump_room_flow1_danger_ratio", "flow ratio")
+    assert_equal(
+        flow.observed_danger_percent_entity,
+        "sensor.labpulse_pump_room_flow1_observed_danger_percent",
+        "observed flow danger",
+    )
     assert_equal(flow.default_alarm_mode, "Low Only", "flow default mode")
     assert_equal(temp.default_alarm_mode, "Range", "temperature default mode")
     assert_equal(
@@ -109,20 +118,24 @@ def test_render_model_stable_entities() -> None:
     )
     assert_equal(temp.maximum_threshold_entity, "input_number.labpulse_pump_room_temp0_maximum_threshold", "temp max")
     assert_equal(
-        service.danger_ratio_percent_entity,
-        "input_number.labpulse_pump_room_danger_ratio_percent",
-        "service danger ratio",
+        service.required_danger_percent_entity,
+        "input_number.labpulse_pump_room_required_danger_percent",
+        "required service danger",
     )
     assert_equal(
-        service.danger_window_seconds_entity,
-        "input_number.labpulse_pump_room_danger_window_seconds",
-        "service danger window",
+        service.observation_window_seconds_entity,
+        "input_number.labpulse_pump_room_observation_window_seconds",
+        "service observation window",
     )
-    assert_equal(service.recovery_seconds_entity, "input_number.labpulse_pump_room_recovery_seconds", "recovery")
     assert_equal(
-        service.stale_timeout_seconds_entity,
-        "input_number.labpulse_pump_room_stale_timeout_seconds",
-        "stale timeout",
+        service.required_recovery_seconds_entity,
+        "input_number.labpulse_pump_room_required_recovery_seconds",
+        "required recovery",
+    )
+    assert_equal(
+        service.maximum_reading_age_seconds_entity,
+        "input_number.labpulse_pump_room_maximum_reading_age_seconds",
+        "maximum reading age",
     )
 
 

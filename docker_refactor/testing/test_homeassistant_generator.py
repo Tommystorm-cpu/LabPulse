@@ -45,7 +45,12 @@ def sample_config() -> dict[str, object]:
                         "name": "pressure",
                         "label": "Pressure",
                         "unit": "bar",
-                    }
+                    },
+                    {
+                        "name": "temperature",
+                        "label": "Temperature",
+                        "unit": "°C",
+                    },
                 ],
             }
         }
@@ -99,16 +104,19 @@ def test_generated_package_and_entity_map() -> None:
     assert_equal(paths.ui_automations_path.read_text(encoding="utf-8"), "[]\n", "empty UI automations")
     assert_equal(paths.ui_scripts_path.read_text(encoding="utf-8"), "[]\n", "empty UI scripts")
     assert_equal(paths.ui_scenes_path.read_text(encoding="utf-8"), "[]\n", "empty UI scenes")
-    assert "labpulse_pressure_monitor_danger_ratio_percent" in package["input_number"]
-    assert "labpulse_pressure_monitor_danger_window_seconds" in package["input_number"]
-    assert "labpulse_pressure_monitor_recovery_seconds" in package["input_number"]
-    assert "labpulse_pressure_monitor_stale_timeout_seconds" in package["input_number"]
+    assert "labpulse_pressure_monitor_required_danger_percent" in package["input_number"]
+    assert "labpulse_pressure_monitor_observation_window_seconds" in package["input_number"]
+    assert "labpulse_pressure_monitor_required_recovery_seconds" in package["input_number"]
+    assert "labpulse_pressure_monitor_maximum_reading_age_seconds" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_minimum_threshold" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_maximum_threshold" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_recovery_deadband" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_alarm_state" in package["input_select"]
     assert "labpulse_pressure_monitor_pressure_alarm_mode" in package["input_select"]
-    assert "labpulse_pressure_monitor_alarm_controls_expanded" in package["input_boolean"]
+    assert "labpulse_pressure_monitor_pressure_alarm_controls_expanded" in package["input_boolean"]
+    assert "labpulse_pressure_monitor_temperature_alarm_controls_expanded" in package["input_boolean"]
+    if "labpulse_pressure_monitor_alarm_controls_expanded" in package["input_boolean"]:
+        raise AssertionError("service-level alarm controls toggle should not be generated")
     assert "labpulse_pressure_monitor_pressure_alarm_muted" in package["input_boolean"]
     assert_equal(
         package["input_number"]["labpulse_pressure_monitor_pressure_minimum_threshold"]["initial"],
@@ -138,7 +146,7 @@ def test_generated_package_and_entity_map() -> None:
         "binary_sensor.labpulse_pressure_monitor_pressure_danger_zone",
         "history stats source",
     )
-    if "danger_window_seconds" not in history_sensor["start"]:
+    if "observation_window_seconds" not in history_sensor["start"]:
         raise AssertionError("history stats start should use editable window helper")
 
     zone_sensors = package["template"][0]["binary_sensor"]
@@ -151,25 +159,41 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("recovery zone should use recovery deadband helper")
     if "recovery_minimum" not in zone_sensors[1]["state"] or "recovery_maximum" not in zone_sensors[1]["state"]:
         raise AssertionError("recovery zone should derive deadband recovery thresholds")
-    if "stale_timeout_seconds" not in zone_sensors[2]["state"]:
-        raise AssertionError("fault zone should use stale timeout helper")
+    if "maximum_reading_age_seconds" not in zone_sensors[2]["state"]:
+        raise AssertionError("fault zone should use maximum reading age helper")
     if "reconnecting" not in zone_sensors[2]["state"]:
         raise AssertionError("fault zone should treat reconnecting services as sensor faults")
 
+    automations = package["automation"]
     assert_equal(
-        package["automation"][0]["trigger"][0]["entity_id"],
+        [automation["alias"] for automation in automations[:4]],
+        [
+            "LabPulse Pressure Danger",
+            "LabPulse Pressure Recovery",
+            "LabPulse Pressure Sensor Fault",
+            "LabPulse Pressure Sensor Recovery",
+        ],
+        "alarm automation order",
+    )
+    fault_automation = automations[2]
+    assert_equal(
+        fault_automation["trigger"][0]["entity_id"],
         "binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone",
         "sensor fault trigger entity",
     )
     assert_equal(
-        package["automation"][0]["action"][0]["service"],
+        fault_automation["action"][0]["service"],
         "input_select.select_option",
         "fault selects alarm state",
     )
-    assert_equal(package["automation"][0]["action"][0]["data"]["option"], "Sensor Fault", "fault option")
-    danger_automation = package["automation"][1]
-    if "danger_ratio" not in danger_automation["trigger"][0]["value_template"]:
-        raise AssertionError("danger transition should use history_stats ratio")
+    assert_equal(
+        fault_automation["action"][0]["data"]["option"],
+        "Sensor Fault",
+        "fault option",
+    )
+    danger_automation = automations[0]
+    if "observed_danger_percent" not in danger_automation["trigger"][0]["value_template"]:
+        raise AssertionError("danger transition should use observed danger percentage")
     assert_equal(
         danger_automation["action"][0]["data"]["option"],
         "Danger",
@@ -189,8 +213,10 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("SMS payload should include reading key")
     if '"state": "Danger"' not in sms_payload:
         raise AssertionError("SMS payload should include alarm state")
-    if "{{ states(" not in sms_payload:
+    if "states('sensor.labpulse_pressure_monitor_pressure')" not in sms_payload:
         raise AssertionError("SMS payload should preserve current reading Jinja")
+    if "| to_json" not in sms_payload:
+        raise AssertionError("SMS payload should be safely JSON encoded by Home Assistant")
     mute_condition = danger_automation["action"][1]["choose"][0]["conditions"][0]
     assert_equal(
         mute_condition["entity_id"],
@@ -199,23 +225,31 @@ def test_generated_package_and_entity_map() -> None:
     )
     assert_equal(mute_condition["state"], "off", "mute condition state")
 
-    recovery_automation = package["automation"][2]
+    recovery_automation = automations[1]
     assert_equal(recovery_automation["trigger"][0]["platform"], "template", "recovery trigger platform")
     if "recovery_zone" not in recovery_automation["trigger"][0]["value_template"]:
         raise AssertionError("recovery trigger should watch the recovery zone template")
     assert_equal(
         recovery_automation["trigger"][0]["for"]["seconds"],
-        "{{ states('input_number.labpulse_pressure_monitor_recovery_seconds') | int(120) }}",
+        "{{ states('input_number.labpulse_pressure_monitor_required_recovery_seconds') | int(120) }}",
         "recovery uses templated for",
     )
     assert_equal(recovery_automation["action"][0]["data"]["option"], "Normal", "recovery option")
 
-    sensor_fault_clear = package["automation"][3]
-    clear_yaml = yaml.safe_dump(sensor_fault_clear, sort_keys=False)
-    if "persistent_notification.create" in clear_yaml or "mqtt.publish" in clear_yaml:
-        raise AssertionError("sensor fault clear should update state without per-reading notifications")
-    if "sensor_restored" in clear_yaml or "recovered from sensor fault" in clear_yaml:
-        raise AssertionError("sensor fault clear should not emit restored/recovered messages")
+    sensor_recovery = automations[3]
+    sensor_recovery_yaml = yaml.safe_dump(sensor_recovery, sort_keys=False)
+    if (
+        "persistent_notification.create" in sensor_recovery_yaml
+        or "mqtt.publish" in sensor_recovery_yaml
+    ):
+        raise AssertionError(
+            "sensor recovery should update state without per-reading notifications"
+        )
+    if (
+        "sensor_restored" in sensor_recovery_yaml
+        or "recovered from sensor fault" in sensor_recovery_yaml
+    ):
+        raise AssertionError("sensor recovery should not emit restored/recovered messages")
 
     assert_equal(
         entity_map["pressure_monitor"]["pressure"]["effective_entity_id"],
@@ -228,9 +262,9 @@ def test_generated_package_and_entity_map() -> None:
         "entity map alarm state",
     )
     assert_equal(
-        entity_map["pressure_monitor"]["pressure"]["danger_ratio"],
-        "sensor.labpulse_pressure_monitor_pressure_danger_ratio",
-        "entity map danger ratio",
+        entity_map["pressure_monitor"]["pressure"]["observed_danger_percent"],
+        "sensor.labpulse_pressure_monitor_pressure_observed_danger_percent",
+        "entity map observed danger",
     )
     assert_equal(
         entity_map["pressure_monitor"]["pressure"]["recovery_deadband"],
@@ -238,9 +272,9 @@ def test_generated_package_and_entity_map() -> None:
         "entity map recovery deadband",
     )
     assert_equal(
-        entity_map["pressure_monitor"]["alarm_controls_expanded"],
-        "input_boolean.labpulse_pressure_monitor_alarm_controls_expanded",
-        "entity map service alarm controls toggle",
+        entity_map["pressure_monitor"]["pressure"]["alarm_controls_expanded"],
+        "input_boolean.labpulse_pressure_monitor_pressure_alarm_controls_expanded",
+        "entity map reading alarm controls toggle",
     )
 
 
@@ -256,35 +290,45 @@ def test_dashboard_reset_and_preserve() -> None:
     assert_equal(views[0]["title"], "LabPulse Monitor", "monitor dashboard title")
     assert_equal(views[1]["title"], "LabPulse Alarm Setup", "setup dashboard title")
     pressure_cards = views[0]["sections"][1]["cards"]
-    assert_equal(pressure_cards[2]["name"], "Pressure", "short reading tile name")
-    assert_equal(pressure_cards[2]["grid_options"]["columns"], 6, "reading tile width")
-    assert_equal(pressure_cards[3]["name"], "State", "state tile name")
-    assert_equal(pressure_cards[4]["name"], "Muted", "mute tile name")
+    reading_row = pressure_cards[2]
+    assert_equal(reading_row["type"], "grid", "reading row card type")
+    assert_equal(reading_row["columns"], 3, "reading row column count")
+    assert_equal(reading_row["square"], False, "reading row compact height")
+    assert_equal(reading_row["grid_options"]["columns"], "full", "reading row width")
+    assert_equal(reading_row["cards"][0]["name"], "Pressure", "short reading tile name")
+    assert_equal(reading_row["cards"][1]["name"], "State", "state tile name")
+    assert_equal(reading_row["cards"][2]["name"], "Muted", "mute tile name")
     setup_cards = views[1]["sections"][0]["cards"]
+    assert_equal(setup_cards[1]["type"], "entities", "service timing card type")
+    assert_equal(setup_cards[1]["title"], "Air Pressure Sensor Hub Timing", "service timing card title")
     assert_equal(
-        setup_cards[1]["entity"],
-        "input_boolean.labpulse_pressure_monitor_alarm_controls_expanded",
-        "setup toggle entity",
+        setup_cards[2]["entity"],
+        "input_boolean.labpulse_pressure_monitor_pressure_alarm_controls_expanded",
+        "reading controls toggle entity",
     )
-    assert_equal(setup_cards[1]["name"], "Show controls", "setup toggle name")
-    assert_equal(setup_cards[2]["type"], "conditional", "service tuning conditional type")
-    assert_equal(
-        setup_cards[2]["conditions"][0]["entity"],
-        "input_boolean.labpulse_pressure_monitor_alarm_controls_expanded",
-        "service tuning condition entity",
-    )
-    assert_equal(setup_cards[2]["conditions"][0]["state"], "on", "service tuning condition state")
-    assert_equal(setup_cards[2]["card"]["title"], "Air Pressure Sensor Hub Timing", "service tuning card title")
+    assert_equal(setup_cards[2]["name"], "Pressure: Show Controls", "reading controls toggle name")
     assert_equal(setup_cards[3]["type"], "conditional", "reading settings conditional type")
     assert_equal(
         setup_cards[3]["conditions"][0]["entity"],
-        "input_boolean.labpulse_pressure_monitor_alarm_controls_expanded",
+        "input_boolean.labpulse_pressure_monitor_pressure_alarm_controls_expanded",
         "reading settings condition entity",
     )
+    assert_equal(setup_cards[3]["conditions"][0]["state"], "on", "reading settings condition state")
     assert_equal(setup_cards[3]["card"]["title"], "Pressure Alarm", "reading settings card title")
     setup_entities = setup_cards[3]["card"]["entities"]
     if not any(item.get("entity") == "input_number.labpulse_pressure_monitor_pressure_recovery_deadband" for item in setup_entities):
         raise AssertionError("setup dashboard should expose recovery deadband helper")
+    assert_equal(
+        setup_cards[4]["entity"],
+        "input_boolean.labpulse_pressure_monitor_temperature_alarm_controls_expanded",
+        "second reading controls toggle entity",
+    )
+    assert_equal(setup_cards[5]["type"], "conditional", "second reading settings card type")
+    assert_equal(
+        setup_cards[5]["conditions"][0]["entity"],
+        "input_boolean.labpulse_pressure_monitor_temperature_alarm_controls_expanded",
+        "second reading settings condition entity",
+    )
 
     edited_dashboard = '{"edited": true}'
     paths.lovelace_path.write_text(edited_dashboard, encoding="utf-8")
@@ -348,6 +392,11 @@ def test_generator_resolves_and_syncs_entities() -> None:
                 platform="mqtt",
                 unique_id="labpulse_pressure_monitor_pressure",
             ),
+            RegistryEntry(
+                entity_id="sensor.labpulse_pressure_monitor_temperature",
+                platform="mqtt",
+                unique_id="labpulse_pressure_monitor_temperature",
+            ),
         ],
         home_assistant_version="2026.7.1",
     )
@@ -384,7 +433,7 @@ def test_generator_resolves_and_syncs_entities() -> None:
     dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
     views = dashboard["data"]["config"]["views"]
     assert_equal(
-        views[0]["sections"][1]["cards"][2]["entity"],
+        views[0]["sections"][1]["cards"][2]["cards"][0]["entity"],
         "sensor.renamed_pressure",
         "resolved monitor card entity",
     )

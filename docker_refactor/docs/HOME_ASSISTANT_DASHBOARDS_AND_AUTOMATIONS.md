@@ -236,9 +236,9 @@ code creates:
 - one monitor section for each enabled service
 - one alarm setup section for each enabled service
 - one reading/state/mute tile group per configured reading
-- one native `Show controls` toggle per service on the Alarm Setup view
-- conditional service timing and reading setup cards that appear when the
-  service toggle is on
+- one native `Show controls` toggle per reading on the Alarm Setup view
+- one always-visible service timing card per service
+- conditional reading setup cards controlled independently by each reading
 
 ## Dashboard Placeholders
 
@@ -251,23 +251,23 @@ The seed supports placeholders in strings:
 [[ service.section ]]
 [[ service.icon ]]
 [[ service.status_entity_id ]]
-[[ service.alarm_controls_expanded_entity ]]
-[[ service.danger_ratio_percent_entity ]]
-[[ service.danger_window_seconds_entity ]]
-[[ service.recovery_seconds_entity ]]
-[[ service.stale_timeout_seconds_entity ]]
+[[ service.required_danger_percent_entity ]]
+[[ service.observation_window_seconds_entity ]]
+[[ service.required_recovery_seconds_entity ]]
+[[ service.maximum_reading_age_seconds_entity ]]
 
 [[ reading.name ]]
 [[ reading.label ]]
 [[ reading.reading_id ]]
 [[ reading.expected_entity_id ]]
+[[ reading.alarm_controls_expanded_entity ]]
 [[ reading.alarm_state_entity ]]
 [[ reading.alarm_mode_entity ]]
 [[ reading.alarm_muted_entity ]]
 [[ reading.danger_zone_entity ]]
 [[ reading.recovery_zone_entity ]]
 [[ reading.sensor_fault_zone_entity ]]
-[[ reading.danger_ratio_entity ]]
+[[ reading.observed_danger_percent_entity ]]
 [[ reading.minimum_threshold_entity ]]
 [[ reading.maximum_threshold_entity ]]
 [[ reading.recovery_deadband_entity ]]
@@ -359,20 +359,20 @@ Every reading gets:
 - danger zone binary sensor
 - recovery zone binary sensor
 - sensor-fault zone binary sensor
-- `history_stats` danger ratio sensor
+- `history_stats` observed danger percentage sensor
 - state transition automations
 
 Every service with readings gets:
 
 - alarm controls expanded helper for the native Alarm Setup toggle
-- danger ratio percent helper
-- danger window seconds helper
-- recovery seconds helper
-- stale timeout seconds helper
+- required danger percent helper
+- observation window seconds helper
+- required recovery seconds helper
+- maximum reading age seconds helper
 
-The danger transition uses the `history_stats` ratio sensor over the editable
-service danger window. Recovery uses the per-reading recovery deadband plus Home
-Assistant `for:` timing over the editable service recovery seconds helper.
+The danger transition uses the observed danger percentage over the editable
+service observation window. Recovery uses the per-reading recovery deadband plus
+Home Assistant `for:` timing over the required recovery seconds helper.
 Muting suppresses SMS and persistent notifications, but does not stop state
 calculation.
 

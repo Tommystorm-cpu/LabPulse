@@ -91,8 +91,9 @@ Contains the readable Home Assistant artifacts:
 layout created by `--reset-dashboard`. It contains card templates such as the
 system-health section, per-service heading/status tiles, monitor reading/state
 tiles, and alarm setup cards. The Alarm Setup view uses a generated native
-`Show controls` toggle per service plus native conditional cards so timing and
-per-reading controls can be hidden until needed. The Python code only expands
+`Show controls` toggle per reading plus native conditional cards so per-reading
+controls can be hidden independently. Service timing remains visible once per
+service. The Python code only expands
 placeholders such as `[[ service.section ]]` and `[[ reading.expected_entity_id ]]`.
 
 `alarm_logic.yaml` is the file to edit when changing generated alarm behavior.
@@ -198,9 +199,9 @@ Every reading gets an editable Home Assistant alarm state machine:
 - minimum and maximum threshold helpers
 - recovery deadband helper
 - danger, recovery, and sensor-fault zone binary sensors
-- `history_stats` danger ratio sensor
+- `history_stats` observed danger percentage sensor
 
-Every service gets timing helpers for danger ratio percent, danger window
-seconds, recovery seconds, stale timeout seconds, and the Alarm Setup
-`Show controls` toggle. Notifications and SMS are suppressed while muted, but
-the state machine keeps calculating visibly.
+Every service gets helpers for required danger percent, observation window
+seconds, required recovery seconds, and maximum reading age. Every reading gets
+its own Alarm Setup `Show controls` toggle. Notifications and SMS are suppressed
+while muted, but the state machine keeps calculating visibly.

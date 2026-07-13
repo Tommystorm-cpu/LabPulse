@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from labpulse_common.identity import title
 
@@ -27,8 +27,35 @@ class MqttConfig(BaseModel):
 class SmsConfig(BaseModel):
     """SMS delivery settings used by the LabPulse SMS service."""
 
-    backend: Literal["log", "mmcli"] = "log"
+    dry_run: bool = Field(default=True, strict=True)
     recipients: list[str] = Field(default_factory=list)
+
+    @field_validator("recipients")
+    @classmethod
+    def validate_recipients(cls, recipients: list[str]) -> list[str]:
+        """Normalize recipients and reject empty, duplicate, or unsafe values."""
+
+        normalized = [recipient.strip() for recipient in recipients]
+        if any(not recipient for recipient in normalized):
+            raise ValueError("SMS recipients cannot be empty")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("SMS recipients must be unique")
+        for recipient in normalized:
+            if not recipient.startswith("+") or not recipient[1:].isdigit():
+                raise ValueError(
+                    "SMS recipients must use international format, for example +447700900000"
+                )
+            if not 8 <= len(recipient[1:]) <= 15:
+                raise ValueError("SMS recipients must contain 8 to 15 digits")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_real_recipients(self) -> "SmsConfig":
+        """Require at least one recipient when real modem delivery is enabled."""
+
+        if not self.dry_run and not self.recipients:
+            raise ValueError("sms.recipients must not be empty when dry_run is false")
+        return self
 
 class ReadingConfig(BaseModel):
     """One named value published by a LabPulse service."""
@@ -154,7 +181,3 @@ def get_service_config(config: LabPulseConfig, service_name: str) -> ServiceConf
         )
         sys.exit(1)
 
-def load_recipients(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> list[str]:
-    """Pulls SMS numbers directly from the validated config object."""
-    config = load_config(yaml_path)
-    return config.sms.recipients

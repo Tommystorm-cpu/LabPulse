@@ -97,7 +97,7 @@ Use this file for:
 - device names
 - reading names, labels, units, and device classes
 - dashboard section names, icons, and order
-- SMS recipients and backend
+- SMS recipients and dry-run mode
 
 Tune alarm thresholds and delays in Home Assistant after the helpers are
 generated. Threshold values do not live in `config.yaml`.
@@ -304,8 +304,8 @@ To test stale detection without breaking the fake serial link:
 python3 simulate_serial.py set pump_room.flow1 stale
 ```
 
-Wait for Home Assistant's danger ratio window and recovery timer when checking
-the state machine. For stale tests, wait for the service stale timeout helper.
+Wait for Home Assistant's observation window and required recovery timer when
+checking the state machine. For stale tests, wait for the maximum reading age.
 
 For fake room temperature and humidity, enable `room_environment`. Fake setup
 automatically changes its hardware settings to:

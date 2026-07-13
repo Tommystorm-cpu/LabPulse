@@ -40,7 +40,7 @@ def test_fake_usb_compose_contract() -> None:
   broker: mosquitto
   port: 1883
 sms:
-  backend: log
+  dry_run: true
 services:
   pressure_monitor:
     enabled: true
@@ -98,6 +98,10 @@ services:
             "/app/config.yaml",
         ]:
             raise AssertionError(f"unexpected SMS command: {sms['command']!r}")
+        if sms.get("privileged") is True:
+            raise AssertionError("dry-run SMS worker unexpectedly has privileged access")
+        if "/run/dbus:/run/dbus:ro" in sms["volumes"]:
+            raise AssertionError("dry-run SMS worker unexpectedly has the D-Bus mount")
 
         base_mounts = compose["x-labpulse-python-base"]["volumes"]
         for mount in (
@@ -155,8 +159,67 @@ def test_setup_refresh_and_preservation_contract() -> None:
             raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
 
 
+def test_sms_delivery_mode_controls_modem_access() -> None:
+    """Give only real-delivery SMS workers the modem-specific Compose settings."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    project_dir = TEST_TMP_DIR / f"sms-deployment-{uuid4().hex}"
+    project_dir.mkdir()
+    try:
+        config_path = project_dir / "config.yaml"
+        output_path = project_dir / "compose.yaml"
+        config_path.write_text(
+            """mqtt:
+  broker: mosquitto
+sms:
+  dry_run: false
+  recipients:
+    - "+447700900000"
+services:
+  pressure_monitor:
+    enabled: true
+    serial_port: /tmp/labpulse-fake-serial/pressure
+""",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                embedded_compose_generator(),
+                str(config_path),
+                str(output_path),
+                str(project_dir),
+                "1",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AssertionError(result.stderr or result.stdout)
+
+        sms = yaml.safe_load(output_path.read_text(encoding="utf-8"))["services"][
+            "labpulse-sms"
+        ]
+        if sms.get("privileged") is not True:
+            raise AssertionError("real SMS delivery is missing privileged modem access")
+        for mount in ("/run/dbus:/run/dbus:ro", "/dev:/dev"):
+            if mount not in sms["volumes"]:
+                raise AssertionError(f"real SMS delivery is missing mount: {mount}")
+    finally:
+        for path in sorted(project_dir.rglob("*"), reverse=True):
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                path.rmdir()
+        project_dir.rmdir()
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("fake USB Compose contract", test_fake_usb_compose_contract),
+    ("SMS delivery mode controls modem access", test_sms_delivery_mode_controls_modem_access),
     ("setup refresh and preservation contract", test_setup_refresh_and_preservation_contract),
 ]
 

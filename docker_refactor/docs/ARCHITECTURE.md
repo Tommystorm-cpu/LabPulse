@@ -22,7 +22,7 @@ mosquitto
   MQTT broker used by all LabPulse services
 
 labpulse-sms
-  Shared SMS worker that subscribes to LabPulse SMS MQTT topics
+  Reliable SMS worker with delivery status and duplicate protection
 
 labpulse-<service>
   One Python container per enabled sensor hub
@@ -52,7 +52,8 @@ Arduino USB serial device
   -> Home Assistant generated alarm logic
   -> mqtt.publish labpulse/sms/send
   -> labpulse-sms container
-  -> log backend or mmcli modem backend
+  -> dry-run log or mmcli modem delivery
+  -> labpulse/sms/result/<request_id>
 ```
 
 The Python sensor service publishes facts:
@@ -214,7 +215,7 @@ recovery deadband:    input_number.labpulse_pressure_monitor_pressure_recovery_d
 danger zone:          binary_sensor.labpulse_pressure_monitor_pressure_danger_zone
 recovery zone:        binary_sensor.labpulse_pressure_monitor_pressure_recovery_zone
 sensor fault zone:    binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone
-danger ratio:         sensor.labpulse_pressure_monitor_pressure_danger_ratio
+observed danger:      sensor.labpulse_pressure_monitor_pressure_observed_danger_percent
 ```
 
 Labels are safe to change. Stable service keys and reading names are more
@@ -242,8 +243,8 @@ Use this table when deciding where a change belongs:
 | Change live dashboard arrangement | Home Assistant UI |
 | Change reset dashboard starter layout | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
 | Change generated alarm helpers/automations | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
-| Change SMS delivery backend behavior | `labpulse_sms/sender.py` |
-| Change SMS MQTT parsing | `labpulse_sms/sms_subscriber.py` |
+| Change SMS delivery behavior | `labpulse_sms/sender.py` |
+| Change SMS MQTT parsing | `labpulse_sms/subscriber.py` |
 
 ## Safety Rules
 
