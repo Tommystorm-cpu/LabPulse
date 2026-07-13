@@ -53,14 +53,20 @@ def entity_map(model: RenderModel) -> dict[str, object]:
         service_map: dict[str, object] = {
             "status": {
                 "mqtt_unique_id": service.status_unique_id,
-                "expected_entity_id": service.status_entity_id,
+                "default_entity_id": service.status_entity.default_entity_id,
+                "resolved_entity_id": service.status_entity.resolved_entity_id,
+                "effective_entity_id": service.status_entity_id,
+                "resolution_status": service.status_entity.resolution_status,
             },
             "alarm_controls_expanded": service.alarm_controls_expanded_entity,
         }
         for reading in service.readings:
             service_map[reading.name] = {
                 "mqtt_unique_id": reading.mqtt_unique_id,
-                "expected_entity_id": reading.expected_entity_id,
+                "default_entity_id": reading.mqtt_entity.default_entity_id,
+                "resolved_entity_id": reading.mqtt_entity.resolved_entity_id,
+                "effective_entity_id": reading.expected_entity_id,
+                "resolution_status": reading.mqtt_entity.resolution_status,
                 "alarm_state": reading.alarm_state_entity,
                 "alarm_mode": reading.alarm_mode_entity,
                 "alarm_muted": reading.alarm_muted_entity,
@@ -77,4 +83,28 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "stale_timeout_seconds": service.stale_timeout_seconds_entity,
             }
         result[service.name] = service_map
+    return result
+
+
+def load_previous_entity_ids(entity_map_path: Path) -> dict[str, str]:
+    """Return unique-ID to effective-entity-ID mappings from an earlier run."""
+
+    if not entity_map_path.exists():
+        return {}
+    payload = yaml.safe_load(entity_map_path.read_text(encoding="utf-8")) or {}
+    result: dict[str, str] = {}
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            unique_id = value.get("mqtt_unique_id")
+            entity_id = value.get("effective_entity_id") or value.get("expected_entity_id")
+            if isinstance(unique_id, str) and isinstance(entity_id, str):
+                result[unique_id] = entity_id
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(payload)
     return result

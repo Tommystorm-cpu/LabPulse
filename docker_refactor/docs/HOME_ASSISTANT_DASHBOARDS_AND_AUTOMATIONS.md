@@ -65,6 +65,62 @@ homeassistant/config/.storage/lovelace
 `.storage/lovelace` is Home Assistant's editable dashboard storage document.
 Once it exists, Home Assistant owns it.
 
+With `--sync-dashboard-entities`, the generator updates that existing storage
+document only by replacing complete, known MQTT entity-ID strings. It does not
+rebuild views, cards, ordering, labels, or other user-edited content, and the
+wrapper takes a dashboard backup first.
+
+## Validate Entity IDs After MQTT Discovery
+
+LabPulse MQTT discovery publishes a stable `unique_id` and a deterministic
+`default_entity_id`. Home Assistant uses the default when it first creates an
+entity, but its registry may retain another `entity_id` after a rename or a
+previous naming collision. The optional resolution phase queries the live
+registry and matches each expected sensor by `(platform, unique_id)`.
+
+Do not run this phase on a fresh startup: there is no complete entity registry
+until Home Assistant is running and every enabled LabPulse service has
+published MQTT discovery. The fresh-start sequence remains:
+
+```bash
+./generate_homeassistant_config.sh --reset-dashboard
+docker compose up -d --build
+```
+
+Once all entities appear in Home Assistant, install the small host-side
+WebSocket client and create a Home Assistant long-lived access token:
+
+```bash
+sudo apt install python3-websocket
+export LABPULSE_HA_TOKEN="<long-lived access token>"
+./generate_homeassistant_config.sh --resolve-entities
+```
+
+The command prints counts for matched and renamed entities. When all IDs match
+the defaults, no second dashboard phase is needed. When one or more IDs were
+renamed, either recreate the seed dashboard intentionally:
+
+```bash
+./generate_homeassistant_config.sh --resolve-entities --reset-dashboard
+```
+
+or preserve the existing layout and update exact entity references:
+
+```bash
+./generate_homeassistant_config.sh --resolve-entities --sync-dashboard-entities
+docker compose restart homeassistant
+```
+
+The sync command automatically creates the normal timestamped dashboard backup.
+Use `--ha-url http://host:8123` or set `LABPULSE_HA_URL` for a non-default Home
+Assistant address. The access token is read only from `LABPULSE_HA_TOKEN`; it is
+not stored in config or generated files.
+
+Resolution is deliberately strict. Missing, disabled, or ambiguous expected
+entities stop generation before YAML or dashboard files are changed. Start or
+repair the affected publisher, let MQTT discovery complete, and rerun the
+command. The generator never renames entities in Home Assistant itself.
+
 ## What To Edit For Each Task
 
 | Task | Edit |
@@ -78,6 +134,8 @@ Once it exists, Home Assistant owns it.
 | Change helper names/defaults/ranges | `alarm_logic.yaml` and sometimes `data_models.py` |
 | Change mute behavior, deadband, or extra alarm conditions | `alarm_logic.yaml` |
 | Change default entity IDs | `labpulse_common/identity.py` and contract tests |
+| Validate live MQTT entity IDs | `./generate_homeassistant_config.sh --resolve-entities` |
+| Update only stale dashboard entity references | `./generate_homeassistant_config.sh --resolve-entities --sync-dashboard-entities` |
 | Change dashboard section names/order/icons | `~/labpulse-ha/config.yaml` |
 | Change live thresholds, modes, mutes, or timing values | Home Assistant dashboard helpers |
 

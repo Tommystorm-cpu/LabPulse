@@ -37,6 +37,13 @@ loading belongs to `labpulse_common.config`.
 Defines the normalized render model: services, readings, default helper ranges,
 stable `labpulse_*` entity IDs, and generated helper IDs.
 
+`entity_registry.py`
+
+Optionally queries Home Assistant's WebSocket API and reconciles MQTT entities
+by `(platform, unique_id)`. It overlays the actual registry `entity_id` onto the
+render model, reports renamed/missing/disabled/ambiguous entities, and produces
+the exact replacements used for dashboard synchronization.
+
 `write_yaml.py`
 
 Writes the core YAML files:
@@ -49,7 +56,9 @@ It also creates the Home Assistant UI-managed YAML files when they are missing.
 `dashboard.py`
 
 Expands the editable dashboard seed YAML over the enabled services/readings and
-returns the Lovelace storage document used by `--reset-dashboard`.
+returns the Lovelace storage document used by `--reset-dashboard`. It can also
+replace exact MQTT entity-ID references in an existing dashboard without
+rebuilding its layout.
 
 `alarm.py`
 
@@ -101,10 +110,11 @@ Marks this folder as a Python package.
 ```text
 generate_homeassistant_config.sh
   -> python3 -m labpulse_homeassistant
-    -> generator.parse_args()
+    -> cli.parse_args()
     -> labpulse_common.config.load_config()
-    -> model.build_render_model()
-    -> render.render_core()
+    -> data_models.build_render_model()
+    -> optionally entity_registry.resolve_model_entities()
+    -> write_yaml.render_core()
     -> alarm.render_alarm()
     -> dashboard.render_dashboard()
 ```
@@ -127,6 +137,37 @@ generated starter dashboard:
 Use `--backup-dashboard` and `--load-dashboard` to save and restore the editable
 dashboard. The script rejects ambiguous combinations such as
 `--reset-dashboard --load-dashboard`.
+
+## Entity Registry Validation
+
+Fresh startup does not require registry validation. Run the normal generator,
+start Home Assistant and the LabPulse services, and allow MQTT discovery to
+create the entities. The deterministic defaults are used until then.
+
+After discovery, optional validation checks the live registry before writing:
+
+```bash
+sudo apt install python3-websocket
+export LABPULSE_HA_TOKEN="<Home Assistant long-lived access token>"
+./generate_homeassistant_config.sh --resolve-entities
+```
+
+If the actual IDs are all still the defaults, this validates and regenerates
+YAML but there is nothing to synchronize. If Home Assistant has renamed an ID,
+choose one of these commands:
+
+```bash
+# Intentionally rebuild the dashboard seed using the resolved IDs.
+./generate_homeassistant_config.sh --resolve-entities --reset-dashboard
+
+# Preserve the existing layout and replace only exact stale entity references.
+./generate_homeassistant_config.sh --resolve-entities --sync-dashboard-entities
+```
+
+Dashboard sync automatically creates a dashboard backup. Set
+`LABPULSE_HA_URL` or pass `--ha-url` when Home Assistant is not available at
+`http://127.0.0.1:8123`. Resolution fails before generated files are written if
+an expected entity is missing, disabled, or ambiguous.
 
 ## Source Of Truth
 

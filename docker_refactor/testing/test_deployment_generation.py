@@ -142,8 +142,17 @@ def test_setup_refresh_and_preservation_contract() -> None:
     generator_source = (
         REFACTOR_DIR / "generate_homeassistant_config.sh"
     ).read_text(encoding="utf-8")
-    if '--reset-dashboard' not in generator_source or 'RESET_DASHBOARD=0' not in generator_source:
-        raise AssertionError("Home Assistant wrapper no longer exposes dashboard preservation")
+    required_generator_fragments = (
+        '--reset-dashboard',
+        'RESET_DASHBOARD=0',
+        '--resolve-entities',
+        '--sync-dashboard-entities',
+        'LABPULSE_HA_TOKEN',
+        'LABPULSE_HA_URL',
+    )
+    for fragment in required_generator_fragments:
+        if fragment not in generator_source:
+            raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
 
 
 TESTS: list[tuple[str, Callable[[], None]]] = [

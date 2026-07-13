@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import os
 import sys
 import uuid
 
@@ -12,8 +13,11 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
+import labpulse_homeassistant.cli as homeassistant_cli
 from labpulse_homeassistant.cli import main as generate_homeassistant
+from labpulse_homeassistant.dashboard import replace_entity_references
 from labpulse_homeassistant.data_models import GeneratorPaths
+from labpulse_homeassistant.entity_registry import RegistryEntry, RegistrySnapshot
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -214,7 +218,7 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("sensor fault clear should not emit restored/recovered messages")
 
     assert_equal(
-        entity_map["pressure_monitor"]["pressure"]["expected_entity_id"],
+        entity_map["pressure_monitor"]["pressure"]["effective_entity_id"],
         "sensor.labpulse_pressure_monitor_pressure",
         "entity map sensor",
     )
@@ -253,7 +257,7 @@ def test_dashboard_reset_and_preserve() -> None:
     assert_equal(views[1]["title"], "LabPulse Alarm Setup", "setup dashboard title")
     pressure_cards = views[0]["sections"][1]["cards"]
     assert_equal(pressure_cards[2]["name"], "Pressure", "short reading tile name")
-    assert_equal(pressure_cards[2]["grid_options"]["columns"], 4, "reading third width")
+    assert_equal(pressure_cards[2]["grid_options"]["columns"], 6, "reading tile width")
     assert_equal(pressure_cards[3]["name"], "State", "state tile name")
     assert_equal(pressure_cards[4]["name"], "Muted", "mute tile name")
     setup_cards = views[1]["sections"][0]["cards"]
@@ -298,9 +302,104 @@ def test_dashboard_reset_and_preserve() -> None:
     assert_equal(reset_dashboard["key"], "lovelace", "reset dashboard")
 
 
+def test_dashboard_entity_sync_is_surgical() -> None:
+    """Check sync changes complete entity references but preserves other content."""
+
+    original = {
+        "entity": "sensor.labpulse_pressure_monitor_pressure",
+        "entities": ["sensor.labpulse_pressure_monitor_pressure"],
+        "title": "Keep sensor.labpulse_pressure_monitor_pressure in this title",
+        "nested": {"user_setting": True},
+    }
+    updated, count = replace_entity_references(
+        original,
+        {
+            "sensor.labpulse_pressure_monitor_pressure":
+                "sensor.user_renamed_pressure"
+        },
+    )
+
+    assert_equal(count, 2, "replacement count")
+    assert_equal(updated["entity"], "sensor.user_renamed_pressure", "card entity")
+    assert_equal(updated["entities"], ["sensor.user_renamed_pressure"], "entity list")
+    assert_equal(
+        updated["title"],
+        "Keep sensor.labpulse_pressure_monitor_pressure in this title",
+        "embedded text preserved",
+    )
+    assert_equal(updated["nested"], {"user_setting": True}, "user content preserved")
+
+
+def test_generator_resolves_and_syncs_entities() -> None:
+    """Check the CLI applies registry IDs to YAML and an existing dashboard."""
+
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    temp_dir = temp_root / f"generator-{uuid.uuid4().hex}"
+    paths = render_into(temp_dir, reset_dashboard=True)
+    snapshot = RegistrySnapshot(
+        entries=[
+            RegistryEntry(
+                entity_id="sensor.renamed_pressure_monitor_status",
+                platform="mqtt",
+                unique_id="labpulse_pressure_monitor_status",
+            ),
+            RegistryEntry(
+                entity_id="sensor.renamed_pressure",
+                platform="mqtt",
+                unique_id="labpulse_pressure_monitor_pressure",
+            ),
+        ],
+        home_assistant_version="2026.7.1",
+    )
+    original_fetch = homeassistant_cli.fetch_entity_registry
+    old_token = os.environ.get("LABPULSE_HA_TOKEN")
+    homeassistant_cli.fetch_entity_registry = lambda url, token: snapshot
+    os.environ["LABPULSE_HA_TOKEN"] = "test-token"
+    try:
+        result = generate_homeassistant(
+            [
+                "generator",
+                str(paths.config_path),
+                str(paths.ha_config_dir),
+                "0",
+                "1",
+                "1",
+                "http://127.0.0.1:8123",
+            ]
+        )
+    finally:
+        homeassistant_cli.fetch_entity_registry = original_fetch
+        if old_token is None:
+            os.environ.pop("LABPULSE_HA_TOKEN", None)
+        else:
+            os.environ["LABPULSE_HA_TOKEN"] = old_token
+
+    assert_equal(result, 0, "resolved generator result")
+    entity_map = yaml.safe_load(paths.entity_map_path.read_text(encoding="utf-8"))
+    assert_equal(
+        entity_map["pressure_monitor"]["pressure"]["effective_entity_id"],
+        "sensor.renamed_pressure",
+        "resolved entity map ID",
+    )
+    dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
+    views = dashboard["data"]["config"]["views"]
+    assert_equal(
+        views[0]["sections"][1]["cards"][2]["entity"],
+        "sensor.renamed_pressure",
+        "resolved monitor card entity",
+    )
+    assert_equal(
+        views[1]["sections"][0]["cards"][3]["card"]["entities"][0]["entity"],
+        "sensor.renamed_pressure",
+        "resolved alarm setup entity",
+    )
+
+
 TESTS = [
     ("generated package and entity map", test_generated_package_and_entity_map),
     ("dashboard reset and preserve", test_dashboard_reset_and_preserve),
+    ("dashboard entity sync is surgical", test_dashboard_entity_sync_is_surgical),
+    ("generator resolves and syncs entities", test_generator_resolves_and_syncs_entities),
 ]
 
 

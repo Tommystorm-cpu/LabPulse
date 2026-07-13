@@ -11,6 +11,9 @@ HA_CONFIG_DIR="$PROJECT_DIR/homeassistant/config"
 RESET_DASHBOARD=0
 BACKUP_DASHBOARD=0
 LOAD_DASHBOARD=0
+RESOLVE_ENTITIES=0
+SYNC_DASHBOARD_ENTITIES=0
+HA_URL="${LABPULSE_HA_URL:-http://127.0.0.1:8123}"
 
 # Print usage from one place so normal help and invalid-option errors agree.
 usage() {
@@ -26,6 +29,9 @@ Options:
   --reset-dashboard             Replace the editable dashboard with the generated starter dashboard.
   --backup-dashboard            Save the current editable dashboard to homeassistant_backups/.
   --load-dashboard              Restore homeassistant_backups/dashboard-latest/lovelace.
+  --resolve-entities            Query Home Assistant and require every LabPulse MQTT entity.
+  --sync-dashboard-entities     Replace exact stale entity IDs in the editable dashboard.
+  --ha-url URL                  Home Assistant base URL. Default: http://127.0.0.1:8123
   -h, --help                    Show this help text.
 
 Generated files:
@@ -36,6 +42,11 @@ Generated files:
 Dashboard behavior:
   No flag preserves homeassistant/config/.storage/lovelace exactly as-is.
   --reset-dashboard creates or replaces that editable Home Assistant dashboard.
+  --sync-dashboard-entities preserves layout and updates only resolved entity IDs.
+
+Registry resolution:
+  Set LABPULSE_HA_TOKEN to a Home Assistant long-lived access token.
+  Normal generation remains offline and uses deterministic default entity IDs.
 EOF
 }
 
@@ -71,6 +82,18 @@ while [ "$#" -gt 0 ]; do
       LOAD_DASHBOARD=1
       shift
       ;;
+    --resolve-entities)
+      RESOLVE_ENTITIES=1
+      shift
+      ;;
+    --sync-dashboard-entities)
+      SYNC_DASHBOARD_ENTITIES=1
+      shift
+      ;;
+    --ha-url)
+      HA_URL="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -88,9 +111,30 @@ if [ "$RESET_DASHBOARD" -eq 1 ] && [ "$LOAD_DASHBOARD" -eq 1 ]; then
   exit 1
 fi
 
+if [ "$RESET_DASHBOARD" -eq 1 ] && [ "$SYNC_DASHBOARD_ENTITIES" -eq 1 ]; then
+  echo "ERROR: --reset-dashboard and --sync-dashboard-entities cannot be used together." >&2
+  exit 1
+fi
+
+if [ "$SYNC_DASHBOARD_ENTITIES" -eq 1 ] && [ "$RESOLVE_ENTITIES" -ne 1 ]; then
+  echo "ERROR: --sync-dashboard-entities requires --resolve-entities." >&2
+  exit 1
+fi
+
+if [ "$LOAD_DASHBOARD" -eq 1 ] && [ "$SYNC_DASHBOARD_ENTITIES" -eq 1 ]; then
+  echo "ERROR: --load-dashboard and --sync-dashboard-entities cannot be used together." >&2
+  exit 1
+fi
+
 if [ "$BACKUP_DASHBOARD" -eq 1 ] && [ "$LOAD_DASHBOARD" -eq 1 ]; then
   echo "ERROR: --backup-dashboard and --load-dashboard cannot be used together." >&2
   exit 1
+fi
+
+# A surgical dashboard sync is still a mutation of user-owned state, so always
+# take the same timestamped backup used by the explicit backup operation.
+if [ "$SYNC_DASHBOARD_ENTITIES" -eq 1 ]; then
+  BACKUP_DASHBOARD=1
 fi
 
 # Copy one file or directory if it exists, replacing the destination cleanly.
@@ -214,4 +258,5 @@ fi
 # when RESET_DASHBOARD is 1.
 PYTHONPATH="$SCRIPT_DIR:$SCRIPT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
   python3 -m labpulse_homeassistant \
-  "$CONFIG_PATH" "$HA_CONFIG_DIR" "$RESET_DASHBOARD"
+  "$CONFIG_PATH" "$HA_CONFIG_DIR" "$RESET_DASHBOARD" \
+  "$RESOLVE_ENTITIES" "$SYNC_DASHBOARD_ENTITIES" "$HA_URL"

@@ -245,10 +245,16 @@ Example:
 pressure_monitor:
   status:
     mqtt_unique_id: labpulse_pressure_monitor_status
-    expected_entity_id: sensor.labpulse_pressure_monitor_status
+    default_entity_id: sensor.labpulse_pressure_monitor_status
+    resolved_entity_id: null
+    effective_entity_id: sensor.labpulse_pressure_monitor_status
+    resolution_status: not_queried
   pressure:
     mqtt_unique_id: labpulse_pressure_monitor_pressure
-    expected_entity_id: sensor.labpulse_pressure_monitor_pressure
+    default_entity_id: sensor.labpulse_pressure_monitor_pressure
+    resolved_entity_id: null
+    effective_entity_id: sensor.labpulse_pressure_monitor_pressure
+    resolution_status: not_queried
     alarm_state: input_select.labpulse_pressure_monitor_pressure_alarm_state
     alarm_mode: input_select.labpulse_pressure_monitor_pressure_alarm_mode
     alarm_muted: input_boolean.labpulse_pressure_monitor_pressure_alarm_muted

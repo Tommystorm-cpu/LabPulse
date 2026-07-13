@@ -17,8 +17,10 @@ def render_dashboard(
     paths: GeneratorPaths,
     reset_dashboard: bool,
     model: RenderModel,
+    sync_entity_ids: bool = False,
+    replacements: dict[str, str] | None = None,
 ) -> None:
-    """Reset the editable dashboard when requested, otherwise preserve it."""
+    """Reset, surgically synchronize, or preserve the editable dashboard."""
 
     if reset_dashboard:
         paths.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -28,8 +30,59 @@ def render_dashboard(
             {"dashboard_json": json.dumps(lovelace_document(model), indent=2)},
         )
         print(f"Reset editable dashboard {paths.lovelace_path}")
+    elif sync_entity_ids:
+        sync_dashboard_entity_ids(paths.lovelace_path, replacements or {})
     else:
         print(f"Preserved editable dashboard {paths.lovelace_path}")
+
+
+def sync_dashboard_entity_ids(
+    dashboard_path: Path,
+    replacements: dict[str, str],
+) -> None:
+    """Replace exact entity-ID strings while preserving dashboard structure."""
+
+    if not dashboard_path.exists():
+        raise FileNotFoundError(
+            f"Cannot synchronize missing editable dashboard: {dashboard_path}"
+        )
+    document = json.loads(dashboard_path.read_text(encoding="utf-8"))
+    updated, replacement_count = replace_entity_references(document, replacements)
+    dashboard_path.write_text(json.dumps(updated, indent=2) + "\n", encoding="utf-8")
+    print(
+        f"Synchronized {replacement_count} dashboard entity references "
+        f"in {dashboard_path}"
+    )
+
+
+def replace_entity_references(
+    value: object,
+    replacements: dict[str, str],
+) -> tuple[object, int]:
+    """Recursively replace complete string values and keys matching known IDs."""
+
+    if isinstance(value, dict):
+        result: dict[object, object] = {}
+        count = 0
+        for key, child in value.items():
+            replaced_key = replacements.get(key, key) if isinstance(key, str) else key
+            if replaced_key != key:
+                count += 1
+            replaced_child, child_count = replace_entity_references(child, replacements)
+            result[replaced_key] = replaced_child
+            count += child_count
+        return result, count
+    if isinstance(value, list):
+        result_list = []
+        count = 0
+        for child in value:
+            replaced_child, child_count = replace_entity_references(child, replacements)
+            result_list.append(replaced_child)
+            count += child_count
+        return result_list, count
+    if isinstance(value, str) and value in replacements:
+        return replacements[value], 1
+    return value, 0
 
 
 def lovelace_document(model: RenderModel) -> dict[str, object]:

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from labpulse_common.config import LabPulseConfig, ReadingConfig
 from labpulse_common.identity import entity_id, slug, stable_id
@@ -39,6 +39,36 @@ class ThresholdModel:
 
 
 @dataclass
+class EntityReference:
+    """A Home Assistant registry identity with a deterministic fallback ID."""
+
+    platform: str
+    unique_id: str
+    default_entity_id: str
+    resolved_entity_id: str | None = None
+    resolution_status: Literal[
+        "not_queried",
+        "matched",
+        "renamed",
+        "missing",
+        "disabled",
+        "ambiguous",
+    ] = "not_queried"
+
+    @property
+    def entity_id(self) -> str:
+        """Return the registry ID when resolved, otherwise the stable default."""
+
+        return self.resolved_entity_id or self.default_entity_id
+
+    @property
+    def object_id(self) -> str:
+        """Return the object portion of the effective entity ID."""
+
+        return self.entity_id.split(".", 1)[1]
+
+
+@dataclass
 class ReadingModel:
     """Template data for one Home Assistant reading."""
 
@@ -50,9 +80,7 @@ class ReadingModel:
     # MQTT discovery identity for the physical sensor reading. The unique ID
     # anchors Home Assistant's entity registry; the object/entity IDs are the
     # predictable names used by generated dashboards and automations.
-    mqtt_unique_id: str
-    expected_entity_id: str
-    expected_object_id: str
+    mqtt_entity: EntityReference
 
     # User-editable Home Assistant helpers that hold the alarm state, selected
     # alarm mode, mute setting, thresholds, and recovery deadband.
@@ -80,6 +108,24 @@ class ReadingModel:
     default_alarm_mode: str
     threshold: ThresholdModel
 
+    @property
+    def mqtt_unique_id(self) -> str:
+        """Return the MQTT unique ID retained for template compatibility."""
+
+        return self.mqtt_entity.unique_id
+
+    @property
+    def expected_entity_id(self) -> str:
+        """Return the effective MQTT entity ID used by generated files."""
+
+        return self.mqtt_entity.entity_id
+
+    @property
+    def expected_object_id(self) -> str:
+        """Return the effective MQTT object ID used by Home Assistant Jinja."""
+
+        return self.mqtt_entity.object_id
+
 
 @dataclass
 class ServiceModel:
@@ -94,8 +140,7 @@ class ServiceModel:
     order: int
 
     # MQTT-discovered health sensor for the hardware service.
-    status_unique_id: str
-    status_entity_id: str
+    status_entity: EntityReference
 
     # Home Assistant helpers shared by every reading in this service. They
     # control dashboard expansion, danger timing, recovery, and stale-data
@@ -108,6 +153,18 @@ class ServiceModel:
 
     # Per-reading template models generated from the service configuration.
     readings: list[ReadingModel] = field(default_factory=list)
+
+    @property
+    def status_unique_id(self) -> str:
+        """Return the MQTT service-status unique ID."""
+
+        return self.status_entity.unique_id
+
+    @property
+    def status_entity_id(self) -> str:
+        """Return the effective MQTT service-status entity ID."""
+
+        return self.status_entity.entity_id
 
 
 @dataclass
@@ -126,6 +183,19 @@ class RenderModel:
             for service in self.services
             for reading in service.readings
         ]
+
+    @property
+    def registry_entities(self) -> list[tuple[str, EntityReference]]:
+        """Return all MQTT registry identities with readable diagnostic labels."""
+
+        result: list[tuple[str, EntityReference]] = []
+        for service in self.services:
+            result.append((f"{service.name}.status", service.status_entity))
+            result.extend(
+                (f"{service.name}.{reading.name}", reading.mqtt_entity)
+                for reading in service.readings
+            )
+        return result
 
 
 def reading_defaults(reading_name: str) -> JsonDict:
@@ -170,8 +240,11 @@ def build_render_model(config: LabPulseConfig) -> RenderModel:
             section                        = service_config.dashboard_section,
             icon                           = service_config.dashboard_icon,
             order                          = display.order,
-            status_unique_id               = stable_id(service_name, "status"),
-            status_entity_id               = entity_id("sensor", service_name, "status"),
+            status_entity                  = EntityReference(
+                platform="mqtt",
+                unique_id=stable_id(service_name, "status"),
+                default_entity_id=entity_id("sensor", service_name, "status"),
+            ),
             alarm_controls_expanded_entity = entity_id("input_boolean", service_name, "alarm_controls_expanded"),
             danger_ratio_percent_entity    = entity_id("input_number", service_name, "danger_ratio_percent"),
             danger_window_seconds_entity   = entity_id("input_number", service_name, "danger_window_seconds"),
@@ -206,9 +279,11 @@ def build_reading_model(
         name                        = reading_name,
         label                       = label,
         reading_id                  = reading_id,
-        mqtt_unique_id              = stable_id(service_name, reading_name),
-        expected_entity_id          = entity_id("sensor", service_name, reading_name),
-        expected_object_id          = stable_id(service_name, reading_name),
+        mqtt_entity                 = EntityReference(
+            platform="mqtt",
+            unique_id=stable_id(service_name, reading_name),
+            default_entity_id=entity_id("sensor", service_name, reading_name),
+        ),
         alarm_state_entity          = entity_id("input_select", service_name, reading_name, "alarm_state"),
         alarm_mode_entity           = entity_id("input_select", service_name, reading_name, "alarm_mode"),
         alarm_muted_entity          = entity_id("input_boolean", service_name, reading_name, "alarm_muted"),
