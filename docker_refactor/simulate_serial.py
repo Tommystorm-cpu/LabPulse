@@ -32,6 +32,10 @@ SCENARIO_TARGETS = (
     "pump_room.temp1",
     "pump_room.temp2",
     "pump_room.temp3",
+    "pump_room.roomtemp",
+    "pump_room.roomhum",
+    "pump_room.press1",
+    "pump_room.press2",
     "turbo_pump.flow1",
     "turbo_pump.flow2",
     "turbo_pump.temp0",
@@ -163,11 +167,11 @@ class ReadingGenerator:
         )
         return f"{value / 10:.1f}"
 
-    def _humidity(self) -> str:
+    def _humidity(self, target: str) -> str:
         """Return room humidity with one decimal place."""
 
         value = self._integer_value(
-            "room_environment.humidity",
+            target,
             random_range=(350, 650),
             normal_range=(495, 505),
             low_range=(50, 55),
@@ -175,6 +179,19 @@ class ReadingGenerator:
             stale_value=500,
         )
         return f"{value / 10:.1f}"
+
+    def _pump_pressure(self, target: str) -> str:
+        """Return one pump-room pressure reading in bar."""
+
+        value = self._integer_value(
+            target,
+            random_range=(80, 160),
+            normal_range=(120, 140),
+            low_range=(5, 20),
+            high_range=(120000, 121000),
+            stale_value=125,
+        )
+        return f"{value / 100:.2f}"
 
     def _pressure(self) -> str:
         """Return the raw pressure format expected by the pressure parser."""
@@ -201,10 +218,10 @@ class ReadingGenerator:
             *(self._temperature(f"pump_room.temp{index}") for index in range(4))
         )
         pump_room = (
-            f"RoomTemp: {self.random.randint(185, 245) / 10:.1f}C | "
-            f"RoomHum: {self.random.randint(350, 650) / 10:.1f}% | "
-            f"Press1: {self.random.randint(80, 160) / 100:.2f} bar | "
-            f"Press2: {self.random.randint(80, 160) / 100:.2f} bar\n"
+            f"RoomTemp: {self._temperature('pump_room.roomtemp')}C | "
+            f"RoomHum: {self._humidity('pump_room.roomhum')}% | "
+            f"Press1: {self._pump_pressure('pump_room.press1')} bar | "
+            f"Press2: {self._pump_pressure('pump_room.press2')} bar\n"
         )
         turbo = (
             f"Flow1: {self._hundredths('turbo_pump.flow1', turbo=True)} L/min | "
@@ -215,7 +232,7 @@ class ReadingGenerator:
         )
         room_environment = (
             f"temperature:{self._temperature('room_environment.temperature')}|"
-            f"humidity:{self._humidity()}\n"
+            f"humidity:{self._humidity('room_environment.humidity')}\n"
         )
         return {
             "pressure": f"{self._pressure()}\n",

@@ -105,15 +105,15 @@ DHT11 and two analog pressure sensors:
 RoomTemp: 21.2C | RoomHum: 45.0% | Press1: 1.23 bar | Press2: 1.45 bar
 ```
 
-The current starter config publishes only:
+The current starter config publishes all ten pump-room readings:
 
 ```text
-flow1, flow2, temp0, temp1, temp2, temp3
+flow1, flow2, temp0, temp1, temp2, temp3,
+roomtemp, roomhum, press1, press2
 ```
 
-The parser can also return `roomtemp`, `roomhum`, `press1`, and `press2`, but
-the MQTT publisher drops them unless matching reading entries are added to
-live config.
+The parser returns the lower-case keys above, and the matching live-config
+entries allow the MQTT publisher to expose every channel.
 
 ### Calculation details
 

@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from .data_models import GeneratorPaths, RenderModel, ServiceModel
+from .data_models import GeneratorPaths, ReadingModel, RenderModel, ServiceModel
 from .template_utils import expand_template, render_template_file
 
 
@@ -27,7 +27,11 @@ def render_dashboard(
         render_template_file(
             TEMPLATE_DIR / "initial_lovelace.json.j2",
             paths.lovelace_path,
-            {"dashboard_json": json.dumps(lovelace_document(model), indent=2)},
+            {
+                "dashboard_json": json.dumps(
+                    lovelace_document(model, paths.lovelace_path.name), indent=2
+                )
+            },
         )
         print(f"Reset editable dashboard {paths.lovelace_path}")
     elif sync_entity_ids:
@@ -85,7 +89,7 @@ def replace_entity_references(
     return value, 0
 
 
-def lovelace_document(model: RenderModel) -> dict[str, object]:
+def lovelace_document(model: RenderModel, storage_key: str = "lovelace") -> dict[str, object]:
     """Return the starter Lovelace storage document."""
 
     seed = load_dashboard_seed()
@@ -97,7 +101,7 @@ def lovelace_document(model: RenderModel) -> dict[str, object]:
     return {
         "version": seed["lovelace"]["version"],
         "minor_version": seed["lovelace"]["minor_version"],
-        "key": seed["lovelace"]["key"],
+        "key": storage_key,
         "data": {"config": {"views": [monitor_view, alarm_setup_view]}},
     }
 
@@ -109,11 +113,34 @@ def load_dashboard_seed() -> dict[str, Any]:
 
 
 def monitor_sections(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
-    """Expand monitor dashboard sections for all enabled services."""
+    """Expand monitor sections, merging services with the same section label."""
 
     sections = [system_health_section(seed, model)]
-    sections.extend(monitor_service_section(seed, service) for service in model.services)
+    sections.extend(
+        monitor_location_section(seed, services)
+        for services in services_by_section(model.services)
+    )
     return sections
+
+
+def services_by_section(services: list[ServiceModel]) -> list[list[ServiceModel]]:
+    """Group ordered services by dashboard section without changing section order."""
+
+    grouped: dict[str, list[ServiceModel]] = {}
+    for service in services:
+        grouped.setdefault(service.section, []).append(service)
+    return list(grouped.values())
+
+
+def readings_by_group(
+    readings: list[ReadingModel],
+) -> list[tuple[str | None, list[ReadingModel]]]:
+    """Group readings by optional presentation label while preserving order."""
+
+    grouped: dict[str | None, list[ReadingModel]] = {}
+    for reading in readings:
+        grouped.setdefault(reading.group, []).append(reading)
+    return list(grouped.items())
 
 
 def alarm_setup_sections(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
@@ -134,17 +161,30 @@ def system_health_section(seed: dict[str, Any], model: RenderModel) -> dict[str,
     return {"type": "grid", "cards": cards}
 
 
-def monitor_service_section(seed: dict[str, Any], service: ServiceModel) -> dict[str, object]:
-    """Return one monitor dashboard section for a service."""
+def monitor_location_section(
+    seed: dict[str, Any],
+    services: list[ServiceModel],
+) -> dict[str, object]:
+    """Return one monitor section for services sharing a display section."""
 
     rules = seed["monitor_sections"]
-    cards = [
-        expand_template(rules["heading_card"], {"service": service}),
-        expand_template(rules["status_tile"], {"service": service}),
-    ]
-    for reading in service.readings:
-        context = {"service": service, "reading": reading}
-        cards.append(expand_template(rules["reading_row"], context))
+    cards = [expand_template(rules["heading_card"], {"service": services[0]})]
+
+    for service in services:
+        cards.append(
+            expand_template(rules["service_heading_card"], {"service": service})
+        )
+        cards.append(expand_template(rules["status_tile"], {"service": service}))
+        for _, readings in readings_by_group(service.readings):
+            reading_list = expand_template(rules["reading_list"], {"service": service})
+            reading_list["entities"] = [
+                expand_template(
+                    rules["reading_entity"],
+                    {"service": service, "reading": reading},
+                )
+                for reading in readings
+            ]
+            cards.append(reading_list)
 
     return {"type": "grid", "cards": cards}
 

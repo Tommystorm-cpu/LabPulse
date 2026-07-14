@@ -73,7 +73,8 @@ Do not replace Home Assistant Jinja delimiters with LabPulse placeholders.
 
 ## Dashboard behavior
 
-Normal generation preserves the live `.storage/lovelace` dashboard. Use
+Normal generation preserves the active Overview store resolved through
+`.storage/lovelace_dashboards` (or legacy `.storage/lovelace`). Use
 `--reset-dashboard` only to intentionally replace it from
 `templates/dashboard/dashboard_seed.yaml`. Backup, restore, entity-resolution,
 and synchronization commands are documented in
@@ -90,4 +91,3 @@ and synchronization commands are documented in
 
 Run `testing/test_homeassistant_entities.py` and
 `testing/test_homeassistant_generator.py` after changes.
-

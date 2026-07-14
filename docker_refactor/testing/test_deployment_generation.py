@@ -153,6 +153,10 @@ def test_setup_refresh_and_preservation_contract() -> None:
         '--sync-dashboard-entities',
         'LABPULSE_HA_TOKEN',
         'LABPULSE_HA_URL',
+        'dashboard_storage_path',
+        'lovelace_dashboards',
+        'check_dashboard_writable',
+        'Cannot create active Home Assistant dashboard',
     )
     for fragment in required_generator_fragments:
         if fragment not in generator_source:

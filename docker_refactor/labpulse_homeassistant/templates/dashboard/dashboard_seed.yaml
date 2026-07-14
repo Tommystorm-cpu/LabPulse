@@ -39,27 +39,25 @@ monitor_sections:
     heading: "[[ service.section ]]"
     heading_style: title
     icon: "[[ service.icon ]]"
+  service_heading_card:
+    type: heading
+    heading: "[[ service.label ]]"
+    heading_style: subtitle
+    icon: "[[ service.icon ]]"
   status_tile:
     type: tile
     entity: "[[ service.status_entity_id ]]"
     grid_options:
       columns: full
-  reading_row:
-    type: grid
-    columns: 3
-    square: false
+  reading_list:
+    type: entities
+    show_header_toggle: false
     grid_options:
       columns: full
-    cards:
-      - type: tile
-        entity: "[[ reading.expected_entity_id ]]"
-        name: "[[ reading.label ]]"
-      - type: tile
-        entity: "[[ reading.alarm_state_entity ]]"
-        name: State
-      - type: tile
-        entity: "[[ reading.alarm_muted_entity ]]"
-        name: Muted
+    entities: []
+  reading_entity:
+    entity: "[[ reading.expected_entity_id ]]"
+    name: "[[ reading.label ]]"
 
 alarm_setup_sections:
   heading_card:

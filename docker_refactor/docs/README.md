@@ -22,6 +22,13 @@ been removed so that an implemented feature has one authoritative explanation.
 5. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,
    user-facing, engineering-maturity, and open-source work.
 
+Future implementation specification:
+
+- [FUTURE_HOME_ASSISTANT_DASHBOARD_API.md](FUTURE_HOME_ASSISTANT_DASHBOARD_API.md)
+  records the planned move from direct Lovelace `.storage` writes to Home
+  Assistant's authenticated WebSocket API. It is intentionally deferred until
+  live-Pi sensor acquisition is proven.
+
 ## Which guide answers what?
 
 | Question | Guide |
@@ -36,6 +43,7 @@ been removed so that an implemented feature has one authoritative explanation.
 | Why is an entity or dashboard card missing? | `SETUP_AND_TROUBLESHOOTING.md` |
 | What exactly do the Arduino sketches print? | `ARDUINO_AND_CPP.md` |
 | What software work remains and what is already implemented? | `SOFTWARE_TODO.md` |
+| How should dashboard deployment avoid `.storage` ownership problems? | `FUTURE_HOME_ASSISTANT_DASHBOARD_API.md` |
 
 ## Sources of truth
 

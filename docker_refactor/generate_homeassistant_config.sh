@@ -15,6 +15,32 @@ RESOLVE_ENTITIES=0
 SYNC_DASHBOARD_ENTITIES=0
 HA_URL="${LABPULSE_HA_URL:-http://127.0.0.1:8123}"
 
+# Resolve Home Assistant's active storage-backed Overview dashboard. Recent
+# releases register Overview as a named dashboard and store it as
+# .storage/lovelace.<id>; older installations use .storage/lovelace.
+dashboard_storage_path() {
+  python3 - "$HA_CONFIG_DIR" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+storage = Path(sys.argv[1]) / ".storage"
+registry_path = storage / "lovelace_dashboards"
+if registry_path.exists():
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        for item in registry.get("data", {}).get("items", []):
+            if item.get("url_path") == "lovelace" and item.get("mode", "storage") == "storage":
+                dashboard_id = item.get("id")
+                if isinstance(dashboard_id, str) and dashboard_id:
+                    print(storage / f"lovelace.{dashboard_id}")
+                    raise SystemExit
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+print(storage / "lovelace")
+PY
+}
+
 # Print usage from one place so normal help and invalid-option errors agree.
 usage() {
   cat <<'EOF'
@@ -40,7 +66,8 @@ Generated files:
   homeassistant/config/labpulse_entity_map.yaml
 
 Dashboard behavior:
-  No flag preserves homeassistant/config/.storage/lovelace exactly as-is.
+  The active Overview store is resolved from .storage/lovelace_dashboards.
+  No dashboard flag preserves that resolved file exactly as-is.
   --reset-dashboard creates or replaces that editable Home Assistant dashboard.
   --sync-dashboard-entities preserves layout and updates only resolved entity IDs.
 
@@ -160,7 +187,8 @@ backup_dashboard() {
   timestamp="$(date +%Y%m%d-%H%M%S)"
   local backup_dir="$backup_root/dashboard-$timestamp"
   local latest_dir="$backup_root/dashboard-latest"
-  local source="$HA_CONFIG_DIR/.storage/lovelace"
+  local source
+  source="$(dashboard_storage_path)"
 
   if [ "$BACKUP_DASHBOARD" -ne 1 ]; then
     return
@@ -187,7 +215,8 @@ backup_dashboard() {
 load_dashboard() {
   local backup_dir="$PROJECT_DIR/homeassistant_backups/dashboard-latest"
   local source="$backup_dir/lovelace"
-  local destination="$HA_CONFIG_DIR/.storage/lovelace"
+  local destination
+  destination="$(dashboard_storage_path)"
 
   if [ "$LOAD_DASHBOARD" -ne 1 ]; then
     return
@@ -241,11 +270,50 @@ check_homeassistant_config_writable() {
   fi
 }
 
+# Fail before rendering when Home Assistant's root-owned .storage directory
+# prevents the invoking user from creating or replacing the resolved dashboard.
+check_dashboard_writable() {
+  if [ "$RESET_DASHBOARD" -ne 1 ] && \
+     [ "$LOAD_DASHBOARD" -ne 1 ] && \
+     [ "$SYNC_DASHBOARD_ENTITIES" -ne 1 ]; then
+    return
+  fi
+
+  local dashboard_path
+  dashboard_path="$(dashboard_storage_path)"
+  local storage_dir
+  storage_dir="$(dirname "$dashboard_path")"
+
+  if [ -e "$dashboard_path" ]; then
+    if [ -w "$dashboard_path" ]; then
+      return
+    fi
+
+    echo "ERROR: Cannot write active Home Assistant dashboard: $dashboard_path" >&2
+    echo "Fix only that file's ownership, then rerun this command:" >&2
+    echo "  sudo chown \"$(id -u):$(id -g)\" \"$dashboard_path\"" >&2
+    exit 1
+  fi
+
+  mkdir -p "$storage_dir" 2>/dev/null || true
+  if [ -w "$storage_dir" ]; then
+    return
+  fi
+
+  echo "ERROR: Cannot create active Home Assistant dashboard: $dashboard_path" >&2
+  echo "Home Assistant owns .storage, so create only the resolved dashboard file:" >&2
+  echo "  sudo touch \"$dashboard_path\"" >&2
+  echo "  sudo chown \"$(id -u):$(id -g)\" \"$dashboard_path\"" >&2
+  echo "Then rerun this command while Home Assistant is stopped." >&2
+  exit 1
+}
+
 # Run shell-side lifecycle actions before the Python generator writes files.
 mkdir -p "$HA_CONFIG_DIR"
+check_homeassistant_config_writable
+check_dashboard_writable
 backup_dashboard
 load_dashboard
-check_homeassistant_config_writable
 
 GENERATOR_PACKAGE="$SCRIPT_DIR/labpulse_homeassistant"
 if [ ! -f "$GENERATOR_PACKAGE/__main__.py" ]; then

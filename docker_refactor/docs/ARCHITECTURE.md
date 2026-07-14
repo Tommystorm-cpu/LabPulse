@@ -197,7 +197,7 @@ or dashboard edits.
 | `packages/labpulse_generated.yaml` | alarm generator | replaced |
 | `labpulse_entity_map.yaml` | core generator | replaced |
 | `automations.yaml`, `scripts.yaml`, `scenes.yaml` | Home Assistant UI | created only if missing |
-| `.storage/lovelace` | Home Assistant UI/user | preserved unless reset or synchronized explicitly |
+| active Overview store (`.storage/lovelace.<id>` or legacy `.storage/lovelace`) | Home Assistant UI/user | resolved through `lovelace_dashboards`; preserved unless reset or synchronized explicitly |
 
 The dashboard seed is intentionally different from live dashboard state. It is
 used only when `--reset-dashboard` is requested.
@@ -278,4 +278,3 @@ silencing delivery.
 | Change reset-dashboard layout | `templates/dashboard/dashboard_seed.yaml` |
 | Change alert transport/delivery | `labpulse_sms/` |
 | Change containers or mounts | `generate_compose.sh` |
-

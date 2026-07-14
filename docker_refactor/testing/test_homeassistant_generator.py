@@ -57,12 +57,19 @@ def sample_config() -> dict[str, object]:
     }
 
 
-def render_into(temp_dir: Path, reset_dashboard: bool) -> GeneratorPaths:
+def render_into(
+    temp_dir: Path,
+    reset_dashboard: bool,
+    config: dict[str, object] | None = None,
+) -> GeneratorPaths:
     """Render sample Home Assistant files into a temporary directory."""
 
     temp_dir.mkdir(parents=True, exist_ok=True)
     config_path = temp_dir / "config.yaml"
-    config_path.write_text(yaml.safe_dump(sample_config(), sort_keys=False), encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(config or sample_config(), sort_keys=False),
+        encoding="utf-8",
+    )
     ha_config_dir = temp_dir / "homeassistant" / "config"
     paths = GeneratorPaths(config_path=config_path, ha_config_dir=ha_config_dir)
     result = generate_homeassistant(
@@ -290,14 +297,32 @@ def test_dashboard_reset_and_preserve() -> None:
     assert_equal(views[0]["title"], "LabPulse Monitor", "monitor dashboard title")
     assert_equal(views[1]["title"], "LabPulse Alarm Setup", "setup dashboard title")
     pressure_cards = views[0]["sections"][1]["cards"]
-    reading_row = pressure_cards[2]
-    assert_equal(reading_row["type"], "grid", "reading row card type")
-    assert_equal(reading_row["columns"], 3, "reading row column count")
-    assert_equal(reading_row["square"], False, "reading row compact height")
-    assert_equal(reading_row["grid_options"]["columns"], "full", "reading row width")
-    assert_equal(reading_row["cards"][0]["name"], "Pressure", "short reading tile name")
-    assert_equal(reading_row["cards"][1]["name"], "State", "state tile name")
-    assert_equal(reading_row["cards"][2]["name"], "Muted", "mute tile name")
+    assert_equal(
+        pressure_cards[1]["heading"],
+        "Air Pressure Sensor Hub",
+        "single-service device subheading",
+    )
+    reading_list = pressure_cards[3]
+    assert_equal(reading_list["type"], "entities", "reading list card type")
+    assert_equal(reading_list["show_header_toggle"], False, "reading list header toggle")
+    assert_equal(reading_list["grid_options"]["columns"], "full", "reading list width")
+    assert_equal(
+        reading_list["entities"][0]["entity"],
+        "sensor.labpulse_pressure_monitor_pressure",
+        "reading list entity",
+    )
+    assert_equal(
+        reading_list["entities"][0],
+        {
+            "entity": "sensor.labpulse_pressure_monitor_pressure",
+            "name": "Pressure",
+        },
+        "reading row uses short configured name without overriding icon",
+    )
+    if any("alarm_state" in item.get("entity", "") for item in reading_list["entities"]):
+        raise AssertionError("Monitor reading list should not include alarm state")
+    if any("muted" in item.get("entity", "") for item in reading_list["entities"]):
+        raise AssertionError("Monitor reading list should not include mute controls")
     setup_cards = views[1]["sections"][0]["cards"]
     assert_equal(setup_cards[1]["type"], "entities", "service timing card type")
     assert_equal(setup_cards[1]["title"], "Air Pressure Sensor Hub Timing", "service timing card title")
@@ -316,6 +341,8 @@ def test_dashboard_reset_and_preserve() -> None:
     assert_equal(setup_cards[3]["conditions"][0]["state"], "on", "reading settings condition state")
     assert_equal(setup_cards[3]["card"]["title"], "Pressure Alarm", "reading settings card title")
     setup_entities = setup_cards[3]["card"]["entities"]
+    if not any(item.get("entity") == "input_boolean.labpulse_pressure_monitor_pressure_alarm_muted" for item in setup_entities):
+        raise AssertionError("Alarm Setup should expose the reading mute control")
     if not any(item.get("entity") == "input_number.labpulse_pressure_monitor_pressure_recovery_deadband" for item in setup_entities):
         raise AssertionError("setup dashboard should expose recovery deadband helper")
     assert_equal(
@@ -344,6 +371,231 @@ def test_dashboard_reset_and_preserve() -> None:
     render_into(temp_dir, reset_dashboard=True)
     reset_dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
     assert_equal(reset_dashboard["key"], "lovelace", "reset dashboard")
+
+
+def test_dashboard_reset_uses_registered_overview_storage() -> None:
+    """Check reset follows Home Assistant's named Overview dashboard key."""
+
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    temp_root.mkdir(exist_ok=True)
+    temp_dir = temp_root / f"generator-{uuid.uuid4().hex}"
+    storage_dir = temp_dir / "homeassistant" / "config" / ".storage"
+    storage_dir.mkdir(parents=True)
+    registry = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "lovelace_dashboards",
+        "data": {
+            "items": [
+                {
+                    "id": "lovelace",
+                    "url_path": "lovelace",
+                    "mode": "storage",
+                }
+            ]
+        },
+    }
+    (storage_dir / "lovelace_dashboards").write_text(
+        json.dumps(registry), encoding="utf-8"
+    )
+
+    paths = render_into(temp_dir, reset_dashboard=True)
+    assert_equal(paths.lovelace_path.name, "lovelace.lovelace", "named Overview path")
+    dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
+    assert_equal(dashboard["key"], "lovelace.lovelace", "named Overview storage key")
+
+
+def test_dashboard_groups_services_by_section() -> None:
+    """Check services sharing a section render under one location heading."""
+
+    config = {
+        "mqtt": {"broker": "mosquitto"},
+        "services": {
+            "turbo_pump": {
+                "driver": "serial",
+                "parser": "water",
+                "serial_port": "/tmp/labpulse-fake-serial/turbo_pump",
+                "device_name": "Turbo Pump Hub",
+                "display": {
+                    "section": "Cryogenics Room",
+                    "icon": "mdi:snowflake-alert",
+                    "order": 30,
+                },
+                "readings": [{"name": "flow1", "label": "Flow 1", "unit": "L/min"}],
+            },
+            "room_environment": {
+                "driver": "gpio",
+                "gpio_sensor": "dht11",
+                "gpio_pin": "D4",
+                "device_name": "Cryogenics Room Environment Sensor",
+                "display": {
+                    "section": "Cryogenics Room",
+                    "icon": "mdi:home-thermometer",
+                    "order": 50,
+                },
+                "readings": [
+                    {"name": "temperature", "label": "Temperature", "unit": "Â°C"}
+                ],
+            },
+        },
+    }
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    paths = render_into(
+        temp_root / f"generator-{uuid.uuid4().hex}",
+        reset_dashboard=True,
+        config=config,
+    )
+    dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
+    monitor_sections = dashboard["data"]["config"]["views"][0]["sections"]
+    setup_sections = dashboard["data"]["config"]["views"][1]["sections"]
+
+    assert_equal(len(monitor_sections), 2, "system health plus one shared location")
+    cards = monitor_sections[1]["cards"]
+    assert_equal(cards[0]["heading"], "Cryogenics Room", "shared location heading")
+    assert_equal(cards[0]["icon"], "mdi:snowflake-alert", "first service section icon")
+    assert_equal(cards[1]["heading"], "Turbo Pump Hub", "first service subgroup")
+    assert_equal(
+        cards[4]["heading"],
+        "Cryogenics Room Environment Sensor",
+        "second service subgroup",
+    )
+    assert_equal(len(setup_sections), 2, "alarm setup remains per service")
+
+
+def test_dashboard_groups_readings_with_room_environment_last() -> None:
+    """Check reading groups render in config order with room stats at the bottom."""
+
+    config = {
+        "mqtt": {"broker": "mosquitto"},
+        "services": {
+            "pump_room": {
+                "driver": "serial",
+                "parser": "water",
+                "serial_port": "/tmp/labpulse-fake-serial/pump_room",
+                "device_name": "Pump Room Sensor Hub",
+                "display": {
+                    "section": "Pump Room",
+                    "icon": "mdi:water-pump",
+                    "order": 20,
+                },
+                "readings": [
+                    {"name": "flow1", "label": "Flow 1", "unit": "L/min", "group": "Flow Sensors"},
+                    {"name": "temp0", "label": "Temperature 0", "unit": "C", "group": "Water Temperature Sensors"},
+                    {"name": "press1", "label": "Pressure 1", "unit": "bar", "group": "Pressure Sensors"},
+                    {"name": "roomtemp", "label": "Room Temperature", "unit": "C", "group": "Room Environment Sensor"},
+                    {"name": "roomhum", "label": "Room Humidity", "unit": "%", "group": "Room Environment Sensor"},
+                ],
+            }
+        },
+    }
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    paths = render_into(
+        temp_root / f"generator-{uuid.uuid4().hex}",
+        reset_dashboard=True,
+        config=config,
+    )
+    dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
+    cards = dashboard["data"]["config"]["views"][0]["sections"][1]["cards"]
+
+    sensor_cards = [card for card in cards if card.get("type") == "entities"]
+    assert_equal(
+        len(sensor_cards),
+        4,
+        "one compact card per sensor group",
+    )
+    if any("title" in card for card in sensor_cards):
+        raise AssertionError("Monitor sensor cards should not have large titles")
+    assert_equal(
+        [entity["entity"] for entity in cards[-1]["entities"]],
+        [
+            "sensor.labpulse_pump_room_roomtemp",
+            "sensor.labpulse_pump_room_roomhum",
+        ],
+        "room environment readings in final list",
+    )
+
+
+def test_starter_dashboard_preserves_monitor_layout() -> None:
+    """Check the starter config retains the agreed room/hub/sensor hierarchy."""
+
+    config = yaml.safe_load((REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8"))
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    paths = render_into(
+        temp_root / f"generator-{uuid.uuid4().hex}",
+        reset_dashboard=True,
+        config=config,
+    )
+    dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
+    sections = dashboard["data"]["config"]["views"][0]["sections"]
+
+    assert_equal(
+        [section["cards"][0]["heading"] for section in sections],
+        ["System Health", "Pump Room", "Cryogenics Room", "Air Pressure"],
+        "monitor room columns",
+    )
+    pump_cards = sections[1]["cards"]
+    assert_equal(pump_cards[1]["heading"], "Pump Room Sensor Hub", "pump hub heading")
+    pump_sensor_cards = [
+        card for card in pump_cards if card.get("type") == "entities"
+    ]
+    assert_equal(
+        len(pump_sensor_cards),
+        4,
+        "pump sensor cards",
+    )
+    if any("title" in card for card in pump_sensor_cards):
+        raise AssertionError("Pump sensor cards should remain untitled")
+    assert_equal(
+        [item["entity"] for item in pump_sensor_cards[-1]["entities"]],
+        [
+            "sensor.labpulse_pump_room_roomtemp",
+            "sensor.labpulse_pump_room_roomhum",
+        ],
+        "pump room sensor remains last",
+    )
+    assert_equal(
+        [item["name"] for item in pump_sensor_cards[-1]["entities"]],
+        ["Room Temperature", "Room Humidity"],
+        "pump room reading prefixes",
+    )
+
+    cryogenics_cards = sections[2]["cards"]
+    assert_equal(
+        [
+            card["heading"]
+            for card in cryogenics_cards
+            if card.get("heading_style") == "subtitle"
+        ],
+        ["Turbo Pump Hub", "Cryogenics Room Environment Sensor"],
+        "cryogenics hub headings",
+    )
+    assert_equal(
+        [item["entity"] for item in cryogenics_cards[-1]["entities"]],
+        [
+            "sensor.labpulse_room_environment_temperature",
+            "sensor.labpulse_room_environment_humidity",
+        ],
+        "cryogenics room sensor last",
+    )
+    assert_equal(
+        [item["name"] for item in cryogenics_cards[-1]["entities"]],
+        ["Room Temperature", "Room Humidity"],
+        "cryogenics room reading prefixes",
+    )
+    if "title" in cryogenics_cards[-1]:
+        raise AssertionError("Cryogenics room sensor card should remain untitled")
+
+    air_cards = sections[3]["cards"]
+    assert_equal(
+        air_cards[-1]["entities"],
+        [
+            {
+                "entity": "sensor.labpulse_pressure_monitor_pressure",
+                "name": "Pressure",
+            }
+        ],
+        "air pressure sensor ownership",
+    )
 
 
 def test_dashboard_entity_sync_is_surgical() -> None:
@@ -433,7 +685,7 @@ def test_generator_resolves_and_syncs_entities() -> None:
     dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
     views = dashboard["data"]["config"]["views"]
     assert_equal(
-        views[0]["sections"][1]["cards"][2]["cards"][0]["entity"],
+        views[0]["sections"][1]["cards"][3]["entities"][0]["entity"],
         "sensor.renamed_pressure",
         "resolved monitor card entity",
     )
@@ -447,6 +699,10 @@ def test_generator_resolves_and_syncs_entities() -> None:
 TESTS = [
     ("generated package and entity map", test_generated_package_and_entity_map),
     ("dashboard reset and preserve", test_dashboard_reset_and_preserve),
+    ("dashboard reset uses registered Overview", test_dashboard_reset_uses_registered_overview_storage),
+    ("dashboard groups services by section", test_dashboard_groups_services_by_section),
+    ("dashboard groups readings with room environment last", test_dashboard_groups_readings_with_room_environment_last),
+    ("starter dashboard preserves monitor layout", test_starter_dashboard_preserves_monitor_layout),
     ("dashboard entity sync is surgical", test_dashboard_entity_sync_is_surgical),
     ("generator resolves and syncs entities", test_generator_resolves_and_syncs_entities),
 ]

@@ -1,6 +1,7 @@
 """Normalize LabPulse config into Home Assistant template data."""
 
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,6 +76,7 @@ class ReadingModel:
     # Basic reading identity and user-facing display information.
     name: str
     label: str
+    group: str | None
     reading_id: str
 
     # MQTT discovery identity for the physical sensor reading. The unique ID
@@ -277,6 +279,7 @@ def build_reading_model(
     return ReadingModel(
         name                        = reading_name,
         label                       = label,
+        group                       = reading.group,
         reading_id                  = reading_id,
         mqtt_entity                 = EntityReference(
             platform="mqtt",
@@ -388,6 +391,24 @@ class GeneratorPaths:
 
     @property
     def lovelace_path(self) -> Path:
-        """Return the editable Lovelace dashboard storage file."""
+        """Return the active storage-backed Overview dashboard file."""
 
+        registry_path = self.storage_dir / "lovelace_dashboards"
+        if registry_path.exists():
+            try:
+                registry = json.loads(registry_path.read_text(encoding="utf-8"))
+                items = registry.get("data", {}).get("items", [])
+                overview = next(
+                    (
+                        item
+                        for item in items
+                        if item.get("url_path") == "lovelace"
+                        and item.get("mode", "storage") == "storage"
+                    ),
+                    None,
+                )
+                if overview and isinstance(overview.get("id"), str):
+                    return self.storage_dir / f"lovelace.{overview['id']}"
+            except (OSError, json.JSONDecodeError, AttributeError):
+                pass
         return self.storage_dir / "lovelace"

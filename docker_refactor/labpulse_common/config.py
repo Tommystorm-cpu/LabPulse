@@ -62,6 +62,7 @@ class ReadingConfig(BaseModel):
 
     name: str
     label: str | None = None
+    group: str | None = None
     unit: str | None = None
     device_class: str | None = None
     state_class: str | None = "measurement"

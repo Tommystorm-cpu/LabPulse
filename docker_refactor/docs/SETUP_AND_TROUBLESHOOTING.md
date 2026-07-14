@@ -103,7 +103,7 @@ It is not required for the live config: setup always preserves an existing
     scenes.yaml                       UI-owned; created only if absent
     labpulse_entity_map.yaml          generated diagnostic map
     packages/labpulse_generated.yaml  generated alarm package
-    .storage/lovelace                 editable dashboard
+    .storage/lovelace*                editable dashboard stores
 
   homeassistant_backups/              dashboard-only snapshots
   mosquitto/config/
@@ -166,11 +166,12 @@ services:
 | `gpio_sensor` | Currently only `dht11` |
 | `gpio_pin` | Blinka board name such as `D4` |
 | `device_name` | User-facing HA device label |
-| `display.section` | Reset-dashboard section heading |
+| `display.section` | Reset-dashboard location heading; services with the same value share one Monitor section |
 | `display.icon` | Reset-dashboard heading icon |
 | `display.order` | Service order; lower numbers render first |
 | `readings[].name` | Stable key; must match driver/parser output |
 | `readings[].label` | User-facing label |
+| `readings[].group` | Optional reset-dashboard subgroup; first appearance controls group order |
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
 | `reconnect_interval_seconds` | Serial reopen delay |
 | `read_interval_seconds` | Minimum interval for GPIO reads |
@@ -178,6 +179,22 @@ services:
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are Home Assistant helpers, not live
 config fields.
+
+To group independent devices by physical location, give their services the
+same `display.section`. The Monitor view renders one location heading and a
+labelled subgroup for each service, while MQTT identities, service health, and
+Alarm Setup sections remain independent. The first service in display order
+provides the shared section icon.
+
+Within a multi-purpose service, assign the same `readings[].group` to related
+readings. Monitor renders one compact, untitled sensor card per group,
+preserving the order in which group names first appear. The surrounding section
+and service subheading identify the physical room and owning hub without adding
+large titles to every card. Reading rows use the short configured label and do
+not override the Home Assistant icon. Room-environment labels use `Room` as a
+prefix to distinguish them from equipment temperatures and humidity. Grouping
+is presentation only: readings retain their service health, MQTT identity, and
+alarm configuration.
 
 ### Stable names
 
@@ -233,7 +250,7 @@ docker compose up -d --build
 ```
 
 `generate_compose.sh` replaces `compose.yaml`. The Home Assistant generator
-replaces generated YAML but preserves `.storage/lovelace` without an explicit
+replaces generated YAML but preserves the resolved Overview store without an explicit
 dashboard flag.
 
 If Home Assistant was already running and generated package behavior changed,
@@ -317,8 +334,11 @@ Mounted config, Mosquitto data, logs, and backups remain.
 
 ## Dashboard safety and commands
 
-The live dashboard is `homeassistant/config/.storage/lovelace`. Normal
-generation preserves it.
+The live Overview dashboard is resolved through
+`homeassistant/config/.storage/lovelace_dashboards`. On older installations it
+is `homeassistant/config/.storage/lovelace`; on current Home Assistant releases
+it can be a named store such as `.storage/lovelace.lovelace`. Normal generation
+preserves the resolved dashboard.
 
 | Intent | Command |
 | --- | --- |
@@ -333,6 +353,11 @@ Restart Home Assistant after restore/reset:
 ```bash
 docker compose restart homeassistant
 ```
+
+Home Assistant may create a newly registered Overview store as `root`. If a
+reset reports that it cannot create or write the resolved dashboard, keep Home
+Assistant stopped and apply the exact one-file `touch`/`chown` remedy printed by
+the generator. Do not recursively change ownership of `.storage`.
 
 Dashboard backups contain only Lovelace layout:
 
@@ -441,6 +466,10 @@ pump_room.temp0
 pump_room.temp1
 pump_room.temp2
 pump_room.temp3
+pump_room.roomtemp
+pump_room.roomhum
+pump_room.press1
+pump_room.press2
 turbo_pump.flow1
 turbo_pump.flow2
 turbo_pump.temp0
@@ -715,4 +744,3 @@ docker compose up -d homeassistant
 ```
 
 You must create the Home Assistant user and MQTT integration again.
-

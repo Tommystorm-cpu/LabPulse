@@ -354,16 +354,32 @@ IDs. It is the first file to consult when a dashboard reference is uncertain.
 ### Dashboard rendering and preservation
 
 `dashboard.py` loads `templates/dashboard/dashboard_seed.yaml` and expands it
-into Home Assistant’s `.storage/lovelace` JSON structure.
+into Home Assistant’s active Overview JSON store. The generator resolves a
+named `.storage/lovelace.<id>` through `lovelace_dashboards`, with legacy
+`.storage/lovelace` as the fallback.
 
 The generated Monitor view contains system health followed by one section per
-service. Each reading is represented by one full-width three-column grid row:
-Reading, State, and Muted. The Alarm Setup view contains service timing helpers
-and per-reading show-controls/conditional settings cards.
+distinct `display.section`. Services with the same section label share that
+location section and receive separate service subheadings and status tiles.
+The first ordered service supplies the shared section icon. Each reading is
+represented by one compact entities list containing only current readings.
+When readings define `group`, the dashboard renders one ordered entities card
+per group. Cards remain untitled; the surrounding section and service
+subheading name the room and owning hub. Reading rows use the short config label
+but do not specify an icon, allowing Home Assistant's entity icon to render.
+Room-environment readings use `Room Temperature` and `Room Humidity` labels.
+Group metadata does not affect acquisition, identity, or alarm ownership.
+Alarm State and Muted are omitted from Monitor to keep scanning concise; both
+remain available inside each reading's expanded controls in Alarm Setup. The
+device name is always rendered between the location and service status, even
+when the location contains only one service, so dashboard columns share the
+same visual hierarchy. The Alarm Setup view remains one section per service
+and contains service timing helpers and per-reading show-controls/conditional
+settings cards.
 
 `render_dashboard()` has three mutually exclusive behaviors:
 
-- reset: generate and replace `.storage/lovelace`
+- reset: generate and replace the resolved Overview storage file
 - sync: recursively replace exact stale entity-ID strings in the existing
   dashboard
 - normal: print that the editable dashboard was preserved
@@ -524,4 +540,3 @@ The scripts under `testing/` are grouped by contract:
 
 When changing a contract shared by packages, run every test that consumes that
 contract rather than only the file nearest the edit.
-
