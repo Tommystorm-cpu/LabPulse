@@ -154,7 +154,7 @@ class HomeAssistantMqttPublisher:
 
             # Power freshness is safety-significant. Home Assistant must record
             # every one-second sample even when the numeric value is unchanged,
-            # otherwise last_updated cannot distinguish a steady current from a
+            # otherwise last_updated cannot distinguish a steady voltage from a
             # stopped publisher.
             if self.service_config.power_detection is not None:
                 payload["force_update"] = True

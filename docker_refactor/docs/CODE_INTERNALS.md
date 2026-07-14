@@ -149,14 +149,13 @@ Implementations must provide `setup()`, `read()`, and `disconnect()`.
   `SerialDriver`.
 - `driver: gpio` plus `gpio_sensor: dht11` requires `gpio_pin`, then constructs
   the DHT11 driver.
-- `driver: i2c` plus `i2c_sensor: ina219_ups` requires an explicit bus,
-  address, verified calibration/config registers, current LSB, and battery
-  voltage range, then constructs the INA219 UPS driver.
+- `driver: i2c` plus `i2c_sensor: max17043_ups` requires an explicit bus and
+  the verified address `0x36`, then constructs the MAX17043 UPS driver.
 
-The INA219 driver configures the device, corrects SMBus word byte order,
-converts the signed current register, publishes voltage/current/battery level
-at one-second intervals, and reconnects after explicit I2C faults. Calibration
-has no live defaults: the installed HAT values must be verified.
+The MAX17043 driver performs read-only VCELL and SOC transactions, publishes
+voltage and gauge-calculated battery level at one-second intervals, and
+reconnects after explicit I2C faults. It does not publish current or charging
+status because the installed hardware does not measure them.
 
 ### Serial driver
 
@@ -485,24 +484,24 @@ A service with `power_detection` is excluded from every generic threshold,
 history-stat, and percentage loop above. `PowerModel` instead supplies the IDs
 and configured timings expanded from `templates/alarm/power_logic.yaml`.
 
-The evidence template classifies signed current as charging, idle, or
-discharging. Outage confirmation, recovery confirmation, and maximum evidence
+The evidence template compares fresh battery voltage with the configured
+low-voltage threshold. Outage confirmation, recovery confirmation, and maximum evidence
 age are editable `input_number` helpers in LabPulse Alarm Setup. On first use,
 reconciliation seeds them from `power_detection`; a persistent initialization
 marker prevents later starts or automation reloads from overwriting dashboard
 edits. The configured defaults are 10, 15, and 15 seconds respectively.
 
-Sustained discharge starts a persistent outage candidate. Its start and
+Sustained low voltage starts a persistent event candidate. Its start and
 deadline are stored in `input_datetime` helpers, with the current confirmation
-setting copied into the deadline when the candidate begins. Loss of discharge
+setting copied into the deadline when the candidate begins. Loss of low voltage
 uses the same design for recovery. Changing a timing control therefore affects
 the next candidate, not one already in progress. Candidate booleans, deadlines,
-active-outage state, outage start, latest outage history, timing controls, and
+active-event state, event start, latest event history, timing controls, and
 the initialization marker omit `initial` values so Home Assistant restores
 them.
 
 One-second trigger-based freshness checks combine forced MQTT sample updates
-with the editable maximum age. By default, 15 seconds without evidence becomes
+with the editable maximum age. By default, 15 seconds without voltage evidence becomes
 `Sensor Fault` and creates a Home Assistant notification plus the validated SMS
 request unless power alerts are muted. Disconnected/reconnecting status uses
 that same evidence-age interval as a reconnect grace period. When fresh UPS
@@ -512,16 +511,16 @@ so recipients know the sensor-health incident has ended. Home Assistant
 start, automation reload, and fault recovery all
 run reconciliation; overdue persistent deadlines are then completed by the
 one-second confirmation automations. Duration is calculated from first
-discharge evidence to first recovery evidence, not from delayed confirmations.
+low-voltage evidence to first recovery evidence, not from delayed confirmations.
 
 Power has one dedicated mute. It suppresses only power notifications and
 validated SMS requests; telemetry, lifecycle transitions, and history continue.
-The dashboard reads outage history through template-sensor mirrors, keeping the
+The dashboard reads low-voltage history through template-sensor mirrors, keeping the
 persistent timestamp and duration helpers off the editable Monitor surface. A
 built-in gauge visualizes UPS battery percentage without custom cards.
-The configured `source: ups_current_inference` is the replacement seam for a
+The configured `source: ups_voltage_inference` is the replacement seam for a
 future isolated direct-mains input. Lifecycle, dashboard, and SMS consumers
-depend on the normalized evidence entity rather than on INA219 registers.
+depend on the normalized evidence entity rather than on MAX17043 registers.
 
 ## SMS service internals
 
@@ -584,7 +583,7 @@ devices or disconnect containers.
 
 Scenario state is `dict[target, state]`. Normal sensor targets use `normal`,
 `recover`, `danger-low`, `danger-high`, and `stale`. The UPS target
-`ups_monitor.power` uses `mains`, `battery`, `charging`, and `stale`.
+`ups_monitor.power` uses `mains`, `battery`, and `stale`.
 UPS `stale` emits no payload at all so the real 15-second freshness logic is
 exercised; power MQTT discovery uses `force_update` so unchanged one-second
 samples still count as fresh evidence.
@@ -613,7 +612,7 @@ The scripts under `testing/` are grouped by contract:
 | Area | Tests |
 | --- | --- |
 | Config/shared IDs/topics | `test_common_contracts.py`, `test_hardware_factory.py` |
-| Drivers and parsing | `test_serial_driver.py`, `test_dht11_driver.py`, `test_ina219_driver.py`, `test_legacy_serial_parser.py` |
+| Drivers and parsing | `test_serial_driver.py`, `test_dht11_driver.py`, `test_max17043_driver.py`, `test_legacy_serial_parser.py` |
 | Simulator and USB assignment | `test_simulate_serial.py`, `test_usb_setup.py` |
 | MQTT discovery | `test_homeassistant_publisher.py` |
 | HA model/generation/registry | `test_homeassistant_entities.py`, `test_homeassistant_generator.py`, `test_power_monitor.py` |

@@ -73,11 +73,6 @@ def make_publisher(
         baud_rate=9600,
         device_name=device_name,
         readings=readings or [{"name": "pressure", "label": "Pressure", "unit": "bar"}],
-        battery_telemetry=(
-            {"empty_voltage": 3.0, "full_voltage": 4.2}
-            if power_detection is not None
-            else None
-        ),
         power_detection=power_detection,
     )
     mqtt_config = MqttConfig(broker="mosquitto", port=1883)
@@ -289,12 +284,11 @@ def test_power_discovery_forces_identical_samples_to_refresh() -> None:
         device_name="UPS Monitor",
         readings=[
             {"name": "voltage", "unit": "V"},
-            {"name": "current", "unit": "mA"},
             {"name": "battery_level", "unit": "%"},
         ],
         power_detection={},
     )
-    publisher.publish({"current": 0.0})
+    publisher.publish({"voltage": 4.13})
     payload = json.loads(str(publisher.client.published[0]["payload"]))
     assert_equal(payload["force_update"], True, "power force_update")
 

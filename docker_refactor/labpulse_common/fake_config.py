@@ -44,12 +44,6 @@ DEFAULT_FAKE_POWER_SERVICE = {
             "device_class": "voltage",
         },
         {
-            "name": "current",
-            "label": "UPS Battery Current",
-            "unit": "mA",
-            "device_class": "current",
-        },
-        {
             "name": "battery_level",
             "label": "UPS Battery Level",
             "unit": "%",
@@ -58,12 +52,9 @@ DEFAULT_FAKE_POWER_SERVICE = {
     ],
     "reconnect_interval_seconds": 5,
     "read_interval_seconds": 1,
-    # Simulator calibration only; never use these as live UPS calibration.
-    "battery_telemetry": {"empty_voltage": 3.0, "full_voltage": 4.2},
     "power_detection": {
-        "source": "ups_current_inference",
-        "charging_current_ma": 40,
-        "discharging_current_ma": -49,
+        "source": "ups_voltage_inference",
+        "low_voltage_threshold": 4.0,
         "outage_confirm_seconds": 10,
         "restore_confirm_seconds": 15,
         "maximum_reading_age_seconds": 15,
@@ -144,7 +135,7 @@ def _add_default_fake_power_service(text: str) -> str:
     lines = text.splitlines(keepends=True)
     insertion_line = services_node.end_mark.line
     for index, line in enumerate(lines):
-        if line.startswith("# Live UPS example intentionally"):
+        if line.startswith("# Live UPS example"):
             insertion_line = index
             break
 

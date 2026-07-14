@@ -58,13 +58,13 @@ chmod +x setup_container_fs.sh
 Fake mode derives `~/labpulse-ha/config.fake.yaml` without altering the
 real-hardware settings in `config.yaml`. It changes configured serial paths to
 pseudo-terminal links, moves the room-environment DHT11 to simulated serial,
-and converts the enabled `power_detection` service from INA219/I2C to the
+and converts the enabled `power_detection` service from MAX17043/I2C to the
 `ups_monitor` pseudo-serial parser. Service names, readings, display metadata,
 power timings, and Home Assistant identities remain unchanged.
 
 If `config.yaml` has no active power service—as with the commented starter
 example—fake mode adds a complete enabled `ups_monitor` block to
-`config.fake.yaml` using documented simulator-only battery values.
+`config.fake.yaml` using documented simulator values.
 
 The generated fake Compose file mounts `config.fake.yaml` as
 `/app/config.yaml`. After editing the real source config, rerun
@@ -172,7 +172,7 @@ services:
 | `sms.recipients` | Unique international numbers; keep real values only in the live config |
 | service key | Stable machine ID used in containers, MQTT, and HA entities |
 | `enabled` | Whether Compose and HA generation include the service |
-| `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with INA219 UPS |
+| `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with MAX17043-compatible UPS gauge |
 | `parser` | Serial format selector: `pressure`, `pump_room`, `water`, `ups_simulator`, or generic pipe fallback |
 | `serial_port` | Real stable path or fake path |
 | `gpio_sensor` | Currently only `dht11` |
@@ -187,10 +187,8 @@ services:
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
 | `reconnect_interval_seconds` | Serial reopen delay |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
-| `i2c_sensor`, `i2c_bus`, `i2c_address` | INA219 UPS selection and exact I2C device |
-| `ina219_calibration`, `ina219_config_register`, `ina219_current_lsb_ma` | Required, hardware-verified INA219 conversion values |
-| `battery_telemetry` | Verified empty/full voltage range used only for battery percentage |
-| `power_detection` | Replaceable evidence source and dedicated outage/recovery/freshness timings |
+| `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
+| `power_detection` | Low-voltage inference threshold plus dedicated confirmation/recovery/freshness timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are Home Assistant helpers, not live

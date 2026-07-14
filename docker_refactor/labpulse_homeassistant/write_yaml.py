@@ -90,8 +90,7 @@ def entity_map(model: RenderModel) -> dict[str, object]:
             power = service.power
             service_map["power_lifecycle"] = {
                 "evidence_source": power.source,
-                "charging_status": power.charging_status_entity,
-                "discharge_evidence": power.discharge_evidence_entity,
+                "low_voltage_evidence": power.low_voltage_evidence_entity,
                 "sensor_fault": power.sensor_fault_entity,
                 "state": power.state_entity,
                 "muted": power.muted_entity,

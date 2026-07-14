@@ -1,10 +1,10 @@
-# Dedicated UPS-discharge power lifecycle. This deliberately does not use the
+# Dedicated UPS low-voltage inference lifecycle. This deliberately does not use the
 # normal LabPulse history_stats/percentage alarm machinery.
 
 input_numbers:
   - id: "labpulse_[[ service.service_id ]]_power_outage_confirm_seconds"
     config:
-      name: "[[ service.label ]] Outage Confirmation Time"
+      name: "[[ service.label ]] Low-Voltage Confirmation Time"
       min: 1
       max: 3600
       step: 1
@@ -28,7 +28,7 @@ input_numbers:
       mode: box
   - id: "labpulse_[[ service.service_id ]]_power_last_outage_duration"
     config:
-      name: "[[ service.label ]] Last Outage Duration"
+      name: "[[ service.label ]] Last Low-Voltage Event Duration"
       min: 0
       max: 604800
       step: 1
@@ -41,7 +41,7 @@ input_selects:
       name: "[[ service.label ]] Power State"
       options:
         - Normal
-        - On Battery
+        - Possible On Battery
         - Sensor Fault
 
 input_booleans:
@@ -53,47 +53,30 @@ input_booleans:
       name: "[[ service.label ]] Power Timing Initialized"
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate"
     config:
-      name: "[[ service.label ]] Outage Candidate"
+      name: "[[ service.label ]] Low-Voltage Candidate"
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate"
     config:
       name: "[[ service.label ]] Recovery Candidate"
   - id: "labpulse_[[ service.service_id ]]_power_outage_active"
     config:
-      name: "[[ service.label ]] Outage Active"
+      name: "[[ service.label ]] Low-Voltage Event Active"
 
 input_datetimes:
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_started"
-    config: {name: "[[ service.label ]] Outage Candidate Started", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Low-Voltage Candidate Started", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_deadline"
-    config: {name: "[[ service.label ]] Outage Candidate Deadline", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Low-Voltage Candidate Deadline", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_started"
     config: {name: "[[ service.label ]] Recovery Candidate Started", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_deadline"
     config: {name: "[[ service.label ]] Recovery Candidate Deadline", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_outage_started"
-    config: {name: "[[ service.label ]] Outage Started", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Low-Voltage Event Started", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_last_outage_started"
-    config: {name: "[[ service.label ]] Last Outage Started", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Last Low-Voltage Event Started", has_date: true, has_time: true}
 
 templates:
   - sensor:
-      - name: "[[ power.charging_status_unique_id ]]"
-        unique_id: "[[ power.charging_status_unique_id ]]"
-        icon: mdi:battery-charging
-        state: >
-          {% set raw = states('[[ power.current.expected_entity_id ]]') %}
-          {% if is_state('[[ power.sensor_fault_entity ]]', 'on') or not is_number(raw) %}
-            unavailable
-          {% elif raw | float <= [[ power.discharging_current_ma ]] %}
-            Discharging
-          {% elif raw | float >= [[ power.charging_current_ma ]] %}
-            Charging
-          {% else %}
-            Idle
-          {% endif %}
-        attributes:
-          evidence_source: "UPS battery discharge inference"
-          mains_measured_directly: false
       - name: "[[ power.last_outage_started_sensor_unique_id ]]"
         unique_id: "[[ power.last_outage_started_sensor_unique_id ]]"
         icon: mdi:calendar-clock
@@ -112,16 +95,16 @@ templates:
         seconds: "/1"
       - platform: state
         entity_id:
-          - "[[ power.current.expected_entity_id ]]"
+          - "[[ power.voltage.expected_entity_id ]]"
           - "[[ service.status_entity_id ]]"
     binary_sensor:
       - name: "[[ power.sensor_fault_unique_id ]]"
         unique_id: "[[ power.sensor_fault_unique_id ]]"
         device_class: problem
         state: >
-          {% set raw = states('[[ power.current.expected_entity_id ]]') %}
+          {% set raw = states('[[ power.voltage.expected_entity_id ]]') %}
           {% set status = states('[[ service.status_entity_id ]]') %}
-          {% set age = as_timestamp(now()) - as_timestamp(states.sensor.[[ power.current.expected_object_id ]].last_updated, 0) %}
+          {% set age = as_timestamp(now()) - as_timestamp(states.sensor.[[ power.voltage.expected_object_id ]].last_updated, 0) %}
           {% set maximum_age = [[ power.maximum_reading_age_seconds ]] if is_state('[[ power.timing_initialized_entity ]]', 'off') else states('[[ power.maximum_reading_age_seconds_entity ]]') | int([[ power.maximum_reading_age_seconds ]]) %}
           {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
              or not is_number(raw)
@@ -130,18 +113,18 @@ templates:
         attributes:
           maximum_evidence_age_seconds: >
             {{ [[ power.maximum_reading_age_seconds ]] if is_state('[[ power.timing_initialized_entity ]]', 'off') else states('[[ power.maximum_reading_age_seconds_entity ]]') | int([[ power.maximum_reading_age_seconds ]]) }}
-      - name: "[[ power.discharge_evidence_unique_id ]]"
-        unique_id: "[[ power.discharge_evidence_unique_id ]]"
+      - name: "[[ power.low_voltage_evidence_unique_id ]]"
+        unique_id: "[[ power.low_voltage_evidence_unique_id ]]"
         device_class: power
         state: >
-          {% set raw = states('[[ power.current.expected_entity_id ]]') %}
+          {% set raw = states('[[ power.voltage.expected_entity_id ]]') %}
           {{ is_state('[[ power.sensor_fault_entity ]]', 'off')
              and is_number(raw)
-             and raw | float <= [[ power.discharging_current_ma ]] }}
+             and raw | float < [[ power.low_voltage_threshold ]] }}
         attributes:
-          evidence_source: "ups_current_inference"
-          meaning: "Mains loss inferred from sustained UPS battery discharge; mains is not measured directly"
-          threshold_ma: "[[ power.discharging_current_ma ]]"
+          evidence_source: "ups_voltage_inference"
+          meaning: "Possible battery operation inferred from low UPS voltage; mains is not measured directly"
+          threshold_volts: "[[ power.low_voltage_threshold ]]"
 
 automations:
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_start"
@@ -149,7 +132,7 @@ automations:
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.discharge_evidence_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         to: "on"
     condition:
       - condition: state
@@ -173,7 +156,7 @@ automations:
     mode: restart
     trigger:
       - platform: state
-        entity_id: "[[ power.discharge_evidence_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         to: "off"
     condition:
       - condition: state
@@ -194,7 +177,7 @@ automations:
         entity_id: "[[ power.outage_candidate_entity ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.discharge_evidence_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         state: "on"
       - condition: state
         entity_id: "[[ power.sensor_fault_entity ]]"
@@ -211,7 +194,7 @@ automations:
         target: {entity_id: "[[ power.outage_candidate_entity ]]"}
       - service: input_select.select_option
         target: {entity_id: "[[ power.state_entity ]]"}
-        data: {option: "On Battery"}
+        data: {option: "Possible On Battery"}
       - choose:
           - conditions:
               - condition: state
@@ -220,8 +203,8 @@ automations:
             sequence:
               - service: persistent_notification.create
                 data:
-                  title: "LabPulse inferred power outage"
-                  message: "[[ service.label ]] is discharging continuously. Mains loss is inferred, not directly measured."
+                  title: "LabPulse low UPS voltage warning"
+                  message: "[[ service.label ]] voltage remained below [[ power.low_voltage_threshold ]] V. This can indicate battery operation, but mains is not measured directly."
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -229,14 +212,14 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "Inferred mains state", "state": "On Battery", "title": "LabPulse inferred power outage", "message": "[[ service.label ]] is on battery; mains loss is inferred from sustained UPS discharge.", "current": states('[[ power.current.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": "LabPulse low UPS voltage warning", "message": "[[ service.label ]] voltage remained below [[ power.low_voltage_threshold ]] V. This may indicate battery operation; mains is not measured directly.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_start"
     alias: "LabPulse [[ service.label ]] Recovery Candidate Start"
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.discharge_evidence_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         to: "off"
     condition:
       - condition: state
@@ -260,7 +243,7 @@ automations:
     mode: restart
     trigger:
       - platform: state
-        entity_id: "[[ power.discharge_evidence_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         to: "on"
     action:
       - service: input_boolean.turn_off
@@ -277,7 +260,7 @@ automations:
         entity_id: "[[ power.recovery_candidate_entity ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.discharge_evidence_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         state: "off"
       - condition: state
         entity_id: "[[ power.sensor_fault_entity ]]"
@@ -311,8 +294,8 @@ automations:
             sequence:
               - service: persistent_notification.create
                 data:
-                  title: "LabPulse inferred power recovery"
-                  message: "[[ service.label ]] stopped discharging. Recorded outage duration: {{ outage_duration }} seconds."
+                  title: "LabPulse UPS voltage recovered"
+                  message: "[[ service.label ]] voltage returned to at least [[ power.low_voltage_threshold ]] V. Low-voltage event duration: {{ outage_duration }} seconds; mains restoration is not measured directly."
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -320,7 +303,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "Inferred mains state", "state": "Normal", "title": "LabPulse inferred power recovery", "message": "[[ service.label ]] stopped discharging after " ~ outage_duration ~ " seconds.", "current": states('[[ power.current.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": "LabPulse UPS voltage recovered", "message": "[[ service.label ]] voltage recovered after a " ~ outage_duration ~ " second low-voltage event; mains restoration is not measured directly.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_fault"
     alias: "LabPulse [[ service.label ]] Power Sensor Fault"
@@ -347,7 +330,7 @@ automations:
               - service: persistent_notification.create
                 data:
                   title: "LabPulse UPS telemetry fault"
-                  message: "[[ service.label ]] has no fresh validated UPS-discharge evidence."
+                  message: "[[ service.label ]] has no fresh validated UPS voltage evidence."
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -355,7 +338,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS power evidence", "state": "Sensor Fault", "title": "LabPulse UPS telemetry fault", "message": "[[ service.label ]] has no fresh validated UPS-discharge evidence.", "current": states('[[ power.current.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": "Sensor Fault", "title": "LabPulse UPS telemetry fault", "message": "[[ service.label ]] has no fresh validated UPS voltage evidence.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_recovery"
     alias: "LabPulse [[ service.label ]] Power Sensor Recovery"
@@ -373,7 +356,7 @@ automations:
       - service: persistent_notification.create
         data:
           title: "LabPulse UPS telemetry restored"
-          message: "[[ service.label ]] is reporting fresh validated UPS-discharge evidence again."
+          message: "[[ service.label ]] is reporting fresh validated UPS voltage evidence again."
           notification_id: "labpulse_[[ service.service_id ]]_power"
       - service: mqtt.publish
         data:
@@ -381,7 +364,7 @@ automations:
           qos: 1
           retain: false
           payload: >
-            {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS power evidence", "state": states('[[ power.state_entity ]]'), "title": "LabPulse UPS telemetry restored", "message": "[[ service.label ]] is reporting fresh validated UPS-discharge evidence again.", "current": states('[[ power.current.expected_entity_id ]]')} | to_json }}
+            {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": states('[[ power.state_entity ]]'), "title": "LabPulse UPS telemetry restored", "message": "[[ service.label ]] is reporting fresh validated UPS voltage evidence again.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile"
     alias: "LabPulse [[ service.label ]] Power Reconcile"
@@ -419,9 +402,9 @@ automations:
             sequence:
               - service: input_select.select_option
                 target: {entity_id: "[[ power.state_entity ]]"}
-                data: {option: "On Battery"}
+                data: {option: "Possible On Battery"}
               - choose:
-                  - conditions: "{{ is_state('[[ power.discharge_evidence_entity ]]', 'off') and is_state('[[ power.recovery_candidate_entity ]]', 'off') }}"
+                  - conditions: "{{ is_state('[[ power.low_voltage_evidence_entity ]]', 'off') and is_state('[[ power.recovery_candidate_entity ]]', 'off') }}"
                     sequence:
                       - service: input_datetime.set_datetime
                         target: {entity_id: "[[ power.recovery_candidate_started_entity ]]"}
@@ -436,7 +419,7 @@ automations:
             target: {entity_id: "[[ power.state_entity ]]"}
             data: {option: "Normal"}
           - choose:
-              - conditions: "{{ is_state('[[ power.discharge_evidence_entity ]]', 'on') and is_state('[[ power.outage_candidate_entity ]]', 'off') }}"
+              - conditions: "{{ is_state('[[ power.low_voltage_evidence_entity ]]', 'on') and is_state('[[ power.outage_candidate_entity ]]', 'off') }}"
                 sequence:
                   - service: input_datetime.set_datetime
                     target: {entity_id: "[[ power.outage_candidate_started_entity ]]"}

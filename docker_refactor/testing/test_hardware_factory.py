@@ -9,7 +9,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 from labpulse_common.config import ServiceConfig
 from labpulse_hardware.drivers.dht11_driver import Driver as Dht11Driver
 from labpulse_hardware.drivers.factory import build_driver
-from labpulse_hardware.drivers.ina219_ups_driver import Driver as Ina219UpsDriver
+from labpulse_hardware.drivers.max17043_ups_driver import Driver as Max17043UpsDriver
 from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
 
@@ -141,32 +141,27 @@ def test_gpio_dht11_requires_pin() -> None:
     )
 
 
-def test_ina219_i2c_driver_builds() -> None:
-    """Check validated INA219 settings reach the concrete I2C driver."""
+def test_max17043_i2c_driver_builds() -> None:
+    """Check validated MAX17043 settings reach the concrete I2C driver."""
 
     service_config = make_service_config(
         driver="i2c",
         parser=None,
         serial_port=None,
-        i2c_sensor="ina219_ups",
+        i2c_sensor="max17043_ups",
         i2c_bus=1,
-        i2c_address=0x42,
-        ina219_calibration=4096,
-        ina219_config_register=0x399F,
-        ina219_current_lsb_ma=0.1,
-        battery_telemetry={"empty_voltage": 3.0, "full_voltage": 4.2},
+        i2c_address=0x36,
         power_detection={},
         readings=[
             {"name": "voltage", "unit": "V"},
-            {"name": "current", "unit": "mA"},
             {"name": "battery_level", "unit": "%"},
         ],
     )
 
     driver = build_driver("ups_monitor", service_config)
-    assert_equal(isinstance(driver, Ina219UpsDriver), True, "driver type")
+    assert_equal(isinstance(driver, Max17043UpsDriver), True, "driver type")
     assert_equal(driver.bus_number, 1, "I2C bus")
-    assert_equal(driver.address, 0x42, "I2C address")
+    assert_equal(driver.address, 0x36, "I2C address")
 
 
 TESTS = [
@@ -175,7 +170,7 @@ TESTS = [
     ("serial config requires parser", test_serial_config_requires_parser),
     ("gpio DHT11 driver builds", test_gpio_dht11_driver_builds),
     ("gpio DHT11 requires pin", test_gpio_dht11_requires_pin),
-    ("INA219 I2C driver builds", test_ina219_i2c_driver_builds),
+    ("MAX17043 I2C driver builds", test_max17043_i2c_driver_builds),
 ]
 
 

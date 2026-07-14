@@ -74,10 +74,10 @@ sensor
 ```
 
 UPS power is the deliberate exception to the generic zone/history path. Its
-INA219 or simulated telemetry still follows the same driver/MQTT boundary, but
-Home Assistant uses a dedicated `Normal` / `On Battery` / `Sensor Fault`
-lifecycle with persistent candidate deadlines. Mains loss is inferred from
-sustained UPS discharge; it is not measured directly.
+MAX17043 or simulated telemetry still follows the same driver/MQTT boundary,
+but Home Assistant uses a dedicated `Normal` / `Possible On Battery` /
+`Sensor Fault` lifecycle with persistent candidate deadlines. Possible battery
+operation is inferred from sustained low UPS voltage; mains is not measured.
 
 The key boundary is between facts and decisions:
 
@@ -147,7 +147,7 @@ Owns the live acquisition process:
 
 - service-loop orchestration
 - driver selection
-- serial, DHT11, and calibrated INA219 UPS drivers
+- serial, DHT11, and read-only MAX17043 UPS drivers
 - compatibility parsing of current Arduino text
 - MQTT discovery, state, and service-health publishing
 
@@ -183,7 +183,7 @@ The live config describes deployment facts:
 It owns enabled services, hardware access, parser choice, readings, display
 metadata, MQTT connection settings, SMS mode, and recipients.
 
-An INA219 service receives only its configured `/dev/i2c-N` device mapping.
+A MAX17043 service receives only its configured `/dev/i2c-N` device mapping.
 It does not require privileged mode or a broad `/dev` mount.
 
 Home Assistant owns operator state after generation:

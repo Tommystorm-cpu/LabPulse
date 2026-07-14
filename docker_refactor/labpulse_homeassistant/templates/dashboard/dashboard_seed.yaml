@@ -68,17 +68,13 @@ power_monitor:
       columns: full
     entities:
       - entity: "[[ power.state_entity ]]"
-        name: Power lifecycle
+        name: Inferred power state
       - entity: "[[ power.voltage.expected_entity_id ]]"
         name: UPS battery voltage
-      - entity: "[[ power.current.expected_entity_id ]]"
-        name: UPS battery current
-      - entity: "[[ power.charging_status_entity ]]"
-        name: Charging status
       - entity: "[[ power.last_outage_started_sensor_entity ]]"
-        name: Last inferred outage started
+        name: Last low-voltage event started
       - entity: "[[ power.last_outage_duration_sensor_entity ]]"
-        name: Last inferred outage duration
+        name: Last low-voltage event duration
 
 alarm_setup_sections:
   heading_card:
@@ -151,17 +147,17 @@ power_alarm_setup:
       - entity: "[[ power.muted_entity ]]"
         name: Power alerts muted
       - entity: "[[ power.outage_confirm_seconds_entity ]]"
-        name: Outage confirmation time
+        name: Low-voltage confirmation time
       - entity: "[[ power.restore_confirm_seconds_entity ]]"
         name: Recovery confirmation time
       - entity: "[[ power.maximum_reading_age_seconds_entity ]]"
         name: Maximum UPS evidence age
       - type: divider
-      - entity: "[[ power.discharge_evidence_entity ]]"
-        name: UPS discharge evidence (mains inferred)
+      - entity: "[[ power.low_voltage_evidence_entity ]]"
+        name: Low UPS voltage evidence
       - entity: "[[ power.sensor_fault_entity ]]"
         name: UPS evidence sensor fault
       - entity: "[[ power.outage_candidate_entity ]]"
-        name: Outage confirmation pending
+        name: Low-voltage confirmation pending
       - entity: "[[ power.recovery_candidate_entity ]]"
         name: Recovery confirmation pending

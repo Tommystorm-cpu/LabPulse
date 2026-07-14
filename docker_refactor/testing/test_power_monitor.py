@@ -27,19 +27,16 @@ def test_config_validation_and_stable_identity() -> None:
     simulated = load_config(SIM_CONFIG)
     sim_model = build_render_model(simulated)
     sim_service = sim_model.services[0]
-    if [reading.name for reading in sim_service.readings] != ["voltage", "current", "battery_level"]:
+    if [reading.name for reading in sim_service.readings] != ["voltage", "battery_level"]:
         raise AssertionError("simulator readings are not normalized")
 
     live_data = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
     service = live_data["services"]["ups_monitor"]
     service.update(
         driver="i2c",
-        i2c_sensor="ina219_ups",
+        i2c_sensor="max17043_ups",
         i2c_bus=1,
-        i2c_address=0x42,
-        ina219_calibration=4096,
-        ina219_config_register=0x399F,
-        ina219_current_lsb_ma=0.1,
+        i2c_address=0x36,
     )
     for key in ("parser", "serial_port", "baud_rate"):
         service.pop(key, None)
@@ -68,7 +65,7 @@ def test_config_validation_and_stable_identity() -> None:
         if "requires read_interval_seconds: 1" not in str(error):
             raise AssertionError(f"unexpected interval validation failure: {error}")
     else:
-        raise AssertionError("non-one-second INA219 power interval passed validation")
+        raise AssertionError("non-one-second MAX17043 power interval passed validation")
 
 
 def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
@@ -78,12 +75,9 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
     service = live_data["services"]["ups_monitor"]
     service.update(
         driver="i2c",
-        i2c_sensor="ina219_ups",
+        i2c_sensor="max17043_ups",
         i2c_bus=1,
-        i2c_address=0x42,
-        ina219_calibration=4096,
-        ina219_config_register=0x399F,
-        ina219_current_lsb_ma=0.1,
+        i2c_address=0x36,
     )
     for key in ("parser", "serial_port", "baud_rate"):
         service.pop(key, None)
@@ -147,14 +141,13 @@ def test_fake_usb_adds_power_to_commented_starter_config() -> None:
         raise AssertionError("starter fake UPS transport is incorrect")
     if [reading.name for reading in service.readings] != [
         "voltage",
-        "current",
         "battery_level",
     ]:
         raise AssertionError("starter fake UPS readings are incomplete")
     if service.power_detection is None:
         raise AssertionError("starter fake UPS lacks the dedicated power lifecycle")
-    if "# Live UPS example intentionally remains commented" not in converted_text:
-        raise AssertionError("derived fake config removed the live calibration instructions")
+    if "# Live UPS example for the verified MAX17043-compatible gauge" not in converted_text:
+        raise AssertionError("derived fake config removed the live hardware instructions")
 
 
 def render_power() -> tuple[dict, dict, str]:
@@ -180,7 +173,7 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
     if "for:" in text:
         raise AssertionError("power lifecycle relies on restart-unsafe for timers")
     if set(package["input_select"]["labpulse_ups_monitor_power_state"]["options"]) != {
-        "Normal", "On Battery", "Sensor Fault"
+        "Normal", "Possible On Battery", "Sensor Fault"
     }:
         raise AssertionError("power lifecycle has unexpected states")
     datetime_ids = set(package["input_datetime"])
@@ -269,8 +262,10 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
             raise AssertionError(f"SMS payload missing validated field: {field}")
     power_binary = package["template"][1]["binary_sensor"]
     meaning = power_binary[1]["attributes"]["meaning"]
-    if "Mains loss inferred" not in meaning or "mains is not measured directly" not in meaning:
+    if "low UPS voltage" not in meaning or "mains is not measured directly" not in meaning:
         raise AssertionError("generated wording overstates direct mains measurement")
+    if float(power_binary[1]["attributes"]["threshold_volts"]) != 4.0:
+        raise AssertionError("generated evidence does not expose the voltage threshold")
 
 
 def test_power_dashboard_rendering() -> None:
@@ -294,12 +289,10 @@ def test_power_dashboard_rendering() -> None:
     entities = monitor_cards[-1]["entities"]
     names = [row["name"] for row in entities]
     if names != [
-        "Power lifecycle",
+        "Inferred power state",
         "UPS battery voltage",
-        "UPS battery current",
-        "Charging status",
-        "Last inferred outage started",
-        "Last inferred outage duration",
+        "Last low-voltage event started",
+        "Last low-voltage event duration",
     ]:
         raise AssertionError(f"unexpected power dashboard rows: {names!r}")
     if "title" in monitor_cards[-1]:
@@ -316,7 +309,7 @@ def test_power_dashboard_rendering() -> None:
     if not any(row["entity"] == "input_boolean.labpulse_ups_monitor_power_muted" for row in setup_entities):
         raise AssertionError("power alarm setup does not expose dedicated mute")
     expected_timing_rows = {
-        "input_number.labpulse_ups_monitor_power_outage_confirm_seconds": "Outage confirmation time",
+        "input_number.labpulse_ups_monitor_power_outage_confirm_seconds": "Low-voltage confirmation time",
         "input_number.labpulse_ups_monitor_power_restore_confirm_seconds": "Recovery confirmation time",
         "input_number.labpulse_ups_monitor_power_maximum_reading_age_seconds": "Maximum UPS evidence age",
     }

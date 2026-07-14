@@ -169,19 +169,15 @@ services:
         device_class: "humidity"
     read_interval_seconds: 2
 
-# Live UPS example intentionally remains commented until the installed HAT has
-# been checked. Add this beneath `services:` in ~/labpulse-ha/config.yaml, not
-# to this starter file. Do not guess the VERIFY_ON_LIVE_PI values.
+# Live UPS example for the verified MAX17043-compatible gauge at address 0x36.
+# Add this beneath `services:` in ~/labpulse-ha/config.yaml when deploying it.
 #
 #  ups_monitor:
 #    enabled: true
 #    driver: i2c
-#    i2c_sensor: ina219_ups
+#    i2c_sensor: max17043_ups
 #    i2c_bus: 1
-#    i2c_address: 0x42  # verify with: i2cdetect -y 1
-#    ina219_calibration: VERIFY_ON_LIVE_PI
-#    ina219_config_register: VERIFY_ON_LIVE_PI
-#    ina219_current_lsb_ma: VERIFY_ON_LIVE_PI
+#    i2c_address: 0x36
 #    device_name: "UPS Monitor"
 #    display:
 #      section: "UPS Power"
@@ -189,17 +185,12 @@ services:
 #      order: 10
 #    readings:
 #      - {name: voltage, label: "UPS Battery Voltage", unit: V, device_class: voltage}
-#      - {name: current, label: "UPS Battery Current", unit: mA, device_class: current}
 #      - {name: battery_level, label: "UPS Battery Level", unit: "%", device_class: battery}
 #    read_interval_seconds: 1
 #    reconnect_interval_seconds: 5
-#    battery_telemetry:
-#      empty_voltage: VERIFY_ON_LIVE_PI
-#      full_voltage: VERIFY_ON_LIVE_PI
 #    power_detection:
-#      source: ups_current_inference
-#      charging_current_ma: 40
-#      discharging_current_ma: -49
+#      source: ups_voltage_inference
+#      low_voltage_threshold: 4.0
 #      outage_confirm_seconds: 10
 #      restore_confirm_seconds: 15
 #      maximum_reading_age_seconds: 15

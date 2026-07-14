@@ -132,21 +132,17 @@ class ReadingModel:
 
 @dataclass
 class PowerModel:
-    """Dedicated UPS-discharge lifecycle identities and timing settings."""
+    """Dedicated UPS low-voltage lifecycle identities and timing settings."""
 
     source: str
     voltage: ReadingModel
-    current: ReadingModel
     battery_level: ReadingModel
-    charging_current_ma: float
-    discharging_current_ma: float
+    low_voltage_threshold: float
     outage_confirm_seconds: int
     restore_confirm_seconds: int
     maximum_reading_age_seconds: int
-    charging_status_unique_id: str
-    charging_status_entity: str
-    discharge_evidence_unique_id: str
-    discharge_evidence_entity: str
+    low_voltage_evidence_unique_id: str
+    low_voltage_evidence_entity: str
     sensor_fault_unique_id: str
     sensor_fault_entity: str
     state_entity: str
@@ -333,17 +329,13 @@ def build_power_model(
     return PowerModel(
         source=config.source,
         voltage=by_name["voltage"],
-        current=by_name["current"],
         battery_level=by_name["battery_level"],
-        charging_current_ma=config.charging_current_ma,
-        discharging_current_ma=config.discharging_current_ma,
+        low_voltage_threshold=config.low_voltage_threshold,
         outage_confirm_seconds=config.outage_confirm_seconds,
         restore_confirm_seconds=config.restore_confirm_seconds,
         maximum_reading_age_seconds=config.maximum_reading_age_seconds,
-        charging_status_unique_id=stable_id(*prefix, "charging_status"),
-        charging_status_entity=entity_id("sensor", *prefix, "charging_status"),
-        discharge_evidence_unique_id=stable_id(*prefix, "discharge_evidence"),
-        discharge_evidence_entity=entity_id("binary_sensor", *prefix, "discharge_evidence"),
+        low_voltage_evidence_unique_id=stable_id(*prefix, "low_voltage_evidence"),
+        low_voltage_evidence_entity=entity_id("binary_sensor", *prefix, "low_voltage_evidence"),
         sensor_fault_unique_id=stable_id(*prefix, "sensor_fault"),
         sensor_fault_entity=entity_id("binary_sensor", *prefix, "sensor_fault"),
         state_entity=entity_id("input_select", *prefix, "state"),

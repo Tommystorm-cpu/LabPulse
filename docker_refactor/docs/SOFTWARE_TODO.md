@@ -178,17 +178,19 @@ notifications and SMS but does not expire and is not recipient-specific.
 ### Power outage message consolidation
 
 - [x] Confirm that UPS/power monitoring remains in scope for the active system.
-- [x] Define and implement the dedicated Normal/On Battery/Sensor Fault model.
+- [x] Define and implement the dedicated Normal/Possible On Battery/Sensor Fault model.
 - [ ] Combine a short outage and restoration into one useful event/message when
   appropriate.
-- [ ] Avoid sending an outage and restoration pair for harmless brief
+- [x] Avoid sending an outage and restoration pair for harmless brief
   interruptions.
 - [ ] Test longer outages and repeated flapping separately.
 
-Current state: INA219 telemetry, simulated UPS input, persistent Home Assistant
-outage/recovery inference, mute, dashboard, and dry-run-capable SMS requests are
-implemented. Test-Pi acceptance, live HAT identification/calibration, and a
-future isolated direct-mains evidence source remain outstanding.
+Current state: read-only MAX17043-compatible voltage/SOC telemetry, simulated
+UPS input, persistent low-voltage inference, mute, dashboard, and dry-run-capable
+SMS requests are implemented. Test-Pi acceptance, controlled live validation,
+and a future isolated direct-mains evidence source remain outstanding. Current
+and charging status are intentionally absent because the installed gauge does
+not provide them.
 
 ### Fridge parameter integration
 
@@ -325,7 +327,7 @@ Do not start these until required by a real deployment or after the P0/P1 work
 is under control:
 
 - additional deployment modes such as grouping services into fewer containers;
-- additional I2C sensor types beyond the implemented INA219 UPS driver;
+- additional I2C sensor types beyond the implemented MAX17043 UPS driver;
 - per-user notification preferences beyond the agreed mute requirement;
 - a plugin system beyond the existing driver/factory boundary;
 - advanced dashboard customization that depends on non-standard Home Assistant

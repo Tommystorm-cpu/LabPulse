@@ -38,7 +38,7 @@ DEVICE_ALIASES = {
     "ups_monitor": "ups_monitor",
 }
 SCENARIO_STATES = ("normal", "recover", "danger-low", "danger-high", "stale")
-UPS_SCENARIO_STATES = ("mains", "battery", "charging", "stale")
+UPS_SCENARIO_STATES = ("mains", "battery", "stale")
 SCENARIO_TARGETS = (
     "pressure_monitor.pressure",
     "pump_room.flow1",
@@ -242,14 +242,11 @@ class ReadingGenerator:
         if state == "stale":
             return None
         if state == "battery":
-            voltage, current, battery_level = 3.95, -120.0, 79.2
-        elif state == "charging":
-            voltage, current, battery_level = 4.08, 120.0, 90.0
+            voltage, battery_level = 3.95, 79.2
         else:
-            voltage, current, battery_level = 4.13, 0.0, 94.2
+            voltage, battery_level = 4.13, 94.2
         return (
-            f"Voltage: {voltage:.3f} V | Current: {current:.1f} mA | "
-            f"BatteryLevel: {battery_level:.1f} %\n"
+            f"Voltage: {voltage:.3f} V | BatteryLevel: {battery_level:.1f} %\n"
         )
 
     def payloads(self) -> dict[str, str]:

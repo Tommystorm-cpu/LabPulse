@@ -25,24 +25,15 @@ services:
         label: "UPS Battery Voltage"
         unit: "V"
         device_class: "voltage"
-      - name: "current"
-        label: "UPS Battery Current"
-        unit: "mA"
-        device_class: "current"
       - name: "battery_level"
         label: "UPS Battery Level"
         unit: "%"
         device_class: "battery"
     reconnect_interval_seconds: 5
     read_interval_seconds: 1
-    # Simulator-only voltage range. Do not copy these values to live hardware.
-    battery_telemetry:
-      empty_voltage: 3.0
-      full_voltage: 4.2
     power_detection:
-      source: ups_current_inference
-      charging_current_ma: 40
-      discharging_current_ma: -49
+      source: ups_voltage_inference
+      low_voltage_threshold: 4.0
       outage_confirm_seconds: 10
       restore_confirm_seconds: 15
       maximum_reading_age_seconds: 15

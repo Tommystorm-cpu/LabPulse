@@ -75,24 +75,23 @@ def test_generated_payloads_match_parsers() -> None:
         raise AssertionError(f"invalid turbo payload: {payloads['turbo_pump']!r}")
     if room is None or set(room) != {"temperature", "humidity"}:
         raise AssertionError(f"invalid room payload: {payloads['room_environment']!r}")
-    if ups is None or set(ups) != {"voltage", "current", "battery_level"}:
+    if ups is None or set(ups) != {"voltage", "battery_level"}:
         raise AssertionError(f"invalid UPS payload: {payloads['ups_monitor']!r}")
 
 
 def test_ups_power_scenarios_and_stale_suppression() -> None:
-    """Check UPS scenarios use signed current and stale stops publication."""
+    """Check UPS scenarios use real gauge fields and stale stops publication."""
 
     generator = ReadingGenerator(seed=2)
     parser = SerialParser("ups_monitor", "ups_simulator")
-    expected_current_sign = {"mains": 0, "battery": -1, "charging": 1}
-    for state, sign in expected_current_sign.items():
+    expected_voltage = {"mains": 4.13, "battery": 3.95}
+    for state, voltage in expected_voltage.items():
         generator.set_scenario("ups_monitor.power", state)
         parsed = parser.parse(generator.payloads()["ups_monitor"])
         if parsed is None:
             raise AssertionError(f"UPS {state} payload did not parse")
-        current = parsed["current"]
-        if sign < 0 and current >= 0 or sign > 0 and current <= 0 or sign == 0 and current != 0:
-            raise AssertionError(f"UPS {state} current has wrong sign: {current}")
+        if parsed["voltage"] != voltage or set(parsed) != {"voltage", "battery_level"}:
+            raise AssertionError(f"UPS {state} payload is not truthful: {parsed!r}")
 
     generator.set_scenario("ups_monitor.power", "stale")
     if "ups_monitor" in generator.payloads():

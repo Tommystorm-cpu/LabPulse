@@ -47,7 +47,7 @@ def load_alarm_seed() -> dict[str, Any]:
 
 
 def load_power_seed() -> dict[str, Any]:
-    """Load the isolated UPS-discharge lifecycle seed rules."""
+    """Load the isolated UPS low-voltage lifecycle seed rules."""
 
     return yaml.safe_load((TEMPLATE_DIR / "power_logic.yaml").read_text(encoding="utf-8"))
 
