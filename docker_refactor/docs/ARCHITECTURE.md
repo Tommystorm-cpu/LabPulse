@@ -73,6 +73,12 @@ sensor
   -> dry-run log or ModemManager
 ```
 
+UPS power is the deliberate exception to the generic zone/history path. Its
+INA219 or simulated telemetry still follows the same driver/MQTT boundary, but
+Home Assistant uses a dedicated `Normal` / `On Battery` / `Sensor Fault`
+lifecycle with persistent candidate deadlines. Mains loss is inferred from
+sustained UPS discharge; it is not measured directly.
+
 The key boundary is between facts and decisions:
 
 - Python hardware services publish values and connection health.
@@ -141,7 +147,7 @@ Owns the live acquisition process:
 
 - service-loop orchestration
 - driver selection
-- serial and DHT11 drivers
+- serial, DHT11, and calibrated INA219 UPS drivers
 - compatibility parsing of current Arduino text
 - MQTT discovery, state, and service-health publishing
 
@@ -176,6 +182,9 @@ The live config describes deployment facts:
 
 It owns enabled services, hardware access, parser choice, readings, display
 metadata, MQTT connection settings, SMS mode, and recipients.
+
+An INA219 service receives only its configured `/dev/i2c-N` device mapping.
+It does not require privileged mode or a broad `/dev` mount.
 
 Home Assistant owns operator state after generation:
 
@@ -251,7 +260,9 @@ silencing delivery.
 ## Failure behavior
 
 - A missing serial device does not terminate the service loop. The driver
-  reports disconnected/reconnecting and periodically retries.
+  reports disconnected/reconnecting and periodically retries. Home Assistant
+  trusts the last valid sample until Maximum Reading Age expires, so a brief
+  reconnect does not immediately notify.
 - Individual DHT11 timing failures are ignored; sustained missing updates are
   caught by Home Assistant stale detection.
 - Parser output not declared in config is ignored instead of creating surprise

@@ -1,0 +1,48 @@
+mqtt:
+  broker: mosquitto
+  port: 1883
+
+sms:
+  # Simulation must never contact a real modem.
+  dry_run: true
+  recipients:
+    - "+447700900000"
+
+services:
+  ups_monitor:
+    enabled: true
+    driver: serial
+    parser: ups_simulator
+    serial_port: "/tmp/labpulse-fake-serial/ups_monitor"
+    baud_rate: 9600
+    device_name: "UPS Monitor"
+    display:
+      section: "UPS Power"
+      icon: "mdi:battery-charging"
+      order: 10
+    readings:
+      - name: "voltage"
+        label: "UPS Battery Voltage"
+        unit: "V"
+        device_class: "voltage"
+      - name: "current"
+        label: "UPS Battery Current"
+        unit: "mA"
+        device_class: "current"
+      - name: "battery_level"
+        label: "UPS Battery Level"
+        unit: "%"
+        device_class: "battery"
+    reconnect_interval_seconds: 5
+    read_interval_seconds: 1
+    # Simulator-only voltage range. Do not copy these values to live hardware.
+    battery_telemetry:
+      empty_voltage: 3.0
+      full_voltage: 4.2
+    power_detection:
+      source: ups_current_inference
+      charging_current_ma: 40
+      discharging_current_ma: -49
+      outage_confirm_seconds: 10
+      restore_confirm_seconds: 15
+      maximum_reading_age_seconds: 15

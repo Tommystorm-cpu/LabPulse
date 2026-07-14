@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from labpulse_common.config import LabPulseConfig, ReadingConfig
+from labpulse_common.config import LabPulseConfig, PowerDetectionConfig, ReadingConfig
 from labpulse_common.identity import entity_id, slug, stable_id
 from labpulse_common.mqtt_contracts import SMS_SEND_TOPIC
 
@@ -131,6 +131,47 @@ class ReadingModel:
 
 
 @dataclass
+class PowerModel:
+    """Dedicated UPS-discharge lifecycle identities and timing settings."""
+
+    source: str
+    voltage: ReadingModel
+    current: ReadingModel
+    battery_level: ReadingModel
+    charging_current_ma: float
+    discharging_current_ma: float
+    outage_confirm_seconds: int
+    restore_confirm_seconds: int
+    maximum_reading_age_seconds: int
+    charging_status_unique_id: str
+    charging_status_entity: str
+    discharge_evidence_unique_id: str
+    discharge_evidence_entity: str
+    sensor_fault_unique_id: str
+    sensor_fault_entity: str
+    state_entity: str
+    muted_entity: str
+    outage_confirm_seconds_entity: str
+    restore_confirm_seconds_entity: str
+    maximum_reading_age_seconds_entity: str
+    timing_initialized_entity: str
+    outage_candidate_entity: str
+    recovery_candidate_entity: str
+    outage_active_entity: str
+    outage_candidate_started_entity: str
+    outage_candidate_deadline_entity: str
+    recovery_candidate_started_entity: str
+    recovery_candidate_deadline_entity: str
+    outage_started_entity: str
+    last_outage_started_entity: str
+    last_outage_duration_entity: str
+    last_outage_started_sensor_unique_id: str
+    last_outage_started_sensor_entity: str
+    last_outage_duration_sensor_unique_id: str
+    last_outage_duration_sensor_entity: str
+
+
+@dataclass
 class ServiceModel:
     """Template data for one enabled LabPulse service."""
 
@@ -155,6 +196,7 @@ class ServiceModel:
 
     # Per-reading template models generated from the service configuration.
     readings: list[ReadingModel] = field(default_factory=list)
+    power: PowerModel | None = None
 
     @property
     def status_unique_id(self) -> str:
@@ -183,6 +225,17 @@ class RenderModel:
         return [
             (service, reading)
             for service in self.services
+            for reading in service.readings
+        ]
+
+    @property
+    def alarm_readings(self) -> list[tuple[ServiceModel, ReadingModel]]:
+        """Return readings governed by the normal aggregate alarm machinery."""
+
+        return [
+            (service, reading)
+            for service in self.services
+            if service.power is None
             for reading in service.readings
         ]
 
@@ -256,9 +309,64 @@ def build_render_model(config: LabPulseConfig) -> RenderModel:
         for reading in service_config.readings:
             service.readings.append(build_reading_model(service_name, service_id, reading))
 
+        if service_config.power_detection is not None:
+            service.power = build_power_model(
+                service_name,
+                service.readings,
+                service_config.power_detection,
+            )
+
         services.append(service)
 
     return RenderModel(services=services)
+
+
+def build_power_model(
+    service_name: str,
+    readings: list[ReadingModel],
+    config: PowerDetectionConfig,
+) -> PowerModel:
+    """Build the dedicated power model from normalized telemetry readings."""
+
+    by_name = {reading.name: reading for reading in readings}
+    prefix = (service_name, "power")
+    return PowerModel(
+        source=config.source,
+        voltage=by_name["voltage"],
+        current=by_name["current"],
+        battery_level=by_name["battery_level"],
+        charging_current_ma=config.charging_current_ma,
+        discharging_current_ma=config.discharging_current_ma,
+        outage_confirm_seconds=config.outage_confirm_seconds,
+        restore_confirm_seconds=config.restore_confirm_seconds,
+        maximum_reading_age_seconds=config.maximum_reading_age_seconds,
+        charging_status_unique_id=stable_id(*prefix, "charging_status"),
+        charging_status_entity=entity_id("sensor", *prefix, "charging_status"),
+        discharge_evidence_unique_id=stable_id(*prefix, "discharge_evidence"),
+        discharge_evidence_entity=entity_id("binary_sensor", *prefix, "discharge_evidence"),
+        sensor_fault_unique_id=stable_id(*prefix, "sensor_fault"),
+        sensor_fault_entity=entity_id("binary_sensor", *prefix, "sensor_fault"),
+        state_entity=entity_id("input_select", *prefix, "state"),
+        muted_entity=entity_id("input_boolean", *prefix, "muted"),
+        outage_confirm_seconds_entity=entity_id("input_number", *prefix, "outage_confirm_seconds"),
+        restore_confirm_seconds_entity=entity_id("input_number", *prefix, "restore_confirm_seconds"),
+        maximum_reading_age_seconds_entity=entity_id("input_number", *prefix, "maximum_reading_age_seconds"),
+        timing_initialized_entity=entity_id("input_boolean", *prefix, "timing_initialized"),
+        outage_candidate_entity=entity_id("input_boolean", *prefix, "outage_candidate"),
+        recovery_candidate_entity=entity_id("input_boolean", *prefix, "recovery_candidate"),
+        outage_active_entity=entity_id("input_boolean", *prefix, "outage_active"),
+        outage_candidate_started_entity=entity_id("input_datetime", *prefix, "outage_candidate_started"),
+        outage_candidate_deadline_entity=entity_id("input_datetime", *prefix, "outage_candidate_deadline"),
+        recovery_candidate_started_entity=entity_id("input_datetime", *prefix, "recovery_candidate_started"),
+        recovery_candidate_deadline_entity=entity_id("input_datetime", *prefix, "recovery_candidate_deadline"),
+        outage_started_entity=entity_id("input_datetime", *prefix, "outage_started"),
+        last_outage_started_entity=entity_id("input_datetime", *prefix, "last_outage_started"),
+        last_outage_duration_entity=entity_id("input_number", *prefix, "last_outage_duration"),
+        last_outage_started_sensor_unique_id=stable_id(*prefix, "last_outage_started"),
+        last_outage_started_sensor_entity=entity_id("sensor", *prefix, "last_outage_started"),
+        last_outage_duration_sensor_unique_id=stable_id(*prefix, "last_outage_duration"),
+        last_outage_duration_sensor_entity=entity_id("sensor", *prefix, "last_outage_duration"),
+    )
 
 
 def build_reading_model(

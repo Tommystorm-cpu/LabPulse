@@ -33,7 +33,7 @@ def test_fake_usb_compose_contract() -> None:
     project_dir = TEST_TMP_DIR / f"deployment-{uuid4().hex}"
     project_dir.mkdir()
     try:
-        config_path = project_dir / "config.yaml"
+        config_path = project_dir / "config.fake.yaml"
         output_path = project_dir / "compose.yaml"
         config_path.write_text(
             """mqtt:
@@ -103,13 +103,20 @@ services:
         if "/run/dbus:/run/dbus:ro" in sms["volumes"]:
             raise AssertionError("dry-run SMS worker unexpectedly has the D-Bus mount")
 
-        base_mounts = compose["x-labpulse-python-base"]["volumes"]
+        hardware_mounts = hardware["volumes"]
         for mount in (
             "/tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
             "/dev/pts:/dev/pts",
         ):
-            if mount not in base_mounts:
+            if mount not in hardware_mounts:
                 raise AssertionError(f"missing fake-USB mount: {mount}")
+        if hardware.get("privileged") is True or hardware.get("devices"):
+            raise AssertionError("fake serial service unexpectedly has real-device access")
+        expected_config_mount = "./config.fake.yaml:/app/config.yaml:ro"
+        if expected_config_mount not in hardware_mounts:
+            raise AssertionError("fake hardware does not mount the derived runtime config")
+        if expected_config_mount not in sms["volumes"]:
+            raise AssertionError("fake SMS worker does not mount the derived runtime config")
     finally:
         # Keep cleanup simple and local; repository-wide test cleanup also
         # removes testing/tmp after the full suite.
@@ -130,6 +137,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'replace_dir "$SCRIPT_DIR/labpulse_hardware"',
         'replace_dir "$SCRIPT_DIR/labpulse_sms"',
         'copy_file "$SCRIPT_DIR/simulate_serial.py"',
+        'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
         'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
@@ -138,6 +146,12 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'adafruit-circuitpython-dht',
         'adafruit-blinka',
         'lgpio',
+        'smbus2',
+        '"FAKE_UPS_PORT": "/tmp/labpulse-fake-serial/ups_monitor"',
+        'convert_power_service_to_fake_serial',
+        'RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"',
+        '--config "$RUNTIME_CONFIG"',
+        'including UPS power',
     )
     for fragment in required_fragments:
         if fragment not in source:
@@ -161,6 +175,48 @@ def test_setup_refresh_and_preservation_contract() -> None:
     for fragment in required_generator_fragments:
         if fragment not in generator_source:
             raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
+
+
+def test_real_i2c_compose_is_least_privilege() -> None:
+    """Expose only the configured I2C node without privileged mode or all /dev."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    project_dir = TEST_TMP_DIR / f"i2c-deployment-{uuid4().hex}"
+    project_dir.mkdir()
+    try:
+        config_path = project_dir / "config.yaml"
+        output_path = project_dir / "compose.yaml"
+        config_path.write_text(
+            """mqtt: {broker: mosquitto}
+sms: {dry_run: true}
+services:
+  ups_monitor:
+    enabled: true
+    driver: i2c
+    i2c_bus: 1
+""",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", embedded_compose_generator(), str(config_path), str(output_path), str(project_dir), "0"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AssertionError(result.stderr or result.stdout)
+        service = yaml.safe_load(output_path.read_text(encoding="utf-8"))["services"]["labpulse-ups-monitor"]
+        if service.get("devices") != ["/dev/i2c-1:/dev/i2c-1"]:
+            raise AssertionError(f"unexpected I2C device mapping: {service.get('devices')!r}")
+        if service.get("privileged") is True or "/dev:/dev" in service.get("volumes", []):
+            raise AssertionError("I2C service received broad device privileges")
+    finally:
+        for path in sorted(project_dir.rglob("*"), reverse=True):
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                path.rmdir()
+        project_dir.rmdir()
 
 
 def test_sms_delivery_mode_controls_modem_access() -> None:
@@ -223,6 +279,7 @@ services:
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("fake USB Compose contract", test_fake_usb_compose_contract),
+    ("real I2C Compose least privilege", test_real_i2c_compose_is_least_privilege),
     ("SMS delivery mode controls modem access", test_sms_delivery_mode_controls_modem_access),
     ("setup refresh and preservation contract", test_setup_refresh_and_preservation_contract),
 ]

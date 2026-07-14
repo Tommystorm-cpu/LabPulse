@@ -5,7 +5,7 @@ from typing import Any
 
 import yaml
 
-from .data_models import GeneratorPaths, RenderModel, ServiceModel
+from .data_models import GeneratorPaths, RenderModel
 from .template_utils import expand_template, render_template_file
 
 
@@ -25,96 +25,120 @@ def render_alarm(paths: GeneratorPaths, model: RenderModel) -> None:
 
 
 def package_context(model: RenderModel) -> dict[str, str]:
-    """Return rendered package sections from the alarm seed."""
+    """Return rendered package sections from normal and power seeds."""
 
     seed = load_alarm_seed()
+    power_seed = load_power_seed()
     return {
-        "input_numbers": indented_yaml(input_numbers(seed, model), 2),
-        "input_selects": indented_yaml(input_selects(seed, model), 2),
-        "input_booleans": indented_yaml(input_booleans(seed, model), 2),
+        "input_numbers": indented_yaml(input_numbers(seed, power_seed, model), 2),
+        "input_selects": indented_yaml(input_selects(seed, power_seed, model), 2),
+        "input_booleans": indented_yaml(input_booleans(seed, power_seed, model), 2),
+        "input_datetimes": indented_yaml(input_datetimes(power_seed, model), 2),
         "sensors": indented_yaml(sensors(seed, model), 2),
-        "binary_sensors": indented_yaml(binary_sensors(seed, model), 2),
-        "automations": indented_yaml(automations(seed, model), 2),
+        "templates": indented_yaml(templates(seed, power_seed, model), 2),
+        "automations": indented_yaml(automations(seed, power_seed, model), 2),
     }
 
 
 def load_alarm_seed() -> dict[str, Any]:
-    """Load editable alarm logic seed rules."""
+    """Load editable normal alarm logic seed rules."""
 
     return yaml.safe_load((TEMPLATE_DIR / "alarm_logic.yaml").read_text(encoding="utf-8"))
 
 
-def input_numbers(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+def load_power_seed() -> dict[str, Any]:
+    """Load the isolated UPS-discharge lifecycle seed rules."""
+
+    return yaml.safe_load((TEMPLATE_DIR / "power_logic.yaml").read_text(encoding="utf-8"))
+
+
+def input_numbers(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated input_number helpers."""
 
     helpers: dict[str, object] = {}
     rules = seed["input_numbers"]
     for service in model.services:
-        if service.readings:
+        if service.readings and service.power is None:
             helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
-        for reading in service.readings:
-            helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
+            for reading in service.readings:
+                helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
+        if service.power is not None:
+            helpers.update(expand_keyed_items(power_seed.get("input_numbers", []), {"service": service, "power": service.power}))
     return helpers
 
 
-def input_booleans(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+def input_booleans(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated input_boolean helpers."""
 
     helpers: dict[str, object] = {}
     rules = seed["input_booleans"]
     for service in model.services:
-        if service.readings:
+        if service.readings and service.power is None:
             helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
-    for service, reading in model.readings:
+        if service.power is not None:
+            helpers.update(expand_keyed_items(power_seed.get("input_booleans", []), {"service": service, "power": service.power}))
+    for service, reading in model.alarm_readings:
         helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
     return helpers
 
 
-def input_selects(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+def input_selects(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated input_select helpers."""
 
     helpers: dict[str, object] = {}
-    rules = seed["input_selects"]
-    for service, reading in model.readings:
-        helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
+    for service, reading in model.alarm_readings:
+        helpers.update(expand_keyed_items(seed["input_selects"].get("reading", []), {"service": service, "reading": reading}))
+    for service in model.services:
+        if service.power is not None:
+            helpers.update(expand_keyed_items(power_seed.get("input_selects", []), {"service": service, "power": service.power}))
+    return helpers
+
+
+def input_datetimes(power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+    """Return restart-persistent power candidate and outage timestamps."""
+
+    helpers: dict[str, object] = {}
+    for service in model.services:
+        if service.power is not None:
+            helpers.update(expand_keyed_items(power_seed.get("input_datetimes", []), {"service": service, "power": service.power}))
     return helpers
 
 
 def sensors(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
-    """Return generated sensor platform entries."""
+    """Return normal alarm history-stat sensor platform entries."""
 
     result = []
-    rules = seed["sensors"]
-    for service, reading in model.readings:
-        result.extend(
-            expand_template(item, {"service": service, "reading": reading})
-            for item in rules.get("reading", [])
-        )
+    for service, reading in model.alarm_readings:
+        result.extend(expand_template(item, {"service": service, "reading": reading}) for item in seed["sensors"].get("reading", []))
     return result
 
 
-def binary_sensors(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
-    """Return generated template binary sensors."""
+def templates(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
+    """Return normal alarm and dedicated power template entity blocks."""
 
-    sensors = []
-    rules = seed["binary_sensors"]
-    for service, reading in model.readings:
+    normal = []
+    for service, reading in model.alarm_readings:
         context = {"service": service, "reading": reading}
-        sensors.extend(expand_template(item, context) for item in rules.get("reading", []))
+        normal.extend(expand_template(item, context) for item in seed["binary_sensors"].get("reading", []))
+    result: list[dict[str, object]] = [{"binary_sensor": normal}] if normal else []
+    for service in model.services:
+        if service.power is not None:
+            context = {"service": service, "power": service.power}
+            result.extend(expand_template(item, context) for item in power_seed.get("templates", []))
+    return result
 
-    if not sensors:
-        return []
-    return [{"binary_sensor": sensors}]
 
-
-def automations(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
-    """Return generated alert and recovery automations."""
+def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
+    """Return normal alarms and the dedicated power lifecycle automations."""
 
     result = []
-    rules = seed["automations"]
-    for service, reading in model.readings:
+    for service, reading in model.alarm_readings:
         context = {"service": service, "reading": reading, "model": model}
-        result.extend(expand_template(item, context) for item in rules.get("reading", []))
+        result.extend(expand_template(item, context) for item in seed["automations"].get("reading", []))
+    for service in model.services:
+        if service.power is not None:
+            context = {"service": service, "power": service.power, "model": model}
+            result.extend(expand_template(item, context) for item in power_seed.get("automations", []))
     return result
 
 

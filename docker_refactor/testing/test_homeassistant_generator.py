@@ -168,8 +168,10 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("recovery zone should derive deadband recovery thresholds")
     if "maximum_reading_age_seconds" not in zone_sensors[2]["state"]:
         raise AssertionError("fault zone should use maximum reading age helper")
-    if "reconnecting" not in zone_sensors[2]["state"]:
-        raise AssertionError("fault zone should treat reconnecting services as sensor faults")
+    if "reconnecting" in zone_sensors[2]["state"] or "disconnected" in zone_sensors[2]["state"]:
+        raise AssertionError("reconnect states should use reading age as a grace period")
+    if "'error'" not in zone_sensors[2]["state"]:
+        raise AssertionError("explicit service errors should remain immediate sensor faults")
 
     automations = package["automation"]
     assert_equal(
@@ -245,18 +247,17 @@ def test_generated_package_and_entity_map() -> None:
 
     sensor_recovery = automations[3]
     sensor_recovery_yaml = yaml.safe_dump(sensor_recovery, sort_keys=False)
-    if (
-        "persistent_notification.create" in sensor_recovery_yaml
-        or "mqtt.publish" in sensor_recovery_yaml
-    ):
-        raise AssertionError(
-            "sensor recovery should update state without per-reading notifications"
-        )
-    if (
-        "sensor_restored" in sensor_recovery_yaml
-        or "recovered from sensor fault" in sensor_recovery_yaml
-    ):
-        raise AssertionError("sensor recovery should not emit restored/recovered messages")
+    if "persistent_notification.create" not in sensor_recovery_yaml:
+        raise AssertionError("sensor recovery should create a Home Assistant notification")
+    if "mqtt.publish" not in sensor_recovery_yaml:
+        raise AssertionError("sensor recovery should publish an SMS request")
+    sensor_recovery_sms = sensor_recovery["action"][1]["choose"][0]["sequence"][1]
+    assert_equal(sensor_recovery_sms["data"]["topic"], SMS_SEND_TOPIC, "sensor recovery SMS topic")
+    if '"event": "recovery"' not in sensor_recovery_sms["data"]["payload"]:
+        raise AssertionError("sensor recovery SMS does not use the validated recovery event")
+    assert_equal(sensor_recovery["trigger"][0]["from"], "on", "recovery requires a real fault")
+    if "sensor restored" not in sensor_recovery_yaml:
+        raise AssertionError("sensor recovery notification has unclear wording")
 
     assert_equal(
         entity_map["pressure_monitor"]["pressure"]["effective_entity_id"],
@@ -296,7 +297,7 @@ def test_dashboard_reset_and_preserve() -> None:
     views = first_dashboard["data"]["config"]["views"]
     assert_equal(views[0]["title"], "LabPulse Monitor", "monitor dashboard title")
     assert_equal(views[1]["title"], "LabPulse Alarm Setup", "setup dashboard title")
-    pressure_cards = views[0]["sections"][1]["cards"]
+    pressure_cards = views[0]["sections"][0]["cards"]
     assert_equal(
         pressure_cards[1]["heading"],
         "Air Pressure Sensor Hub",
@@ -449,8 +450,8 @@ def test_dashboard_groups_services_by_section() -> None:
     monitor_sections = dashboard["data"]["config"]["views"][0]["sections"]
     setup_sections = dashboard["data"]["config"]["views"][1]["sections"]
 
-    assert_equal(len(monitor_sections), 2, "system health plus one shared location")
-    cards = monitor_sections[1]["cards"]
+    assert_equal(len(monitor_sections), 1, "one shared location without system health")
+    cards = monitor_sections[0]["cards"]
     assert_equal(cards[0]["heading"], "Cryogenics Room", "shared location heading")
     assert_equal(cards[0]["icon"], "mdi:snowflake-alert", "first service section icon")
     assert_equal(cards[1]["heading"], "Turbo Pump Hub", "first service subgroup")
@@ -495,7 +496,7 @@ def test_dashboard_groups_readings_with_room_environment_last() -> None:
         config=config,
     )
     dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
-    cards = dashboard["data"]["config"]["views"][0]["sections"][1]["cards"]
+    cards = dashboard["data"]["config"]["views"][0]["sections"][0]["cards"]
 
     sensor_cards = [card for card in cards if card.get("type") == "entities"]
     assert_equal(
@@ -530,10 +531,10 @@ def test_starter_dashboard_preserves_monitor_layout() -> None:
 
     assert_equal(
         [section["cards"][0]["heading"] for section in sections],
-        ["System Health", "Pump Room", "Cryogenics Room", "Air Pressure"],
+        ["Pump Room", "Cryogenics Room", "Air Pressure"],
         "monitor room columns",
     )
-    pump_cards = sections[1]["cards"]
+    pump_cards = sections[0]["cards"]
     assert_equal(pump_cards[1]["heading"], "Pump Room Sensor Hub", "pump hub heading")
     pump_sensor_cards = [
         card for card in pump_cards if card.get("type") == "entities"
@@ -559,7 +560,7 @@ def test_starter_dashboard_preserves_monitor_layout() -> None:
         "pump room reading prefixes",
     )
 
-    cryogenics_cards = sections[2]["cards"]
+    cryogenics_cards = sections[1]["cards"]
     assert_equal(
         [
             card["heading"]
@@ -585,7 +586,7 @@ def test_starter_dashboard_preserves_monitor_layout() -> None:
     if "title" in cryogenics_cards[-1]:
         raise AssertionError("Cryogenics room sensor card should remain untitled")
 
-    air_cards = sections[3]["cards"]
+    air_cards = sections[2]["cards"]
     assert_equal(
         air_cards[-1]["entities"],
         [
@@ -685,7 +686,7 @@ def test_generator_resolves_and_syncs_entities() -> None:
     dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
     views = dashboard["data"]["config"]["views"]
     assert_equal(
-        views[0]["sections"][1]["cards"][3]["entities"][0]["entity"],
+        views[0]["sections"][0]["cards"][3]["entities"][0]["entity"],
         "sensor.renamed_pressure",
         "resolved monitor card entity",
     )

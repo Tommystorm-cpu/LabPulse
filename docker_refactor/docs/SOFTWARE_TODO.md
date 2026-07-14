@@ -104,8 +104,12 @@ dashboard displaying a plausible but incorrect healthy state.
 - [ ] Test malformed, partial, and silent serial output for each parser format.
 - [ ] Test DHT11 startup failure and sustained read failure on the real Pi.
 
-The serial reconnect implementation and automated tests already exist. This
-task remains open until verified repeatedly with the actual devices.
+The serial reconnect implementation and automated tests already exist. The
+interactive `setup_usb_devices.py` helper can now identify and assign each
+stable `/dev/serial/by-id/...` path by guided unplug/replug, and its workflow can
+be rehearsed with the fake-USB simulator's per-device `disconnect` and
+`connect` commands. This task remains open until the helper and reconnect
+behaviour are verified repeatedly with the actual devices.
 
 ### Alarm-state restart semantics
 
@@ -173,16 +177,18 @@ notifications and SMS but does not expire and is not recipient-specific.
 
 ### Power outage message consolidation
 
-- [ ] Confirm that UPS/power monitoring remains in scope for the active system.
-- [ ] Define the event/state model before implementing its driver or alerts.
+- [x] Confirm that UPS/power monitoring remains in scope for the active system.
+- [x] Define and implement the dedicated Normal/On Battery/Sensor Fault model.
 - [ ] Combine a short outage and restoration into one useful event/message when
   appropriate.
 - [ ] Avoid sending an outage and restoration pair for harmless brief
   interruptions.
 - [ ] Test longer outages and repeated flapping separately.
 
-Current state: this is not implemented in `docker_refactor`; the starter config
-contains only a commented historical UPS sketch of the configuration.
+Current state: INA219 telemetry, simulated UPS input, persistent Home Assistant
+outage/recovery inference, mute, dashboard, and dry-run-capable SMS requests are
+implemented. Test-Pi acceptance, live HAT identification/calibration, and a
+future isolated direct-mains evidence source remain outstanding.
 
 ### Fridge parameter integration
 
@@ -319,7 +325,7 @@ Do not start these until required by a real deployment or after the P0/P1 work
 is under control:
 
 - additional deployment modes such as grouping services into fewer containers;
-- a generic I2C driver (the config value is currently reserved but unimplemented);
+- additional I2C sensor types beyond the implemented INA219 UPS driver;
 - per-user notification preferences beyond the agreed mute requirement;
 - a plugin system beyond the existing driver/factory boundary;
 - advanced dashboard customization that depends on non-standard Home Assistant
@@ -379,4 +385,3 @@ A software task is complete only when:
 - maintained documentation is updated;
 - generated outputs have been verified where relevant;
 - the completion evidence is recorded in the issue or release notes.
-

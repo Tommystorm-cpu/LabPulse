@@ -21,18 +21,6 @@ lovelace:
     path: labpulse-alarm-setup
     type: sections
 
-system_health:
-  heading_card:
-    type: heading
-    heading: System Health
-    heading_style: title
-    icon: mdi:heart-cog
-  status_tile:
-    type: tile
-    entity: "[[ service.status_entity_id ]]"
-    grid_options:
-      columns: full
-
 monitor_sections:
   heading_card:
     type: heading
@@ -58,6 +46,39 @@ monitor_sections:
   reading_entity:
     entity: "[[ reading.expected_entity_id ]]"
     name: "[[ reading.label ]]"
+
+power_monitor:
+  battery_gauge:
+    type: gauge
+    entity: "[[ power.battery_level.expected_entity_id ]]"
+    name: UPS Battery Level
+    min: 0
+    max: 100
+    needle: false
+    severity:
+      red: 0
+      yellow: 25
+      green: 50
+    grid_options:
+      columns: full
+  reading_list:
+    type: entities
+    show_header_toggle: false
+    grid_options:
+      columns: full
+    entities:
+      - entity: "[[ power.state_entity ]]"
+        name: Power lifecycle
+      - entity: "[[ power.voltage.expected_entity_id ]]"
+        name: UPS battery voltage
+      - entity: "[[ power.current.expected_entity_id ]]"
+        name: UPS battery current
+      - entity: "[[ power.charging_status_entity ]]"
+        name: Charging status
+      - entity: "[[ power.last_outage_started_sensor_entity ]]"
+        name: Last inferred outage started
+      - entity: "[[ power.last_outage_duration_sensor_entity ]]"
+        name: Last inferred outage duration
 
 alarm_setup_sections:
   heading_card:
@@ -119,3 +140,28 @@ alarm_setup_sections:
           name: Recovery zone
         - entity: "[[ reading.sensor_fault_zone_entity ]]"
           name: Sensor fault zone
+
+power_alarm_setup:
+  settings_card:
+    type: entities
+    show_header_toggle: false
+    entities:
+      - entity: "[[ power.state_entity ]]"
+        name: Power lifecycle state
+      - entity: "[[ power.muted_entity ]]"
+        name: Power alerts muted
+      - entity: "[[ power.outage_confirm_seconds_entity ]]"
+        name: Outage confirmation time
+      - entity: "[[ power.restore_confirm_seconds_entity ]]"
+        name: Recovery confirmation time
+      - entity: "[[ power.maximum_reading_age_seconds_entity ]]"
+        name: Maximum UPS evidence age
+      - type: divider
+      - entity: "[[ power.discharge_evidence_entity ]]"
+        name: UPS discharge evidence (mains inferred)
+      - entity: "[[ power.sensor_fault_entity ]]"
+        name: UPS evidence sensor fault
+      - entity: "[[ power.outage_candidate_entity ]]"
+        name: Outage confirmation pending
+      - entity: "[[ power.recovery_candidate_entity ]]"
+        name: Recovery confirmation pending

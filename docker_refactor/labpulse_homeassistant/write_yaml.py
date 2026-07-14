@@ -60,27 +60,48 @@ def entity_map(model: RenderModel) -> dict[str, object]:
             }
         }
         for reading in service.readings:
-            service_map[reading.name] = {
+            reading_map = {
                 "mqtt_unique_id": reading.mqtt_unique_id,
                 "default_entity_id": reading.mqtt_entity.default_entity_id,
                 "resolved_entity_id": reading.mqtt_entity.resolved_entity_id,
                 "effective_entity_id": reading.expected_entity_id,
                 "resolution_status": reading.mqtt_entity.resolution_status,
-                "alarm_state": reading.alarm_state_entity,
-                "alarm_mode": reading.alarm_mode_entity,
-                "alarm_muted": reading.alarm_muted_entity,
-                "minimum_threshold": reading.minimum_threshold_entity,
-                "maximum_threshold": reading.maximum_threshold_entity,
-                "recovery_deadband": reading.recovery_deadband_entity,
-                "danger_zone": reading.danger_zone_entity,
-                "recovery_zone": reading.recovery_zone_entity,
-                "sensor_fault_zone": reading.sensor_fault_zone_entity,
-                "observed_danger_percent": reading.observed_danger_percent_entity,
-                "required_danger_percent": service.required_danger_percent_entity,
-                "observation_window_seconds": service.observation_window_seconds_entity,
-                "required_recovery_seconds": service.required_recovery_seconds_entity,
-                "maximum_reading_age_seconds": service.maximum_reading_age_seconds_entity,
-                "alarm_controls_expanded": reading.alarm_controls_expanded_entity,
+            }
+            if service.power is None:
+                reading_map.update(
+                    alarm_state=reading.alarm_state_entity,
+                    alarm_mode=reading.alarm_mode_entity,
+                    alarm_muted=reading.alarm_muted_entity,
+                    minimum_threshold=reading.minimum_threshold_entity,
+                    maximum_threshold=reading.maximum_threshold_entity,
+                    recovery_deadband=reading.recovery_deadband_entity,
+                    danger_zone=reading.danger_zone_entity,
+                    recovery_zone=reading.recovery_zone_entity,
+                    sensor_fault_zone=reading.sensor_fault_zone_entity,
+                    observed_danger_percent=reading.observed_danger_percent_entity,
+                    required_danger_percent=service.required_danger_percent_entity,
+                    observation_window_seconds=service.observation_window_seconds_entity,
+                    required_recovery_seconds=service.required_recovery_seconds_entity,
+                    maximum_reading_age_seconds=service.maximum_reading_age_seconds_entity,
+                    alarm_controls_expanded=reading.alarm_controls_expanded_entity,
+                )
+            service_map[reading.name] = reading_map
+        if service.power is not None:
+            power = service.power
+            service_map["power_lifecycle"] = {
+                "evidence_source": power.source,
+                "charging_status": power.charging_status_entity,
+                "discharge_evidence": power.discharge_evidence_entity,
+                "sensor_fault": power.sensor_fault_entity,
+                "state": power.state_entity,
+                "muted": power.muted_entity,
+                "outage_confirm_seconds": power.outage_confirm_seconds_entity,
+                "restore_confirm_seconds": power.restore_confirm_seconds_entity,
+                "maximum_reading_age_seconds": power.maximum_reading_age_seconds_entity,
+                "last_outage_started": power.last_outage_started_sensor_entity,
+                "last_outage_duration": power.last_outage_duration_sensor_entity,
+                "last_outage_started_storage": power.last_outage_started_entity,
+                "last_outage_duration_storage": power.last_outage_duration_entity,
             }
         result[service.name] = service_map
     return result

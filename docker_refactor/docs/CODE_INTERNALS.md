@@ -21,7 +21,7 @@ Read the source in this order if you want to reconstruct the complete system:
 8. `labpulse_homeassistant/write_yaml.py`, `alarm.py`, and `dashboard.py`
 9. `labpulse_homeassistant/templates/`
 10. `labpulse_sms/subscriber.py` and `sender.py`
-11. `simulate_serial.py`
+11. `simulate_serial.py` and `setup_usb_devices.py`
 12. `generate_compose.sh` and `setup_container_fs.sh`
 13. `testing/`
 
@@ -149,8 +149,14 @@ Implementations must provide `setup()`, `read()`, and `disconnect()`.
   `SerialDriver`.
 - `driver: gpio` plus `gpio_sensor: dht11` requires `gpio_pin`, then constructs
   the DHT11 driver.
-- `driver: i2c` validates as a reserved config value but deliberately raises
-  `NotImplementedError`; there is no I2C runtime implementation.
+- `driver: i2c` plus `i2c_sensor: ina219_ups` requires an explicit bus,
+  address, verified calibration/config registers, current LSB, and battery
+  voltage range, then constructs the INA219 UPS driver.
+
+The INA219 driver configures the device, corrects SMBus word byte order,
+converts the signed current register, publishes voltage/current/battery level
+at one-second intervals, and reconnects after explicit I2C faults. Calibration
+has no live defaults: the installed HAT values must be verified.
 
 ### Serial driver
 
@@ -358,9 +364,11 @@ into Home Assistant’s active Overview JSON store. The generator resolves a
 named `.storage/lovelace.<id>` through `lovelace_dashboards`, with legacy
 `.storage/lovelace` as the fallback.
 
-The generated Monitor view contains system health followed by one section per
-distinct `display.section`. Services with the same section label share that
-location section and receive separate service subheadings and status tiles.
+The generated Monitor view contains one section per distinct
+`display.section`. Services with the same section label share that location
+section and receive separate service subheadings and status tiles. A duplicate
+top-level System Health section is intentionally omitted because each service's
+health remains visible beside its readings.
 The first ordered service supplies the shared section icon. Each reading is
 represented by one compact entities list containing only current readings.
 When readings define `group`, the dashboard renders one ordered entities card
@@ -437,8 +445,11 @@ recovers only at or above `minimum + deadband`. Disabled mode is considered
 recovered when the reading is numeric.
 
 `sensor_fault_zone` is on when the reading is invalid/unavailable, its
-`last_updated` age exceeds the service limit, or service health is disconnected,
-reconnecting, erroneous, unknown, or unavailable.
+`last_updated` age exceeds the service limit, or service health reports an
+explicit error/unknown condition. `disconnected` and `reconnecting` do not
+immediately fault a previously valid reading: Maximum Reading Age acts as the
+reconnect grace period. A successful reconnect refreshes the reading before the
+deadline and avoids a nuisance notification.
 
 The `history_stats` observed-danger sensor reports the percentage of the
 sliding observation window for which `danger_zone` was on. It updates on source
@@ -464,7 +475,53 @@ Sensor Fault
 
 Sensor fault takes priority. Danger entry excludes faulted and Disabled
 readings. State changes occur whether muted or not; only notifications and SMS
-publishing are inside the mute check.
+publishing are inside the mute check. When a confirmed fault clears, Home
+Assistant creates a persistent sensor-restored notification after reconciling
+the reading to Normal or Danger and publishes a validated recovery SMS request.
+
+### Dedicated UPS power lifecycle
+
+A service with `power_detection` is excluded from every generic threshold,
+history-stat, and percentage loop above. `PowerModel` instead supplies the IDs
+and configured timings expanded from `templates/alarm/power_logic.yaml`.
+
+The evidence template classifies signed current as charging, idle, or
+discharging. Outage confirmation, recovery confirmation, and maximum evidence
+age are editable `input_number` helpers in LabPulse Alarm Setup. On first use,
+reconciliation seeds them from `power_detection`; a persistent initialization
+marker prevents later starts or automation reloads from overwriting dashboard
+edits. The configured defaults are 10, 15, and 15 seconds respectively.
+
+Sustained discharge starts a persistent outage candidate. Its start and
+deadline are stored in `input_datetime` helpers, with the current confirmation
+setting copied into the deadline when the candidate begins. Loss of discharge
+uses the same design for recovery. Changing a timing control therefore affects
+the next candidate, not one already in progress. Candidate booleans, deadlines,
+active-outage state, outage start, latest outage history, timing controls, and
+the initialization marker omit `initial` values so Home Assistant restores
+them.
+
+One-second trigger-based freshness checks combine forced MQTT sample updates
+with the editable maximum age. By default, 15 seconds without evidence becomes
+`Sensor Fault` and creates a Home Assistant notification plus the validated SMS
+request unless power alerts are muted. Disconnected/reconnecting status uses
+that same evidence-age interval as a reconnect grace period. When fresh UPS
+evidence returns after a confirmed fault, Home Assistant creates a persistent
+telemetry-restored notification and publishes a validated recovery SMS request
+so recipients know the sensor-health incident has ended. Home Assistant
+start, automation reload, and fault recovery all
+run reconciliation; overdue persistent deadlines are then completed by the
+one-second confirmation automations. Duration is calculated from first
+discharge evidence to first recovery evidence, not from delayed confirmations.
+
+Power has one dedicated mute. It suppresses only power notifications and
+validated SMS requests; telemetry, lifecycle transitions, and history continue.
+The dashboard reads outage history through template-sensor mirrors, keeping the
+persistent timestamp and duration helpers off the editable Monitor surface. A
+built-in gauge visualizes UPS battery percentage without custom cards.
+The configured `source: ups_current_inference` is the replacement seam for a
+future isolated direct-mains input. Lifecycle, dashboard, and SMS consumers
+depend on the normalized evidence entity rather than on INA219 registers.
 
 ## SMS service internals
 
@@ -514,15 +571,40 @@ Each per-recipient outcome is published to
 Arduino-shaped payloads; `SimulatorService` writes them at the configured
 interval.
 
+`disconnect DEVICE` closes one endpoint and removes its stable symlink without
+stopping the daemon. `connect DEVICE` creates a replacement PTY behind the same
+public path. These commands exercise real serial disconnect/reconnect handling
+and the interactive USB assignment workflow while other fake devices continue
+running.
+
 The background service listens on
 `/tmp/labpulse-fake-serial/control.sock`. Control commands send newline-delimited
 JSON over that Unix socket, so changing a scenario does not recreate serial
 devices or disconnect containers.
 
-Scenario state is `dict[target, state]`. Valid states are `normal`, `recover`,
-`danger-low`, `danger-high`, and `stale`. `stale` emits one unchanged valid
+Scenario state is `dict[target, state]`. Normal sensor targets use `normal`,
+`recover`, `danger-low`, `danger-high`, and `stale`. The UPS target
+`ups_monitor.power` uses `mains`, `battery`, `charging`, and `stale`.
+UPS `stale` emits no payload at all so the real 15-second freshness logic is
+exercised; power MQTT discovery uses `force_update` so unchanged one-second
+samples still count as fresh evidence.
+
+For ordinary sensor targets, `stale` emits one unchanged valid
 value: the serial link remains present while Home Assistant’s entity
 `last_updated` becomes old enough to trigger fault detection.
+
+## USB assignment helper internals
+
+`setup_usb_devices.py` reads enabled serial services in config order. Real mode
+snapshots `/dev/serial/by-id`; fake mode snapshots
+`/tmp/labpulse-fake-serial`. Each unplug step must remove exactly one symlink,
+and each replug step must restore the same public name. Ambiguous changes abort
+the whole run before any config write.
+
+After operator confirmation, `replace_serial_ports()` changes only the relevant
+`serial_port` lines and validates the resulting YAML. `write_config()` keeps one
+`.usb-setup-backup` and atomically replaces the config, avoiding partial writes
+and repeated timestamped backups.
 
 ## Tests as executable documentation
 
@@ -531,10 +613,10 @@ The scripts under `testing/` are grouped by contract:
 | Area | Tests |
 | --- | --- |
 | Config/shared IDs/topics | `test_common_contracts.py`, `test_hardware_factory.py` |
-| Drivers and parsing | `test_serial_driver.py`, `test_dht11_driver.py`, `test_legacy_serial_parser.py` |
-| Simulator | `test_simulate_serial.py` |
+| Drivers and parsing | `test_serial_driver.py`, `test_dht11_driver.py`, `test_ina219_driver.py`, `test_legacy_serial_parser.py` |
+| Simulator and USB assignment | `test_simulate_serial.py`, `test_usb_setup.py` |
 | MQTT discovery | `test_homeassistant_publisher.py` |
-| HA model/generation/registry | `test_homeassistant_entities.py`, `test_homeassistant_generator.py` |
+| HA model/generation/registry | `test_homeassistant_entities.py`, `test_homeassistant_generator.py`, `test_power_monitor.py` |
 | SMS | `test_sms_container.py` |
 | Setup and Compose output | `test_deployment_generation.py` |
 

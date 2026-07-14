@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 from typing import Callable
+from unittest.mock import patch
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
@@ -28,6 +29,9 @@ def test_generated_payloads_match_parsers() -> None:
     turbo = SerialParser("turbo_pump", "water").parse(payloads["turbo_pump"].strip())
     room = SerialParser("room_environment", "pipe").parse(
         payloads["room_environment"].strip()
+    )
+    ups = SerialParser("ups_monitor", "ups_simulator").parse(
+        payloads["ups_monitor"].strip()
     )
 
     if pressure is None or "pressure" not in pressure:
@@ -71,6 +75,31 @@ def test_generated_payloads_match_parsers() -> None:
         raise AssertionError(f"invalid turbo payload: {payloads['turbo_pump']!r}")
     if room is None or set(room) != {"temperature", "humidity"}:
         raise AssertionError(f"invalid room payload: {payloads['room_environment']!r}")
+    if ups is None or set(ups) != {"voltage", "current", "battery_level"}:
+        raise AssertionError(f"invalid UPS payload: {payloads['ups_monitor']!r}")
+
+
+def test_ups_power_scenarios_and_stale_suppression() -> None:
+    """Check UPS scenarios use signed current and stale stops publication."""
+
+    generator = ReadingGenerator(seed=2)
+    parser = SerialParser("ups_monitor", "ups_simulator")
+    expected_current_sign = {"mains": 0, "battery": -1, "charging": 1}
+    for state, sign in expected_current_sign.items():
+        generator.set_scenario("ups_monitor.power", state)
+        parsed = parser.parse(generator.payloads()["ups_monitor"])
+        if parsed is None:
+            raise AssertionError(f"UPS {state} payload did not parse")
+        current = parsed["current"]
+        if sign < 0 and current >= 0 or sign > 0 and current <= 0 or sign == 0 and current != 0:
+            raise AssertionError(f"UPS {state} current has wrong sign: {current}")
+
+    generator.set_scenario("ups_monitor.power", "stale")
+    if "ups_monitor" in generator.payloads():
+        raise AssertionError("stale UPS simulation emitted fresh telemetry")
+    generator.clear_scenario("ups_monitor.power")
+    if "ups_monitor" not in generator.payloads():
+        raise AssertionError("cleared UPS scenario did not resume telemetry")
 
 
 def test_scenarios_change_generated_values() -> None:
@@ -135,6 +164,42 @@ def test_control_commands_keep_state_in_memory() -> None:
         raise AssertionError("reset left scenario state behind")
 
 
+def test_device_disconnect_control() -> None:
+    """Check one fake endpoint can disappear without stopping the simulator."""
+
+    class FakeEndpoint:
+        """Record endpoint closure without requiring a Linux pseudo-terminal."""
+
+        def __init__(self) -> None:
+            self.closed = False
+            self.link_path = Path("/tmp/labpulse-fake-serial/pressure")
+
+        def close(self) -> None:
+            """Record that simulator disconnect closed the endpoint."""
+
+            self.closed = True
+
+    service = SimulatorService(Path("/tmp/unused-labpulse-test"), interval=1)
+    endpoint = FakeEndpoint()
+    service.endpoints["pressure"] = endpoint  # type: ignore[assignment]
+    response = service._dispatch({"command": "disconnect", "device": "pressure_monitor"})
+    if not endpoint.closed or "pressure" in service.endpoints:
+        raise AssertionError("disconnect did not close and remove the endpoint")
+    if "Disconnected simulator device pressure" not in response["message"]:
+        raise AssertionError(f"unclear disconnect response: {response!r}")
+    status = service._dispatch({"command": "status"})
+    if "pressure" not in status["disconnected_devices"]:
+        raise AssertionError(f"status omitted disconnected endpoint: {status!r}")
+    replacement = FakeEndpoint()
+    with patch("simulate_serial.SerialEndpoint.create", return_value=replacement) as create:
+        response = service._dispatch({"command": "connect", "device": "pressure"})
+    create.assert_called_once_with(service.sim_dir, "pressure")
+    if service.endpoints.get("pressure") is not replacement:
+        raise AssertionError("connect did not install the replacement endpoint")
+    if "Connected simulator device pressure" not in response["message"]:
+        raise AssertionError(f"unclear connect response: {response!r}")
+
+
 def test_cli_and_transport_contract() -> None:
     """Check the intended background-service commands and socket transport."""
 
@@ -144,6 +209,15 @@ def test_cli_and_transport_contract() -> None:
     )
     if parsed.command != "set" or parsed.target != "pump_room.flow1":
         raise AssertionError(f"unexpected CLI parse: {parsed!r}")
+    ups = parser.parse_args(["set", "ups_monitor.power", "battery"])
+    if ups.state != "battery":
+        raise AssertionError(f"unexpected UPS CLI parse: {ups!r}")
+    disconnect = parser.parse_args(["disconnect", "pressure_monitor"])
+    if disconnect.command != "disconnect" or disconnect.device != "pressure_monitor":
+        raise AssertionError(f"unexpected disconnect CLI parse: {disconnect!r}")
+    connect = parser.parse_args(["connect", "pump_room"])
+    if connect.command != "connect" or connect.device != "pump_room":
+        raise AssertionError(f"unexpected connect CLI parse: {connect!r}")
 
     source = (REFACTOR_DIR / "simulate_serial.py").read_text(encoding="utf-8")
     for fragment in (
@@ -153,6 +227,8 @@ def test_cli_and_transport_contract() -> None:
         '"serve"',
         '"set"',
         '"clear"',
+        '"disconnect"',
+        '"connect"',
         '"reset"',
         '"status"',
         '"stop"',
@@ -166,7 +242,9 @@ def test_cli_and_transport_contract() -> None:
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("generated payloads match parsers", test_generated_payloads_match_parsers),
     ("scenarios change generated values", test_scenarios_change_generated_values),
+    ("UPS power scenarios and stale suppression", test_ups_power_scenarios_and_stale_suppression),
     ("control commands keep state in memory", test_control_commands_keep_state_in_memory),
+    ("device disconnect control", test_device_disconnect_control),
     ("CLI and transport contract", test_cli_and_transport_contract),
 ]
 

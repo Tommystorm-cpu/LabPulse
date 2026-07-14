@@ -80,6 +80,42 @@ class DisplayConfig(BaseModel):
     icon: str | None = None
     order: int = 100
 
+
+class BatteryTelemetryConfig(BaseModel):
+    """Calibration used to estimate UPS battery percentage from voltage."""
+
+    empty_voltage: float = Field(gt=0)
+    full_voltage: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def require_ordered_voltage_range(self) -> "BatteryTelemetryConfig":
+        """Require the configured full voltage to exceed the empty voltage."""
+
+        if self.full_voltage <= self.empty_voltage:
+            raise ValueError("full_voltage must be greater than empty_voltage")
+        return self
+
+
+class PowerDetectionConfig(BaseModel):
+    """Home Assistant power-lifecycle settings for one UPS service."""
+
+    source: Literal["ups_current_inference"] = "ups_current_inference"
+    charging_current_ma: float = 40.0
+    discharging_current_ma: float = -49.0
+    outage_confirm_seconds: int = Field(default=10, ge=1, le=3600)
+    restore_confirm_seconds: int = Field(default=15, ge=1, le=3600)
+    maximum_reading_age_seconds: int = Field(default=15, ge=2, le=86400)
+
+    @model_validator(mode="after")
+    def require_current_deadband(self) -> "PowerDetectionConfig":
+        """Require charging current to be greater than discharging current."""
+
+        if self.charging_current_ma <= self.discharging_current_ma:
+            raise ValueError(
+                "charging_current_ma must be greater than discharging_current_ma"
+            )
+        return self
+
 class ServiceConfig(BaseModel):
     """Configuration for one independently running LabPulse sensor service."""
 
@@ -87,6 +123,12 @@ class ServiceConfig(BaseModel):
     driver: Literal["serial", "gpio", "i2c"]
     gpio_sensor: Literal["dht11"] | None = None
     gpio_pin: str | None = None
+    i2c_sensor: Literal["ina219_ups"] | None = None
+    i2c_bus: int | None = Field(default=None, ge=0, le=255)
+    i2c_address: int | None = Field(default=None, ge=0x03, le=0x77)
+    ina219_calibration: int | None = Field(default=None, ge=1, le=0xFFFF)
+    ina219_config_register: int | None = Field(default=None, ge=0, le=0xFFFF)
+    ina219_current_lsb_ma: float | None = Field(default=None, gt=0)
     parser: str | None = None
     serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
@@ -95,6 +137,66 @@ class ServiceConfig(BaseModel):
     readings: list[ReadingConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
+    battery_telemetry: BatteryTelemetryConfig | None = None
+    power_detection: PowerDetectionConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_hardware_contract(self) -> "ServiceConfig":
+        """Validate driver-specific fields and the normalized UPS readings."""
+
+        reading_names = [reading.name for reading in self.readings]
+        if len(set(reading_names)) != len(reading_names):
+            raise ValueError("readings[].name values must be unique within a service")
+
+        if self.driver == "i2c":
+            if self.i2c_sensor != "ina219_ups":
+                raise ValueError("I2C services currently require i2c_sensor: ina219_ups")
+            if self.i2c_bus is None:
+                raise ValueError("INA219 services require i2c_bus")
+            if self.i2c_address is None:
+                raise ValueError("INA219 services require i2c_address")
+            if self.battery_telemetry is None:
+                raise ValueError("INA219 services require battery_telemetry")
+            if any(
+                value is None
+                for value in (
+                    self.ina219_calibration,
+                    self.ina219_config_register,
+                    self.ina219_current_lsb_ma,
+                )
+            ):
+                raise ValueError(
+                    "INA219 services require verified ina219_calibration, "
+                    "ina219_config_register, and ina219_current_lsb_ma"
+                )
+        elif any(
+            value is not None
+            for value in (
+                self.i2c_sensor,
+                self.i2c_bus,
+                self.i2c_address,
+                self.ina219_calibration,
+                self.ina219_config_register,
+                self.ina219_current_lsb_ma,
+            )
+        ):
+            raise ValueError("INA219/I2C settings require driver: i2c")
+
+        if self.power_detection is not None:
+            required = {"voltage", "current", "battery_level"}
+            missing = sorted(required.difference(reading_names))
+            if missing:
+                raise ValueError(
+                    "power_detection requires readings named: " + ", ".join(missing)
+                )
+            if self.battery_telemetry is None:
+                raise ValueError("power_detection requires battery_telemetry")
+            if self.driver == "i2c" and self.read_interval_seconds not in (None, 1.0):
+                raise ValueError(
+                    "INA219 power monitoring requires read_interval_seconds: 1"
+                )
+
+        return self
 
     @property
     def display_label(self) -> str:

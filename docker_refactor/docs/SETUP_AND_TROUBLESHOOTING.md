@@ -55,9 +55,21 @@ chmod +x setup_container_fs.sh
 ./setup_container_fs.sh -fake_usb
 ```
 
-Fake mode changes the starter serial paths to pseudo-terminal links and changes
-the room-environment service from GPIO DHT11 to the same simulated serial
-pipeline. See [Simulator workflow](#simulator-workflow).
+Fake mode derives `~/labpulse-ha/config.fake.yaml` without altering the
+real-hardware settings in `config.yaml`. It changes configured serial paths to
+pseudo-terminal links, moves the room-environment DHT11 to simulated serial,
+and converts the enabled `power_detection` service from INA219/I2C to the
+`ups_monitor` pseudo-serial parser. Service names, readings, display metadata,
+power timings, and Home Assistant identities remain unchanged.
+
+If `config.yaml` has no active power service—as with the commented starter
+example—fake mode adds a complete enabled `ups_monitor` block to
+`config.fake.yaml` using documented simulator-only battery values.
+
+The generated fake Compose file mounts `config.fake.yaml` as
+`/app/config.yaml`. After editing the real source config, rerun
+`setup_container_fs.sh -fake_usb` to refresh the derived file. See
+[Simulator workflow](#simulator-workflow).
 
 ### Alternate live directory
 
@@ -160,8 +172,8 @@ services:
 | `sms.recipients` | Unique international numbers; keep real values only in the live config |
 | service key | Stable machine ID used in containers, MQTT, and HA entities |
 | `enabled` | Whether Compose and HA generation include the service |
-| `driver` | Implemented: `serial`, or `gpio` with DHT11; `i2c` is not implemented |
-| `parser` | Serial format selector: `pressure`, `pump_room`, `water`, or generic pipe fallback |
+| `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with INA219 UPS |
+| `parser` | Serial format selector: `pressure`, `pump_room`, `water`, `ups_simulator`, or generic pipe fallback |
 | `serial_port` | Real stable path or fake path |
 | `gpio_sensor` | Currently only `dht11` |
 | `gpio_pin` | Blinka board name such as `D4` |
@@ -174,11 +186,23 @@ services:
 | `readings[].group` | Optional reset-dashboard subgroup; first appearance controls group order |
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
 | `reconnect_interval_seconds` | Serial reopen delay |
-| `read_interval_seconds` | Minimum interval for GPIO reads |
+| `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
+| `i2c_sensor`, `i2c_bus`, `i2c_address` | INA219 UPS selection and exact I2C device |
+| `ina219_calibration`, `ina219_config_register`, `ina219_current_lsb_ma` | Required, hardware-verified INA219 conversion values |
+| `battery_telemetry` | Verified empty/full voltage range used only for battery percentage |
+| `power_detection` | Replaceable evidence source and dedicated outage/recovery/freshness timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are Home Assistant helpers, not live
 config fields.
+
+Power lifecycle timings in `power_detection` seed the Home Assistant timing
+controls when that power service is first created. After initialization,
+outage confirmation, recovery confirmation, and maximum UPS evidence age are
+edited in **LabPulse Alarm Setup** and persist across Home Assistant restarts
+and automation reloads. Regenerating configuration does not overwrite those
+saved values. See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the
+complete safe acceptance run.
 
 To group independent devices by physical location, give their services the
 same `display.section`. The Monitor view renders one location heading and a
@@ -204,14 +228,37 @@ helpers, dashboard references, and history.
 
 ### Real serial paths
 
-List stable paths:
+Use the interactive helper instead of guessing which Arduino owns each Linux
+device name. Start with every serial USB device plugged in and stop the Compose
+stack if it is already running:
 
 ```bash
-ls -l /dev/serial/by-id/
+cd ~/labpulse-ha
+docker compose stop
+./setup_usb_devices.py --config config.yaml
 ```
 
-Use those paths in config. Avoid `/dev/ttyACM0` and `/dev/ttyUSB0`; discovery
-order can change them after reboot or reconnect.
+For every enabled `driver: serial` service, the helper asks you to unplug its
+device, detects the one `/dev/serial/by-id/...` entry that disappeared, then
+asks you to replug it and verifies that the same stable path returned. It
+aborts rather than guessing if zero or multiple devices disappear. After all
+devices are identified it shows the complete mapping and asks before changing
+anything.
+
+The write is surgical: only assigned `serial_port` lines change. Other manual
+config text and comments are preserved. The previous file is retained as the
+single non-proliferating `config.yaml.usb-setup-backup`. After accepting:
+
+```bash
+./generate_compose.sh --config config.yaml
+docker compose config
+docker compose up -d --build
+```
+
+Avoid `/dev/ttyACM0` and `/dev/ttyUSB0`; discovery order can change them after
+reboot or reconnect. If `/dev/serial/by-id` is absent or exposes fewer devices
+than enabled serial services, correct the USB connection or permissions before
+rerunning the helper.
 
 ### Real DHT11
 
@@ -441,6 +488,36 @@ Check it:
 python3 simulate_serial.py status
 ```
 
+### Test the USB assignment helper with fake devices
+
+Run the helper in one terminal:
+
+```bash
+cd ~/labpulse-ha
+./setup_usb_devices.py --config config.fake.yaml --fake-usb --dry-run
+```
+
+It first asks for all devices to be connected. In a second terminal, simulate
+each requested unplug and replug using the service name printed by the helper:
+
+```bash
+python3 simulate_serial.py disconnect pressure_monitor
+python3 simulate_serial.py connect pressure_monitor
+
+python3 simulate_serial.py disconnect pump_room
+python3 simulate_serial.py connect pump_room
+```
+
+The same commands work for `turbo_pump`, `room_environment`, and `ups_monitor`.
+`disconnect` closes that device's PTY and removes only its stable fake link;
+the simulator and every other endpoint keep running. `connect` creates a new
+PTY at the same stable public path. Use `status` at any point to see connected
+and disconnected endpoints.
+
+Remove `--dry-run` to exercise the confirmation and surgical config write.
+Because `config.fake.yaml` is derived, rerunning `setup_container_fs.sh
+-fake_usb` will recreate its deterministic fake paths later.
+
 Change one reading without recreating its pseudo-terminal:
 
 ```bash
@@ -485,6 +562,8 @@ Management commands:
 ```bash
 python3 simulate_serial.py clear pump_room.flow1
 python3 simulate_serial.py reset
+python3 simulate_serial.py disconnect pump_room
+python3 simulate_serial.py connect pump_room
 python3 simulate_serial.py status
 python3 simulate_serial.py stop
 ```

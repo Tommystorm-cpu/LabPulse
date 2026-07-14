@@ -27,7 +27,8 @@ class SerialParser:
         # Restrict labels to the names emitted by the current Arduino sketches.
         # This prevents unit text such as "L/minTemp0" being mistaken for a label.
         self.label_pattern = re.compile(
-            r"(FlowRate|TotalLitres|RoomTemp|RoomHum|Flow[0-9]+|Temp[0-9]+|Press[0-9]+):"
+            r"(FlowRate|TotalLitres|RoomTemp|RoomHum|Voltage|Current|BatteryLevel|"
+            r"Flow[0-9]+|Temp[0-9]+|Press[0-9]+):"
         )
 
     def parse(self, line: str) -> Optional[dict[str, float]]:
@@ -45,10 +46,7 @@ class SerialParser:
         if self.parser_type == "pressure":
             return self._parse_pressure(line)
 
-        if self.parser_type == "pump_room":
-            return self._parse_labelled_values(line)
-
-        if self.parser_type == "water":
+        if self.parser_type in {"pump_room", "water", "ups_simulator"}:
             return self._parse_labelled_values(line)
 
         return self._parse_pipe_delimited(line)
@@ -123,7 +121,8 @@ class SerialParser:
 
         Example: label Flow1 becomes flow1.
         """
-        return label.strip().lower()
+        normalized = label.strip().lower()
+        return {"batterylevel": "battery_level"}.get(normalized, normalized)
 
     def _clean_float(self, raw_value: str) -> Optional[float]:
         """

@@ -61,6 +61,7 @@ def make_publisher(
     parser: str = "pressure",
     device_name: str = "Air Pressure Sensor Hub",
     readings: list[dict[str, str]] | None = None,
+    power_detection: dict[str, object] | None = None,
 ) -> HomeAssistantMqttPublisher:
     """Create a publisher wired to FakeMqttClient."""
 
@@ -72,6 +73,12 @@ def make_publisher(
         baud_rate=9600,
         device_name=device_name,
         readings=readings or [{"name": "pressure", "label": "Pressure", "unit": "bar"}],
+        battery_telemetry=(
+            {"empty_voltage": 3.0, "full_voltage": 4.2}
+            if power_detection is not None
+            else None
+        ),
+        power_detection=power_detection,
     )
     mqtt_config = MqttConfig(broker="mosquitto", port=1883)
     publisher = HomeAssistantMqttPublisher(
@@ -273,12 +280,32 @@ def test_ignore_unconfigured_readings() -> None:
     )
 
 
+def test_power_discovery_forces_identical_samples_to_refresh() -> None:
+    """Ensure steady UPS values still refresh Home Assistant freshness evidence."""
+
+    publisher = make_publisher(
+        service_name="ups_monitor",
+        parser="ups_simulator",
+        device_name="UPS Monitor",
+        readings=[
+            {"name": "voltage", "unit": "V"},
+            {"name": "current", "unit": "mA"},
+            {"name": "battery_level", "unit": "%"},
+        ],
+        power_detection={},
+    )
+    publisher.publish({"current": 0.0})
+    payload = json.loads(str(publisher.client.published[0]["payload"]))
+    assert_equal(payload["force_update"], True, "power force_update")
+
+
 TESTS = [
     ("connect and disconnect", test_connect_and_disconnect),
     ("publish discovery once then readings", test_publish_discovery_once_then_readings),
     ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
     ("publish discovery for new readings", test_publish_discovery_for_new_readings),
     ("ignore unconfigured readings", test_ignore_unconfigured_readings),
+    ("power discovery forces freshness updates", test_power_discovery_forces_identical_samples_to_refresh),
 ]
 
 

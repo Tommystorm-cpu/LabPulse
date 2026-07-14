@@ -160,22 +160,10 @@ if not fake_usb:
 project_dir.mkdir(parents=True, exist_ok=True)
 (project_dir / "logs").mkdir(parents=True, exist_ok=True)
 
-# Shared mounts for every LabPulse Python service.
-device_mounts = ["      - ./logs:/app/logs"]
-device_mounts.append("      - ./config.yaml:/app/config.yaml:ro")
-
-if fake_usb:
-    # Simulator mode exposes fake serial links and their backing pseudo-terminals.
-    device_mounts.extend(
-        [
-            "      - /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
-            "      - /dev/pts:/dev/pts",
-        ]
-    )
-else:
-    # Real hardware mode exposes /dev so /dev/serial/by-id paths work inside
-    # the containers. The base service also gets privileged: true below.
-    device_mounts.append("      - /dev:/dev")
+try:
+    config_mount_source = "./" + config_path.relative_to(project_dir).as_posix()
+except ValueError:
+    config_mount_source = config_path.as_posix()
 
 # Build the output line-by-line because this file is generated and should be
 # simple to inspect on the Pi.
@@ -188,12 +176,7 @@ lines = [
     "  build: ./labpulse-python",
     "  depends_on:",
     "    - mosquitto",
-    "  volumes:",
-    *device_mounts,
 ]
-
-if not fake_usb:
-    lines.append("  privileged: true")
 
 sms_service_lines = [
     "  labpulse-sms:",
@@ -207,7 +190,7 @@ if sms_needs_modem:
             "      - mosquitto",
             "    volumes:",
             "      - ./logs:/app/logs",
-            "      - ./config.yaml:/app/config.yaml:ro",
+            f"      - {config_mount_source}:/app/config.yaml:ro",
             "      - /run/dbus:/run/dbus:ro",
             "      - /dev:/dev",
             "    privileged: true",
@@ -225,6 +208,9 @@ else:
     sms_service_lines.extend(
         [
             "    <<: *labpulse-python-base",
+            "    volumes:",
+            "      - ./logs:/app/logs",
+            f"      - {config_mount_source}:/app/config.yaml:ro",
             "    container_name: labpulse-sms",
             f"    command: {sms_command()}",
             "",
@@ -275,6 +261,7 @@ used_container_names = set()
 # Each enabled service becomes one Python container. This keeps hub failures and
 # restarts isolated.
 for service_name in enabled_services:
+    service_config = services.get(service_name) or {}
     slug = service_slug(service_name)
     container_name = f"labpulse-{slug}"
 
@@ -288,15 +275,50 @@ for service_name in enabled_services:
 
     used_container_names.add(container_name)
 
-    lines.extend(
+    driver = service_config.get("driver")
+    if driver is None and service_config.get("serial_port"):
+        driver = "serial"
+    service_lines = [
+        f"  {container_name}:",
+        "    <<: *labpulse-python-base",
+        "    volumes:",
+        "      - ./logs:/app/logs",
+        f"      - {config_mount_source}:/app/config.yaml:ro",
+    ]
+
+    if driver == "i2c":
+        i2c_bus = service_config.get("i2c_bus")
+        if not isinstance(i2c_bus, int) or i2c_bus < 0:
+            print(
+                f"ERROR: I2C service '{service_name}' requires a non-negative i2c_bus",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        device = f"/dev/i2c-{i2c_bus}"
+        service_lines.extend(["    devices:", f"      - {device}:{device}"])
+    elif driver == "serial":
+        serial_port = str(service_config.get("serial_port", ""))
+        simulated = fake_usb or serial_port.startswith("/tmp/labpulse-fake-serial")
+        if simulated:
+            service_lines.extend(
+                [
+                    "      - /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
+                    "      - /dev/pts:/dev/pts",
+                ]
+            )
+        else:
+            service_lines.extend(["      - /dev:/dev", "    privileged: true"])
+    elif driver == "gpio":
+        service_lines.extend(["      - /dev:/dev", "    privileged: true"])
+
+    service_lines.extend(
         [
-            f"  {container_name}:",
-            "    <<: *labpulse-python-base",
             f"    container_name: {container_name}",
             f"    command: {quoted_command(service_name)}",
             "",
         ]
     )
+    lines.extend(service_lines)
 
 output_path.write_text("\n".join(lines), encoding="utf-8")
 

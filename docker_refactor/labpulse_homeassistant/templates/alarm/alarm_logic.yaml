@@ -225,7 +225,7 @@ binary_sensors:
         {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
            or not is_number(raw)
            or (as_timestamp(now()) - as_timestamp(states.sensor.[[ reading.expected_object_id ]].last_updated, 0)) > maximum_age_seconds
-           or service_status in ['disconnected', 'reconnecting', 'error', 'unavailable', 'unknown'] }}
+           or service_status in ['error', 'unavailable', 'unknown'] }}
 
 # State transition rules. Each automation is expanded once per reading.
 # Notification actions are inside mute checks, while state changes are not.
@@ -346,8 +346,10 @@ automations:
                         "current": states('[[ reading.expected_entity_id ]]')
                       } | to_json }}
 
-    # Any new fault takes priority over Normal or Danger and immediately moves
-    # the persistent alarm state to Sensor Fault.
+    # Any confirmed fault takes priority over Normal or Danger. A serial
+    # disconnected/reconnecting status is not an immediate fault: the last
+    # reading remains trusted until Maximum Reading Age expires, giving the
+    # driver time to reconnect without producing a nuisance notification.
     - alias: "LabPulse [[ reading.label ]] Sensor Fault"
       mode: single
       trigger:
@@ -404,6 +406,7 @@ automations:
       trigger:
         - platform: state
           entity_id: "[[ reading.sensor_fault_zone_entity ]]"
+          from: "on"
           to: "off"
       condition:
         - condition: state
@@ -433,3 +436,38 @@ automations:
                     entity_id: "[[ reading.alarm_state_entity ]]"
                   data:
                     option: Normal
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: "{{ not is_state('[[ reading.alarm_state_entity ]]', 'Sensor Fault') }}"
+                - condition: state
+                  entity_id: "[[ reading.alarm_muted_entity ]]"
+                  state: "off"
+              sequence:
+                - service: persistent_notification.create
+                  data:
+                    title: "LabPulse [[ reading.label ]] sensor restored"
+                    message: >
+                      [[ service.label ]] / [[ reading.label ]] is reporting valid data again.
+
+                      Current reading: {{ states('[[ reading.expected_entity_id ]]') }}.
+                      Alarm state: {{ states('[[ reading.alarm_state_entity ]]') }}.
+                    notification_id: "labpulse_[[ reading.reading_id ]]_status"
+                - service: mqtt.publish
+                  data:
+                    topic: "[[ model.sms_send_topic ]]"
+                    qos: 1
+                    retain: false
+                    payload: >
+                      {{ {
+                        "request_id": "labpulse_[[ reading.reading_id ]]_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                        "event": "recovery",
+                        "service": "[[ service.name ]]",
+                        "service_label": "[[ service.label ]]",
+                        "reading": "[[ reading.name ]]",
+                        "reading_label": "[[ reading.label ]]",
+                        "state": states('[[ reading.alarm_state_entity ]]'),
+                        "title": "LabPulse [[ reading.label ]] sensor restored",
+                        "message": "[[ service.label ]] / [[ reading.label ]] is reporting valid data again.",
+                        "current": states('[[ reading.expected_entity_id ]]')
+                      } | to_json }}

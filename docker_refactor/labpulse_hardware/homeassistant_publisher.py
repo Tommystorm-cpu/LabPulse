@@ -152,6 +152,13 @@ class HomeAssistantMqttPublisher:
             if reading_config and reading_config.state_class:
                 payload["state_class"] = reading_config.state_class
 
+            # Power freshness is safety-significant. Home Assistant must record
+            # every one-second sample even when the numeric value is unchanged,
+            # otherwise last_updated cannot distinguish a steady current from a
+            # stopped publisher.
+            if self.service_config.power_detection is not None:
+                payload["force_update"] = True
+
             self.client.publish(
                 sensor_discovery_topic(self.service_name, reading_name),
                 json.dumps(payload),

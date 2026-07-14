@@ -5,6 +5,7 @@ import logging
 from labpulse_common.config import ServiceConfig
 from labpulse_hardware.drivers.base import BaseSensorDriver
 from labpulse_hardware.drivers.dht11_driver import Driver as Dht11Driver
+from labpulse_hardware.drivers.ina219_ups_driver import Driver as Ina219UpsDriver
 from labpulse_hardware.drivers.serial_driver import Driver as SerialDriver
 
 
@@ -53,8 +54,37 @@ def build_driver(
         )
 
     if service_config.driver == "i2c":
-        raise NotImplementedError(
-            f"I2C driver support is not implemented yet for service '{service_name}'."
+        if service_config.i2c_sensor == "ina219_ups":
+            if service_config.i2c_bus is None or service_config.i2c_address is None:
+                raise ValueError(f"INA219 service '{service_name}' is missing I2C settings")
+            if service_config.battery_telemetry is None:
+                raise ValueError(
+                    f"INA219 service '{service_name}' is missing battery_telemetry"
+                )
+            if (
+                service_config.ina219_calibration is None
+                or service_config.ina219_config_register is None
+                or service_config.ina219_current_lsb_ma is None
+            ):
+                raise ValueError(
+                    f"INA219 service '{service_name}' is missing verified calibration"
+                )
+            logger.info("Loaded INA219 UPS driver for %s", service_name)
+            return Ina219UpsDriver(
+                name=service_name,
+                bus_number=service_config.i2c_bus,
+                address=service_config.i2c_address,
+                empty_voltage=service_config.battery_telemetry.empty_voltage,
+                full_voltage=service_config.battery_telemetry.full_voltage,
+                read_interval_seconds=service_config.read_interval_seconds or 1.0,
+                reconnect_interval_seconds=service_config.reconnect_interval_seconds,
+                calibration_register=service_config.ina219_calibration,
+                config_register=service_config.ina219_config_register,
+                current_lsb_ma=service_config.ina219_current_lsb_ma,
+            )
+        raise ValueError(
+            f"I2C service '{service_name}' must set i2c_sensor to a supported value: "
+            "ina219_ups"
         )
 
     raise ValueError(

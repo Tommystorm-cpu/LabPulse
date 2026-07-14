@@ -115,12 +115,10 @@ def load_dashboard_seed() -> dict[str, Any]:
 def monitor_sections(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
     """Expand monitor sections, merging services with the same section label."""
 
-    sections = [system_health_section(seed, model)]
-    sections.extend(
+    return [
         monitor_location_section(seed, services)
         for services in services_by_section(model.services)
-    )
-    return sections
+    ]
 
 
 def services_by_section(services: list[ServiceModel]) -> list[list[ServiceModel]]:
@@ -149,18 +147,6 @@ def alarm_setup_sections(seed: dict[str, Any], model: RenderModel) -> list[dict[
     return [alarm_setup_service_section(seed, service) for service in model.services]
 
 
-def system_health_section(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
-    """Return the system health dashboard section."""
-
-    rules = seed["system_health"]
-    cards = [expand_template(rules["heading_card"], {})]
-    cards.extend(
-        expand_template(rules["status_tile"], {"service": service})
-        for service in model.services
-    )
-    return {"type": "grid", "cards": cards}
-
-
 def monitor_location_section(
     seed: dict[str, Any],
     services: list[ServiceModel],
@@ -175,6 +161,20 @@ def monitor_location_section(
             expand_template(rules["service_heading_card"], {"service": service})
         )
         cards.append(expand_template(rules["status_tile"], {"service": service}))
+        if service.power is not None:
+            cards.append(
+                expand_template(
+                    seed["power_monitor"]["battery_gauge"],
+                    {"service": service, "power": service.power},
+                )
+            )
+            cards.append(
+                expand_template(
+                    seed["power_monitor"]["reading_list"],
+                    {"service": service, "power": service.power},
+                )
+            )
+            continue
         for _, readings in readings_by_group(service.readings):
             reading_list = expand_template(rules["reading_list"], {"service": service})
             reading_list["entities"] = [
@@ -193,10 +193,17 @@ def alarm_setup_service_section(seed: dict[str, Any], service: ServiceModel) -> 
     """Return one alarm setup dashboard section for a service."""
 
     rules = seed["alarm_setup_sections"]
-    cards = [
-        expand_template(rules["heading_card"], {"service": service}),
-        expand_template(rules["service_tuning_card"], {"service": service}),
-    ]
+    cards = [expand_template(rules["heading_card"], {"service": service})]
+    if service.power is not None:
+        cards.append(
+            expand_template(
+                seed["power_alarm_setup"]["settings_card"],
+                {"service": service, "power": service.power},
+            )
+        )
+        return {"type": "grid", "cards": cards}
+
+    cards.append(expand_template(rules["service_tuning_card"], {"service": service}))
     for reading in service.readings:
         context = {"service": service, "reading": reading}
         cards.append(expand_template(rules["controls_toggle_tile"], context))

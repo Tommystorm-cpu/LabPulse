@@ -25,7 +25,8 @@ Override target:
   LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 
 Options:
-  -fake_usb  Mount pseudo-serial paths for simulator testing.
+  -fake_usb  Derive config.fake.yaml and mount pseudo-serial sensors,
+             including the UPS power monitor, for simulator testing.
   --backup  Create .bak timestamp copies before replacing generated files.
 
 After this script has run once, work from ~/labpulse-ha:
@@ -119,7 +120,7 @@ fi
 
 # Keep a plain-English USB mode for the final summary output.
 if [ "$FAKE_USB" -eq 1 ]; then
-  USB_MODE_DESCRIPTION="fake USB serial simulator"
+  USB_MODE_DESCRIPTION="fake USB serial simulator, including UPS power"
 else
   USB_MODE_DESCRIPTION="real Arduino USB serial devices"
 fi
@@ -159,6 +160,7 @@ paho-mqtt
 pydantic
 pyyaml
 pyserial
+smbus2
 adafruit-blinka
 adafruit-circuitpython-dht
 lgpio
@@ -171,6 +173,8 @@ copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
 copy_file "$SCRIPT_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
+copy_file "$SCRIPT_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
+chmod +x "$PROJECT_DIR/setup_usb_devices.py"
 replace_dir "$SCRIPT_DIR/labpulse_homeassistant" "$PROJECT_DIR/labpulse_homeassistant"
 find "$PROJECT_DIR/labpulse_homeassistant" -type d -name "__pycache__" -prune -exec rm -rf {} +
 replace_dir "$SCRIPT_DIR/labpulse_common" "$PROJECT_DIR/labpulse-python/labpulse_common"
@@ -188,17 +192,25 @@ else
   echo "Preserving existing live config: $LIVE_CONFIG"
 fi
 
-# Apply small setup-time defaults without structurally rewriting the live YAML.
-# The generators do full YAML parsing later; this block only handles starter
-# broker defaults and fake serial device paths.
-python3 - "$LIVE_CONFIG" "$FAKE_USB" <<'PY'
+# Fake mode derives a runtime config so real I2C/serial/GPIO settings remain
+# intact in the user-owned config.yaml and are available when switching back.
+RUNTIME_CONFIG="$LIVE_CONFIG"
+if [ "$FAKE_USB" -eq 1 ]; then
+  RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"
+fi
+
+# Apply setup-time defaults to the selected runtime config. Fake mode writes a
+# derived config.fake.yaml, keeping the live user-edited config.yaml intact.
+python3 - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" "$PROJECT_DIR/labpulse-python" <<'PY'
 from pathlib import Path
 import sys
 
-path = Path(sys.argv[1])
-fake_usb = sys.argv[2] == "1"
+source_path = Path(sys.argv[1])
+destination_path = Path(sys.argv[2])
+fake_usb = sys.argv[3] == "1"
+python_package_dir = Path(sys.argv[4])
 
-text = path.read_text()
+text = source_path.read_text()
 text = text.replace('broker: "localhost"', 'broker: "mosquitto"')
 text = text.replace("broker: localhost", "broker: mosquitto")
 
@@ -207,6 +219,7 @@ if fake_usb:
       "FAKE_PUMP_ROOM_PORT": "/tmp/labpulse-fake-serial/pump_room",
       "FAKE_PRESSURE_PORT": "/tmp/labpulse-fake-serial/pressure",
       "FAKE_TURBO_PUMP_PORT": "/tmp/labpulse-fake-serial/turbo_pump",
+      "FAKE_UPS_PORT": "/tmp/labpulse-fake-serial/ups_monitor",
     }
     for source, replacement in replacements.items():
         text = text.replace(source, replacement, 1)
@@ -220,7 +233,15 @@ if fake_usb:
     baud_rate: 9600'''
     text = text.replace(real_room_environment, simulated_room_environment, 1)
 
-path.write_text(text)
+    # Convert the configured power service to the same normalized readings and
+    # stable identities through the ups_monitor pseudo-serial endpoint. The
+    # converter changes only transport-specific keys in that service block.
+    sys.path.insert(0, str(python_package_dir))
+    from labpulse_common.fake_config import convert_power_service_to_fake_serial
+
+    text = convert_power_service_to_fake_serial(text)
+
+destination_path.write_text(text)
 PY
 
 # Pass fake USB mode through to Compose generation so the right device mounts
@@ -232,16 +253,27 @@ fi
 
 # Leave the live folder with fresh generated Compose and Home Assistant config.
 bash "$PROJECT_DIR/generate_compose.sh" \
-  --config "$LIVE_CONFIG" \
+  --config "$RUNTIME_CONFIG" \
   --output "$PROJECT_DIR/compose.yaml" \
   --project-dir "$PROJECT_DIR" \
   "${COMPOSE_MODE_ARGS[@]}"
 
 bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
-  --config "$LIVE_CONFIG" \
+  --config "$RUNTIME_CONFIG" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
   --project-dir "$PROJECT_DIR" \
   --reset-dashboard
+
+FAKE_CONFIG_OUTPUT=""
+NEXT_COMPOSE_COMMAND="./generate_compose.sh"
+NEXT_HOMEASSISTANT_COMMAND="./generate_homeassistant_config.sh"
+NEXT_USB_COMMAND="./setup_usb_devices.py --config config.yaml"
+if [ "$FAKE_USB" -eq 1 ]; then
+  FAKE_CONFIG_OUTPUT="  $PROJECT_DIR/config.fake.yaml"
+  NEXT_COMPOSE_COMMAND="./generate_compose.sh --config config.fake.yaml -fake_usb"
+  NEXT_HOMEASSISTANT_COMMAND="./generate_homeassistant_config.sh --config config.fake.yaml"
+  NEXT_USB_COMMAND="./setup_usb_devices.py --config config.fake.yaml --fake-usb"
+fi
 
 # Finish by printing the live paths and the normal next commands.
 cat <<EOF
@@ -251,9 +283,11 @@ Done.
 Created/updated:
   $PROJECT_DIR/compose.yaml
   $PROJECT_DIR/config.yaml
+$FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
   $PROJECT_DIR/simulate_serial.py
+  $PROJECT_DIR/setup_usb_devices.py
   $PROJECT_DIR/labpulse_homeassistant/
   $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml
   $PROJECT_DIR/homeassistant/config/labpulse_entity_map.yaml
@@ -273,9 +307,10 @@ Preserved:
 
 Next commands:
   cd "$PROJECT_DIR"
+  $NEXT_USB_COMMAND
   nano config.yaml
-  ./generate_compose.sh
-  ./generate_homeassistant_config.sh
+  $NEXT_COMPOSE_COMMAND
+  $NEXT_HOMEASSISTANT_COMMAND
   docker compose config
   docker compose up -d --build
 
@@ -284,4 +319,7 @@ Important:
     $PROJECT_DIR/config.yaml
 
   Do not edit docker_refactor/config.yaml for the running Pi system.
+
+  In fake mode, config.fake.yaml is derived from config.yaml. Edit config.yaml,
+  then rerun setup_container_fs.sh -fake_usb to refresh the fake configuration.
 EOF

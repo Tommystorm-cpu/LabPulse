@@ -22,8 +22,23 @@ DEFAULT_SIM_DIR = Path(
 )
 DEFAULT_INTERVAL = float(os.environ.get("LABPULSE_FAKE_SERIAL_INTERVAL", "1"))
 CONTROL_SOCKET_NAME = "control.sock"
-DEVICE_NAMES = ("pressure", "pump_room", "turbo_pump", "room_environment")
+DEVICE_NAMES = (
+    "pressure",
+    "pump_room",
+    "turbo_pump",
+    "room_environment",
+    "ups_monitor",
+)
+DEVICE_ALIASES = {
+    "pressure_monitor": "pressure",
+    "pressure": "pressure",
+    "pump_room": "pump_room",
+    "turbo_pump": "turbo_pump",
+    "room_environment": "room_environment",
+    "ups_monitor": "ups_monitor",
+}
 SCENARIO_STATES = ("normal", "recover", "danger-low", "danger-high", "stale")
+UPS_SCENARIO_STATES = ("mains", "battery", "charging", "stale")
 SCENARIO_TARGETS = (
     "pressure_monitor.pressure",
     "pump_room.flow1",
@@ -44,6 +59,7 @@ SCENARIO_TARGETS = (
     "turbo_pump.temp3",
     "room_environment.temperature",
     "room_environment.humidity",
+    "ups_monitor.power",
 )
 
 
@@ -52,8 +68,20 @@ def validate_scenario(target: str, state: str) -> None:
 
     if target not in SCENARIO_TARGETS:
         raise ValueError(f"Unsupported scenario target: {target}")
-    if state not in SCENARIO_STATES:
+    allowed_states = (
+        UPS_SCENARIO_STATES if target == "ups_monitor.power" else SCENARIO_STATES
+    )
+    if state not in allowed_states:
         raise ValueError(f"Unsupported scenario state: {state}")
+
+
+def normalize_device_name(name: str) -> str:
+    """Return the simulator endpoint name for a service/device alias."""
+
+    try:
+        return DEVICE_ALIASES[name]
+    except KeyError as error:
+        raise ValueError(f"Unsupported simulator device: {name}") from error
 
 
 def parse_scenario_assignment(assignment: str) -> tuple[str, str]:
@@ -207,6 +235,23 @@ class ReadingGenerator:
             return f"{self.random.randint(120, 121)}.{self.random.randint(0, 9999):04d}"
         return "0.1200"
 
+    def _ups_payload(self) -> str | None:
+        """Return normalized UPS telemetry, or no line for a stale scenario."""
+
+        state = self.scenarios.get("ups_monitor.power", "mains")
+        if state == "stale":
+            return None
+        if state == "battery":
+            voltage, current, battery_level = 3.95, -120.0, 79.2
+        elif state == "charging":
+            voltage, current, battery_level = 4.08, 120.0, 90.0
+        else:
+            voltage, current, battery_level = 4.13, 0.0, 94.2
+        return (
+            f"Voltage: {voltage:.3f} V | Current: {current:.1f} mA | "
+            f"BatteryLevel: {battery_level:.1f} %\n"
+        )
+
     def payloads(self) -> dict[str, str]:
         """Build one complete emission for every simulated serial device."""
 
@@ -234,12 +279,16 @@ class ReadingGenerator:
             f"temperature:{self._temperature('room_environment.temperature')}|"
             f"humidity:{self._humidity('room_environment.humidity')}\n"
         )
-        return {
+        payloads = {
             "pressure": f"{self._pressure()}\n",
             "pump_room": pump_flow + pump_temps + pump_room,
             "turbo_pump": turbo,
             "room_environment": room_environment,
         }
+        ups_payload = self._ups_payload()
+        if ups_payload is not None:
+            payloads["ups_monitor"] = ups_payload
+        return payloads
 
 
 @dataclass
@@ -329,6 +378,19 @@ class SimulatorService:
             target = str(request.get("target", ""))
             self.generator.clear_scenario(target)
             return {"ok": True, "message": f"Cleared {target}"}
+        if command == "disconnect":
+            name = normalize_device_name(str(request.get("device", "")))
+            endpoint = self.endpoints.pop(name, None)
+            if endpoint is None:
+                raise ValueError(f"Simulator device is already disconnected: {name}")
+            endpoint.close()
+            return {"ok": True, "message": f"Disconnected simulator device {name}"}
+        if command == "connect":
+            name = normalize_device_name(str(request.get("device", "")))
+            if name in self.endpoints:
+                raise ValueError(f"Simulator device is already connected: {name}")
+            self.endpoints[name] = SerialEndpoint.create(self.sim_dir, name)
+            return {"ok": True, "message": f"Connected simulator device {name}"}
         if command == "reset":
             self.generator.reset()
             return {"ok": True, "message": "Cleared all scenarios"}
@@ -340,6 +402,7 @@ class SimulatorService:
                     name: str(endpoint.link_path)
                     for name, endpoint in self.endpoints.items()
                 },
+                "disconnected_devices": sorted(set(DEVICE_NAMES) - set(self.endpoints)),
             }
         if command == "stop":
             self.running = False
@@ -361,7 +424,9 @@ class SimulatorService:
         """Write one payload to each pseudo-serial endpoint."""
 
         for name, payload in self.generator.payloads().items():
-            self.endpoints[name].write(payload)
+            endpoint = self.endpoints.get(name)
+            if endpoint is not None:
+                endpoint.write(payload)
 
     def serve(self) -> None:
         """Run until a stop command or termination signal is received."""
@@ -490,6 +555,11 @@ def print_status(response: dict[str, Any]) -> None:
     print("Devices:")
     for name, path in response["devices"].items():
         print(f"  {name}: {path}")
+    disconnected = response.get("disconnected_devices", [])
+    if disconnected:
+        print("Disconnected devices:")
+        for name in disconnected:
+            print(f"  {name}")
     print("Scenarios:")
     scenarios = response["scenarios"]
     if not scenarios:
@@ -524,11 +594,19 @@ def build_parser() -> argparse.ArgumentParser:
     set_command = subparsers.add_parser("set", help="change one reading scenario")
     add_directory_argument(set_command)
     set_command.add_argument("target")
-    set_command.add_argument("state", choices=SCENARIO_STATES)
+    set_command.add_argument("state")
 
     clear = subparsers.add_parser("clear", help="clear one reading scenario")
     add_directory_argument(clear)
     clear.add_argument("target")
+
+    for command, help_text in (
+        ("disconnect", "simulate unplugging one device"),
+        ("connect", "simulate replugging one device"),
+    ):
+        command_parser = subparsers.add_parser(command, help=help_text)
+        add_directory_argument(command_parser)
+        command_parser.add_argument("device", choices=tuple(DEVICE_ALIASES))
 
     for command, help_text in (
         ("reset", "clear every scenario"),
@@ -563,6 +641,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.target not in SCENARIO_TARGETS:
                 raise ValueError(f"Unsupported scenario target: {args.target}")
             request["target"] = args.target
+        elif args.command in {"disconnect", "connect"}:
+            request["device"] = normalize_device_name(args.device)
 
         response = send_request(args.dir, request)
         if args.command == "status":
