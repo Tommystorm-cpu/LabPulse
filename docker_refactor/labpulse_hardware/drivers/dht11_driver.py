@@ -118,6 +118,6 @@ class Driver(BaseSensorDriver):
         """Create the Adafruit DHT11 object, preferring Raspberry Pi-safe pulse IO."""
 
         try:
-            return adafruit_dht.DHT11(pin, use_pulseio=False)
+            return adafruit_dht.DHT11(pin, use_pulseio=True)
         except TypeError:
             return adafruit_dht.DHT11(pin)

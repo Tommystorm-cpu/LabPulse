@@ -1,5 +1,7 @@
 from pathlib import Path
+import subprocess
 import sys
+import textwrap
 from typing import Any, Callable, TypeVar
 
 
@@ -73,6 +75,52 @@ def test_serial_driver_builds() -> None:
     assert_equal(driver.baud_rate, 9600, "baud rate")
     assert_equal(driver.parser_type, "pump_room", "parser")
     assert_equal(driver.reconnect_interval_seconds, 5.0, "reconnect interval")
+
+
+def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
+    """Check a serial worker never imports the DHT module or GPIO stack."""
+
+    script = textwrap.dedent(
+        f"""
+        import sys
+
+        sys.path.insert(0, {str(REFACTOR_DIR)!r})
+
+        from labpulse_common.config import ServiceConfig
+        from labpulse_hardware.drivers.factory import build_driver
+
+        dht_module = "labpulse_hardware.drivers.dht11_driver"
+        if dht_module in sys.modules:
+            raise AssertionError("factory import eagerly loaded the DHT driver")
+
+        config = ServiceConfig(
+            driver="serial",
+            parser="pump_room",
+            serial_port="/tmp/labpulse-fake-serial/pump_room",
+            baud_rate=9600,
+            reconnect_interval_seconds=5.0,
+            device_name="Pump Room Sensor Hub",
+            readings=[{{"name": "flow1", "label": "Flow 1", "unit": "L/min"}}],
+        )
+        build_driver("pump_room", config)
+
+        if dht_module in sys.modules:
+            raise AssertionError("serial driver construction loaded the DHT driver")
+        if "board" in sys.modules or "adafruit_dht" in sys.modules:
+            raise AssertionError("serial driver construction loaded the GPIO stack")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            "Serial factory isolation subprocess failed:\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
 
 
 def test_serial_config_requires_port() -> None:
@@ -166,6 +214,10 @@ def test_max17043_i2c_driver_builds() -> None:
 
 TESTS = [
     ("serial driver builds", test_serial_driver_builds),
+    (
+        "serial factory keeps GPIO dependencies unloaded",
+        test_serial_factory_keeps_gpio_dependencies_unloaded,
+    ),
     ("serial config requires port", test_serial_config_requires_port),
     ("serial config requires parser", test_serial_config_requires_parser),
     ("gpio DHT11 driver builds", test_gpio_dht11_driver_builds),

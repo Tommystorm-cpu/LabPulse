@@ -152,6 +152,11 @@ Implementations must provide `setup()`, `read()`, and `disconnect()`.
 - `driver: i2c` plus `i2c_sensor: max17043_ups` requires an explicit bus and
   the verified address `0x36`, then constructs the MAX17043 UPS driver.
 
+Driver modules are imported only inside their selected branch. In particular,
+serial and I2C workers do not import Blinka, `board`, or `adafruit_dht`; eager
+imports can open `/dev/gpiochip0` in unrelated containers and prevent the DHT
+worker from acquiring GPIO4.
+
 The MAX17043 driver performs read-only VCELL and SOC transactions, publishes
 voltage and gauge-calculated battery level at one-second intervals, and
 reconnects after explicit I2C faults. It does not publish current or charging
@@ -189,7 +194,9 @@ logic belongs in the driver rather than Compose restart behavior.
 interval, the Adafruit device object, and `last_read_at`.
 
 `setup()` resolves the named attribute from `board` and constructs
-`adafruit_dht.DHT11`, preferring `use_pulseio=False` for Raspberry Pi use.
+`adafruit_dht.DHT11` with `use_pulseio=True`. This is the mode verified against
+the installed DHT11 and Raspberry Pi; GPIO4 must remain exclusive to the DHT
+worker.
 
 `read()` throttles requests with monotonic time. A normal DHT `RuntimeError`
 means one sample was missed and does not mark the service offline. Unexpected
