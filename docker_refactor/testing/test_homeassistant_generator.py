@@ -125,26 +125,20 @@ def test_generated_package_and_entity_map() -> None:
     if "labpulse_pressure_monitor_alarm_controls_expanded" in package["input_boolean"]:
         raise AssertionError("service-level alarm controls toggle should not be generated")
     assert "labpulse_pressure_monitor_pressure_alarm_muted" in package["input_boolean"]
-    assert_equal(
-        package["input_number"]["labpulse_pressure_monitor_pressure_minimum_threshold"]["initial"],
-        1,
-        "minimum threshold initial",
-    )
-    assert_equal(
-        package["input_number"]["labpulse_pressure_monitor_pressure_recovery_deadband"]["initial"],
-        0.1,
-        "recovery deadband initial",
-    )
+    assert "labpulse_pressure_monitor_alarm_defaults_initialized" in package["input_boolean"]
+    assert "labpulse_pressure_monitor_pressure_alarm_defaults_initialized" in package["input_boolean"]
+    for helper_type in ("input_number", "input_select", "input_boolean"):
+        for helper_id, helper in package[helper_type].items():
+            if "initial" in helper:
+                raise AssertionError(f"persistent helper {helper_type}.{helper_id} must not set initial")
     assert_equal(
         package["input_select"]["labpulse_pressure_monitor_pressure_alarm_state"]["options"],
         ["Normal", "Danger", "Sensor Fault"],
         "alarm state options",
     )
-    assert_equal(
-        package["input_select"]["labpulse_pressure_monitor_pressure_alarm_mode"]["initial"],
-        "Low Only",
-        "pressure default alarm mode",
-    )
+    automation_aliases = {item.get("alias") for item in package["automation"]}
+    assert "LabPulse Air Pressure Sensor Hub Initialize Alarm Defaults" in automation_aliases
+    assert "LabPulse Pressure Initialize Alarm Defaults" in automation_aliases
     history_sensor = package["sensor"][0]
     assert_equal(history_sensor["platform"], "history_stats", "history stats platform")
     assert_equal(history_sensor["type"], "ratio", "history stats ratio")
@@ -174,8 +168,19 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("explicit service errors should remain immediate sensor faults")
 
     automations = package["automation"]
+    automation_by_alias = {automation["alias"]: automation for automation in automations}
+    transition_aliases = [
+        automation["alias"]
+        for automation in automations
+        if automation["alias"] in {
+            "LabPulse Pressure Danger",
+            "LabPulse Pressure Recovery",
+            "LabPulse Pressure Sensor Fault",
+            "LabPulse Pressure Sensor Recovery",
+        }
+    ]
     assert_equal(
-        [automation["alias"] for automation in automations[:4]],
+        transition_aliases,
         [
             "LabPulse Pressure Danger",
             "LabPulse Pressure Recovery",
@@ -184,7 +189,7 @@ def test_generated_package_and_entity_map() -> None:
         ],
         "alarm automation order",
     )
-    fault_automation = automations[2]
+    fault_automation = automation_by_alias["LabPulse Pressure Sensor Fault"]
     assert_equal(
         fault_automation["trigger"][0]["entity_id"],
         "binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone",
@@ -200,7 +205,7 @@ def test_generated_package_and_entity_map() -> None:
         "Sensor Fault",
         "fault option",
     )
-    danger_automation = automations[0]
+    danger_automation = automation_by_alias["LabPulse Pressure Danger"]
     if "observed_danger_percent" not in danger_automation["trigger"][0]["value_template"]:
         raise AssertionError("danger transition should use observed danger percentage")
     assert_equal(
@@ -234,7 +239,7 @@ def test_generated_package_and_entity_map() -> None:
     )
     assert_equal(mute_condition["state"], "off", "mute condition state")
 
-    recovery_automation = automations[1]
+    recovery_automation = automation_by_alias["LabPulse Pressure Recovery"]
     assert_equal(recovery_automation["trigger"][0]["platform"], "template", "recovery trigger platform")
     if "recovery_zone" not in recovery_automation["trigger"][0]["value_template"]:
         raise AssertionError("recovery trigger should watch the recovery zone template")
@@ -245,7 +250,7 @@ def test_generated_package_and_entity_map() -> None:
     )
     assert_equal(recovery_automation["action"][0]["data"]["option"], "Normal", "recovery option")
 
-    sensor_recovery = automations[3]
+    sensor_recovery = automation_by_alias["LabPulse Pressure Sensor Recovery"]
     sensor_recovery_yaml = yaml.safe_dump(sensor_recovery, sort_keys=False)
     if "persistent_notification.create" not in sensor_recovery_yaml:
         raise AssertionError("sensor recovery should create a Home Assistant notification")

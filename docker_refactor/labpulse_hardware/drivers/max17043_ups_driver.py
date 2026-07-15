@@ -106,7 +106,13 @@ class Driver(BaseSensorDriver):
 
         try:
             voltage = decode_voltage(self._read_register(REG_VCELL))
-            battery_level = decode_state_of_charge(self._read_register(REG_SOC))
+            # The 8.8 fixed-point SOC register can report slightly above 100%
+            # at the top of charge. That is valid gauge telemetry, but the
+            # user-facing percentage must remain bounded.
+            battery_level = min(
+                decode_state_of_charge(self._read_register(REG_SOC)),
+                100.0,
+            )
             self._validate_readings(voltage, battery_level)
         except (OSError, IOError, ValueError) as error:
             self.logger.error("MAX17043 read failed: %s", error)

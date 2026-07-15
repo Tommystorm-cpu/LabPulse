@@ -132,6 +132,10 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
     """Return normal alarms and the dedicated power lifecycle automations."""
 
     result = []
+    for service in model.services:
+        if service.readings and service.power is None:
+            context = {"service": service, "model": model}
+            result.extend(expand_template(item, context) for item in seed["automations"].get("service", []))
     for service, reading in model.alarm_readings:
         context = {"service": service, "reading": reading, "model": model}
         result.extend(expand_template(item, context) for item in seed["automations"].get("reading", []))

@@ -191,8 +191,11 @@ services:
 | `power_detection` | Low-voltage inference threshold plus dedicated confirmation/recovery/freshness timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
-thresholds, modes, mute state, and timing are Home Assistant helpers, not live
-config fields.
+thresholds, modes, mute state, and timing are restart-persistent Home Assistant
+helpers, not live config fields. Normal alarm helpers use persistent
+initialization markers: generated defaults are applied only the first time a
+service or reading is created, and later dashboard edits are restored after
+Home Assistant restarts and automation reloads.
 
 Power lifecycle timings in `power_detection` seed the Home Assistant timing
 controls when that power service is first created. After initialization,
@@ -281,6 +284,12 @@ room_environment:
 
 Run real-hardware rather than fake-USB Compose mode so the container has the
 required `/dev` and privileged GPIO access.
+
+The DHT worker uses `use_pulseio=True`, as verified on the live Raspberry Pi.
+Only that worker should open the GPIO chip. If `fuser -v /dev/gpiochip0` lists
+serial or I2C LabPulse workers, rebuild those images from current source; the
+driver factory lazy-loads hardware modules so unrelated workers cannot claim
+GPIO resources.
 
 ## Generate and start
 

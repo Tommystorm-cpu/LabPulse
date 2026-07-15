@@ -86,6 +86,22 @@ def test_register_conversion_is_read_only() -> None:
         raise AssertionError("register byte order is incorrect")
 
 
+def test_full_charge_soc_is_capped_without_disconnect() -> None:
+    """Publish an over-100% gauge estimate as full instead of a fault."""
+
+    registers = healthy_registers()
+    registers[REG_SOC] = round(100.98046875 * 256)
+    bus = FakeBus(registers)
+    driver = make_driver(lambda _: bus)
+    if not driver.setup():
+        raise AssertionError("driver failed to open fake MAX17043")
+    readings = driver.read()
+    if readings != {"voltage": 4.13, "battery_level": 100.0}:
+        raise AssertionError(f"over-full SOC was not capped: {readings!r}")
+    if driver.get_status() != "online" or bus.closed:
+        raise AssertionError("over-full SOC incorrectly disconnected the gauge")
+
+
 def test_rejects_wrong_address_and_invalid_responses() -> None:
     """Reject non-live addresses and malformed/impossible gauge values."""
 
@@ -134,6 +150,7 @@ def test_fault_disconnect_and_reconnect() -> None:
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("read-only register conversion", test_register_conversion_is_read_only),
+    ("full-charge SOC cap", test_full_charge_soc_is_capped_without_disconnect),
     ("invalid address and responses", test_rejects_wrong_address_and_invalid_responses),
     ("fault disconnect and reconnect", test_fault_disconnect_and_reconnect),
 ]

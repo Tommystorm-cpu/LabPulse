@@ -42,7 +42,6 @@ input_numbers:
         min: 1
         max: 100
         step: 1
-        initial: 70
         unit_of_measurement: "%"
         mode: box
 
@@ -53,7 +52,6 @@ input_numbers:
         min: 10
         max: 3600
         step: 10
-        initial: 120
         unit_of_measurement: s
         mode: box
 
@@ -64,7 +62,6 @@ input_numbers:
         min: 0
         max: 3600
         step: 10
-        initial: 120
         unit_of_measurement: s
         mode: box
 
@@ -75,7 +72,6 @@ input_numbers:
         min: 30
         max: 86400
         step: 30
-        initial: 300
         unit_of_measurement: s
         mode: box
 
@@ -88,7 +84,6 @@ input_numbers:
         min: "[[ reading.threshold.range_min ]]"
         max: "[[ reading.threshold.range_max ]]"
         step: "[[ reading.threshold.step ]]"
-        initial: "[[ reading.threshold.minimum ]]"
         unit_of_measurement: "[[ reading.threshold.unit ]]"
         mode: box
 
@@ -98,7 +93,6 @@ input_numbers:
         min: "[[ reading.threshold.range_min ]]"
         max: "[[ reading.threshold.range_max ]]"
         step: "[[ reading.threshold.step ]]"
-        initial: "[[ reading.threshold.maximum ]]"
         unit_of_measurement: "[[ reading.threshold.unit ]]"
         mode: box
 
@@ -110,7 +104,6 @@ input_numbers:
         min: 0
         max: "[[ reading.threshold.range_max ]]"
         step: "[[ reading.threshold.step ]]"
-        initial: "[[ reading.threshold.deadband ]]"
         unit_of_measurement: "[[ reading.threshold.unit ]]"
         mode: box
 
@@ -125,7 +118,6 @@ input_selects:
           - Normal
           - Danger
           - Sensor Fault
-        initial: Normal
 
     - id: "labpulse_[[ reading.reading_id ]]_alarm_mode"
       config:
@@ -135,21 +127,31 @@ input_selects:
           - Low Only
           - High Only
           - Range
-        initial: "[[ reading.default_alarm_mode ]]"
 
 input_booleans:
+  service:
+    # This persistent marker seeds service defaults exactly once. Omitting
+    # `initial` lets Home Assistant restore it after later restarts.
+    - id: "labpulse_[[ service.service_id ]]_alarm_defaults_initialized"
+      config:
+        name: "[[ service.label ]] Alarm Defaults Initialized"
+
   reading:
+    # This persistent marker seeds reading defaults exactly once. Omitting
+    # `initial` lets Home Assistant restore it after later restarts.
+    - id: "labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized"
+      config:
+        name: "[[ reading.label ]] Alarm Defaults Initialized"
+
     # Dashboard presentation state only; it has no effect on alarm evaluation.
     - id: "labpulse_[[ reading.reading_id ]]_alarm_controls_expanded"
       config:
         name: "[[ reading.label ]] Show Alarm Controls"
-        initial: false
         
     # Muting suppresses notifications and SMS, but state calculation continues.
     - id: "labpulse_[[ reading.reading_id ]]_alarm_muted"
       config:
         name: "[[ reading.label ]] Alarm Muted"
-        initial: false
 
 # Convert the instantaneous danger-zone signal into the observed percentage of
 # the service window spent in danger. history_stats updates on source changes
@@ -230,7 +232,72 @@ binary_sensors:
 # State transition rules. Each automation is expanded once per reading.
 # Notification actions are inside mute checks, while state changes are not.
 automations:
+  service:
+    - alias: "LabPulse [[ service.label ]] Initialize Alarm Defaults"
+      mode: single
+      trigger:
+        - platform: homeassistant
+          event: start
+        - platform: event
+          event_type: automation_reloaded
+      condition:
+        - condition: state
+          entity_id: "input_boolean.labpulse_[[ service.service_id ]]_alarm_defaults_initialized"
+          state: "off"
+      action:
+        - service: input_number.set_value
+          target: {entity_id: "[[ service.required_danger_percent_entity ]]"}
+          data: {value: 70}
+        - service: input_number.set_value
+          target: {entity_id: "[[ service.observation_window_seconds_entity ]]"}
+          data: {value: 120}
+        - service: input_number.set_value
+          target: {entity_id: "[[ service.required_recovery_seconds_entity ]]"}
+          data: {value: 120}
+        - service: input_number.set_value
+          target: {entity_id: "[[ service.maximum_reading_age_seconds_entity ]]"}
+          data: {value: 300}
+        - service: input_boolean.turn_on
+          target:
+            entity_id: "input_boolean.labpulse_[[ service.service_id ]]_alarm_defaults_initialized"
+
   reading:
+    - alias: "LabPulse [[ reading.label ]] Initialize Alarm Defaults"
+      mode: single
+      trigger:
+        - platform: homeassistant
+          event: start
+        - platform: event
+          event_type: automation_reloaded
+      condition:
+        - condition: state
+          entity_id: "input_boolean.labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized"
+          state: "off"
+      action:
+        - service: input_number.set_value
+          target: {entity_id: "[[ reading.minimum_threshold_entity ]]"}
+          data: {value: "[[ reading.threshold.minimum ]]"}
+        - service: input_number.set_value
+          target: {entity_id: "[[ reading.maximum_threshold_entity ]]"}
+          data: {value: "[[ reading.threshold.maximum ]]"}
+        - service: input_number.set_value
+          target: {entity_id: "[[ reading.recovery_deadband_entity ]]"}
+          data: {value: "[[ reading.threshold.deadband ]]"}
+        - service: input_select.select_option
+          target: {entity_id: "[[ reading.alarm_state_entity ]]"}
+          data: {option: Normal}
+        - service: input_select.select_option
+          target: {entity_id: "[[ reading.alarm_mode_entity ]]"}
+          data: {option: "[[ reading.default_alarm_mode ]]"}
+        - service: input_boolean.turn_off
+          target:
+            entity_id:
+              - "[[ reading.alarm_controls_expanded_entity ]]"
+              - "[[ reading.alarm_muted_entity ]]"
+        - service: input_boolean.turn_on
+          target:
+            entity_id: "input_boolean.labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized"
+
     # Enter Danger only after the observed percentage reaches the required
     # percentage. The
     # Normal-state condition prevents repeat notifications while already alarmed.
