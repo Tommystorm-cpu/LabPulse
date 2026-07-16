@@ -13,10 +13,12 @@ system from the generated live directory:
 Repository source:  ~/LabPulse/docker_refactor/   example checkout location
 Live installation:  ~/labpulse-ha/
 Live config:         ~/labpulse-ha/config.yaml
+Alarm defaults:      ~/labpulse-ha/alarm_defaults.json
 ```
 
-The repository `docker_refactor/config.yaml` is only a starter copied when the
-live config does not exist. Editing it does not change an already installed Pi.
+The repository `docker_refactor/config.yaml` and `alarm_defaults.json` files
+are starters copied only when their live counterparts do not exist. Editing a
+repository starter does not change an already installed Pi.
 
 ## Prerequisites
 
@@ -44,8 +46,8 @@ chmod +x setup_container_fs.sh
 ```
 
 The setup script creates/refreshes `~/labpulse-ha`, copies the current Python
-packages and generators, preserves an existing live config, generates Compose
-and Home Assistant files, and seeds the dashboard.
+packages and generators, preserves existing live config and alarm defaults,
+generates Compose and Home Assistant files, and seeds the dashboard.
 
 ### Simulated hardware
 
@@ -94,6 +96,7 @@ It is not required for the live config: setup always preserves an existing
 ```text
 ~/labpulse-ha/
   config.yaml                         edit this
+  alarm_defaults.json                 edit per-reading Min/Max/Deadband here
   compose.yaml                        generated
   generate_compose.sh
   generate_homeassistant_config.sh
@@ -129,6 +132,7 @@ It is not required for the live config: setup always preserves an existing
 ```bash
 cd ~/labpulse-ha
 nano config.yaml
+nano alarm_defaults.json
 ```
 
 Typical shape:
@@ -187,22 +191,45 @@ services:
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
 | `reconnect_interval_seconds` | Serial reopen delay |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
+| `maximum_reading_age_seconds` | Seconds without an MQTT sample before an ordinary reading becomes unavailable; default 300 |
 | `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
 | `power_detection` | Low-voltage inference threshold plus dedicated confirmation/recovery/freshness timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
-helpers, not live config fields. Normal alarm helpers use persistent
-initialization markers: generated defaults are applied only the first time a
-service or reading is created, and later dashboard edits are restored after
-Home Assistant restarts and automation reloads.
+helpers, not hardware config fields. Put one Min, Max, and Deadband entry in
+`alarm_defaults.json` for every enabled ordinary reading:
 
-Power lifecycle timings in `power_detection` seed the Home Assistant timing
-controls when that power service is first created. After initialization,
-outage confirmation, recovery confirmation, and maximum UPS evidence age are
-edited in **LabPulse Alarm Setup** and persist across Home Assistant restarts
-and automation reloads. Regenerating configuration does not overwrite those
-saved values. See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the
+```json
+{
+  "services": {
+    "pump_room": {
+      "roomtemp": {
+        "minimum": 5.0,
+        "maximum": 35.0,
+        "deadband": 1.0
+      }
+    }
+  }
+}
+```
+
+Service and reading keys must match `config.yaml`. The generator rejects
+missing enabled readings, unknown keys, `minimum >= maximum`, or an impossible
+deadband. Dedicated UPS power detection stays in `config.yaml` and must not be
+listed here.
+
+These numbers seed the editable controls in **LabPulse Alarm Setup**. The
+generator gives each reading's initializer a version derived from its JSON
+entry. Dashboard edits therefore survive restarts and ordinary regeneration;
+changing that JSON entry and regenerating applies the new three values once.
+
+Power outage and recovery timings in `power_detection` seed Home Assistant
+controls when that power service is first created. After initialization, those
+two confirmation timings are edited in **LabPulse Alarm Setup** and persist
+across restarts and automation reloads. Maximum UPS evidence age configures the
+MQTT entity's `expire_after` directly and therefore remains a live-config
+setting. See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the
 complete safe acceptance run.
 
 To group independent devices by physical location, give their services the
@@ -584,9 +611,10 @@ python3 simulate_serial.py start \
 ```
 
 Scenario changes affect sensor facts only. Home Assistant still applies its
-configured observation window, required percentage, stale timeout, and recovery
-timer. `stale` keeps the link alive but stops changing that entity’s value, so
-wait for Maximum Reading Age before expecting Sensor Fault.
+configured observation window, required percentage, MQTT expiry, and recovery
+timer. `stale` keeps the link and peer readings active but stops publishing the
+selected reading. Wait for that service's `maximum_reading_age_seconds` before
+expecting Sensor Fault. Repeated identical samples remain healthy.
 
 ## SMS setup and testing
 

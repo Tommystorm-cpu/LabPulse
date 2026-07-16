@@ -46,7 +46,8 @@ usage() {
   cat <<'EOF'
 Usage: ./generate_homeassistant_config.sh [options]
 
-Generates Home Assistant config for LabPulse from the live config.yaml.
+Generates Home Assistant config from the live config.yaml and the adjacent
+alarm_defaults.json.
 
 Options:
   --config PATH                 Config YAML to read. Default: ./config.yaml
@@ -321,9 +322,9 @@ if [ ! -f "$GENERATOR_PACKAGE/__main__.py" ]; then
   exit 1
 fi
 
-# The Python generator reads config.yaml, builds a normalized render model, and
-# writes generated Home Assistant files. It only writes the editable dashboard
-# when RESET_DASHBOARD is 1.
+# The Python generator reads config.yaml plus its adjacent alarm_defaults.json,
+# builds a normalized render model, and writes generated Home Assistant files.
+# It only writes the editable dashboard when RESET_DASHBOARD is 1.
 PYTHONPATH="$SCRIPT_DIR:$SCRIPT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
   python3 -m labpulse_homeassistant \
   "$CONFIG_PATH" "$HA_CONFIG_DIR" "$RESET_DASHBOARD" \

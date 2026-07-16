@@ -99,8 +99,6 @@ alarm_setup_sections:
         name: Observation window
       - entity: "[[ service.required_recovery_seconds_entity ]]"
         name: Required recovery
-      - entity: "[[ service.maximum_reading_age_seconds_entity ]]"
-        name: Maximum reading age
   reading_settings_card:
     type: conditional
     conditions:
@@ -150,8 +148,6 @@ power_alarm_setup:
         name: Low-voltage confirmation time
       - entity: "[[ power.restore_confirm_seconds_entity ]]"
         name: Recovery confirmation time
-      - entity: "[[ power.maximum_reading_age_seconds_entity ]]"
-        name: Maximum UPS evidence age
       - type: divider
       - entity: "[[ power.low_voltage_evidence_entity ]]"
         name: Low UPS voltage evidence

@@ -108,6 +108,7 @@ class ServiceConfig(BaseModel):
     readings: list[ReadingConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
+    maximum_reading_age_seconds: int = Field(default=300, ge=2, le=86400)
     power_detection: PowerDetectionConfig | None = None
 
     @model_validator(mode="after")

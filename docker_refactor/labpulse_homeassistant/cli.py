@@ -4,6 +4,7 @@ import sys
 
 from labpulse_common.config import load_config
 
+from .alarm_defaults import load_alarm_defaults
 from .alarm import render_alarm
 from .dashboard import render_dashboard
 from .data_models import GeneratorPaths, build_render_model
@@ -59,7 +60,8 @@ def main(argv: list[str]) -> int:
         home_assistant_url,
     ) = parse_args(argv)
     config = load_config(paths.config_path)
-    model = build_render_model(config)
+    alarm_defaults = load_alarm_defaults(paths.alarm_defaults_path, config)
+    model = build_render_model(config, alarm_defaults)
     replacements: dict[str, str] = {}
 
     if resolve_entities:

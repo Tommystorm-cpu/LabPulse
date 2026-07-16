@@ -197,7 +197,6 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
     timing_helpers = {
         "labpulse_ups_monitor_power_outage_confirm_seconds": 10,
         "labpulse_ups_monitor_power_restore_confirm_seconds": 15,
-        "labpulse_ups_monitor_power_maximum_reading_age_seconds": 15,
     }
     for helper_id, configured_default in timing_helpers.items():
         if helper_id not in package["input_number"]:
@@ -208,6 +207,8 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
             raise AssertionError(f"timing helper is not seeded from config: {helper_id}")
     if "labpulse_ups_monitor_power_timing_initialized" not in package["input_boolean"]:
         raise AssertionError("missing persistent one-time timing initialization marker")
+    if "labpulse_ups_monitor_power_maximum_reading_age_seconds" in package["input_number"]:
+        raise AssertionError("MQTT expiry should not be duplicated as an ineffective helper")
     for fragment in (
         "recovery_start - outage_start",
         "automation_reloaded",
@@ -255,6 +256,8 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
     if sensor_recovery["trigger"][0].get("from") != "on":
         raise AssertionError("UPS sensor recovery can fire without a preceding fault")
     power_fault_state = package["template"][1]["binary_sensor"][0]["state"]
+    if "last_updated" in power_fault_state:
+        raise AssertionError("power fault still depends on value changes instead of MQTT expiry")
     if "reconnecting" in power_fault_state or "disconnected" in power_fault_state:
         raise AssertionError("UPS reconnect states bypass the evidence-age grace period")
     for field in ("request_id", "event", "service", "reading", "state", "title", "message", "current"):
@@ -266,6 +269,8 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
         raise AssertionError("generated wording overstates direct mains measurement")
     if float(power_binary[1]["attributes"]["threshold_volts"]) != 4.0:
         raise AssertionError("generated evidence does not expose the voltage threshold")
+    if int(power_binary[0]["attributes"]["maximum_evidence_age_seconds"]) != 15:
+        raise AssertionError("generated fault diagnostics omit configured MQTT expiry")
 
 
 def test_power_dashboard_rendering() -> None:
@@ -311,7 +316,6 @@ def test_power_dashboard_rendering() -> None:
     expected_timing_rows = {
         "input_number.labpulse_ups_monitor_power_outage_confirm_seconds": "Low-voltage confirmation time",
         "input_number.labpulse_ups_monitor_power_restore_confirm_seconds": "Recovery confirmation time",
-        "input_number.labpulse_ups_monitor_power_maximum_reading_age_seconds": "Maximum UPS evidence age",
     }
     actual_timing_rows = {
         row["entity"]: row["name"]

@@ -82,7 +82,6 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                     required_danger_percent=service.required_danger_percent_entity,
                     observation_window_seconds=service.observation_window_seconds_entity,
                     required_recovery_seconds=service.required_recovery_seconds_entity,
-                    maximum_reading_age_seconds=service.maximum_reading_age_seconds_entity,
                     alarm_controls_expanded=reading.alarm_controls_expanded_entity,
                 )
             service_map[reading.name] = reading_map
@@ -96,7 +95,6 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "muted": power.muted_entity,
                 "outage_confirm_seconds": power.outage_confirm_seconds_entity,
                 "restore_confirm_seconds": power.restore_confirm_seconds_entity,
-                "maximum_reading_age_seconds": power.maximum_reading_age_seconds_entity,
                 "last_outage_started": power.last_outage_started_sensor_entity,
                 "last_outage_duration": power.last_outage_duration_sensor_entity,
                 "last_outage_started_storage": power.last_outage_started_entity,

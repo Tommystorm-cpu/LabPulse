@@ -268,6 +268,7 @@ python3 -m labpulse_homeassistant \
 
 ```text
 load validated config
+load and validate alarm_defaults.json beside that config
 build RenderModel
 optionally fetch and resolve the live entity registry
 render_core()
@@ -321,7 +322,8 @@ deterministic default. This lets every renderer consume one effective value.
 services, constructs service IDs/helpers, and calls `build_reading_model()` for
 each configured reading.
 
-Threshold defaults are inferred from the normalized reading name:
+The default alarm mode and editable helper ranges are inferred from the
+normalized reading name:
 
 | Name contains | Default mode | Initial range concept |
 | --- | --- | --- |
@@ -329,9 +331,16 @@ Threshold defaults are inferred from the normalized reading name:
 | `temp`, `hum` | Range | both boundaries are meaningful |
 | anything else | Range | generic numeric defaults |
 
-These are initial Home Assistant helper values, not ongoing values read from
-`config.yaml`. After Home Assistant creates the helpers, operators tune them in
-the UI.
+The initial Min, Max, and Deadband values come from the user-owned
+`alarm_defaults.json` beside the selected `config.yaml`. The loader requires an
+entry for every enabled ordinary reading, rejects unknown services/readings,
+and excludes the dedicated power service.
+
+Each reading's three JSON values are hashed into the suffix of its persistent
+initialization helper. An unchanged suffix leaves operator-tuned Home Assistant
+values alone. Editing that reading's JSON entry and regenerating produces a new
+off marker, so its initialization automation applies the new values exactly
+once. The editable dashboard remains the ongoing owner after that seed.
 
 ### Template expansion
 
@@ -432,7 +441,6 @@ Each service receives:
 - required danger percentage
 - observation-window seconds
 - required recovery seconds
-- maximum reading age
 
 Each reading receives:
 
@@ -450,12 +458,13 @@ Disabled or invalid readings are not considered threshold danger.
 recovers only at or above `minimum + deadband`. Disabled mode is considered
 recovered when the reading is numeric.
 
-`sensor_fault_zone` is on when the reading is invalid/unavailable, its
-`last_updated` age exceeds the service limit, or service health reports an
-explicit error/unknown condition. `disconnected` and `reconnecting` do not
-immediately fault a previously valid reading: Maximum Reading Age acts as the
-reconnect grace period. A successful reconnect refreshes the reading before the
-deadline and avoids a nuisance notification.
+`sensor_fault_zone` is on when the reading is invalid/unavailable or service
+health reports an explicit error/unknown condition. MQTT discovery sets
+`expire_after` from `maximum_reading_age_seconds`, so Home Assistant makes a
+reading unavailable only when its MQTT samples actually stop. Repeated samples
+with an unchanged numeric value remain healthy. `disconnected` and
+`reconnecting` do not immediately fault a previously valid reading: MQTT
+expiry acts as the reconnect grace period.
 
 The `history_stats` observed-danger sensor reports the percentage of the
 sliding observation window for which `danger_zone` was on. It updates on source
@@ -492,11 +501,12 @@ history-stat, and percentage loop above. `PowerModel` instead supplies the IDs
 and configured timings expanded from `templates/alarm/power_logic.yaml`.
 
 The evidence template compares fresh battery voltage with the configured
-low-voltage threshold. Outage confirmation, recovery confirmation, and maximum evidence
-age are editable `input_number` helpers in LabPulse Alarm Setup. On first use,
-reconciliation seeds them from `power_detection`; a persistent initialization
-marker prevents later starts or automation reloads from overwriting dashboard
-edits. The configured defaults are 10, 15, and 15 seconds respectively.
+low-voltage threshold. Outage and recovery confirmation are editable
+`input_number` helpers in LabPulse Alarm Setup. On first use, reconciliation
+seeds them from `power_detection`; a persistent initialization marker prevents
+later starts or automation reloads from overwriting dashboard edits. Their
+configured defaults are 10 and 15 seconds. Maximum evidence age remains the
+configuration-driven MQTT `expire_after`, 15 seconds by default.
 
 Sustained low voltage starts a persistent event candidate. Its start and
 deadline are stored in `input_datetime` helpers, with the current confirmation
@@ -507,11 +517,11 @@ active-event state, event start, latest event history, timing controls, and
 the initialization marker omit `initial` values so Home Assistant restores
 them.
 
-One-second trigger-based freshness checks combine forced MQTT sample updates
-with the editable maximum age. By default, 15 seconds without voltage evidence becomes
-`Sensor Fault` and creates a Home Assistant notification plus the validated SMS
-request unless power alerts are muted. Disconnected/reconnecting status uses
-that same evidence-age interval as a reconnect grace period. When fresh UPS
+MQTT expiry makes the voltage entity unavailable after 15 seconds without a
+sample by default. The unavailable state becomes `Sensor Fault` and creates a
+Home Assistant notification plus the validated SMS request unless power alerts
+are muted. Disconnected/reconnecting status uses that same interval as a
+reconnect grace period. When fresh UPS
 evidence returns after a confirmed fault, Home Assistant creates a persistent
 telemetry-restored notification and publishes a validated recovery SMS request
 so recipients know the sensor-health incident has ended. Home Assistant
@@ -591,13 +601,13 @@ devices or disconnect containers.
 Scenario state is `dict[target, state]`. Normal sensor targets use `normal`,
 `recover`, `danger-low`, `danger-high`, and `stale`. The UPS target
 `ups_monitor.power` uses `mains`, `battery`, and `stale`.
-UPS `stale` emits no payload at all so the real 15-second freshness logic is
-exercised; power MQTT discovery uses `force_update` so unchanged one-second
-samples still count as fresh evidence.
+UPS `stale` emits no payload at all so the real 15-second MQTT expiry is
+exercised.
 
-For ordinary sensor targets, `stale` emits one unchanged valid
-value: the serial link remains present while Home Assistant’s entity
-`last_updated` becomes old enough to trigger fault detection.
+For ordinary sensor targets, `stale` suppresses only the selected reading while
+leaving the serial link and peer readings active. Its MQTT entity becomes
+unavailable after the configured expiry. A steady sensor that continues
+publishing the same value does not expire.
 
 ## USB assignment helper internals
 

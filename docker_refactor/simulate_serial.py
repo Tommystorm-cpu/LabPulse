@@ -249,39 +249,85 @@ class ReadingGenerator:
             f"Voltage: {voltage:.3f} V | BatteryLevel: {battery_level:.1f} %\n"
         )
 
+    def _is_stale(self, target: str) -> bool:
+        """Return whether a simulated reading should stop being emitted."""
+
+        return self.scenarios.get(target) == "stale"
+
     def payloads(self) -> dict[str, str]:
         """Build one complete emission for every simulated serial device."""
 
-        pump_flow = (
-            f"Flow1: {self._hundredths('pump_room.flow1')} L/min | "
-            f"Flow2: {self._hundredths('pump_room.flow2')} L/min\n"
-        )
-        pump_temps = "Temp0: {}C  Temp1: {}C  Temp2: {}C  Temp3: {}C  \n".format(
-            *(self._temperature(f"pump_room.temp{index}") for index in range(4))
-        )
-        pump_room = (
-            f"RoomTemp: {self._temperature('pump_room.roomtemp')}C | "
-            f"RoomHum: {self._humidity('pump_room.roomhum')}% | "
-            f"Press1: {self._pump_pressure('pump_room.press1')} bar | "
-            f"Press2: {self._pump_pressure('pump_room.press2')} bar\n"
-        )
-        turbo = (
-            f"Flow1: {self._hundredths('turbo_pump.flow1', turbo=True)} L/min | "
-            f"Flow2: {self._hundredths('turbo_pump.flow2', turbo=True)} L/min"
-            "Temp0: {}C  Temp1: {}C  Temp2: {}C  Temp3: {}C  \n".format(
-                *(self._temperature(f"turbo_pump.temp{index}", turbo=True) for index in range(4))
+        pump_flow_parts = []
+        for index in (1, 2):
+            target = f"pump_room.flow{index}"
+            if not self._is_stale(target):
+                pump_flow_parts.append(
+                    f"Flow{index}: {self._hundredths(target)} L/min"
+                )
+
+        pump_temp_parts = []
+        for index in range(4):
+            target = f"pump_room.temp{index}"
+            if not self._is_stale(target):
+                pump_temp_parts.append(
+                    f"Temp{index}: {self._temperature(target)}C"
+                )
+
+        pump_room_parts = []
+        if not self._is_stale("pump_room.roomtemp"):
+            pump_room_parts.append(
+                f"RoomTemp: {self._temperature('pump_room.roomtemp')}C"
             )
+        if not self._is_stale("pump_room.roomhum"):
+            pump_room_parts.append(
+                f"RoomHum: {self._humidity('pump_room.roomhum')}%"
+            )
+        for index in (1, 2):
+            target = f"pump_room.press{index}"
+            if not self._is_stale(target):
+                pump_room_parts.append(
+                    f"Press{index}: {self._pump_pressure(target)} bar"
+                )
+        pump_payload = "".join(
+            f"{' | '.join(parts)}\n"
+            for parts in (pump_flow_parts, pump_temp_parts, pump_room_parts)
+            if parts
         )
-        room_environment = (
-            f"temperature:{self._temperature('room_environment.temperature')}|"
-            f"humidity:{self._humidity('room_environment.humidity')}\n"
-        )
-        payloads = {
-            "pressure": f"{self._pressure()}\n",
-            "pump_room": pump_flow + pump_temps + pump_room,
-            "turbo_pump": turbo,
-            "room_environment": room_environment,
-        }
+
+        turbo_parts = []
+        for index in (1, 2):
+            target = f"turbo_pump.flow{index}"
+            if not self._is_stale(target):
+                turbo_parts.append(
+                    f"Flow{index}: {self._hundredths(target, turbo=True)} L/min"
+                )
+        for index in range(4):
+            target = f"turbo_pump.temp{index}"
+            if not self._is_stale(target):
+                turbo_parts.append(
+                    f"Temp{index}: {self._temperature(target, turbo=True)}C"
+                )
+
+        room_parts = []
+        if not self._is_stale("room_environment.temperature"):
+            room_parts.append(
+                "temperature:"
+                f"{self._temperature('room_environment.temperature')}"
+            )
+        if not self._is_stale("room_environment.humidity"):
+            room_parts.append(
+                f"humidity:{self._humidity('room_environment.humidity')}"
+            )
+
+        payloads: dict[str, str] = {}
+        if not self._is_stale("pressure_monitor.pressure"):
+            payloads["pressure"] = f"{self._pressure()}\n"
+        if pump_payload:
+            payloads["pump_room"] = pump_payload
+        if turbo_parts:
+            payloads["turbo_pump"] = " | ".join(turbo_parts) + "\n"
+        if room_parts:
+            payloads["room_environment"] = "|".join(room_parts) + "\n"
         ups_payload = self._ups_payload()
         if ups_payload is not None:
             payloads["ups_monitor"] = ups_payload

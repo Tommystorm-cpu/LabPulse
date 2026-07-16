@@ -102,7 +102,7 @@ def test_ups_power_scenarios_and_stale_suppression() -> None:
 
 
 def test_scenarios_change_generated_values() -> None:
-    """Check live scenarios produce danger and stable stale values."""
+    """Check danger scenarios emit values while stale stops one reading."""
 
     generator = ReadingGenerator(seed=8)
     generator.set_scenario("room_environment.humidity", "danger-high")
@@ -112,10 +112,8 @@ def test_scenarios_change_generated_values() -> None:
     generator.set_scenario("pump_room.roomhum", "danger-high")
 
     first = generator.payloads()
-    second = generator.payloads()
     room_parser = SerialParser("room_environment", "pipe")
     first_room = room_parser.parse(first["room_environment"].strip())
-    second_room = room_parser.parse(second["room_environment"].strip())
     pressure = SerialParser("pressure_monitor", "pressure").parse(
         first["pressure"].strip()
     )
@@ -123,12 +121,12 @@ def test_scenarios_change_generated_values() -> None:
         first["pump_room"].splitlines()[2]
     )
 
-    if first_room is None or second_room is None or pressure is None or pump is None:
+    if first_room is None or pressure is None or pump is None:
         raise AssertionError("scenario payload failed to parse")
     if first_room["humidity"] < 90:
         raise AssertionError(f"humidity did not enter danger-high: {first_room!r}")
-    if first_room["temperature"] != second_room["temperature"]:
-        raise AssertionError("stale temperature changed between emissions")
+    if "temperature" in first_room or "humidity" not in first_room:
+        raise AssertionError("stale temperature was emitted or suppressed its healthy peer")
     if pressure["pressure"] >= 1:
         raise AssertionError(f"pressure did not enter danger-low: {pressure!r}")
     if pump["press1"] >= 1:

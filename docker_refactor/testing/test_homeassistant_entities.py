@@ -132,13 +132,6 @@ def test_render_model_stable_entities() -> None:
         "input_number.labpulse_pump_room_required_recovery_seconds",
         "required recovery",
     )
-    assert_equal(
-        service.maximum_reading_age_seconds_entity,
-        "input_number.labpulse_pump_room_maximum_reading_age_seconds",
-        "maximum reading age",
-    )
-
-
 def registry_snapshot(*, rename_flow: bool = False, omit_temp: bool = False) -> RegistrySnapshot:
     """Return registry entries matching the sample render model."""
 

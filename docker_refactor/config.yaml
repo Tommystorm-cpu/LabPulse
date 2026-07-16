@@ -8,6 +8,8 @@
 #
 # This repo file is only copied as a starter template when the live config
 # does not already exist.
+# Per-reading Min, Max, and Deadband values live in the adjacent
+# ~/labpulse-ha/alarm_defaults.json file.
 
 # --- Global Settings ---
 mqtt:
@@ -22,6 +24,8 @@ sms:
     - "+447700900000"
 
 services:
+  # Ordinary readings expire in Home Assistant after 300 seconds without an
+  # MQTT sample. Override maximum_reading_age_seconds per service if needed.
   pressure_monitor:
     enabled: true
     driver: serial

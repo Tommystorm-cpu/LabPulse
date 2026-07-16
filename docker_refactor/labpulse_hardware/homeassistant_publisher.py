@@ -134,6 +134,7 @@ class HomeAssistantMqttPublisher:
             payload = {
                 "name": reading_label,
                 "state_topic": sensor_state_topic(self.service_name, reading_name),
+                "expire_after": self._reading_expiry_seconds(),
                 "unique_id": reading_id,
                 "object_id": reading_id,
                 "default_entity_id": entity_id("sensor", self.service_name, reading_name),
@@ -152,19 +153,19 @@ class HomeAssistantMqttPublisher:
             if reading_config and reading_config.state_class:
                 payload["state_class"] = reading_config.state_class
 
-            # Power freshness is safety-significant. Home Assistant must record
-            # every one-second sample even when the numeric value is unchanged,
-            # otherwise last_updated cannot distinguish a steady voltage from a
-            # stopped publisher.
-            if self.service_config.power_detection is not None:
-                payload["force_update"] = True
-
             self.client.publish(
                 sensor_discovery_topic(self.service_name, reading_name),
                 json.dumps(payload),
                 retain=True,
             )
             self.logger.info("Published Home Assistant discovery for %s", reading_name)
+
+    def _reading_expiry_seconds(self) -> int:
+        """Return how long Home Assistant may wait without an MQTT sample."""
+
+        if self.service_config.power_detection is not None:
+            return self.service_config.power_detection.maximum_reading_age_seconds
+        return self.service_config.maximum_reading_age_seconds
 
     def publish_readings(self, readings: dict[str, float]) -> None:
         """Publish current sensor readings to their MQTT state topics."""

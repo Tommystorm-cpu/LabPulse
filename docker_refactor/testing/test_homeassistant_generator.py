@@ -57,6 +57,40 @@ def sample_config() -> dict[str, object]:
     }
 
 
+def sample_alarm_defaults(config: dict[str, object]) -> dict[str, object]:
+    """Return complete defaults for the ordinary readings in a test config."""
+
+    services: dict[str, object] = {}
+    for service_name, service in config["services"].items():
+        if service.get("power_detection") is not None:
+            continue
+        services[service_name] = {
+            reading["name"]: {
+                "minimum": 1.0,
+                "maximum": 20.0,
+                "deadband": 0.5,
+            }
+            for reading in service.get("readings", [])
+        }
+
+    pressure_monitor = services.get("pressure_monitor")
+    if pressure_monitor is not None:
+        if "pressure" in pressure_monitor:
+            pressure_monitor["pressure"] = {
+                "minimum": 2.5,
+                "maximum": 8.5,
+                "deadband": 0.4,
+            }
+        if "temperature" in pressure_monitor:
+            pressure_monitor["temperature"] = {
+                "minimum": 10.0,
+                "maximum": 30.0,
+                "deadband": 1.5,
+            }
+
+    return {"services": services}
+
+
 def render_into(
     temp_dir: Path,
     reset_dashboard: bool,
@@ -66,8 +100,13 @@ def render_into(
 
     temp_dir.mkdir(parents=True, exist_ok=True)
     config_path = temp_dir / "config.yaml"
+    rendered_config = config or sample_config()
     config_path.write_text(
-        yaml.safe_dump(config or sample_config(), sort_keys=False),
+        yaml.safe_dump(rendered_config, sort_keys=False),
+        encoding="utf-8",
+    )
+    (temp_dir / "alarm_defaults.json").write_text(
+        json.dumps(sample_alarm_defaults(rendered_config), indent=2) + "\n",
         encoding="utf-8",
     )
     ha_config_dir = temp_dir / "homeassistant" / "config"
@@ -114,7 +153,7 @@ def test_generated_package_and_entity_map() -> None:
     assert "labpulse_pressure_monitor_required_danger_percent" in package["input_number"]
     assert "labpulse_pressure_monitor_observation_window_seconds" in package["input_number"]
     assert "labpulse_pressure_monitor_required_recovery_seconds" in package["input_number"]
-    assert "labpulse_pressure_monitor_maximum_reading_age_seconds" in package["input_number"]
+    assert "labpulse_pressure_monitor_maximum_reading_age_seconds" not in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_minimum_threshold" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_maximum_threshold" in package["input_number"]
     assert "labpulse_pressure_monitor_pressure_recovery_deadband" in package["input_number"]
@@ -126,7 +165,14 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("service-level alarm controls toggle should not be generated")
     assert "labpulse_pressure_monitor_pressure_alarm_muted" in package["input_boolean"]
     assert "labpulse_pressure_monitor_alarm_defaults_initialized" in package["input_boolean"]
-    assert "labpulse_pressure_monitor_pressure_alarm_defaults_initialized" in package["input_boolean"]
+    reading_default_markers = [
+        helper_id
+        for helper_id in package["input_boolean"]
+        if helper_id.startswith(
+            "labpulse_pressure_monitor_pressure_alarm_defaults_initialized_"
+        )
+    ]
+    assert_equal(len(reading_default_markers), 1, "versioned pressure defaults marker")
     for helper_type in ("input_number", "input_select", "input_boolean"):
         for helper_id, helper in package[helper_type].items():
             if "initial" in helper:
@@ -139,6 +185,16 @@ def test_generated_package_and_entity_map() -> None:
     automation_aliases = {item.get("alias") for item in package["automation"]}
     assert "LabPulse Air Pressure Sensor Hub Initialize Alarm Defaults" in automation_aliases
     assert "LabPulse Pressure Initialize Alarm Defaults" in automation_aliases
+    pressure_defaults_automation = next(
+        automation
+        for automation in package["automation"]
+        if automation.get("alias") == "LabPulse Pressure Initialize Alarm Defaults"
+    )
+    seeded_values = [
+        action["data"]["value"]
+        for action in pressure_defaults_automation["action"][:3]
+    ]
+    assert_equal(seeded_values, [2.5, 8.5, 0.4], "JSON threshold seeds")
     history_sensor = package["sensor"][0]
     assert_equal(history_sensor["platform"], "history_stats", "history stats platform")
     assert_equal(history_sensor["type"], "ratio", "history stats ratio")
@@ -160,8 +216,10 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("recovery zone should use recovery deadband helper")
     if "recovery_minimum" not in zone_sensors[1]["state"] or "recovery_maximum" not in zone_sensors[1]["state"]:
         raise AssertionError("recovery zone should derive deadband recovery thresholds")
-    if "maximum_reading_age_seconds" not in zone_sensors[2]["state"]:
-        raise AssertionError("fault zone should use maximum reading age helper")
+    if "last_updated" in zone_sensors[2]["state"]:
+        raise AssertionError("fault zone still mistakes an unchanged value for a missing sample")
+    if "unavailable" not in zone_sensors[2]["state"]:
+        raise AssertionError("fault zone does not consume MQTT expiry state")
     if "reconnecting" in zone_sensors[2]["state"] or "disconnected" in zone_sensors[2]["state"]:
         raise AssertionError("reconnect states should use reading age as a grace period")
     if "'error'" not in zone_sensors[2]["state"]:
@@ -289,6 +347,85 @@ def test_generated_package_and_entity_map() -> None:
         "input_boolean.labpulse_pressure_monitor_pressure_alarm_controls_expanded",
         "entity map reading alarm controls toggle",
     )
+
+
+def test_changed_json_defaults_get_a_new_initializer() -> None:
+    """Check a JSON edit is applied once without resetting the dashboard."""
+
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    temp_dir = temp_root / f"generator-{uuid.uuid4().hex}"
+    paths = render_into(temp_dir, reset_dashboard=True)
+    first_package = yaml.safe_load(paths.package_path.read_text(encoding="utf-8"))
+    prefix = "labpulse_pressure_monitor_pressure_alarm_defaults_initialized_"
+    first_marker = next(
+        helper_id for helper_id in first_package["input_boolean"]
+        if helper_id.startswith(prefix)
+    )
+
+    defaults = sample_alarm_defaults(sample_config())
+    defaults["services"]["pressure_monitor"]["pressure"]["minimum"] = 3.0
+    paths.alarm_defaults_path.write_text(
+        json.dumps(defaults, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    result = generate_homeassistant(
+        [
+            "generator",
+            str(paths.config_path),
+            str(paths.ha_config_dir),
+            "0",
+        ]
+    )
+    assert_equal(result, 0, "generator result after JSON edit")
+
+    second_package = yaml.safe_load(paths.package_path.read_text(encoding="utf-8"))
+    second_marker = next(
+        helper_id for helper_id in second_package["input_boolean"]
+        if helper_id.startswith(prefix)
+    )
+    if second_marker == first_marker:
+        raise AssertionError("changed JSON defaults should create a new initializer")
+    automation = next(
+        item for item in second_package["automation"]
+        if item.get("alias") == "LabPulse Pressure Initialize Alarm Defaults"
+    )
+    assert_equal(
+        automation["action"][0]["data"]["value"],
+        3.0,
+        "updated JSON minimum seed",
+    )
+
+
+def test_missing_json_defaults_are_rejected() -> None:
+    """Check enabled ordinary readings cannot silently lose alarm defaults."""
+
+    temp_root = REFACTOR_DIR / "testing" / "tmp"
+    temp_dir = temp_root / f"generator-{uuid.uuid4().hex}"
+    temp_dir.mkdir(parents=True)
+    config_path = temp_dir / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(sample_config(), sort_keys=False),
+        encoding="utf-8",
+    )
+    (temp_dir / "alarm_defaults.json").write_text(
+        json.dumps({"services": {"pressure_monitor": {}}}) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        generate_homeassistant(
+            [
+                "generator",
+                str(config_path),
+                str(temp_dir / "homeassistant" / "config"),
+                "0",
+            ]
+        )
+    except ValueError as error:
+        message = str(error)
+        if "pressure_monitor.pressure" not in message:
+            raise AssertionError(f"missing-reading error lacks context: {message}")
+    else:
+        raise AssertionError("generator accepted incomplete alarm_defaults.json")
 
 
 def test_dashboard_reset_and_preserve() -> None:
@@ -704,6 +841,8 @@ def test_generator_resolves_and_syncs_entities() -> None:
 
 TESTS = [
     ("generated package and entity map", test_generated_package_and_entity_map),
+    ("changed JSON defaults get a new initializer", test_changed_json_defaults_get_a_new_initializer),
+    ("missing JSON defaults are rejected", test_missing_json_defaults_are_rejected),
     ("dashboard reset and preserve", test_dashboard_reset_and_preserve),
     ("dashboard reset uses registered Overview", test_dashboard_reset_uses_registered_overview_storage),
     ("dashboard groups services by section", test_dashboard_groups_services_by_section),

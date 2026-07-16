@@ -19,8 +19,8 @@
 # Placeholders available in strings:
 # - [[ service.name ]], [[ service.label ]], [[ service.service_id ]]
 # - [[ service.required_danger_percent_entity ]], [[ service.observation_window_seconds_entity ]]
-# - [[ service.required_recovery_seconds_entity ]], [[ service.maximum_reading_age_seconds_entity ]]
-# - [[ reading.label ]], [[ reading.expected_entity_id ]], [[ reading.expected_object_id ]]
+# - [[ service.required_recovery_seconds_entity ]]
+# - [[ reading.label ]], [[ reading.expected_entity_id ]]
 # - [[ reading.alarm_controls_expanded_entity ]]
 # - [[ reading.alarm_state_entity ]]
 # - [[ reading.alarm_mode_entity ]], [[ reading.alarm_muted_entity ]]
@@ -62,16 +62,6 @@ input_numbers:
         min: 0
         max: 3600
         step: 10
-        unit_of_measurement: s
-        mode: box
-
-    # The maximum reading age before the reading is treated as a sensor fault.
-    - id: "labpulse_[[ service.service_id ]]_maximum_reading_age_seconds"
-      config:
-        name: "[[ service.label ]] Maximum Reading Age"
-        min: 30
-        max: 86400
-        step: 30
         unit_of_measurement: s
         mode: box
 
@@ -137,9 +127,9 @@ input_booleans:
         name: "[[ service.label ]] Alarm Defaults Initialized"
 
   reading:
-    # This persistent marker seeds reading defaults exactly once. Omitting
-    # `initial` lets Home Assistant restore it after later restarts.
-    - id: "labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized"
+    # The version suffix changes only when this reading's JSON defaults change.
+    # A new marker applies those values once; dashboard edits then persist.
+    - id: "labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized_[[ reading.threshold.version ]]"
       config:
         name: "[[ reading.label ]] Alarm Defaults Initialized"
 
@@ -216,17 +206,16 @@ binary_sensors:
              or (mode == 'Range' and value >= recovery_minimum and value <= recovery_maximum) }}
         {% endif %}
 
-    # A fault covers invalid/stale readings and explicit service-health errors.
+    # MQTT expire_after turns a reading unavailable only when samples stop.
+    # An unchanged but repeatedly reported value therefore remains healthy.
     - name: "[[ reading.sensor_fault_zone_unique_id ]]"
       unique_id: "[[ reading.sensor_fault_zone_unique_id ]]"
       device_class: problem
       state: >
         {% set raw = states('[[ reading.expected_entity_id ]]') %}
-        {% set maximum_age_seconds = states('[[ service.maximum_reading_age_seconds_entity ]]') | int(300) %}
         {% set service_status = states('[[ service.status_entity_id ]]') %}
         {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
            or not is_number(raw)
-           or (as_timestamp(now()) - as_timestamp(states.sensor.[[ reading.expected_object_id ]].last_updated, 0)) > maximum_age_seconds
            or service_status in ['error', 'unavailable', 'unknown'] }}
 
 # State transition rules. Each automation is expanded once per reading.
@@ -254,9 +243,6 @@ automations:
         - service: input_number.set_value
           target: {entity_id: "[[ service.required_recovery_seconds_entity ]]"}
           data: {value: 120}
-        - service: input_number.set_value
-          target: {entity_id: "[[ service.maximum_reading_age_seconds_entity ]]"}
-          data: {value: 300}
         - service: input_boolean.turn_on
           target:
             entity_id: "input_boolean.labpulse_[[ service.service_id ]]_alarm_defaults_initialized"
@@ -271,7 +257,7 @@ automations:
           event_type: automation_reloaded
       condition:
         - condition: state
-          entity_id: "input_boolean.labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized"
+          entity_id: "input_boolean.labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized_[[ reading.threshold.version ]]"
           state: "off"
       action:
         - service: input_number.set_value
@@ -296,7 +282,7 @@ automations:
               - "[[ reading.alarm_muted_entity ]]"
         - service: input_boolean.turn_on
           target:
-            entity_id: "input_boolean.labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized"
+            entity_id: "input_boolean.labpulse_[[ reading.reading_id ]]_alarm_defaults_initialized_[[ reading.threshold.version ]]"
 
     # Enter Danger only after the observed percentage reaches the required
     # percentage. The
@@ -414,9 +400,9 @@ automations:
                       } | to_json }}
 
     # Any confirmed fault takes priority over Normal or Danger. A serial
-    # disconnected/reconnecting status is not an immediate fault: the last
-    # reading remains trusted until Maximum Reading Age expires, giving the
-    # driver time to reconnect without producing a nuisance notification.
+    # disconnected/reconnecting status is not an immediate fault: MQTT keeps
+    # the last reading available until its configured expire_after elapses,
+    # giving the driver time to reconnect without a nuisance notification.
     - alias: "LabPulse [[ reading.label ]] Sensor Fault"
       mode: single
       trigger:

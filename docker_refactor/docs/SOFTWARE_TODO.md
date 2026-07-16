@@ -20,8 +20,9 @@ reconstructable from the repository and documented live configuration.
 
 1. Prefer standard, maintained tools such as Python, Docker Compose, MQTT, and
    Home Assistant.
-2. Keep sensor/deployment facts in `~/labpulse-ha/config.yaml`; keep alarm
-   decisions and operator controls in Home Assistant.
+2. Keep sensor/deployment facts in `~/labpulse-ha/config.yaml`, initial
+   per-reading thresholds in `~/labpulse-ha/alarm_defaults.json`, and ongoing
+   alarm decisions and operator controls in Home Assistant.
 3. Make changes testable without physical hardware wherever possible.
 4. Avoid unnecessary compatibility layers before the first stable release.
 5. Keep the project readable, copyable, and suitable for public GitHub
@@ -347,7 +348,8 @@ listed as new feature work:
 - [x] Alarm numeric helpers use box input rather than sliders.
 - [x] Serial drivers contain reconnect logic after USB loss.
 - [x] Alarm timing includes an observation window, required danger percentage,
-  required recovery time, deadband, and maximum reading age.
+  required recovery time, and deadband; MQTT expiry detects stopped readings
+  without treating unchanged values as stale.
 - [x] SMS requests have duplicate protection, a short event cooldown, a bounded
   queue, retries, status, and delivery results.
 - [x] Every reading has a mute control that suppresses delivery without hiding

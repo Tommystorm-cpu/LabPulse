@@ -18,14 +18,6 @@ input_numbers:
       step: 1
       unit_of_measurement: s
       mode: box
-  - id: "labpulse_[[ service.service_id ]]_power_maximum_reading_age_seconds"
-    config:
-      name: "[[ service.label ]] Maximum UPS Evidence Age"
-      min: 2
-      max: 86400
-      step: 1
-      unit_of_measurement: s
-      mode: box
   - id: "labpulse_[[ service.service_id ]]_power_last_outage_duration"
     config:
       name: "[[ service.label ]] Last Low-Voltage Event Duration"
@@ -91,8 +83,6 @@ templates:
         state_class: measurement
         state: "{{ states('[[ power.last_outage_duration_entity ]]') | float(0) | round(0) }}"
   - trigger:
-      - platform: time_pattern
-        seconds: "/1"
       - platform: state
         entity_id:
           - "[[ power.voltage.expected_entity_id ]]"
@@ -104,15 +94,11 @@ templates:
         state: >
           {% set raw = states('[[ power.voltage.expected_entity_id ]]') %}
           {% set status = states('[[ service.status_entity_id ]]') %}
-          {% set age = as_timestamp(now()) - as_timestamp(states.sensor.[[ power.voltage.expected_object_id ]].last_updated, 0) %}
-          {% set maximum_age = [[ power.maximum_reading_age_seconds ]] if is_state('[[ power.timing_initialized_entity ]]', 'off') else states('[[ power.maximum_reading_age_seconds_entity ]]') | int([[ power.maximum_reading_age_seconds ]]) %}
           {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
              or not is_number(raw)
-             or age >= maximum_age
              or status in ['error', 'unavailable', 'unknown'] }}
         attributes:
-          maximum_evidence_age_seconds: >
-            {{ [[ power.maximum_reading_age_seconds ]] if is_state('[[ power.timing_initialized_entity ]]', 'off') else states('[[ power.maximum_reading_age_seconds_entity ]]') | int([[ power.maximum_reading_age_seconds ]]) }}
+          maximum_evidence_age_seconds: "[[ power.maximum_reading_age_seconds ]]"
       - name: "[[ power.low_voltage_evidence_unique_id ]]"
         unique_id: "[[ power.low_voltage_evidence_unique_id ]]"
         device_class: power
@@ -387,9 +373,6 @@ automations:
               - service: input_number.set_value
                 target: {entity_id: "[[ power.restore_confirm_seconds_entity ]]"}
                 data: {value: "[[ power.restore_confirm_seconds ]]"}
-              - service: input_number.set_value
-                target: {entity_id: "[[ power.maximum_reading_age_seconds_entity ]]"}
-                data: {value: "[[ power.maximum_reading_age_seconds ]]"}
               - service: input_boolean.turn_on
                 target: {entity_id: "[[ power.timing_initialized_entity ]]"}
       - choose:

@@ -1,6 +1,7 @@
 """Normalize LabPulse config into Home Assistant template data."""
 
 from dataclasses import dataclass, field
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Literal
@@ -8,6 +9,8 @@ from typing import Any, Literal
 from labpulse_common.config import LabPulseConfig, PowerDetectionConfig, ReadingConfig
 from labpulse_common.identity import entity_id, slug, stable_id
 from labpulse_common.mqtt_contracts import SMS_SEND_TOPIC
+
+from .alarm_defaults import AlarmDefaults, ReadingAlarmDefaults
 
 
 JsonDict = dict[str, Any]
@@ -37,6 +40,7 @@ class ThresholdModel:
     range_min: float | int
     range_max: float | int
     step: float | int
+    version: str
 
 
 @dataclass
@@ -61,13 +65,6 @@ class EntityReference:
         """Return the registry ID when resolved, otherwise the stable default."""
 
         return self.resolved_entity_id or self.default_entity_id
-
-    @property
-    def object_id(self) -> str:
-        """Return the object portion of the effective entity ID."""
-
-        return self.entity_id.split(".", 1)[1]
-
 
 @dataclass
 class ReadingModel:
@@ -123,13 +120,6 @@ class ReadingModel:
 
         return self.mqtt_entity.entity_id
 
-    @property
-    def expected_object_id(self) -> str:
-        """Return the effective MQTT object ID used by Home Assistant Jinja."""
-
-        return self.mqtt_entity.object_id
-
-
 @dataclass
 class PowerModel:
     """Dedicated UPS low-voltage lifecycle identities and timing settings."""
@@ -149,7 +139,6 @@ class PowerModel:
     muted_entity: str
     outage_confirm_seconds_entity: str
     restore_confirm_seconds_entity: str
-    maximum_reading_age_seconds_entity: str
     timing_initialized_entity: str
     outage_candidate_entity: str
     recovery_candidate_entity: str
@@ -183,12 +172,10 @@ class ServiceModel:
     status_entity: EntityReference
 
     # Home Assistant helpers shared by every reading in this service. They
-    # control danger timing, recovery, and stale-data
-    # detection for the generated alarm state machines.
+    # control danger timing and recovery for the generated alarm state machines.
     required_danger_percent_entity: str
     observation_window_seconds_entity: str
     required_recovery_seconds_entity: str
-    maximum_reading_age_seconds_entity: str
 
     # Per-reading template models generated from the service configuration.
     readings: list[ReadingModel] = field(default_factory=list)
@@ -264,7 +251,10 @@ def reading_defaults(reading_name: str) -> JsonDict:
     return THRESHOLD_DEFAULTS["generic"]
 
 
-def build_render_model(config: LabPulseConfig) -> RenderModel:
+def build_render_model(
+    config: LabPulseConfig,
+    alarm_defaults: AlarmDefaults | None = None,
+) -> RenderModel:
     """Build the complete Home Assistant render model from validated config.
 
     The render model is the boundary between user config and Home Assistant
@@ -299,11 +289,22 @@ def build_render_model(config: LabPulseConfig) -> RenderModel:
             required_danger_percent_entity      = entity_id("input_number", service_name, "required_danger_percent"),
             observation_window_seconds_entity  = entity_id("input_number", service_name, "observation_window_seconds"),
             required_recovery_seconds_entity   = entity_id("input_number", service_name, "required_recovery_seconds"),
-            maximum_reading_age_seconds_entity = entity_id("input_number", service_name, "maximum_reading_age_seconds"),
         )
 
         for reading in service_config.readings:
-            service.readings.append(build_reading_model(service_name, service_id, reading))
+            configured_defaults = (
+                alarm_defaults.get((service_name, reading.name))
+                if alarm_defaults is not None
+                else None
+            )
+            service.readings.append(
+                build_reading_model(
+                    service_name,
+                    service_id,
+                    reading,
+                    configured_defaults,
+                )
+            )
 
         if service_config.power_detection is not None:
             service.power = build_power_model(
@@ -342,7 +343,6 @@ def build_power_model(
         muted_entity=entity_id("input_boolean", *prefix, "muted"),
         outage_confirm_seconds_entity=entity_id("input_number", *prefix, "outage_confirm_seconds"),
         restore_confirm_seconds_entity=entity_id("input_number", *prefix, "restore_confirm_seconds"),
-        maximum_reading_age_seconds_entity=entity_id("input_number", *prefix, "maximum_reading_age_seconds"),
         timing_initialized_entity=entity_id("input_boolean", *prefix, "timing_initialized"),
         outage_candidate_entity=entity_id("input_boolean", *prefix, "outage_candidate"),
         recovery_candidate_entity=entity_id("input_boolean", *prefix, "recovery_candidate"),
@@ -365,13 +365,19 @@ def build_reading_model(
     service_name: str,
     service_id: str,
     reading: ReadingConfig,
+    configured_defaults: ReadingAlarmDefaults | None = None,
 ) -> ReadingModel:
     """Build template data for one configured reading."""
 
     reading_name = slug(reading.name)
     reading_id = f"{service_id}_{reading_name}"
     label = reading.display_label
-    threshold = build_threshold(reading_name, reading)
+    threshold = build_threshold(
+        service_name,
+        reading_name,
+        reading,
+        configured_defaults,
+    )
     minimum = f"input_number.{stable_id(service_name, reading_name, 'minimum_threshold')}"
     maximum = f"input_number.{stable_id(service_name, reading_name, 'maximum_threshold')}"
     deadband = f"input_number.{stable_id(service_name, reading_name, 'recovery_deadband')}"
@@ -414,23 +420,46 @@ def default_alarm_mode(reading_name: str) -> str:
     return "Range"
 
 
-def build_threshold(reading_name: str, reading: ReadingConfig) -> ThresholdModel:
+def build_threshold(
+    service_name: str,
+    reading_name: str,
+    reading: ReadingConfig,
+    configured: ReadingAlarmDefaults | None,
+) -> ThresholdModel:
     """Return default editable threshold helper settings for one reading.
 
-    Threshold values intentionally do not come from `config.yaml`. Once
-    generated, users tune them in Home Assistant's dashboard helpers.
+    Threshold values come from alarm_defaults.json rather than hardware config.
+    Once generated, users can still tune the Home Assistant dashboard helpers.
     """
 
-    defaults = reading_defaults(reading_name)
+    metadata = reading_defaults(reading_name)
+    defaults = configured or ReadingAlarmDefaults(
+        minimum=metadata["min"],
+        maximum=metadata["max"],
+        deadband=metadata["deadband"],
+    )
+    if not metadata["range_min"] <= defaults.minimum <= metadata["range_max"]:
+        raise ValueError(
+            f"alarm default {service_name}.{reading_name}.minimum is outside "
+            f"{metadata['range_min']}..{metadata['range_max']}"
+        )
+    if not metadata["range_min"] <= defaults.maximum <= metadata["range_max"]:
+        raise ValueError(
+            f"alarm default {service_name}.{reading_name}.maximum is outside "
+            f"{metadata['range_min']}..{metadata['range_max']}"
+        )
+    version_payload = json.dumps(defaults.model_dump(), sort_keys=True).encode("utf-8")
+    version = hashlib.sha256(version_payload).hexdigest()[:12]
 
     return ThresholdModel(
-        unit=reading.unit or str(defaults["unit"]),
-        minimum=defaults["min"],
-        maximum=defaults["max"],
-        deadband=defaults["deadband"],
-        range_min=defaults["range_min"],
-        range_max=defaults["range_max"],
-        step=defaults["step"],
+        unit=reading.unit or str(metadata["unit"]),
+        minimum=defaults.minimum,
+        maximum=defaults.maximum,
+        deadband=defaults.deadband,
+        range_min=metadata["range_min"],
+        range_max=metadata["range_max"],
+        step=metadata["step"],
+        version=version,
     )
 
 
@@ -440,6 +469,12 @@ class GeneratorPaths:
 
     config_path: Path
     ha_config_dir: Path
+
+    @property
+    def alarm_defaults_path(self) -> Path:
+        """Return the user-owned alarm defaults beside the selected config."""
+
+        return self.config_path.parent / "alarm_defaults.json"
 
     @property
     def packages_dir(self) -> Path:

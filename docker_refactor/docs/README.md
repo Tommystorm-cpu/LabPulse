@@ -61,7 +61,8 @@ problems.
 | Concern | Source of truth |
 | --- | --- |
 | Running Pi services, hardware, labels, and recipients | `~/labpulse-ha/config.yaml` |
-| Fresh-install starter values | repository `docker_refactor/config.yaml` |
+| Initial per-reading Min, Max, and Deadband | `~/labpulse-ha/alarm_defaults.json` |
+| Fresh-install starter values | repository `docker_refactor/config.yaml` and `alarm_defaults.json` |
 | Live dashboard arrangement and helper values | Home Assistant UI/state |
 | Generated starter dashboard structure | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
 | Generated alarm behavior | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |

@@ -7,6 +7,8 @@ PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIVE_CONFIG="$PROJECT_DIR/config.yaml"
 TEMPLATE_CONFIG="$SCRIPT_DIR/config.yaml"
+LIVE_ALARM_DEFAULTS="$PROJECT_DIR/alarm_defaults.json"
+TEMPLATE_ALARM_DEFAULTS="$SCRIPT_DIR/alarm_defaults.json"
 
 BACKUP=0
 FAKE_USB=0
@@ -192,6 +194,15 @@ else
   echo "Preserving existing live config: $LIVE_CONFIG"
 fi
 
+# Alarm thresholds are user-owned alongside config.yaml. Refreshing code must
+# never overwrite locally tuned JSON defaults.
+if [ ! -e "$LIVE_ALARM_DEFAULTS" ]; then
+  copy_file "$TEMPLATE_ALARM_DEFAULTS" "$LIVE_ALARM_DEFAULTS"
+  echo "Created alarm defaults from template: $LIVE_ALARM_DEFAULTS"
+else
+  echo "Preserving existing alarm defaults: $LIVE_ALARM_DEFAULTS"
+fi
+
 # Fake mode derives a runtime config so real I2C/serial/GPIO settings remain
 # intact in the user-owned config.yaml and are available when switching back.
 RUNTIME_CONFIG="$LIVE_CONFIG"
@@ -283,6 +294,7 @@ Done.
 Created/updated:
   $PROJECT_DIR/compose.yaml
   $PROJECT_DIR/config.yaml
+  $PROJECT_DIR/alarm_defaults.json
 $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
@@ -309,6 +321,7 @@ Next commands:
   cd "$PROJECT_DIR"
   $NEXT_USB_COMMAND
   nano config.yaml
+  nano alarm_defaults.json
   $NEXT_COMPOSE_COMMAND
   $NEXT_HOMEASSISTANT_COMMAND
   docker compose config
@@ -317,6 +330,9 @@ Next commands:
 Important:
   EDIT THIS FILE for sensors and enabled flags:
     $PROJECT_DIR/config.yaml
+
+  EDIT THIS FILE for per-reading Min, Max, and Deadband defaults:
+    $PROJECT_DIR/alarm_defaults.json
 
   Do not edit docker_refactor/config.yaml for the running Pi system.
 

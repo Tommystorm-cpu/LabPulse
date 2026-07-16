@@ -47,10 +47,11 @@ repository docker_refactor/
   -> setup_container_fs.sh
   -> ~/labpulse-ha/
        config.yaml                  live user configuration
+       alarm_defaults.json          live per-reading alarm seeds
        generate_compose.sh
        generate_homeassistant_config.sh
   -> compose.yaml                   generated deployment
-  -> Home Assistant YAML/dashboard generated from config.yaml
+  -> Home Assistant YAML/dashboard generated from both user-owned files
   -> docker compose up
 ```
 
@@ -183,14 +184,24 @@ The live config describes deployment facts:
 It owns enabled services, hardware access, parser choice, readings, display
 metadata, MQTT connection settings, SMS mode, and recipients.
 
+The live alarm-default file describes initial ordinary-reading controls:
+
+```text
+~/labpulse-ha/alarm_defaults.json
+```
+
+It supplies Min, Max, and Deadband for each reading. A changed entry is seeded
+into Home Assistant once on the next generation; unchanged entries do not
+overwrite later dashboard tuning.
+
 A MAX17043 service receives only its configured `/dev/i2c-N` device mapping.
 It does not require privileged mode or a broad `/dev` mount.
 
-Home Assistant owns operator state after generation:
+Home Assistant owns operator state after each seed:
 
 - minimum/maximum thresholds
 - alarm mode and mute state
-- observation, recovery, and stale-data timing
+- observation and recovery timing
 - live dashboard layout
 - accounts and integrations
 
@@ -261,8 +272,8 @@ silencing delivery.
 
 - A missing serial device does not terminate the service loop. The driver
   reports disconnected/reconnecting and periodically retries. Home Assistant
-  trusts the last valid sample until Maximum Reading Age expires, so a brief
-  reconnect does not immediately notify.
+  trusts the last valid sample until the MQTT reading's configured
+  `expire_after` elapses, so a brief reconnect does not immediately notify.
 - Individual DHT11 timing failures are ignored; sustained missing updates are
   caught by Home Assistant stale detection.
 - Parser output not declared in config is ignored instead of creating surprise
