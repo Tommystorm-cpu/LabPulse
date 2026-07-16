@@ -331,7 +331,7 @@ automations:
                 - service: persistent_notification.create
                   data:
                     title: >
-                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ reading.label ]] warning' }}
+                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] - [[ reading.label ]] warning' }}
                     message: >
                       {% set mode = states('[[ reading.alarm_mode_entity ]]') %}
                       {% set minimum = states('[[ reading.minimum_threshold_entity ]]') %}
@@ -367,7 +367,7 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": "Danger",
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ reading.label ]] warning",
+                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] warning",
                         "message": "Danger threshold: " ~ threshold ~ ". Evidence: " ~ (observed | round(1) | string) ~ "% of " ~ (window | string) ~ " seconds (about " ~ (danger_seconds | string) ~ " seconds); required " ~ states('[[ service.required_danger_percent_entity ]]') ~ "%.",
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": states('[[ reading.expected_entity_id ]]')
@@ -407,7 +407,7 @@ automations:
                 - service: persistent_notification.create
                   data:
                     title: >
-                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ reading.label ]] recovery' }}
+                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] - [[ reading.label ]] recovery' }}
                     message: >
                       [[ service.label ]] / [[ reading.label ]] has recovered.
 
@@ -428,7 +428,7 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": "Normal",
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ reading.label ]] recovery",
+                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] recovery",
                         "message": "Recovered after " ~ states('[[ service.required_recovery_seconds_entity ]]') ~ " seconds in the deadband-adjusted safe zone. Thresholds: " ~ states('[[ reading.minimum_threshold_entity ]]') ~ " to " ~ states('[[ reading.maximum_threshold_entity ]]') ~ "; deadband " ~ states('[[ reading.recovery_deadband_entity ]]') ~ ".",
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": states('[[ reading.expected_entity_id ]]')
@@ -470,7 +470,7 @@ automations:
                 - service: persistent_notification.create
                   data:
                     title: >
-                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ reading.label ]] sensor fault' }}
+                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] - [[ reading.label ]] sensor fault' }}
                     message: >
                       {% set raw = states('[[ reading.expected_entity_id ]]') %}
                       {% set service_status = states('[[ service.status_entity_id ]]') %}
@@ -497,7 +497,7 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": "Sensor Fault",
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ reading.label ]] sensor fault",
+                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] sensor fault",
                         "message": "Sensor fault reason: " ~ reason ~ ". Service status: " ~ service_status ~ ".",
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": raw
@@ -555,7 +555,7 @@ automations:
                 - service: persistent_notification.create
                   data:
                     title: >
-                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ reading.label ]] sensor restored' }}
+                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] - [[ reading.label ]] sensor restored' }}
                     message: >
                       [[ service.label ]] / [[ reading.label ]] is reporting valid data again.
 
@@ -577,7 +577,7 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": states('[[ reading.alarm_state_entity ]]'),
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ reading.label ]] sensor restored",
+                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] sensor restored",
                         "message": "Valid numeric telemetry resumed. Service status: " ~ states('[[ service.status_entity_id ]]') ~ "; alarm state: " ~ states('[[ reading.alarm_state_entity ]]') ~ ".",
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": states('[[ reading.expected_entity_id ]]')
