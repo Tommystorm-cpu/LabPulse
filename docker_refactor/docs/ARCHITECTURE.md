@@ -274,8 +274,11 @@ silencing delivery.
   reports disconnected/reconnecting and periodically retries. Home Assistant
   trusts the last valid sample until the MQTT reading's configured
   `expire_after` elapses, so a brief reconnect does not immediately notify.
-- Individual DHT11 timing failures are ignored; sustained missing updates are
-  caught by Home Assistant stale detection.
+- Individual DHT11 timing failures are tolerated. Sustained missing samples
+  change service health to `error` at the configured maximum age while MQTT
+  expiry makes readings unavailable; valid samples restore `online`.
+- Unexpected DHT11 GPIO/library failures release the device and retry setup at
+  the configured reconnect interval without requiring a container restart.
 - Parser output not declared in config is ignored instead of creating surprise
   MQTT entities.
 - A missing/invalid SMS field is rejected before it reaches the delivery queue.

@@ -47,6 +47,8 @@ def build_driver(
                 name=service_name,
                 pin_name=service_config.gpio_pin,
                 read_interval_seconds=read_interval_seconds,
+                reconnect_interval_seconds=service_config.reconnect_interval_seconds,
+                maximum_reading_age_seconds=service_config.maximum_reading_age_seconds,
             )
 
         raise ValueError(

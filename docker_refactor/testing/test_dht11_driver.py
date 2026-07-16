@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 from typing import Any, Callable
+from unittest.mock import Mock
 
 
 sys.dont_write_bytecode = True
@@ -18,6 +19,25 @@ class FakeBoard:
     """Minimal board module stand-in with one DHT pin."""
 
     D4 = object()
+
+
+class FakeClock:
+    """Controllable monotonic clock for freshness and reconnect tests."""
+
+    def __init__(self, value: float = 100.0) -> None:
+        """Start the clock at a non-zero monotonic value."""
+
+        self.value = value
+
+    def __call__(self) -> float:
+        """Return the current fake monotonic time."""
+
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        """Move the fake clock forward."""
+
+        self.value += seconds
 
 
 class FakeDhtDevice:
@@ -81,7 +101,12 @@ class FakeAdafruitDht:
 def make_driver(**overrides: Any) -> Driver:
     """Build a DHT11 driver with optional setting overrides."""
 
-    settings = {"pin_name": "D4", "read_interval_seconds": 2.0}
+    settings = {
+        "pin_name": "D4",
+        "read_interval_seconds": 2.0,
+        "reconnect_interval_seconds": 5.0,
+        "maximum_reading_age_seconds": 300.0,
+    }
     settings.update(overrides)
     return Driver(name="room_environment", **settings)
 
@@ -134,6 +159,95 @@ def test_runtime_error_keeps_driver_online() -> None:
     assert_equal(driver.get_status(), "online", "status")
 
 
+def test_sustained_runtime_errors_report_and_recover_health() -> None:
+    """Check sustained missed samples become error until a valid sample returns."""
+
+    clock = FakeClock()
+    device = FakeDhtDevice(FakeBoard.D4, read_error=RuntimeError("not found"))
+    install_fake_modules(device)
+    driver = make_driver(
+        read_interval_seconds=1.0,
+        maximum_reading_age_seconds=5.0,
+        monotonic=clock,
+    )
+
+    assert_equal(driver.setup(), True, "setup")
+    assert_equal(driver.read(), None, "first failed sample")
+    assert_equal(driver.get_status(), "online", "transient failure status")
+    clock.advance(4.9)
+    assert_equal(driver.read(), None, "failure before freshness deadline")
+    assert_equal(driver.get_status(), "online", "status before freshness deadline")
+    clock.advance(1.0)
+    assert_equal(driver.read(), None, "failure at freshness deadline")
+    assert_equal(driver.get_status(), "error", "sustained failure status")
+
+    device.read_error = None
+    clock.advance(1.0)
+    assert_equal(
+        driver.read(),
+        {"temperature": 21.3, "humidity": 45.7},
+        "recovery reading",
+    )
+    assert_equal(driver.get_status(), "online", "recovered status")
+
+
+def test_repeated_runtime_errors_are_log_rate_limited() -> None:
+    """Check a missing DHT sensor cannot flood persistent logs every poll."""
+
+    clock = FakeClock()
+    install_fake_modules(
+        FakeDhtDevice(FakeBoard.D4, read_error=RuntimeError("not found"))
+    )
+    driver = make_driver(
+        read_interval_seconds=1.0,
+        maximum_reading_age_seconds=300.0,
+        monotonic=clock,
+    )
+    driver.logger = Mock()
+
+    assert_equal(driver.setup(), True, "setup")
+    assert_equal(driver.read(), None, "first failure")
+    clock.advance(1.0)
+    assert_equal(driver.read(), None, "second failure")
+    assert_equal(driver.logger.warning.call_count, 1, "warnings within one minute")
+    clock.advance(59.0)
+    assert_equal(driver.read(), None, "failure after one minute")
+    assert_equal(driver.logger.warning.call_count, 2, "minute warning refresh")
+
+
+def test_unexpected_error_disconnects_then_reconnects() -> None:
+    """Check unexpected DHT failures release GPIO and retry initialization."""
+
+    clock = FakeClock()
+    device = FakeDhtDevice(FakeBoard.D4, read_error=ValueError("GPIO failure"))
+    install_fake_modules(device)
+    driver = make_driver(
+        read_interval_seconds=0.01,
+        reconnect_interval_seconds=5.0,
+        monotonic=clock,
+    )
+
+    assert_equal(driver.setup(), True, "setup")
+    assert_equal(driver.read(), None, "unexpected failure")
+    assert_equal(driver.connected, False, "disconnected after failure")
+    assert_equal(device.exited, True, "GPIO released")
+    assert_equal(driver.get_status(), "disconnected", "failure status")
+
+    device.read_error = None
+    clock.advance(4.0)
+    assert_equal(driver.read(), None, "reconnect remains rate limited")
+    assert_equal(driver.connected, False, "still disconnected")
+    clock.advance(1.0)
+    assert_equal(driver.read(), None, "reconnect attempt")
+    assert_equal(driver.connected, True, "reconnected")
+    clock.advance(0.01)
+    assert_equal(
+        driver.read(),
+        {"temperature": 21.3, "humidity": 45.7},
+        "reading after reconnect",
+    )
+
+
 def test_unknown_pin_fails_setup() -> None:
     """Check a bad board pin fails clearly."""
 
@@ -149,6 +263,18 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("setup and read returns rounded values", test_setup_and_read_returns_rounded_values),
     ("read interval throttles samples", test_read_interval_throttles_samples),
     ("runtime error keeps driver online", test_runtime_error_keeps_driver_online),
+    (
+        "sustained runtime errors report and recover health",
+        test_sustained_runtime_errors_report_and_recover_health,
+    ),
+    (
+        "repeated runtime errors are log rate limited",
+        test_repeated_runtime_errors_are_log_rate_limited,
+    ),
+    (
+        "unexpected error disconnects then reconnects",
+        test_unexpected_error_disconnects_then_reconnects,
+    ),
     ("unknown pin fails setup", test_unknown_pin_fails_setup),
 ]
 

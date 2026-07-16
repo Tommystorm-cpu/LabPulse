@@ -169,6 +169,8 @@ def test_gpio_dht11_driver_builds() -> None:
     assert_equal(driver.name, "room_environment", "driver name")
     assert_equal(driver.pin_name, "D4", "pin")
     assert_equal(driver.read_interval_seconds, 3.0, "read interval")
+    assert_equal(driver.reconnect_interval_seconds, 5.0, "reconnect interval")
+    assert_equal(driver.maximum_reading_age_seconds, 300, "maximum reading age")
 
 
 def test_gpio_dht11_requires_pin() -> None:

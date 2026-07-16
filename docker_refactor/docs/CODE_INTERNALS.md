@@ -190,8 +190,9 @@ logic belongs in the driver rather than Compose restart behavior.
 
 ### DHT11 driver
 
-`drivers/dht11_driver.py::Driver` stores a Blinka pin name, a minimum read
-interval, the Adafruit device object, and `last_read_at`.
+`drivers/dht11_driver.py::Driver` stores a Blinka pin name, read/reconnect and
+maximum-age timings, the Adafruit device object, monotonic freshness state, and
+the most recent reconnect attempt.
 
 `setup()` resolves the named attribute from `board` and constructs
 `adafruit_dht.DHT11` with `use_pulseio=True`. This is the mode verified against
@@ -199,8 +200,15 @@ the installed DHT11 and Raspberry Pi; GPIO4 must remain exclusive to the DHT
 worker.
 
 `read()` throttles requests with monotonic time. A normal DHT `RuntimeError`
-means one sample was missed and does not mark the service offline. Unexpected
-errors disconnect the device. A valid sample returns exactly:
+means one sample was missed and does not immediately mark the service offline.
+If valid samples remain absent for `maximum_reading_age_seconds`, status becomes
+`error`; warnings are rate-limited to one per minute. A valid sample restores
+`online`.
+
+Unexpected errors release the GPIO device and enter a rate-limited reconnect
+loop using `reconnect_interval_seconds`. This also lets a service whose initial
+GPIO setup failed recover without restarting its container. A valid sample
+returns exactly:
 
 ```python
 {"temperature": float, "humidity": float}

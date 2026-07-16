@@ -189,7 +189,7 @@ services:
 | `readings[].label` | User-facing label |
 | `readings[].group` | Optional reset-dashboard subgroup; first appearance controls group order |
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
-| `reconnect_interval_seconds` | Serial reopen delay |
+| `reconnect_interval_seconds` | Delay between serial, GPIO, or I2C reinitialization attempts |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
 | `maximum_reading_age_seconds` | Seconds without an MQTT sample before an ordinary reading becomes unavailable; default 300 |
 | `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
@@ -307,6 +307,8 @@ room_environment:
       unit: "%"
       device_class: humidity
   read_interval_seconds: 2
+  reconnect_interval_seconds: 5
+  maximum_reading_age_seconds: 300
 ```
 
 Run real-hardware rather than fake-USB Compose mode so the container has the
@@ -317,6 +319,14 @@ Only that worker should open the GPIO chip. If `fuser -v /dev/gpiochip0` lists
 serial or I2C LabPulse workers, rebuild those images from current source; the
 driver factory lazy-loads hardware modules so unrelated workers cannot claim
 GPIO resources.
+
+Individual DHT timing misses are expected and do not immediately change service
+health. If no valid sample arrives for `maximum_reading_age_seconds`, the
+service status changes to `error` and MQTT expiry makes both readings
+unavailable. A later valid sample restores `online` automatically. Unexpected
+GPIO/library failures release the device and retry initialization every
+`reconnect_interval_seconds`; routine missing-sensor warnings are limited to
+one per minute so a disconnected sensor cannot flood persistent logs.
 
 ## Generate and start
 

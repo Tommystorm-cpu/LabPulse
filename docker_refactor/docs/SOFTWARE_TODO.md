@@ -347,6 +347,8 @@ listed as new feature work:
   entities.
 - [x] Alarm numeric helpers use box input rather than sliders.
 - [x] Serial drivers contain reconnect logic after USB loss.
+- [x] The DHT11 driver reports sustained read failure, rate-limits repeated
+  warnings, and reconnects after unexpected GPIO/library errors.
 - [x] Alarm timing includes an observation window, required danger percentage,
   required recovery time, and deadband; MQTT expiry detects stopped readings
   without treating unchanged values as stale.
