@@ -11,6 +11,48 @@ from labpulse_hardware.legacy_parsing.serial_parser import SerialParser
 
 TEST_CASES = [
     {
+        "name": "unified pressure JSON is already in configured units",
+        "service_name": "pressure_monitor",
+        "parser_type": "pressure",
+        "line": '{"device":"pressure_monitor","schema":1,"firmware":"pressure-monitor-1.0.0","type":"sample","readings":{"pressure":1.034},"diagnostics":{"pressure_adc":123}}',
+        "expected": {"pressure": 1.034},
+    },
+    {
+        "name": "unified pump JSON ignores diagnostics and invalid channels",
+        "service_name": "pump_room",
+        "parser_type": "pump_room",
+        "line": '{"device":"pump_room","schema":1,"firmware":"pump-room-1.0.0","type":"sample","readings":{"flow1":0.267,"flow2":0.0,"temp0":25.1,"temp2":null,"healthy":true},"diagnostics":{"flow1_pulses":10,"temp2_adc":1023}}',
+        "expected": {"flow1": 0.267, "flow2": 0.0, "temp0": 25.1},
+    },
+    {
+        "name": "unified turbo JSON uses the same parser path",
+        "service_name": "turbo_pump",
+        "parser_type": "water",
+        "line": '{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","readings":{"flow1":2.45,"flow2":3.1,"temp0":20.11,"temp1":20.22}}',
+        "expected": {"flow1": 2.45, "flow2": 3.1, "temp0": 20.11, "temp1": 20.22},
+    },
+    {
+        "name": "unified hello record is not telemetry",
+        "service_name": "pump_room",
+        "parser_type": "pump_room",
+        "line": '{"device":"pump_room","schema":1,"firmware":"pump-room-1.0.0","type":"hello"}',
+        "expected": None,
+    },
+    {
+        "name": "unified record rejects a mismatched device identity",
+        "service_name": "pump_room",
+        "parser_type": "pump_room",
+        "line": '{"device":"turbo_pump","schema":1,"type":"sample","readings":{"flow1":2.45}}',
+        "expected": None,
+    },
+    {
+        "name": "unified record rejects an unsupported schema",
+        "service_name": "pump_room",
+        "parser_type": "pump_room",
+        "line": '{"device":"pump_room","schema":2,"type":"sample","readings":{"flow1":2.45}}',
+        "expected": None,
+    },
+    {
         "name": "pressure raw MPa converts to bar",
         "service_name": "pressure_monitor",
         "parser_type": "pressure",

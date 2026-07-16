@@ -1,5 +1,6 @@
-"""Parse temporary legacy Arduino serial formats into named readings."""
+"""Parse unified and temporary legacy Arduino serial formats."""
 
+import json
 import math
 import re
 from typing import Optional
@@ -9,8 +10,9 @@ class SerialParser:
     """
     Parser for Arduino serial lines.
 
-    The parser type comes from config.yaml and describes the Arduino text
-    format, for example: pressure, pump_room, or water. NOTE: In future, the arduino output will be standardised and this will be mostly unneeded. This is just to get things up and running fast.
+    Unified firmware is detected from its JSON envelope independently of
+    parser type. The configured parser type remains the compatibility path for
+    Arduinos that still run an older human-readable sketch.
     """
 
     def __init__(self, name: str, parser_type: str) -> None:
@@ -43,6 +45,9 @@ class SerialParser:
         if not line:
             return None
 
+        if line.startswith("{"):
+            return self._parse_json_record(line)
+
         if self.parser_type == "pressure":
             return self._parse_pressure(line)
 
@@ -50,6 +55,44 @@ class SerialParser:
             return self._parse_labelled_values(line)
 
         return self._parse_pipe_delimited(line)
+
+    def _parse_json_record(self, line: str) -> Optional[dict[str, float]]:
+        """Parse one schema-1 LabPulse firmware JSON record."""
+
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+        schema = payload.get("schema")
+        if isinstance(schema, bool) or schema != 1:
+            return None
+        if payload.get("device") != self.name or payload.get("type") != "sample":
+            return None
+
+        readings = payload.get("readings")
+        if not isinstance(readings, dict):
+            # Startup hello and future status records intentionally contain no
+            # readings and must not become telemetry.
+            return None
+
+        parsed: dict[str, float] = {}
+        for reading_name, raw_value in readings.items():
+            if not isinstance(reading_name, str):
+                continue
+            if isinstance(raw_value, bool) or not isinstance(
+                raw_value, (int, float)
+            ):
+                # JSON null represents an invalid sensor channel. Metadata and
+                # diagnostics live outside readings and are ignored entirely.
+                continue
+            value = float(raw_value)
+            if math.isfinite(value):
+                parsed[reading_name] = value
+
+        return parsed if parsed else None
 
     def _parse_pressure(self, line: str) -> Optional[dict[str, float]]:
         """

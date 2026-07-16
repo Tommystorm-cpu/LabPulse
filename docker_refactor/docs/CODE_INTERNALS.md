@@ -59,9 +59,11 @@ Important computed properties are:
 - `ServiceConfig.dashboard_section`: configured section or device name.
 - `ServiceConfig.dashboard_icon`: configured icon or `mdi:chip`.
 
-`SmsConfig.validate_recipients()` strips whitespace, rejects duplicates and
-requires `+` followed by 8–15 digits. `require_real_recipients()` requires at
-least one number when `dry_run` is false.
+`SmsConfig.validate_recipients()` applies the same normalization and
+international-number validation to `recipients` and `test_recipients`.
+`require_real_recipients()` requires at least one normal number when `dry_run`
+is false. Test requests with no configured test recipients fail closed instead
+of falling through to the normal emergency list.
 
 `load_config()` exits the process after logging readable YAML or validation
 errors. Callers therefore receive a valid `LabPulseConfig`, not a partly valid
@@ -214,10 +216,16 @@ returns exactly:
 {"temperature": float, "humidity": float}
 ```
 
-### Legacy serial parser
+### Unified and legacy serial parser
 
-`legacy_parsing/serial_parser.py::SerialParser` isolates the currently
-inconsistent Arduino formats. `parser_type` selects:
+`legacy_parsing/serial_parser.py::SerialParser` first detects the standardized
+schema-1 JSON envelope emitted by `docker_refactor/firmware`. It requires the
+record's `device` to match the configured service name and returns only finite
+numeric members of its `readings` object. Startup records, JSON `null`, booleans,
+metadata, and `diagnostics` are not returned as telemetry.
+
+If the line is not JSON, `parser_type` selects the temporary compatibility
+path for boards that have not yet been reflashed:
 
 - `pressure`: parse one MPa number and multiply by 10 to publish bar.
 - `pump_room` or `water`: locate recognized labels anywhere in a line.
@@ -229,7 +237,7 @@ from one recognized label to the next, allowing it to recover the malformed
 `L/minTemp0` boundary printed by the full-water sketch.
 
 `_clean_float()` extracts the first signed decimal and rejects non-finite
-values. `_key()` lowercases labels. The result is a normalized
+values. `_key()` lowercases labels. Both paths produce the same normalized
 `dict[str, float]`, such as:
 
 ```python
@@ -404,9 +412,9 @@ Alarm State and Muted are omitted from Monitor to keep scanning concise; both
 remain available inside each reading's expanded controls in Alarm Setup. The
 device name is always rendered between the location and service status, even
 when the location contains only one service, so dashboard columns share the
-same visual hierarchy. The Alarm Setup view remains one section per service
-and contains service timing helpers and per-reading show-controls/conditional
-settings cards.
+same visual hierarchy. Alarm Setup starts with one global notification-control
+section, followed by one section per service containing service timing helpers
+and per-reading show-controls/conditional settings cards.
 
 `render_dashboard()` has three mutually exclusive behaviors:
 
@@ -498,9 +506,18 @@ Sensor Fault
 
 Sensor fault takes priority. Danger entry excludes faulted and Disabled
 readings. State changes occur whether muted or not; only notifications and SMS
-publishing are inside the mute check. When a confirmed fault clears, Home
+publishing are inside the combined individual/global mute check. The global
+helper is never used as a state writer for individual mute helpers. Test mode
+adds `[TEST]` to titles and sets the validated request flag consumed by the SMS
+recipient router. When a confirmed fault clears, Home
 Assistant creates a persistent sensor-restored notification after reconciling
 the reading to Normal or Danger and publishes a validated recovery SMS request.
+
+Danger notifications include the current reading, active threshold, observed
+danger percentage, observation window, approximate time in danger, and required
+percentage. Sensor-fault notifications distinguish unavailable/non-numeric
+readings from unhealthy service status. The SMS contract calls the optional
+value `current_reading`, and rendered SMS labels it `Current Reading`.
 
 ### Dedicated UPS power lifecycle
 
@@ -526,14 +543,16 @@ the initialization marker omit `initial` values so Home Assistant restores
 them.
 
 MQTT expiry makes the voltage entity unavailable after 15 seconds without a
-sample by default. The unavailable state becomes `Sensor Fault` and creates a
-Home Assistant notification plus the validated SMS request unless power alerts
-are muted. Disconnected/reconnecting status uses that same interval as a
-reconnect grace period. When fresh UPS
-evidence returns after a confirmed fault, Home Assistant creates a persistent
-telemetry-restored notification and publishes a validated recovery SMS request
-so recipients know the sensor-health incident has ended. Home Assistant
-start, automation reload, and fault recovery all
+sample by default. Fault evidence must then remain continuously present for
+one configured maximum-evidence-age window before it becomes a confirmed
+`Sensor Fault`. The confirmation automation restarts whenever the evidence
+changes, so temporary unavailable states during Home Assistant startup or
+automation reload remain silent. A persistent helper records whether a fault
+was actually confirmed. Only recovery from that confirmed state creates a
+telemetry-restored notification and validated recovery SMS request; routine
+restart restoration does neither. Muting suppresses delivery while preserving
+and clearing the confirmed-fault lifecycle correctly. Home Assistant start,
+automation reload, and fault recovery all
 run reconciliation; overdue persistent deadlines are then completed by the
 one-second confirmation automations. Duration is calculated from first
 low-voltage evidence to first recovery evidence, not from delayed confirmations.

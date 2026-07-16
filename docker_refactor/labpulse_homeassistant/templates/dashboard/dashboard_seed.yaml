@@ -112,7 +112,7 @@ alarm_setup_sections:
       show_header_toggle: false
       entities:
         - entity: "[[ reading.expected_entity_id ]]"
-          name: Current reading
+          name: Current Reading
         - entity: "[[ reading.alarm_state_entity ]]"
           name: Alarm state
         - entity: "[[ reading.alarm_mode_entity ]]"
@@ -134,6 +134,21 @@ alarm_setup_sections:
           name: Recovery zone
         - entity: "[[ reading.sensor_fault_zone_entity ]]"
           name: Sensor fault zone
+
+global_alarm_setup:
+  heading_card:
+    type: heading
+    heading: Notification Controls
+    heading_style: title
+    icon: mdi:message-cog
+  settings_card:
+    type: entities
+    show_header_toggle: false
+    entities:
+      - entity: "[[ model.global_muted_entity ]]"
+        name: Mute all notifications
+      - entity: "[[ model.test_mode_entity ]]"
+        name: Test mode
 
 power_alarm_setup:
   settings_card:

@@ -31,9 +31,12 @@ ResultHandler = Callable[[DeliveryResult], None]
 def format_sms_message(request: SmsRequest) -> str:
     """Create one concise SMS body from a validated request."""
 
-    lines = [request.title, request.message]
-    if request.current not in (None, "", "unknown", "None"):
-        lines.append(f"Current: {request.current}")
+    title = request.title
+    if request.test_mode and not title.startswith("[TEST]"):
+        title = f"[TEST] {title}"
+    lines = [title, request.message]
+    if request.current_reading not in (None, "", "unknown", "None"):
+        lines.append(f"Current Reading: {request.current_reading}")
     return "\n".join(lines)
 
 
@@ -52,6 +55,7 @@ class SmsSender:
         self,
         recipients: Sequence[str],
         logger: logging.Logger,
+        test_recipients: Sequence[str] = (),
         dry_run: bool = True,
         runner: CommandRunner = subprocess.run,
         retries: int = 3,
@@ -62,6 +66,7 @@ class SmsSender:
         """Store delivery settings and start the background send worker."""
 
         self.recipients = tuple(recipients)
+        self.test_recipients = tuple(test_recipients)
         self.logger = logger
         self.dry_run = dry_run
         self.runner = runner
@@ -91,22 +96,31 @@ class SmsSender:
         if self.closed:
             self.logger.error("SMS request rejected because the sender is stopping")
             return False
-        if not self.recipients:
-            self.logger.warning("SMS request dropped because no recipients are configured")
+        recipients = self.test_recipients if request.test_mode else self.recipients
+        recipient_kind = "test recipients" if request.test_mode else "recipients"
+        if not recipients:
+            self.logger.warning(
+                "SMS request dropped because no %s are configured", recipient_kind
+            )
             self._report(
-                DeliveryResult(request.request_id, "", "failed", "no recipients configured")
+                DeliveryResult(
+                    request.request_id,
+                    "",
+                    "failed",
+                    f"no {recipient_kind} configured",
+                )
             )
             return False
 
         available_slots = self.queue.maxsize - self.queue.qsize()
-        if self.queue.maxsize and available_slots < len(self.recipients):
+        if self.queue.maxsize and available_slots < len(recipients):
             self.logger.error("SMS queue is full; request %s was rejected", request.request_id)
             self._report(
                 DeliveryResult(request.request_id, "", "failed", "sender queue full")
             )
             return False
         try:
-            for recipient in self.recipients:
+            for recipient in recipients:
                 self.queue.put_nowait((recipient, request))
         except queue.Full:
             self.logger.error("SMS queue is full; request %s was rejected", request.request_id)

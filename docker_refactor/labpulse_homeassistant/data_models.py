@@ -135,6 +135,7 @@ class PowerModel:
     low_voltage_evidence_entity: str
     sensor_fault_unique_id: str
     sensor_fault_entity: str
+    sensor_fault_confirmed_entity: str
     state_entity: str
     muted_entity: str
     outage_confirm_seconds_entity: str
@@ -200,6 +201,8 @@ class RenderModel:
 
     services: list[ServiceModel]
     sms_send_topic: str = SMS_SEND_TOPIC
+    global_muted_entity: str = "input_boolean.labpulse_global_notifications_muted"
+    test_mode_entity: str = "input_boolean.labpulse_notification_test_mode"
 
     @property
     def readings(self) -> list[tuple[ServiceModel, ReadingModel]]:
@@ -339,6 +342,9 @@ def build_power_model(
         low_voltage_evidence_entity=entity_id("binary_sensor", *prefix, "low_voltage_evidence"),
         sensor_fault_unique_id=stable_id(*prefix, "sensor_fault"),
         sensor_fault_entity=entity_id("binary_sensor", *prefix, "sensor_fault"),
+        sensor_fault_confirmed_entity=entity_id(
+            "input_boolean", *prefix, "sensor_fault_confirmed"
+        ),
         state_entity=entity_id("input_select", *prefix, "state"),
         muted_entity=entity_id("input_boolean", *prefix, "muted"),
         outage_confirm_seconds_entity=entity_id("input_number", *prefix, "outage_confirm_seconds"),

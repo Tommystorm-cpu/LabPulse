@@ -7,6 +7,8 @@ sms:
   dry_run: true
   recipients:
     - "+447700900000"
+  test_recipients:
+    - "+447700900001"
 
 services:
   ups_monitor:

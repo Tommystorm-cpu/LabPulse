@@ -102,9 +102,9 @@ Stop UPS emissions without disconnecting the pseudo-terminal:
 python3 simulate_serial.py set ups_monitor.power stale
 ```
 
-After the configured maximum evidence age, Home Assistant should enter
-`Sensor Fault` and create one persistent notification plus one dry-run SMS
-request. Restore telemetry:
+After MQTT expiry, keep the simulator stale for one further configured maximum
+evidence-age window. Home Assistant should then enter `Sensor Fault` and create
+one persistent notification plus one dry-run SMS request. Restore telemetry:
 
 ```bash
 python3 simulate_serial.py set ups_monitor.power mains
@@ -112,6 +112,10 @@ python3 simulate_serial.py set ups_monitor.power mains
 
 The fault should clear only after fresh voltage evidence arrives. A persistent
 sensor-restored notification and recovery SMS request should be produced.
+
+Restart Home Assistant while normal UPS telemetry is arriving. Its temporary
+startup state must not create either a telemetry-fault or telemetry-restored
+notification/SMS request.
 
 Now test an actual pseudo-device removal:
 

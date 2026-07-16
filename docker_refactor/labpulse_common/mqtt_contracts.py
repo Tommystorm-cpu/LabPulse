@@ -25,9 +25,10 @@ class SmsRequest(BaseModel):
     state: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=1, max_length=120)
     message: str = Field(min_length=1, max_length=500)
+    test_mode: bool = Field(default=False, strict=True)
     service_label: str | None = Field(default=None, max_length=120)
     reading_label: str | None = Field(default=None, max_length=120)
-    current: str | None = Field(default=None, max_length=80)
+    current_reading: str | None = Field(default=None, max_length=80)
 
 
 SMS_ALERT_PAYLOAD_FIELDS = frozenset(SmsRequest.model_fields)

@@ -83,7 +83,8 @@ means. Home Assistant therefore:
 - confirms low voltage continuously for 10 seconds before warning;
 - confirms recovery continuously for 15 seconds;
 - records the low-voltage event start and duration;
-- enters `Sensor Fault` after 15 seconds without fresh voltage evidence;
+- expires voltage evidence after 15 seconds, then confirms that fault evidence
+  for another evidence-age window so routine Home Assistant restarts stay silent;
 - reconciles persistent candidate/event state after restart;
 - supports an independent power mute; and
 - sends validated warning, recovery, fault, and sensor-restored SMS requests.

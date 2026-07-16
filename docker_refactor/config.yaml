@@ -22,6 +22,9 @@ sms:
   # Emergency contact numbers for system alerts
   recipients:
     - "+447700900000"
+  # Test-mode alerts are routed only to these numbers.
+  test_recipients:
+    - "+447700900001"
 
 services:
   # Ordinary readings expire in Home Assistant after 300 seconds without an

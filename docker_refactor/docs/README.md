@@ -16,9 +16,10 @@ been removed so that an implemented feature has one authoritative explanation.
 3. [SETUP_AND_TROUBLESHOOTING.md](SETUP_AND_TROUBLESHOOTING.md) is the operator
    guide: first installation, normal updates, fake hardware, dashboard safety,
    SMS setup, testing, and fault isolation.
-4. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the Arduino serial
-   contracts, how Python currently tolerates them, known sketch problems, and
-   clearly labelled firmware improvements.
+4. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the standardized Arduino
+   JSON contract, the temporary legacy formats, and their migration boundary.
+   The buildable sketches and shared library are in
+   [`../firmware/`](../firmware/).
 5. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,
    user-facing, engineering-maturity, and open-source work.
 6. [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) is the exact dry-run

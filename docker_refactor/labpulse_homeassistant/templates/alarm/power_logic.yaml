@@ -52,6 +52,9 @@ input_booleans:
   - id: "labpulse_[[ service.service_id ]]_power_outage_active"
     config:
       name: "[[ service.label ]] Low-Voltage Event Active"
+  - id: "labpulse_[[ service.service_id ]]_power_sensor_fault_confirmed"
+    config:
+      name: "[[ service.label ]] Confirmed Telemetry Fault"
 
 input_datetimes:
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_started"
@@ -186,11 +189,18 @@ automations:
               - condition: state
                 entity_id: "[[ power.muted_entity ]]"
                 state: "off"
+              - condition: state
+                entity_id: "[[ model.global_muted_entity ]]"
+                state: "off"
             sequence:
               - service: persistent_notification.create
                 data:
-                  title: "LabPulse low UPS voltage warning"
-                  message: "[[ service.label ]] voltage remained below [[ power.low_voltage_threshold ]] V. This can indicate battery operation, but mains is not measured directly."
+                  title: >
+                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse low UPS voltage warning' }}
+                  message: >
+                    [[ service.label ]] voltage remained below [[ power.low_voltage_threshold ]] V for the configured {{ states('[[ power.outage_confirm_seconds_entity ]]') }}-second confirmation period.
+
+                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. This can indicate battery operation, but mains is not measured directly.
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -198,7 +208,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": "LabPulse low UPS voltage warning", "message": "[[ service.label ]] voltage remained below [[ power.low_voltage_threshold ]] V. This may indicate battery operation; mains is not measured directly.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse low UPS voltage warning", "message": "Voltage remained below [[ power.low_voltage_threshold ]] V for " ~ states('[[ power.outage_confirm_seconds_entity ]]') ~ " seconds. This may indicate battery operation; mains is not measured directly.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_start"
     alias: "LabPulse [[ service.label ]] Recovery Candidate Start"
@@ -277,11 +287,18 @@ automations:
               - condition: state
                 entity_id: "[[ power.muted_entity ]]"
                 state: "off"
+              - condition: state
+                entity_id: "[[ model.global_muted_entity ]]"
+                state: "off"
             sequence:
               - service: persistent_notification.create
                 data:
-                  title: "LabPulse UPS voltage recovered"
-                  message: "[[ service.label ]] voltage returned to at least [[ power.low_voltage_threshold ]] V. Low-voltage event duration: {{ outage_duration }} seconds; mains restoration is not measured directly."
+                  title: >
+                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse UPS voltage recovered' }}
+                  message: >
+                    [[ service.label ]] voltage returned to at least [[ power.low_voltage_threshold ]] V and stayed recovered for {{ states('[[ power.restore_confirm_seconds_entity ]]') }} seconds.
+
+                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. Low-voltage event duration: {{ outage_duration }} seconds; mains restoration is not measured directly.
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -289,21 +306,37 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": "LabPulse UPS voltage recovered", "message": "[[ service.label ]] voltage recovered after a " ~ outage_duration ~ " second low-voltage event; mains restoration is not measured directly.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS voltage recovered", "message": "Voltage stayed at or above [[ power.low_voltage_threshold ]] V for " ~ states('[[ power.restore_confirm_seconds_entity ]]') ~ " seconds after a " ~ outage_duration ~ " second low-voltage event; mains restoration is not measured directly.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_fault"
     alias: "LabPulse [[ service.label ]] Power Sensor Fault"
-    mode: single
+    mode: restart
     trigger:
       - platform: state
         entity_id: "[[ power.sensor_fault_entity ]]"
-        to: "on"
+      - platform: homeassistant
+        event: start
+      - platform: event
+        event_type: automation_reloaded
     action:
+      # MQTT expiry already rejects short acquisition gaps. This second,
+      # restart-safe window prevents Home Assistant startup/reload states from
+      # becoming user-visible incidents before retained telemetry is restored.
+      - delay:
+          seconds: "[[ power.maximum_reading_age_seconds ]]"
+      - condition: state
+        entity_id: "[[ power.sensor_fault_entity ]]"
+        state: "on"
+      - condition: state
+        entity_id: "[[ power.sensor_fault_confirmed_entity ]]"
+        state: "off"
       - service: input_boolean.turn_off
         target:
           entity_id:
             - "[[ power.outage_candidate_entity ]]"
             - "[[ power.recovery_candidate_entity ]]"
+      - service: input_boolean.turn_on
+        target: {entity_id: "[[ power.sensor_fault_confirmed_entity ]]"}
       - service: input_select.select_option
         target: {entity_id: "[[ power.state_entity ]]"}
         data: {option: "Sensor Fault"}
@@ -312,11 +345,18 @@ automations:
               - condition: state
                 entity_id: "[[ power.muted_entity ]]"
                 state: "off"
+              - condition: state
+                entity_id: "[[ model.global_muted_entity ]]"
+                state: "off"
             sequence:
               - service: persistent_notification.create
                 data:
-                  title: "LabPulse UPS telemetry fault"
-                  message: "[[ service.label ]] has no fresh validated UPS voltage evidence."
+                  title: >
+                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse UPS telemetry fault' }}
+                  message: >
+                    [[ service.label ]] has no fresh validated UPS voltage evidence.
+
+                    Reason: voltage is {{ states('[[ power.voltage.expected_entity_id ]]') }} and service status is {{ states('[[ service.status_entity_id ]]') }}. Fault evidence remained present for [[ power.maximum_reading_age_seconds ]] seconds after MQTT expiry before this notification was sent.
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -324,7 +364,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": "Sensor Fault", "title": "LabPulse UPS telemetry fault", "message": "[[ service.label ]] has no fresh validated UPS voltage evidence.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": "Sensor Fault", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS telemetry fault", "message": "No fresh validated voltage remained after MQTT expiry. Voltage state: " ~ states('[[ power.voltage.expected_entity_id ]]') ~ "; service status: " ~ states('[[ service.status_entity_id ]]') ~ "; additional confirmation: [[ power.maximum_reading_age_seconds ]] seconds.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_recovery"
     alias: "LabPulse [[ service.label ]] Power Sensor Recovery"
@@ -336,21 +376,36 @@ automations:
         to: "off"
     condition:
       - condition: state
-        entity_id: "[[ power.muted_entity ]]"
-        state: "off"
+        entity_id: "[[ power.sensor_fault_confirmed_entity ]]"
+        state: "on"
     action:
-      - service: persistent_notification.create
-        data:
-          title: "LabPulse UPS telemetry restored"
-          message: "[[ service.label ]] is reporting fresh validated UPS voltage evidence again."
-          notification_id: "labpulse_[[ service.service_id ]]_power"
-      - service: mqtt.publish
-        data:
-          topic: "[[ model.sms_send_topic ]]"
-          qos: 1
-          retain: false
-          payload: >
-            {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": states('[[ power.state_entity ]]'), "title": "LabPulse UPS telemetry restored", "message": "[[ service.label ]] is reporting fresh validated UPS voltage evidence again.", "current": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+      - service: input_boolean.turn_off
+        target: {entity_id: "[[ power.sensor_fault_confirmed_entity ]]"}
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: "[[ power.muted_entity ]]"
+                state: "off"
+              - condition: state
+                entity_id: "[[ model.global_muted_entity ]]"
+                state: "off"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: >
+                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse UPS telemetry restored' }}
+                  message: >
+                    [[ service.label ]] is reporting fresh validated UPS voltage evidence again.
+
+                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. Service status: {{ states('[[ service.status_entity_id ]]') }}. This follows a confirmed telemetry fault, not a routine Home Assistant restart.
+                  notification_id: "labpulse_[[ service.service_id ]]_power"
+              - service: mqtt.publish
+                data:
+                  topic: "[[ model.sms_send_topic ]]"
+                  qos: 1
+                  retain: false
+                  payload: >
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": states('[[ power.state_entity ]]'), "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS telemetry restored", "message": "Fresh validated voltage resumed after a confirmed telemetry fault. Service status: " ~ states('[[ service.status_entity_id ]]') ~ ".", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile"
     alias: "LabPulse [[ service.label ]] Power Reconcile"

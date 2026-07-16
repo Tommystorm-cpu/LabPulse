@@ -164,6 +164,8 @@ def test_generated_package_and_entity_map() -> None:
     if "labpulse_pressure_monitor_alarm_controls_expanded" in package["input_boolean"]:
         raise AssertionError("service-level alarm controls toggle should not be generated")
     assert "labpulse_pressure_monitor_pressure_alarm_muted" in package["input_boolean"]
+    assert "labpulse_global_notifications_muted" in package["input_boolean"]
+    assert "labpulse_notification_test_mode" in package["input_boolean"]
     assert "labpulse_pressure_monitor_alarm_defaults_initialized" in package["input_boolean"]
     reading_default_markers = [
         helper_id
@@ -247,6 +249,14 @@ def test_generated_package_and_entity_map() -> None:
         ],
         "alarm automation order",
     )
+    for alias in transition_aliases:
+        transition_yaml = yaml.safe_dump(automation_by_alias[alias], sort_keys=False)
+        if "input_boolean.labpulse_global_notifications_muted" not in transition_yaml:
+            raise AssertionError(f"{alias} bypasses global mute")
+        if "input_boolean.labpulse_notification_test_mode" not in transition_yaml:
+            raise AssertionError(f"{alias} bypasses test mode")
+        if "[TEST]" not in transition_yaml:
+            raise AssertionError(f"{alias} lacks a visible test prefix")
     fault_automation = automation_by_alias["LabPulse Pressure Sensor Fault"]
     assert_equal(
         fault_automation["trigger"][0]["entity_id"],
@@ -296,6 +306,18 @@ def test_generated_package_and_entity_map() -> None:
         "mute condition entity",
     )
     assert_equal(mute_condition["state"], "off", "mute condition state")
+    global_mute_condition = danger_automation["action"][1]["choose"][0]["conditions"][1]
+    assert_equal(
+        global_mute_condition["entity_id"],
+        "input_boolean.labpulse_global_notifications_muted",
+        "global mute condition entity",
+    )
+    if '"test_mode": is_state(' not in sms_payload or "[TEST]" not in sms_payload:
+        raise AssertionError("SMS payload does not carry test-mode routing and prefix")
+    if "Danger threshold:" not in sms_payload or "Evidence:" not in sms_payload:
+        raise AssertionError("danger SMS lacks threshold and duration evidence")
+    if '"current_reading"' not in sms_payload:
+        raise AssertionError("SMS payload does not use Current Reading terminology")
 
     recovery_automation = automation_by_alias["LabPulse Pressure Recovery"]
     assert_equal(recovery_automation["trigger"][0]["platform"], "template", "recovery trigger platform")
@@ -321,6 +343,9 @@ def test_generated_package_and_entity_map() -> None:
     assert_equal(sensor_recovery["trigger"][0]["from"], "on", "recovery requires a real fault")
     if "sensor restored" not in sensor_recovery_yaml:
         raise AssertionError("sensor recovery notification has unclear wording")
+    fault_yaml = yaml.safe_dump(fault_automation, sort_keys=False)
+    if "Reason:" not in fault_yaml or "service status" not in fault_yaml:
+        raise AssertionError("sensor fault notification does not explain its evidence")
 
     assert_equal(
         entity_map["pressure_monitor"]["pressure"]["effective_entity_id"],
@@ -466,7 +491,17 @@ def test_dashboard_reset_and_preserve() -> None:
         raise AssertionError("Monitor reading list should not include alarm state")
     if any("muted" in item.get("entity", "") for item in reading_list["entities"]):
         raise AssertionError("Monitor reading list should not include mute controls")
-    setup_cards = views[1]["sections"][0]["cards"]
+    global_cards = views[1]["sections"][0]["cards"]
+    assert_equal(global_cards[0]["heading"], "Notification Controls", "global controls heading")
+    assert_equal(
+        [row["entity"] for row in global_cards[1]["entities"]],
+        [
+            "input_boolean.labpulse_global_notifications_muted",
+            "input_boolean.labpulse_notification_test_mode",
+        ],
+        "global notification controls",
+    )
+    setup_cards = views[1]["sections"][1]["cards"]
     assert_equal(setup_cards[1]["type"], "entities", "service timing card type")
     assert_equal(setup_cards[1]["title"], "Air Pressure Sensor Hub Timing", "service timing card title")
     assert_equal(
@@ -602,7 +637,7 @@ def test_dashboard_groups_services_by_section() -> None:
         "Cryogenics Room Environment Sensor",
         "second service subgroup",
     )
-    assert_equal(len(setup_sections), 2, "alarm setup remains per service")
+    assert_equal(len(setup_sections), 3, "global controls plus per-service setup")
 
 
 def test_dashboard_groups_readings_with_room_environment_last() -> None:
@@ -833,7 +868,7 @@ def test_generator_resolves_and_syncs_entities() -> None:
         "resolved monitor card entity",
     )
     assert_equal(
-        views[1]["sections"][0]["cards"][3]["card"]["entities"][0]["entity"],
+        views[1]["sections"][1]["cards"][3]["card"]["entities"][0]["entity"],
         "sensor.renamed_pressure",
         "resolved alarm setup entity",
     )

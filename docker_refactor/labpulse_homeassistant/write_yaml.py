@@ -91,6 +91,7 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "evidence_source": power.source,
                 "low_voltage_evidence": power.low_voltage_evidence_entity,
                 "sensor_fault": power.sensor_fault_entity,
+                "sensor_fault_confirmed": power.sensor_fault_confirmed_entity,
                 "state": power.state_entity,
                 "muted": power.muted_entity,
                 "outage_confirm_seconds": power.outage_confirm_seconds_entity,

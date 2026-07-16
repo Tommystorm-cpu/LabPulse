@@ -70,7 +70,9 @@ def input_numbers(seed: dict[str, Any], power_seed: dict[str, Any], model: Rende
 def input_booleans(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated input_boolean helpers."""
 
-    helpers: dict[str, object] = {}
+    helpers: dict[str, object] = expand_keyed_items(
+        seed["input_booleans"].get("global", []), {"model": model}
+    )
     rules = seed["input_booleans"]
     for service in model.services:
         if service.readings and service.power is None:

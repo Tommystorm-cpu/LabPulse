@@ -29,8 +29,9 @@ class SmsConfig(BaseModel):
 
     dry_run: bool = Field(default=True, strict=True)
     recipients: list[str] = Field(default_factory=list)
+    test_recipients: list[str] = Field(default_factory=list)
 
-    @field_validator("recipients")
+    @field_validator("recipients", "test_recipients")
     @classmethod
     def validate_recipients(cls, recipients: list[str]) -> list[str]:
         """Normalize recipients and reject empty, duplicate, or unsafe values."""

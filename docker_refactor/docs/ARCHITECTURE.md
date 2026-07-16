@@ -125,9 +125,11 @@ disconnects and restarts.
 ### `labpulse-sms`
 
 The SMS worker has a persistent MQTT session and a bounded background delivery
-queue. In safe `dry_run` mode it only logs masked recipients. In real mode it
-uses `mmcli`, so Compose additionally exposes D-Bus and devices to this one
-container.
+queue. Validated requests carry a strict `test_mode` flag: normal requests fan
+out to `sms.recipients`, while test requests fan out only to
+`sms.test_recipients`. In safe `dry_run` mode it only logs masked recipients.
+In real mode it uses `mmcli`, so Compose additionally exposes D-Bus and devices
+to this one container.
 
 ## Python package boundaries
 
@@ -264,9 +266,12 @@ recovery, or fault zone. A `history_stats` sensor measures the percentage of
 the observation window spent in danger. Automations write the persistent state
 only when the timing and zone conditions are met.
 
-Muting suppresses persistent notifications and SMS requests; it does not stop
-zone calculation or state transitions. This keeps the dashboard truthful while
-silencing delivery.
+Per-reading and power mutes suppress their own persistent notifications and SMS
+requests. The independent global mute gates every delivery path without writing
+those individual helpers, so their settings survive a global mute cycle. Test
+mode does not alter alarm evaluation; it marks notifications `[TEST]` and sends
+SMS only to the configured test list. Zone calculation and state transitions
+continue under either mode.
 
 ## Failure behavior
 

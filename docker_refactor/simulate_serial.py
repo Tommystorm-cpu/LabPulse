@@ -221,8 +221,8 @@ class ReadingGenerator:
         )
         return f"{value / 100:.2f}"
 
-    def _pressure(self) -> str:
-        """Return the raw pressure format expected by the pressure parser."""
+    def _pressure_mpa(self) -> str:
+        """Return simulated compressed-air pressure in MPa."""
 
         state = self.scenarios.get("pressure_monitor.pressure")
         if state is None:
@@ -254,58 +254,60 @@ class ReadingGenerator:
 
         return self.scenarios.get(target) == "stale"
 
+    @staticmethod
+    def _firmware_payload(device: str, readings: dict[str, float]) -> str:
+        """Return one compact schema-1 firmware JSON line."""
+
+        return json.dumps(
+            {
+                "device": device,
+                "schema": 1,
+                "firmware": "simulator",
+                "type": "sample",
+                "readings": readings,
+            },
+            separators=(",", ":"),
+        ) + "\n"
+
     def payloads(self) -> dict[str, str]:
         """Build one complete emission for every simulated serial device."""
 
-        pump_flow_parts = []
+        pump_readings: dict[str, float] = {}
         for index in (1, 2):
             target = f"pump_room.flow{index}"
             if not self._is_stale(target):
-                pump_flow_parts.append(
-                    f"Flow{index}: {self._hundredths(target)} L/min"
-                )
+                pump_readings[f"flow{index}"] = float(self._hundredths(target))
 
-        pump_temp_parts = []
         for index in range(4):
             target = f"pump_room.temp{index}"
             if not self._is_stale(target):
-                pump_temp_parts.append(
-                    f"Temp{index}: {self._temperature(target)}C"
-                )
+                pump_readings[f"temp{index}"] = float(self._temperature(target))
 
-        pump_room_parts = []
         if not self._is_stale("pump_room.roomtemp"):
-            pump_room_parts.append(
-                f"RoomTemp: {self._temperature('pump_room.roomtemp')}C"
+            pump_readings["roomtemp"] = float(
+                self._temperature("pump_room.roomtemp")
             )
         if not self._is_stale("pump_room.roomhum"):
-            pump_room_parts.append(
-                f"RoomHum: {self._humidity('pump_room.roomhum')}%"
-            )
+            pump_readings["roomhum"] = float(self._humidity("pump_room.roomhum"))
         for index in (1, 2):
             target = f"pump_room.press{index}"
             if not self._is_stale(target):
-                pump_room_parts.append(
-                    f"Press{index}: {self._pump_pressure(target)} bar"
+                pump_readings[f"press{index}"] = float(
+                    self._pump_pressure(target)
                 )
-        pump_payload = "".join(
-            f"{' | '.join(parts)}\n"
-            for parts in (pump_flow_parts, pump_temp_parts, pump_room_parts)
-            if parts
-        )
 
-        turbo_parts = []
+        turbo_readings: dict[str, float] = {}
         for index in (1, 2):
             target = f"turbo_pump.flow{index}"
             if not self._is_stale(target):
-                turbo_parts.append(
-                    f"Flow{index}: {self._hundredths(target, turbo=True)} L/min"
+                turbo_readings[f"flow{index}"] = float(
+                    self._hundredths(target, turbo=True)
                 )
         for index in range(4):
             target = f"turbo_pump.temp{index}"
             if not self._is_stale(target):
-                turbo_parts.append(
-                    f"Temp{index}: {self._temperature(target, turbo=True)}C"
+                turbo_readings[f"temp{index}"] = float(
+                    self._temperature(target, turbo=True)
                 )
 
         room_parts = []
@@ -321,11 +323,18 @@ class ReadingGenerator:
 
         payloads: dict[str, str] = {}
         if not self._is_stale("pressure_monitor.pressure"):
-            payloads["pressure"] = f"{self._pressure()}\n"
-        if pump_payload:
-            payloads["pump_room"] = pump_payload
-        if turbo_parts:
-            payloads["turbo_pump"] = " | ".join(turbo_parts) + "\n"
+            payloads["pressure"] = self._firmware_payload(
+                "pressure_monitor",
+                {"pressure": round(float(self._pressure_mpa()) * 10.0, 4)},
+            )
+        if pump_readings:
+            payloads["pump_room"] = self._firmware_payload(
+                "pump_room", pump_readings
+            )
+        if turbo_readings:
+            payloads["turbo_pump"] = self._firmware_payload(
+                "turbo_pump", turbo_readings
+            )
         if room_parts:
             payloads["room_environment"] = "|".join(room_parts) + "\n"
         ups_payload = self._ups_payload()

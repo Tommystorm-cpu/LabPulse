@@ -207,6 +207,8 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
             raise AssertionError(f"timing helper is not seeded from config: {helper_id}")
     if "labpulse_ups_monitor_power_timing_initialized" not in package["input_boolean"]:
         raise AssertionError("missing persistent one-time timing initialization marker")
+    if "labpulse_ups_monitor_power_sensor_fault_confirmed" not in package["input_boolean"]:
+        raise AssertionError("missing persistent confirmed-fault marker")
     if "labpulse_ups_monitor_power_maximum_reading_age_seconds" in package["input_number"]:
         raise AssertionError("MQTT expiry should not be duplicated as an ineffective helper")
     for fragment in (
@@ -238,19 +240,52 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
         expected = f"LabPulse UPS Monitor {suffix}"
         if expected not in aliases:
             raise AssertionError(f"missing automation: {expected}")
+    for suffix in (
+        "Outage Confirm",
+        "Recovery Confirm",
+        "Power Sensor Fault",
+        "Power Sensor Recovery",
+    ):
+        notification_yaml = yaml.safe_dump(
+            aliases[f"LabPulse UPS Monitor {suffix}"], sort_keys=False
+        )
+        if "input_boolean.labpulse_global_notifications_muted" not in notification_yaml:
+            raise AssertionError(f"UPS {suffix} bypasses global mute")
+        if "input_boolean.labpulse_notification_test_mode" not in notification_yaml:
+            raise AssertionError(f"UPS {suffix} bypasses test mode")
+        if "[TEST]" not in notification_yaml or 'test_mode' not in notification_yaml:
+            raise AssertionError(f"UPS {suffix} lacks test marking/routing")
+        if "current_reading" not in notification_yaml:
+            raise AssertionError(f"UPS {suffix} lacks Current Reading data")
     if text.count("input_boolean.labpulse_ups_monitor_power_muted") < 3:
         raise AssertionError("power mute is not applied independently to notifications")
     fault_automation = aliases["LabPulse UPS Monitor Power Sensor Fault"]
     fault_yaml = yaml.safe_dump(fault_automation, sort_keys=False)
     if "persistent_notification.create" not in fault_yaml:
         raise AssertionError("stale UPS evidence does not create a Home Assistant notification")
+    if "Reason:" not in fault_yaml or "service status" not in fault_yaml:
+        raise AssertionError("UPS fault notification does not explain its evidence")
+    if fault_automation.get("mode") != "restart":
+        raise AssertionError("UPS fault confirmation cannot cancel a transient fault")
+    if "seconds: 15" not in fault_yaml:
+        raise AssertionError("UPS fault lacks a restart-transient confirmation window")
+    confirmed_entity = (
+        "input_boolean.labpulse_ups_monitor_power_sensor_fault_confirmed"
+    )
+    if confirmed_entity not in fault_yaml:
+        raise AssertionError("UPS fault does not persist confirmed incident state")
     sensor_recovery = aliases["LabPulse UPS Monitor Power Sensor Recovery"]
     sensor_recovery_yaml = yaml.safe_dump(sensor_recovery, sort_keys=False)
     if "persistent_notification.create" not in sensor_recovery_yaml:
         raise AssertionError("restored UPS evidence does not create a Home Assistant notification")
     if "mqtt.publish" not in sensor_recovery_yaml:
         raise AssertionError("UPS sensor recovery should publish an SMS request")
-    recovery_payload = sensor_recovery["action"][1]["data"]["payload"]
+    if confirmed_entity not in sensor_recovery_yaml:
+        raise AssertionError("UPS recovery is not limited to confirmed faults")
+    if sensor_recovery["action"][0].get("service") != "input_boolean.turn_off":
+        raise AssertionError("UPS recovery does not clear confirmed incident state")
+    recovery_sequence = sensor_recovery["action"][1]["choose"][0]["sequence"]
+    recovery_payload = recovery_sequence[1]["data"]["payload"]
     if '"event": "recovery"' not in recovery_payload or '"reading": "power"' not in recovery_payload:
         raise AssertionError("UPS sensor recovery SMS payload is not a validated power recovery")
     if sensor_recovery["trigger"][0].get("from") != "on":
@@ -260,7 +295,17 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
         raise AssertionError("power fault still depends on value changes instead of MQTT expiry")
     if "reconnecting" in power_fault_state or "disconnected" in power_fault_state:
         raise AssertionError("UPS reconnect states bypass the evidence-age grace period")
-    for field in ("request_id", "event", "service", "reading", "state", "title", "message", "current"):
+    for field in (
+        "request_id",
+        "event",
+        "service",
+        "reading",
+        "state",
+        "title",
+        "message",
+        "test_mode",
+        "current_reading",
+    ):
         if f'"{field}"' not in text:
             raise AssertionError(f"SMS payload missing validated field: {field}")
     power_binary = package["template"][1]["binary_sensor"]
@@ -310,7 +355,13 @@ def test_power_dashboard_rendering() -> None:
         raise AssertionError("outage history is not exposed through read-only sensors")
     if any(row["entity"].startswith(("input_datetime.", "input_number.")) for row in entities):
         raise AssertionError("editable outage-history storage leaked onto Monitor")
-    setup_entities = views[1]["sections"][0]["cards"][1]["entities"]
+    global_entities = views[1]["sections"][0]["cards"][1]["entities"]
+    if [row["entity"] for row in global_entities] != [
+        "input_boolean.labpulse_global_notifications_muted",
+        "input_boolean.labpulse_notification_test_mode",
+    ]:
+        raise AssertionError("power dashboard lacks global notification controls")
+    setup_entities = views[1]["sections"][1]["cards"][1]["entities"]
     if not any(row["entity"] == "input_boolean.labpulse_ups_monitor_power_muted" for row in setup_entities):
         raise AssertionError("power alarm setup does not expose dedicated mute")
     expected_timing_rows = {

@@ -117,7 +117,8 @@ def request_payload(request_id: str = "request-1", event: str = "warning") -> di
         "state": "Danger",
         "title": "LabPulse Flow warning",
         "message": "Pump Room / Flow 1 is in Danger.",
-        "current": "0.2",
+        "test_mode": False,
+        "current_reading": "0.2",
     }
 
 
@@ -169,8 +170,17 @@ def test_sms_entry_accepts_explicit_argv() -> None:
 def test_sms_config_validates_recipients() -> None:
     """Check normalization and production-recipient validation."""
 
-    config = SmsConfig(dry_run=False, recipients=[" +447700900000 "])
+    config = SmsConfig(
+        dry_run=False,
+        recipients=[" +447700900000 "],
+        test_recipients=[" +447700900001 "],
+    )
     assert_equal(config.recipients, ["+447700900000"], "normalized recipient")
+    assert_equal(
+        config.test_recipients,
+        ["+447700900001"],
+        "normalized test recipient",
+    )
     for recipients in ([], [""], ["+447700900000", "+447700900000"], ["07700900000"]):
         try:
             SmsConfig(dry_run=False, recipients=recipients)
@@ -182,6 +192,44 @@ def test_sms_config_validates_recipients() -> None:
     except ValidationError:
         return
     raise AssertionError("quoted dry_run value was accepted as a boolean")
+
+
+def test_test_mode_routes_only_to_test_recipients() -> None:
+    """Check test requests cannot reach the normal emergency contact list."""
+
+    sender = SmsSender(
+        ["+447700900000"],
+        quiet_logger(),
+        test_recipients=["+447700900001", "+447700900002"],
+        dry_run=True,
+    )
+    results: list[DeliveryResult] = []
+    sender.set_result_handler(results.append)
+    test_request = request().model_copy(
+        update={"test_mode": True, "title": "LabPulse Flow warning"}
+    )
+    try:
+        assert_equal(sender.broadcast(test_request), True, "test request accepted")
+        sender.queue.join()
+    finally:
+        sender.close()
+    assert_equal(len(results), 2, "test recipient fan-out")
+    assert_equal(
+        [result.recipient for result in results],
+        ["+44*******001", "+44*******002"],
+        "test recipients only",
+    )
+    assert_contains(format_sms_message(test_request), "[TEST]", "test prefix")
+
+
+def test_test_requests_do_not_rate_limit_live_alerts() -> None:
+    """Check a test event cannot consume the live alert cooldown slot."""
+
+    cache = RecentRequestCache(clock=lambda: 100.0)
+    test_request = request("test-request").model_copy(update={"test_mode": True})
+    live_request = request("live-request")
+    cache.remember(test_request)
+    assert_equal(cache.rejection_reason(live_request), None, "live request after test")
 
 
 def test_subscriber_uses_persistent_qos_one_session() -> None:
@@ -438,7 +486,7 @@ def test_message_formatting_and_privacy_helpers() -> None:
 
     formatted = format_sms_message(request())
     assert_equal(formatted.count("Pump Room / Flow 1"), 1, "identity not duplicated")
-    assert_contains(formatted, "Current: 0.2", "current reading")
+    assert_contains(formatted, "Current Reading: 0.2", "current reading")
     assert_equal(mask_phone_number("+447700900000"), "+44*******000", "masked number")
     assert_equal(quote_mmcli_value("Dave's lab"), "'Dave\\'s lab'", "mmcli quote")
 
@@ -447,6 +495,8 @@ TESTS = [
     ("setup and Compose contract", test_setup_and_compose_contract),
     ("SMS entry accepts explicit argv", test_sms_entry_accepts_explicit_argv),
     ("SMS config validates recipients", test_sms_config_validates_recipients),
+    ("test mode routes only to test recipients", test_test_mode_routes_only_to_test_recipients),
+    ("test requests do not rate limit live alerts", test_test_requests_do_not_rate_limit_live_alerts),
     ("subscriber uses persistent QoS 1 session", test_subscriber_uses_persistent_qos_one_session),
     ("payload parser is strict", test_payload_parser_is_strict),
     ("subscriber deduplicates and rate limits", test_subscriber_deduplicates_and_rate_limits),

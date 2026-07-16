@@ -22,10 +22,9 @@ def test_generated_payloads_match_parsers() -> None:
     pressure = SerialParser("pressure_monitor", "pressure").parse(
         payloads["pressure"].strip()
     )
-    pump_lines = payloads["pump_room"].splitlines()
-    pump_flow = SerialParser("pump_room", "pump_room").parse(pump_lines[0])
-    pump_temperature = SerialParser("pump_room", "pump_room").parse(pump_lines[1])
-    pump_environment = SerialParser("pump_room", "pump_room").parse(pump_lines[2])
+    pump = SerialParser("pump_room", "pump_room").parse(
+        payloads["pump_room"].strip()
+    )
     turbo = SerialParser("turbo_pump", "water").parse(payloads["turbo_pump"].strip())
     room = SerialParser("room_environment", "pipe").parse(
         payloads["room_environment"].strip()
@@ -36,29 +35,15 @@ def test_generated_payloads_match_parsers() -> None:
 
     if pressure is None or "pressure" not in pressure:
         raise AssertionError(f"invalid pressure payload: {payloads['pressure']!r}")
-    if pump_flow is None or set(pump_flow) != {"flow1", "flow2"}:
-        raise AssertionError(f"invalid pump flow payload: {pump_lines[0]!r}")
-    if pump_temperature is None or set(pump_temperature) != {
-        "temp0",
-        "temp1",
-        "temp2",
-        "temp3",
-    }:
-        raise AssertionError(f"invalid pump temperature payload: {pump_lines[1]!r}")
-    if pump_environment is None or set(pump_environment) != {
-        "roomtemp",
-        "roomhum",
-        "press1",
-        "press2",
-    }:
-        raise AssertionError(f"invalid pump environment payload: {pump_lines[2]!r}")
+    if pump is None:
+        raise AssertionError(f"invalid pump payload: {payloads['pump_room']!r}")
     configured_pump_readings = {
         reading.name
         for reading in load_config(REFACTOR_DIR / "config.yaml").services[
             "pump_room"
         ].readings
     }
-    parsed_pump_readings = set(pump_flow) | set(pump_temperature) | set(pump_environment)
+    parsed_pump_readings = set(pump)
     if configured_pump_readings != parsed_pump_readings:
         raise AssertionError(
             "pump-room starter config and simulated Arduino payload differ: "
@@ -117,9 +102,7 @@ def test_scenarios_change_generated_values() -> None:
     pressure = SerialParser("pressure_monitor", "pressure").parse(
         first["pressure"].strip()
     )
-    pump = SerialParser("pump_room", "pump_room").parse(
-        first["pump_room"].splitlines()[2]
-    )
+    pump = SerialParser("pump_room", "pump_room").parse(first["pump_room"])
 
     if first_room is None or pressure is None or pump is None:
         raise AssertionError("scenario payload failed to parse")

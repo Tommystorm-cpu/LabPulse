@@ -94,7 +94,8 @@ def test_sms_contract() -> None:
         "state",
         "title",
         "message",
-        "current",
+        "test_mode",
+        "current_reading",
     }
     if not required.issubset(SMS_ALERT_PAYLOAD_FIELDS):
         raise AssertionError("SMS alert contract is missing required fields")
@@ -110,6 +111,7 @@ def test_sms_contract() -> None:
         }
     )
     assert_equal(request.event, "test", "validated SMS request")
+    assert_equal(request.test_mode, False, "normal delivery default")
 
 
 TESTS = [

@@ -78,7 +78,8 @@ class RecentRequestCache:
     def _event_key(self, request: SmsRequest) -> str:
         """Return the key used for short-term repeated-event suppression."""
 
-        return f"{request.service}:{request.reading}:{request.event}"
+        delivery_mode = "test" if request.test_mode else "live"
+        return f"{delivery_mode}:{request.service}:{request.reading}:{request.event}"
 
     def _prune(self, now: float) -> None:
         """Remove expired and excess entries."""

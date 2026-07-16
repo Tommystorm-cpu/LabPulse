@@ -144,7 +144,24 @@ def readings_by_group(
 def alarm_setup_sections(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
     """Expand alarm setup dashboard sections for all enabled services."""
 
-    return [alarm_setup_service_section(seed, service) for service in model.services]
+    return [global_alarm_setup_section(seed, model)] + [
+        alarm_setup_service_section(seed, service) for service in model.services
+    ]
+
+
+def global_alarm_setup_section(
+    seed: dict[str, Any], model: RenderModel
+) -> dict[str, object]:
+    """Return the global notification controls at the top of Alarm Setup."""
+
+    rules = seed["global_alarm_setup"]
+    return {
+        "type": "grid",
+        "cards": [
+            expand_template(rules["heading_card"], {"model": model}),
+            expand_template(rules["settings_card"], {"model": model}),
+        ],
+    }
 
 
 def monitor_location_section(

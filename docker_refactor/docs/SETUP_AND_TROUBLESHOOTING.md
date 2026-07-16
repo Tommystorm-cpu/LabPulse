@@ -146,6 +146,8 @@ sms:
   dry_run: true
   recipients:
     - "+447700900000"
+  test_recipients:
+    - "+447700900001"
 
 services:
   pressure_monitor:
@@ -174,6 +176,7 @@ services:
 | `mqtt.broker` | Use `mosquitto` inside this Compose deployment |
 | `sms.dry_run` | Log safely when true; use `mmcli` when false |
 | `sms.recipients` | Unique international numbers; keep real values only in the live config |
+| `sms.test_recipients` | Separate international numbers used only while the Alarm Setup test-mode toggle is on |
 | service key | Stable machine ID used in containers, MQTT, and HA entities |
 | `enabled` | Whether Compose and HA generation include the service |
 | `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with MAX17043-compatible UPS gauge |
@@ -237,6 +240,13 @@ same `display.section`. The Monitor view renders one location heading and a
 labelled subgroup for each service, while MQTT identities, service health, and
 Alarm Setup sections remain independent. The first service in display order
 provides the shared section icon.
+
+The first Alarm Setup section contains two global delivery controls. **Mute all
+notifications** suppresses Home Assistant notifications and SMS without
+changing any per-reading or power mute helper. Turning it off therefore leaves
+individually muted readings muted. **Test mode** prefixes notification titles
+with `[TEST]` and routes SMS requests only to `sms.test_recipients`; alarm state
+calculation and thresholds are unchanged.
 
 Within a multi-purpose service, assign the same `readings[].group` to related
 readings. Monitor renders one compact, untitled sensor card per group,
@@ -637,6 +647,8 @@ sms:
   dry_run: true
   recipients:
     - "+447700900000"
+  test_recipients:
+    - "+447700900001"
 ```
 
 The SMS worker validates and queues requests but logs a masked recipient instead
@@ -647,7 +659,7 @@ Publish a manual test with a new request ID each time:
 ```bash
 docker compose exec mosquitto mosquitto_pub \
   -h mosquitto -q 1 -t labpulse/sms/send \
-  -m '{"request_id":"manual-test-001","event":"test","service":"manual","reading":"sms","state":"Test","title":"LabPulse SMS test","message":"Manual test from LabPulse"}'
+  -m '{"request_id":"manual-test-001","event":"test","service":"manual","reading":"sms","state":"Test","title":"[TEST] LabPulse SMS test","message":"Manual test from LabPulse","test_mode":true}'
 ```
 
 Watch results:
@@ -669,7 +681,7 @@ sudo systemctl enable --now ModemManager
 mmcli -L
 ```
 
-Set `sms.dry_run: false` and real international recipients in the live config,
+Set `sms.dry_run: false` and real international normal/test recipients in the live config,
 then regenerate Compose so the worker receives D-Bus/device access:
 
 ```bash

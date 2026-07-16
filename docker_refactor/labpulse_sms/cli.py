@@ -37,7 +37,12 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
 
     logger = logging.getLogger("LabPulse.SMS")
-    sender = SmsSender(cfg.sms.recipients, logger, dry_run=cfg.sms.dry_run)
+    sender = SmsSender(
+        cfg.sms.recipients,
+        logger,
+        test_recipients=cfg.sms.test_recipients,
+        dry_run=cfg.sms.dry_run,
+    )
     log_dir = Path(os.environ.get("LABPULSE_LOG_DIR", APP_DIR / "logs"))
     subscriber = SMSSubscriber(
         cfg.mqtt,

@@ -3,18 +3,52 @@
 This document is the single reference for Arduino output consumed by the
 Docker refactor. It separates three things that were previously mixed together:
 
-1. what each current sketch actually prints;
-2. how the Python compatibility parser handles it now;
-3. firmware improvements that are recommendations, not implemented behavior.
+1. the standardized firmware now stored under `docker_refactor/firmware/`;
+2. what the older, currently flashed sketches print;
+3. how Python accepts both formats while boards are identified and upgraded.
 
-For host-side parsing details, see the Legacy serial parser section of
+For host-side parsing details, see the unified and legacy serial parser section of
 [CODE_INTERNALS.md](CODE_INTERNALS.md).
 
-## Current contract
+## Standardized contract
 
-All active serial sketches use 9600 baud. Python reads one newline-terminated
-line at a time and returns a `dict[str, float]`. Parsed keys are lowercased
-Arduino labels and must appear as `readings[].name` in the live config.
+New serial firmware lives in:
+
+```text
+docker_refactor/firmware/
+  libraries/LabPulseProtocol/
+  pressure_monitor/pressure_monitor.ino
+  pump_room/pump_room.ino
+  turbo_pump/turbo_pump.ino
+```
+
+Every sketch uses 9600 baud and emits exactly one compact JSON object per line.
+The shared schema separates publishable readings from raw diagnostics:
+
+```json
+{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","uptime_ms":5000,"readings":{"flow1":0.267,"flow2":0.0,"temp0":18.87,"temp2":null},"diagnostics":{"flow1_pulses":10,"flow2_pulses":0,"temp0_adc":512,"temp2_adc":1023}}
+```
+
+The Python parser validates `device` and `schema`, returns finite numeric
+members of `readings`, and ignores metadata, diagnostics, booleans, and JSON
+`null`. Consequently, an invalid channel stops producing numeric MQTT samples
+and becomes unavailable through `expire_after` rather than displaying a
+sentinel such as -273.15 C.
+
+The flow interrupt handlers now increment `volatile unsigned long` pulse
+counters. The main loop copies and resets both counters atomically, then
+performs floating-point calculation outside the interrupt while flow
+interrupts remain attached. Raw pulse counts make zero-flow diagnosis visible.
+
+See [the firmware README](../firmware/README.md) for the complete protocol,
+build prerequisites, pin map, and safe flashing sequence.
+
+## Deployed legacy contract
+
+The Arduinos inspected on the live Pi still use the repository-root `Arduino/`
+sketches and their human-readable output. Python reads one newline-terminated
+line at a time and returns a `dict[str, float]`. Parsed keys must appear as
+`readings[].name` in the live config.
 
 ```text
 Arduino text
@@ -232,70 +266,34 @@ configured `readings[].name`.
 
 ## Simulator equivalence
 
-`simulate_serial.py` creates four pseudo-serial devices:
+`simulate_serial.py` creates five pseudo-serial devices:
 
 ```text
 pressure
 pump_room
 turbo_pump
 room_environment
+ups_monitor
 ```
 
-It emits text shaped like the corresponding real formats so tests exercise the
-same serial driver and parser. Room environment uses the generic pipe format:
+Pressure, pump-room, and turbo-pump simulation use the same schema-1 JSON
+envelope as the standardized Arduino firmware. Room environment still uses the
+generic pipe format because the deployed sensor is GPIO rather than Arduino:
 
 ```text
 temperature:21.2|humidity:45.0
 ```
 
-The simulator is a host-side test device, not firmware, and does not change the
-real Arduino contracts.
+UPS simulation uses its normalized labelled test format. The simulator is a
+host-side test device, not firmware.
 
-## Recommended firmware contract
+## Migration boundary
 
-The following is a recommendation, not something the current Python runtime
-expects yet.
+The standardized JSON parser runs before the configured legacy parser. This
+allows one board at a time to be upgraded without breaking the boards that are
+not yet physically accessible. After every deployed serial Arduino emits the
+schema-1 contract and the installation has completed a soak test, remove the
+human-readable parser branches and rename the compatibility module.
 
-New firmware should emit one machine-readable record with an explicit device
-and schema identity, for example:
-
-```json
-{"device":"pump_room","schema":1,"flow1":2.45,"flow2":3.10,"temp0":20.11}
-```
-
-Benefits:
-
-- automatic mapping from an Arduino to its service role;
-- no unit text or label-boundary parsing;
-- schema/version checks during upgrades;
-- explicit omission or error reporting for invalid channels;
-- one parser shared by new firmware;
-- easier fixture generation and serial tests.
-
-Before changing the wire format, update together:
-
-1. the Arduino sketch;
-2. `labpulse_hardware/legacy_parsing/serial_parser.py` or its replacement;
-3. parser tests;
-4. simulator payloads and tests;
-5. this document;
-6. any configured reading names affected by the schema.
-
-## Recommended sketch hardening
-
-These are review actions, not claims about current behavior:
-
-- reject ADC endpoints before divider/`log()` calculations;
-- validate all calculated values with `isfinite()` and physical bounds;
-- print explicit channel error state rather than a plausible sentinel value;
-- validate DHT values before printing;
-- declare ISR-shared state correctly and make main-loop access atomic;
-- use consistent ADC divisor/reference assumptions;
-- document and verify flow calibration factors against the actual sensor;
-- add `DEVICE:<role>` and firmware/schema version output at minimum;
-- keep one complete record per line;
-- include a startup self-test or channel-presence report where practical.
-
-Until a standardized firmware contract is deployed, the isolated legacy parser
-is the deliberate compatibility boundary. Do not spread Arduino-format quirks
-into drivers, MQTT publishing, or Home Assistant templates.
+Until then, do not spread either Arduino-format details into drivers, MQTT
+publishing, or Home Assistant templates.
