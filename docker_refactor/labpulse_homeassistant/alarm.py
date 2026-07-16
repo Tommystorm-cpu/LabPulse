@@ -34,7 +34,7 @@ def package_context(model: RenderModel) -> dict[str, str]:
         "input_selects": indented_yaml(input_selects(seed, power_seed, model), 2),
         "input_booleans": indented_yaml(input_booleans(seed, power_seed, model), 2),
         "input_datetimes": indented_yaml(input_datetimes(power_seed, model), 2),
-        "sensors": indented_yaml(sensors(seed, model), 2),
+        "sensors": indented_yaml(sensors(seed, power_seed, model), 2),
         "templates": indented_yaml(templates(seed, power_seed, model), 2),
         "automations": indented_yaml(automations(seed, power_seed, model), 2),
     }
@@ -47,7 +47,7 @@ def load_alarm_seed() -> dict[str, Any]:
 
 
 def load_power_seed() -> dict[str, Any]:
-    """Load the isolated UPS low-voltage lifecycle seed rules."""
+    """Load the isolated UPS transition-inference lifecycle seed rules."""
 
     return yaml.safe_load((TEMPLATE_DIR / "power_logic.yaml").read_text(encoding="utf-8"))
 
@@ -106,12 +106,23 @@ def input_datetimes(power_seed: dict[str, Any], model: RenderModel) -> dict[str,
     return helpers
 
 
-def sensors(seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
-    """Return normal alarm history-stat sensor platform entries."""
+def sensors(
+    seed: dict[str, Any],
+    power_seed: dict[str, Any],
+    model: RenderModel,
+) -> list[dict[str, object]]:
+    """Return normal history and UPS rolling-change sensor entries."""
 
     result = []
     for service, reading in model.alarm_readings:
         result.extend(expand_template(item, {"service": service, "reading": reading}) for item in seed["sensors"].get("reading", []))
+    for service in model.services:
+        if service.power is not None:
+            context = {"service": service, "power": service.power}
+            result.extend(
+                expand_template(item, context)
+                for item in power_seed.get("sensors", [])
+            )
     return result
 
 

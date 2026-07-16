@@ -190,6 +190,8 @@ def test_setup_refresh_and_preservation_contract() -> None:
         "outage_drop_volts:",
         "recovery_rise_volts:",
         "recovery_charge_rise_percent:",
+        "settling_start",
+        "final mains-on settling baseline",
         "ups-characterisation",
     )
     for fragment in required_characterization_fragments:

@@ -9,6 +9,7 @@ TRIALS=3
 BASELINE_SECONDS=30
 OUTAGE_SECONDS=60
 RECOVERY_SECONDS=120
+SETTLING_SECONDS=300
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
@@ -24,6 +25,7 @@ Options:
   --baseline SECONDS   Mains-on baseline before each trial. Default: 30
   --outage SECONDS     Requested disconnected time per trial. Default: 60
   --recovery SECONDS   Observation after restoring mains. Default: 120
+  --settling SECONDS   Final post-test mains-on observation. Default: 300
   --project-dir DIR    Live Compose directory. Default: script directory
   --quick              One 20s baseline, 30s outage, and 60s recovery
   -h, --help           Show this help
@@ -50,12 +52,14 @@ while [ "$#" -gt 0 ]; do
     --baseline) BASELINE_SECONDS="$2"; shift 2 ;;
     --outage) OUTAGE_SECONDS="$2"; shift 2 ;;
     --recovery) RECOVERY_SECONDS="$2"; shift 2 ;;
+    --settling) SETTLING_SECONDS="$2"; shift 2 ;;
     --project-dir) PROJECT_DIR="$2"; shift 2 ;;
     --quick)
       TRIALS=1
       BASELINE_SECONDS=20
       OUTAGE_SECONDS=30
       RECOVERY_SECONDS=60
+      SETTLING_SECONDS=120
       shift
       ;;
     -h|--help) usage; exit 0 ;;
@@ -67,6 +71,7 @@ require_positive_integer "--trials" "$TRIALS"
 require_positive_integer "--baseline" "$BASELINE_SECONDS"
 require_positive_integer "--outage" "$OUTAGE_SECONDS"
 require_positive_integer "--recovery" "$RECOVERY_SECONDS"
+require_positive_integer "--settling" "$SETTLING_SECONDS"
 
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 if [ ! -f "$PROJECT_DIR/compose.yaml" ]; then
@@ -135,6 +140,7 @@ echo "Trials:             $TRIALS"
 echo "Baseline per trial: ${BASELINE_SECONDS}s"
 echo "Outage per trial:   ${OUTAGE_SECONDS}s"
 echo "Recovery per trial: ${RECOVERY_SECONDS}s"
+echo "Final settling:     ${SETTLING_SECONDS}s"
 echo "Voltage topic:      $VOLTAGE_TOPIC"
 echo "Charge topic:       $CHARGE_TOPIC"
 echo
@@ -194,6 +200,13 @@ for ((trial=1; trial<=TRIALS; trial++)); do
   countdown "$RECOVERY_SECONDS" "Collecting recovery readings"
   record_event "$trial" "trial_end"
 done
+
+echo
+echo "All controlled trials are complete. Keep mains connected while the script"
+echo "checks for delayed charger-settling transitions."
+record_event "$TRIALS" "settling_start"
+countdown "$SETTLING_SECONDS" "Collecting final mains-on settling baseline"
+record_event "$TRIALS" "settling_end"
 
 sleep 2
 cleanup
@@ -340,6 +353,17 @@ for trial in sorted(events):
     _, unplugged_rise = extrema_change(outage_v, 5.0)
     normal_falls.append(normal_fall)
     normal_rises.append(normal_rise)
+    settling_fall = math.nan
+    settling_rise = math.nan
+    if "settling_start" in phase and "settling_end" in phase:
+        settling_v = between(
+            voltage,
+            phase["settling_start"],
+            phase["settling_end"],
+        )
+        settling_fall, settling_rise = extrema_change(settling_v, 5.0)
+        normal_falls.append(settling_fall)
+        normal_rises.append(settling_rise)
     if not math.isnan(drop):
         outage_drops.append(drop)
     unplugged_rises.append(unplugged_rise)
@@ -394,6 +418,11 @@ for trial in sorted(events):
         f"  Noise:   largest normal 5s fall {normal_fall:.3f} V |"
         f" normal 5s rise {normal_rise:.3f} V | unplugged 5s rise {unplugged_rise:.3f} V"
     )
+    if not math.isnan(settling_fall):
+        print(
+            f"           final settling 5s fall {settling_fall:.3f} V |"
+            f" final settling 5s rise {settling_rise:.3f} V"
+        )
 
 print("\nCandidate settings")
 print("-" * 78)
@@ -404,7 +433,10 @@ if (
     and not math.isnan(min_outage_drop)
     and min_outage_drop > max_normal_drop + 0.01
 ):
-    candidate = (max_normal_drop + min_outage_drop) / 2
+    midpoint = (max_normal_drop + min_outage_drop) / 2
+    # Round upward to a centivolt so a tiny, unobserved charger-control step
+    # cannot sit immediately above a mathematically exact midpoint.
+    candidate = math.ceil(midpoint * 100) / 100
     print(
         f"  outage_drop_volts: {candidate:.3f}"
         f"  (normal max {max_normal_drop:.3f}, outage min {min_outage_drop:.3f})"

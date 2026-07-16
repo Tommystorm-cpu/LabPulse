@@ -25,6 +25,23 @@ def test_config_validation_and_stable_identity() -> None:
     """Require complete UPS config while keeping live/simulated entity IDs equal."""
 
     simulated = load_config(SIM_CONFIG)
+    detection = simulated.services["ups_monitor"].power_detection
+    if detection is None:
+        raise AssertionError("simulator has no transition detection config")
+    expected_detection = {
+        "low_voltage_threshold": 4.05,
+        "outage_drop_volts": 0.05,
+        "recovery_rise_volts": 0.062,
+        "transition_window_seconds": 5,
+        "recovery_lockout_seconds": 17,
+        "outage_confirm_seconds": 3,
+        "restore_confirm_seconds": 15,
+    }
+    for field, expected in expected_detection.items():
+        if getattr(detection, field) != expected:
+            raise AssertionError(f"unexpected {field}: {getattr(detection, field)!r}")
+    if detection.recovery_charge_rise_percent is not None:
+        raise AssertionError("uncalibrated charge recovery should remain disabled")
     sim_model = build_render_model(simulated)
     sim_service = sim_model.services[0]
     if [reading.name for reading in sim_service.readings] != ["voltage", "battery_level"]:
@@ -166,8 +183,18 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
     """Check persistent deadlines replace generic aggregate and `for:` timers."""
 
     package, _, text = render_power()
-    if package["sensor"]:
-        raise AssertionError("power service unexpectedly generated history_stats sensors")
+    statistics = package["sensor"]
+    if len(statistics) != 2 or any(item.get("platform") != "statistics" for item in statistics):
+        raise AssertionError(f"power transition statistics are missing: {statistics!r}")
+    statistics_by_id = {item["unique_id"]: item for item in statistics}
+    voltage_change = statistics_by_id["labpulse_ups_monitor_power_voltage_change"]
+    if voltage_change["state_characteristic"] != "change":
+        raise AssertionError("UPS voltage statistic is not a signed change")
+    if voltage_change["max_age"]["seconds"] != 5:
+        raise AssertionError("UPS voltage statistic ignores characterized window")
+    charge_change = statistics_by_id["labpulse_ups_monitor_power_charge_change"]
+    if charge_change["max_age"]["seconds"] != 120:
+        raise AssertionError("UPS charge statistic ignores configured trend window")
     if "history_stats" in text or "observed_danger_percent" in text:
         raise AssertionError("power lifecycle leaked into aggregate alarm machinery")
     if "for:" in text:
@@ -195,7 +222,7 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
     if any("initial" in helper for helper in power_helpers):
         raise AssertionError("power lifecycle helpers would reset instead of restore after restart")
     timing_helpers = {
-        "labpulse_ups_monitor_power_outage_confirm_seconds": 10,
+        "labpulse_ups_monitor_power_outage_confirm_seconds": 3,
         "labpulse_ups_monitor_power_restore_confirm_seconds": 15,
     }
     for helper_id, configured_default in timing_helpers.items():
@@ -259,6 +286,30 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
             raise AssertionError(f"UPS {suffix} lacks Current Reading data")
     if text.count("input_boolean.labpulse_ups_monitor_power_muted") < 3:
         raise AssertionError("power mute is not applied independently to notifications")
+    outage_start_yaml = yaml.safe_dump(
+        aliases["LabPulse UPS Monitor Outage Candidate Start"], sort_keys=False
+    )
+    if "binary_sensor.labpulse_ups_monitor_power_outage_transition" not in outage_start_yaml:
+        raise AssertionError("sharp voltage drop cannot start an outage candidate")
+    if "binary_sensor.labpulse_ups_monitor_power_low_voltage_evidence" not in outage_start_yaml:
+        raise AssertionError("absolute low-voltage fallback was removed")
+    outage_confirm_yaml = yaml.safe_dump(
+        aliases["LabPulse UPS Monitor Outage Confirm"], sort_keys=False
+    )
+    if "power_outage_transition\n  state: 'on'" in outage_confirm_yaml:
+        raise AssertionError("momentary outage evidence is not latched through confirmation")
+    recovery_start_yaml = yaml.safe_dump(
+        aliases["LabPulse UPS Monitor Recovery Candidate Start"], sort_keys=False
+    )
+    if "binary_sensor.labpulse_ups_monitor_power_recovery_transition" not in recovery_start_yaml:
+        raise AssertionError("characterized voltage rise cannot start recovery")
+    if "+ 17" not in recovery_start_yaml or "confirmation_deadline" not in recovery_start_yaml:
+        raise AssertionError("recovery does not enforce confirmation and rebound lockout")
+    recovery_confirm_yaml = yaml.safe_dump(
+        aliases["LabPulse UPS Monitor Recovery Confirm"], sort_keys=False
+    )
+    if "power_recovery_transition\n  state: 'on'" in recovery_confirm_yaml:
+        raise AssertionError("momentary recovery evidence is not latched")
     fault_automation = aliases["LabPulse UPS Monitor Power Sensor Fault"]
     fault_yaml = yaml.safe_dump(fault_automation, sort_keys=False)
     if "persistent_notification.create" not in fault_yaml:
@@ -319,11 +370,33 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
         if f'"{field}"' not in text:
             raise AssertionError(f"SMS payload missing validated field: {field}")
     power_binary = package["template"][1]["binary_sensor"]
+    if len(power_binary) != 4:
+        raise AssertionError("power transition diagnostics are incomplete")
     meaning = power_binary[1]["attributes"]["meaning"]
-    if "low UPS voltage" not in meaning or "mains is not measured directly" not in meaning:
+    if "Fallback evidence" not in meaning or "mains is not measured directly" not in meaning:
         raise AssertionError("generated wording overstates direct mains measurement")
-    if float(power_binary[1]["attributes"]["threshold_volts"]) != 4.0:
+    if float(power_binary[1]["attributes"]["threshold_volts"]) != 4.05:
         raise AssertionError("generated evidence does not expose the voltage threshold")
+    outage_attributes = power_binary[2]["attributes"]
+    if float(outage_attributes["drop_threshold_volts"]) != 0.05:
+        raise AssertionError("outage evidence omits characterized drop")
+    recovery_attributes = power_binary[3]["attributes"]
+    if float(recovery_attributes["rise_threshold_volts"]) != 0.062:
+        raise AssertionError("recovery evidence omits characterized rise")
+    if recovery_attributes["charge_recovery_enabled"] is not False:
+        raise AssertionError("uncalibrated charge recovery was enabled")
+    power_template_triggers = set(package["template"][1]["trigger"][0]["entity_id"])
+    required_transition_triggers = {
+        "sensor.labpulse_ups_monitor_voltage",
+        "sensor.labpulse_ups_monitor_battery_level",
+        "sensor.labpulse_ups_monitor_power_voltage_change",
+        "sensor.labpulse_ups_monitor_power_charge_change",
+    }
+    if not required_transition_triggers.issubset(power_template_triggers):
+        raise AssertionError(
+            "transition templates do not follow fresh rolling statistics: "
+            f"{required_transition_triggers - power_template_triggers}"
+        )
     if int(power_binary[0]["attributes"]["maximum_evidence_age_seconds"]) != 15:
         raise AssertionError("generated fault diagnostics omit configured MQTT expiry")
 
@@ -351,8 +424,8 @@ def test_power_dashboard_rendering() -> None:
     if names != [
         "Inferred power state",
         "UPS battery voltage",
-        "Last low-voltage event started",
-        "Last low-voltage event duration",
+        "Last inferred outage started",
+        "Last inferred outage duration",
     ]:
         raise AssertionError(f"unexpected power dashboard rows: {names!r}")
     if "title" in monitor_cards[-1]:
@@ -375,7 +448,7 @@ def test_power_dashboard_rendering() -> None:
     if not any(row["entity"] == "input_boolean.labpulse_ups_monitor_power_muted" for row in setup_entities):
         raise AssertionError("power alarm setup does not expose dedicated mute")
     expected_timing_rows = {
-        "input_number.labpulse_ups_monitor_power_outage_confirm_seconds": "Low-voltage confirmation time",
+        "input_number.labpulse_ups_monitor_power_outage_confirm_seconds": "Outage confirmation time",
         "input_number.labpulse_ups_monitor_power_restore_confirm_seconds": "Recovery confirmation time",
     }
     actual_timing_rows = {
@@ -385,6 +458,22 @@ def test_power_dashboard_rendering() -> None:
     }
     if actual_timing_rows != expected_timing_rows:
         raise AssertionError(f"power timing controls are missing or renamed: {actual_timing_rows!r}")
+    diagnostic_entities = {
+        row["entity"]
+        for row in setup_entities
+        if isinstance(row, dict) and "entity" in row
+    }
+    expected_diagnostics = {
+        "sensor.labpulse_ups_monitor_power_voltage_change",
+        "sensor.labpulse_ups_monitor_power_charge_change",
+        "binary_sensor.labpulse_ups_monitor_power_outage_transition",
+        "binary_sensor.labpulse_ups_monitor_power_recovery_transition",
+        "binary_sensor.labpulse_ups_monitor_power_low_voltage_evidence",
+    }
+    if not expected_diagnostics.issubset(diagnostic_entities):
+        raise AssertionError(
+            f"power transition diagnostics missing: {expected_diagnostics - diagnostic_entities}"
+        )
 
 
 TESTS: list[tuple[str, Callable[[], None]]] = [

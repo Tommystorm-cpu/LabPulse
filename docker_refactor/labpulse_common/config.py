@@ -83,11 +83,17 @@ class DisplayConfig(BaseModel):
 
 
 class PowerDetectionConfig(BaseModel):
-    """Low-voltage power-inference settings for the installed UPS gauge."""
+    """Voltage-transition power-inference settings for the installed UPS gauge."""
 
-    source: Literal["ups_voltage_inference"] = "ups_voltage_inference"
-    low_voltage_threshold: float = Field(default=4.0, ge=2.0, le=5.0)
-    outage_confirm_seconds: int = Field(default=10, ge=1, le=3600)
+    source: Literal["ups_transition_inference"] = "ups_transition_inference"
+    low_voltage_threshold: float = Field(default=4.05, ge=2.0, le=5.0)
+    outage_drop_volts: float = Field(default=0.05, gt=0.0, le=1.0)
+    recovery_rise_volts: float = Field(default=0.062, gt=0.0, le=1.0)
+    transition_window_seconds: int = Field(default=5, ge=2, le=300)
+    recovery_lockout_seconds: int = Field(default=17, ge=0, le=3600)
+    recovery_charge_rise_percent: float | None = Field(default=None, gt=0.0, le=100.0)
+    recovery_charge_window_seconds: int = Field(default=120, ge=10, le=86400)
+    outage_confirm_seconds: int = Field(default=3, ge=1, le=3600)
     restore_confirm_seconds: int = Field(default=15, ge=1, le=3600)
     maximum_reading_age_seconds: int = Field(default=15, ge=2, le=86400)
 

@@ -1,10 +1,10 @@
-# Dedicated UPS low-voltage inference lifecycle. This deliberately does not use the
-# normal LabPulse history_stats/percentage alarm machinery.
+# Dedicated UPS voltage-transition inference lifecycle. This deliberately does
+# not use the normal LabPulse history_stats/percentage alarm machinery.
 
 input_numbers:
   - id: "labpulse_[[ service.service_id ]]_power_outage_confirm_seconds"
     config:
-      name: "[[ service.label ]] Low-Voltage Confirmation Time"
+      name: "[[ service.label ]] Outage Confirmation Time"
       min: 1
       max: 3600
       step: 1
@@ -20,7 +20,7 @@ input_numbers:
       mode: box
   - id: "labpulse_[[ service.service_id ]]_power_last_outage_duration"
     config:
-      name: "[[ service.label ]] Last Low-Voltage Event Duration"
+      name: "[[ service.label ]] Last Inferred Outage Duration"
       min: 0
       max: 604800
       step: 1
@@ -45,30 +45,53 @@ input_booleans:
       name: "[[ service.label ]] Power Timing Initialized"
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate"
     config:
-      name: "[[ service.label ]] Low-Voltage Candidate"
+      name: "[[ service.label ]] Outage Candidate"
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate"
     config:
       name: "[[ service.label ]] Recovery Candidate"
   - id: "labpulse_[[ service.service_id ]]_power_outage_active"
     config:
-      name: "[[ service.label ]] Low-Voltage Event Active"
+      name: "[[ service.label ]] Inferred Outage Active"
   - id: "labpulse_[[ service.service_id ]]_power_sensor_fault_confirmed"
     config:
       name: "[[ service.label ]] Confirmed Telemetry Fault"
 
 input_datetimes:
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_started"
-    config: {name: "[[ service.label ]] Low-Voltage Candidate Started", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Outage Candidate Started", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_deadline"
-    config: {name: "[[ service.label ]] Low-Voltage Candidate Deadline", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Outage Candidate Deadline", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_started"
     config: {name: "[[ service.label ]] Recovery Candidate Started", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_deadline"
     config: {name: "[[ service.label ]] Recovery Candidate Deadline", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_outage_started"
-    config: {name: "[[ service.label ]] Low-Voltage Event Started", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Inferred Outage Started", has_date: true, has_time: true}
   - id: "labpulse_[[ service.service_id ]]_power_last_outage_started"
-    config: {name: "[[ service.label ]] Last Low-Voltage Event Started", has_date: true, has_time: true}
+    config: {name: "[[ service.label ]] Last Inferred Outage Started", has_date: true, has_time: true}
+
+# Rolling change preserves the sign of the transition: negative is a voltage
+# drop and positive is a rise. The voltage sensor uses the characterized
+# five-second window; charge uses its longer optional confirmation window.
+sensors:
+  - platform: statistics
+    name: "[[ power.voltage_change_unique_id ]]"
+    unique_id: "[[ power.voltage_change_unique_id ]]"
+    entity_id: "[[ power.voltage.expected_entity_id ]]"
+    state_characteristic: change
+    max_age:
+      seconds: "[[ power.transition_window_seconds ]]"
+    sampling_size: 20
+    precision: 3
+  - platform: statistics
+    name: "[[ power.charge_change_unique_id ]]"
+    unique_id: "[[ power.charge_change_unique_id ]]"
+    entity_id: "[[ power.battery_level.expected_entity_id ]]"
+    state_characteristic: change
+    max_age:
+      seconds: "[[ power.recovery_charge_window_seconds ]]"
+    sampling_size: 180
+    precision: 1
 
 templates:
   - sensor:
@@ -89,6 +112,9 @@ templates:
       - platform: state
         entity_id:
           - "[[ power.voltage.expected_entity_id ]]"
+          - "[[ power.battery_level.expected_entity_id ]]"
+          - "[[ power.voltage_change_entity ]]"
+          - "[[ power.charge_change_entity ]]"
           - "[[ service.status_entity_id ]]"
     binary_sensor:
       - name: "[[ power.sensor_fault_unique_id ]]"
@@ -111,9 +137,44 @@ templates:
              and is_number(raw)
              and raw | float < [[ power.low_voltage_threshold ]] }}
         attributes:
-          evidence_source: "ups_voltage_inference"
-          meaning: "Possible battery operation inferred from low UPS voltage; mains is not measured directly"
+          evidence_source: "ups_transition_inference_absolute_fallback"
+          meaning: "Fallback evidence for a missed transition; mains is not measured directly"
           threshold_volts: "[[ power.low_voltage_threshold ]]"
+      - name: "[[ power.outage_transition_unique_id ]]"
+        unique_id: "[[ power.outage_transition_unique_id ]]"
+        device_class: power
+        state: >
+          {% set change = states('[[ power.voltage_change_entity ]]') %}
+          {{ is_state('[[ power.sensor_fault_entity ]]', 'off')
+             and is_number(change)
+             and change | float <= -[[ power.outage_drop_volts ]] }}
+        attributes:
+          evidence_source: "characterized_voltage_drop"
+          transition_window_seconds: "[[ power.transition_window_seconds ]]"
+          drop_threshold_volts: "[[ power.outage_drop_volts ]]"
+          measured_normal_max_drop_volts: 0.002
+          measured_outage_min_drop_volts: 0.079
+      - name: "[[ power.recovery_transition_unique_id ]]"
+        unique_id: "[[ power.recovery_transition_unique_id ]]"
+        device_class: power
+        state: >
+          {% set voltage_change = states('[[ power.voltage_change_entity ]]') %}
+          {% set charge_change = states('[[ power.charge_change_entity ]]') %}
+          {{ is_state('[[ power.sensor_fault_entity ]]', 'off')
+             and ((is_number(voltage_change)
+                   and voltage_change | float >= [[ power.recovery_rise_volts ]])
+                  or ([[ power.recovery_charge_enabled ]]
+                      and is_number(charge_change)
+                      and charge_change | float >= [[ power.recovery_charge_rise_percent ]])) }}
+        attributes:
+          evidence_source: "characterized_voltage_rise_or_optional_charge_rise"
+          transition_window_seconds: "[[ power.transition_window_seconds ]]"
+          rise_threshold_volts: "[[ power.recovery_rise_volts ]]"
+          measured_unplugged_max_rise_volts: 0.019
+          measured_recovery_min_rise_volts: 0.104
+          charge_recovery_enabled: "[[ power.recovery_charge_enabled ]]"
+          charge_rise_threshold_percent: "[[ power.recovery_charge_rise_percent ]]"
+          charge_window_seconds: "[[ power.recovery_charge_window_seconds ]]"
 
 automations:
   - id: "labpulse_[[ service.service_id ]]_power_outage_candidate_start"
@@ -121,7 +182,9 @@ automations:
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.low_voltage_evidence_entity ]]"
+        entity_id:
+          - "[[ power.outage_transition_entity ]]"
+          - "[[ power.low_voltage_evidence_entity ]]"
         to: "on"
     condition:
       - condition: state
@@ -129,6 +192,9 @@ automations:
         state: "off"
       - condition: state
         entity_id: "[[ power.outage_active_entity ]]"
+        state: "off"
+      - condition: state
+        entity_id: "[[ power.outage_candidate_entity ]]"
         state: "off"
     action:
       - service: input_datetime.set_datetime
@@ -145,8 +211,8 @@ automations:
     mode: restart
     trigger:
       - platform: state
-        entity_id: "[[ power.low_voltage_evidence_entity ]]"
-        to: "off"
+        entity_id: "[[ power.recovery_transition_entity ]]"
+        to: "on"
     condition:
       - condition: state
         entity_id: "[[ power.outage_active_entity ]]"
@@ -164,9 +230,6 @@ automations:
     condition:
       - condition: state
         entity_id: "[[ power.outage_candidate_entity ]]"
-        state: "on"
-      - condition: state
-        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         state: "on"
       - condition: state
         entity_id: "[[ power.sensor_fault_entity ]]"
@@ -196,11 +259,11 @@ automations:
               - service: persistent_notification.create
                 data:
                   title: >
-                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse low UPS voltage warning' }}
+                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse possible UPS outage' }}
                   message: >
-                    [[ service.label ]] voltage remained below [[ power.low_voltage_threshold ]] V for the configured {{ states('[[ power.outage_confirm_seconds_entity ]]') }}-second confirmation period.
+                    [[ service.label ]] produced confirmed evidence of a possible mains outage.
 
-                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. This can indicate battery operation, but mains is not measured directly.
+                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. Five-second voltage change: {{ states('[[ power.voltage_change_entity ]]') }} V. The characterized drop trigger is [[ power.outage_drop_volts ]] V; the missed-transition fallback is below [[ power.low_voltage_threshold ]] V. Evidence was latched for {{ states('[[ power.outage_confirm_seconds_entity ]]') }} seconds. Mains is inferred rather than measured directly.
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -208,15 +271,15 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse low UPS voltage warning", "message": "Voltage remained below [[ power.low_voltage_threshold ]] V for " ~ states('[[ power.outage_confirm_seconds_entity ]]') ~ " seconds. This may indicate battery operation; mains is not measured directly.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse possible UPS outage", "message": "Confirmed outage evidence: five-second voltage change " ~ states('[[ power.voltage_change_entity ]]') ~ " V; drop trigger [[ power.outage_drop_volts ]] V; absolute fallback [[ power.low_voltage_threshold ]] V; confirmation " ~ states('[[ power.outage_confirm_seconds_entity ]]') ~ " seconds. Mains is inferred, not measured directly.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_start"
     alias: "LabPulse [[ service.label ]] Recovery Candidate Start"
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.low_voltage_evidence_entity ]]"
-        to: "off"
+        entity_id: "[[ power.recovery_transition_entity ]]"
+        to: "on"
     condition:
       - condition: state
         entity_id: "[[ power.outage_active_entity ]]"
@@ -224,13 +287,21 @@ automations:
       - condition: state
         entity_id: "[[ power.sensor_fault_entity ]]"
         state: "off"
+      - condition: state
+        entity_id: "[[ power.recovery_candidate_entity ]]"
+        state: "off"
     action:
       - service: input_datetime.set_datetime
         target: {entity_id: "[[ power.recovery_candidate_started_entity ]]"}
         data: {timestamp: "{{ as_timestamp(now()) }}"}
       - service: input_datetime.set_datetime
         target: {entity_id: "[[ power.recovery_candidate_deadline_entity ]]"}
-        data: {timestamp: "{{ as_timestamp(now()) + ([[ power.restore_confirm_seconds ]] if is_state('[[ power.timing_initialized_entity ]]', 'off') else states('[[ power.restore_confirm_seconds_entity ]]') | int([[ power.restore_confirm_seconds ]])) }}"}
+        data:
+          timestamp: >
+            {% set restore_seconds = [[ power.restore_confirm_seconds ]] if is_state('[[ power.timing_initialized_entity ]]', 'off') else states('[[ power.restore_confirm_seconds_entity ]]') | int([[ power.restore_confirm_seconds ]]) %}
+            {% set confirmation_deadline = as_timestamp(now()) + restore_seconds %}
+            {% set lockout_deadline = as_timestamp(states('[[ power.outage_started_entity ]]'), as_timestamp(now())) + [[ power.recovery_lockout_seconds ]] %}
+            {{ [confirmation_deadline, lockout_deadline] | max }}
       - service: input_boolean.turn_on
         target: {entity_id: "[[ power.recovery_candidate_entity ]]"}
 
@@ -239,7 +310,9 @@ automations:
     mode: restart
     trigger:
       - platform: state
-        entity_id: "[[ power.low_voltage_evidence_entity ]]"
+        entity_id:
+          - "[[ power.outage_transition_entity ]]"
+          - "[[ power.low_voltage_evidence_entity ]]"
         to: "on"
     action:
       - service: input_boolean.turn_off
@@ -256,10 +329,10 @@ automations:
         entity_id: "[[ power.recovery_candidate_entity ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.low_voltage_evidence_entity ]]"
+        entity_id: "[[ power.sensor_fault_entity ]]"
         state: "off"
       - condition: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.low_voltage_evidence_entity ]]"
         state: "off"
       - condition: template
         value_template: "{{ as_timestamp(now()) >= as_timestamp(states('[[ power.recovery_candidate_deadline_entity ]]'), 99999999999) }}"
@@ -294,11 +367,11 @@ automations:
               - service: persistent_notification.create
                 data:
                   title: >
-                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse UPS voltage recovered' }}
+                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse UPS power recovery inferred' }}
                   message: >
-                    [[ service.label ]] voltage returned to at least [[ power.low_voltage_threshold ]] V and stayed recovered for {{ states('[[ power.restore_confirm_seconds_entity ]]') }} seconds.
+                    [[ service.label ]] produced confirmed recovery evidence after an inferred outage.
 
-                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. Low-voltage event duration: {{ outage_duration }} seconds; mains restoration is not measured directly.
+                    Current Reading: {{ states('[[ power.voltage.expected_entity_id ]]') }} V. The recovery candidate required a rise of at least [[ power.recovery_rise_volts ]] V over [[ power.transition_window_seconds ]] seconds{% if [[ power.recovery_charge_enabled ]] %}, or a charge increase of [[ power.recovery_charge_rise_percent ]]% over [[ power.recovery_charge_window_seconds ]] seconds{% endif %}. It then remained confirmed for {{ states('[[ power.restore_confirm_seconds_entity ]]') }} seconds and past the [[ power.recovery_lockout_seconds ]]-second rebound lockout. Inferred outage duration: {{ outage_duration }} seconds.
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
                 data:
@@ -306,7 +379,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS voltage recovered", "message": "Voltage stayed at or above [[ power.low_voltage_threshold ]] V for " ~ states('[[ power.restore_confirm_seconds_entity ]]') ~ " seconds after a " ~ outage_duration ~ " second low-voltage event; mains restoration is not measured directly.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS power recovery inferred", "message": "Confirmed recovery evidence after " ~ outage_duration ~ " seconds: rise trigger [[ power.recovery_rise_volts ]] V over [[ power.transition_window_seconds ]] seconds; rebound lockout [[ power.recovery_lockout_seconds ]] seconds; confirmation " ~ states('[[ power.restore_confirm_seconds_entity ]]') ~ " seconds. Mains restoration is inferred.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_fault"
     alias: "LabPulse [[ service.label ]] Power Sensor Fault"
@@ -466,23 +539,15 @@ automations:
               - service: input_select.select_option
                 target: {entity_id: "[[ power.state_entity ]]"}
                 data: {option: "Possible On Battery"}
-              - choose:
-                  - conditions: "{{ is_state('[[ power.low_voltage_evidence_entity ]]', 'off') and is_state('[[ power.recovery_candidate_entity ]]', 'off') }}"
-                    sequence:
-                      - service: input_datetime.set_datetime
-                        target: {entity_id: "[[ power.recovery_candidate_started_entity ]]"}
-                        data: {timestamp: "{{ as_timestamp(now()) }}"}
-                      - service: input_datetime.set_datetime
-                        target: {entity_id: "[[ power.recovery_candidate_deadline_entity ]]"}
-                        data: {timestamp: "{{ as_timestamp(now()) + (states('[[ power.restore_confirm_seconds_entity ]]') | int([[ power.restore_confirm_seconds ]])) }}"}
-                      - service: input_boolean.turn_on
-                        target: {entity_id: "[[ power.recovery_candidate_entity ]]"}
         default:
           - service: input_select.select_option
             target: {entity_id: "[[ power.state_entity ]]"}
             data: {option: "Normal"}
           - choose:
-              - conditions: "{{ is_state('[[ power.low_voltage_evidence_entity ]]', 'on') and is_state('[[ power.outage_candidate_entity ]]', 'off') }}"
+              - conditions: >
+                  {{ (is_state('[[ power.outage_transition_entity ]]', 'on')
+                      or is_state('[[ power.low_voltage_evidence_entity ]]', 'on'))
+                     and is_state('[[ power.outage_candidate_entity ]]', 'off') }}
                 sequence:
                   - service: input_datetime.set_datetime
                     target: {entity_id: "[[ power.outage_candidate_started_entity ]]"}

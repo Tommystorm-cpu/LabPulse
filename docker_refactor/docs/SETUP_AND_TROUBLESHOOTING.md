@@ -197,7 +197,7 @@ services:
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
 | `maximum_reading_age_seconds` | Seconds without an MQTT sample before an ordinary reading becomes unavailable; default 300 |
 | `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
-| `power_detection` | Low-voltage inference threshold plus dedicated confirmation/recovery/freshness timings |
+| `power_detection` | Characterized voltage drop/rise inference, absolute fallback, rebound lockout, optional charge recovery, and freshness timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
@@ -231,10 +231,13 @@ changing that JSON entry and regenerating applies the new three values once.
 Power outage and recovery timings in `power_detection` seed Home Assistant
 controls when that power service is first created. After initialization, those
 two confirmation timings are edited in **LabPulse Alarm Setup** and persist
-across restarts and automation reloads. Maximum UPS evidence age configures the
-MQTT entity's `expire_after` directly and therefore remains a live-config
-setting. See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the
-complete safe acceptance run.
+across restarts and automation reloads. Drop/rise thresholds, rolling windows,
+rebound lockout, optional charge-rise threshold, absolute fallback, and maximum
+evidence age remain live-config settings. The installed system's characterized
+values are 0.050 V drop, 0.062 V rise, five-second window, and 17-second lockout.
+Maximum UPS evidence age configures MQTT `expire_after` directly. See
+[POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the complete safe
+acceptance run.
 
 To measure the installed UPS rather than guessing transition thresholds, run
 the interactive characterization helper from the live directory:
@@ -248,7 +251,9 @@ It uses `sudo docker`, verifies live MQTT voltage and charge telemetry, then
 prompts for three controlled mains-off/on trials. Raw timestamped readings and
 event markers are retained under `ups-characterisation/`. The final report
 prints candidate drop, rise, lockout, and charge-trend settings only when the
-trials separate them from normal noise and unplugged battery rebound. Use
+trials separate them from normal noise and unplugged battery rebound. A final
+five-minute mains-on observation captures delayed charger-settling steps that
+the short pre-test baselines can miss. Use
 `./characterize_ups.sh --quick` for a one-trial exploratory run; do not treat a
 single trial as production calibration.
 

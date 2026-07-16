@@ -1,11 +1,12 @@
-# MAX17043 UPS Monitoring: Remaining Live Acceptance
+# MAX17043 UPS Monitoring: Implementation and Live Characterization
 
 ## Why this file remains
 
 The Docker refactor now implements the power-monitoring features supported by
 the UPS hardware actually installed on the live Pi. Automated and simulated
-acceptance can be completed without that Pi, but the controlled live-Pi run is
-still outstanding, so this temporary implementation record must remain.
+acceptance was followed by three controlled live-Pi outage/recovery trials.
+This file now records the evidence behind the installed transition thresholds
+and the remaining post-deployment checks.
 
 ## Verified live implementation
 
@@ -55,9 +56,15 @@ services:
     read_interval_seconds: 1
     reconnect_interval_seconds: 5
     power_detection:
-      source: ups_voltage_inference
-      low_voltage_threshold: 4.0
-      outage_confirm_seconds: 10
+      source: ups_transition_inference
+      low_voltage_threshold: 4.05
+      outage_drop_volts: 0.05
+      recovery_rise_volts: 0.062
+      transition_window_seconds: 5
+      recovery_lockout_seconds: 17
+      recovery_charge_rise_percent: null
+      recovery_charge_window_seconds: 120
+      outage_confirm_seconds: 3
       restore_confirm_seconds: 15
       maximum_reading_age_seconds: 15
 ```
@@ -68,21 +75,23 @@ state of charge directly.
 ## Power inference and its limitation
 
 This HAT does not expose measured current or a confirmed mains-present signal
-through the recovered software interface. The only currently available power
-evidence is the same weak heuristic used by the live service:
+through the recovered software interface. Controlled live characterization did,
+however, find clean separation in short-term voltage transitions:
 
 ```text
-battery voltage below configured threshold -> possible battery operation
-battery voltage at/above threshold          -> normal inferred state
+drop >= 0.050 V in 5 seconds -> possible battery operation
+rise >= 0.062 V in 5 seconds -> possible mains recovery
+voltage below 4.05 V         -> missed-transition outage fallback
 ```
 
 The refactor improves the handling of that evidence but cannot improve what it
 means. Home Assistant therefore:
 
 - labels the state `Possible On Battery`, never measured mains loss;
-- confirms low voltage continuously for 10 seconds before warning;
-- confirms recovery continuously for 15 seconds;
-- records the low-voltage event start and duration;
+- latches a characterized sharp drop and confirms it for 3 seconds;
+- latches a characterized rise and confirms it for 15 seconds after a
+  17-second battery-rebound lockout;
+- records the inferred outage start and duration;
 - expires voltage evidence after 15 seconds, then confirms that fault evidence
   for another evidence-age window so routine Home Assistant restarts stay silent;
 - reconciles persistent candidate/event state after restart;
@@ -90,10 +99,12 @@ means. Home Assistant therefore:
 - sends validated warning, recovery, fault, and sensor-restored SMS requests.
 
 All dashboard and message wording states that mains is not measured directly.
-Returning above the voltage threshold does not prove that mains was restored.
+The absolute threshold cannot declare recovery because unplugged battery voltage
+rebounds above it. Optional charge-rise recovery remains disabled until a trial
+below 100% SOC produces a defensible threshold.
 
 The preferred future improvement is an electrically isolated mains-present
-input. Its normalized evidence should replace `ups_voltage_inference` while
+input. Its normalized evidence should replace `ups_transition_inference` while
 retaining the telemetry, dashboard, lifecycle persistence, mute, and SMS
 delivery layers.
 
@@ -112,9 +123,9 @@ python3 simulate_serial.py clear ups_monitor.power
 `stale` stops emission so the real freshness logic is exercised. Simulation
 must keep `sms.dry_run: true`.
 
-## Remaining live acceptance
+## Remaining post-deployment acceptance
 
-Before enabling this service on the live Pi:
+After deploying the transition-based lifecycle on the live Pi:
 
 1. Keep the legacy power service stopped so only one process accesses/publishes
    the UPS.
@@ -130,11 +141,11 @@ Before enabling this service on the live Pi:
    ```
 
 6. Verify container restart and I2C reconnect behaviour.
-7. Exercise a brief below-threshold simulation before any controlled physical
-   power test.
-8. During a controlled physical test, record how long the battery remains over
-   4.0 V after input power is removed. This determines how useful the heuristic
-   really is.
-9. Do not describe the result as direct outage detection.
-
-When this system is implemented, delete this file
+7. Exercise the fake sharp-drop/rise lifecycle before another controlled
+   physical power test.
+8. Confirm a real outage produces one warning after the three-second
+   confirmation, and restoration produces one recovery only after its
+   confirmation and rebound lockout.
+9. Confirm the observed post-test settling step below 0.02 V does not trigger
+   the production 0.050 V outage threshold.
+10. Do not describe the result as direct outage detection.

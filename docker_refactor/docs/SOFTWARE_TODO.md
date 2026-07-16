@@ -187,7 +187,7 @@ notifications and SMS but does not expire and is not recipient-specific.
 - [ ] Test longer outages and repeated flapping separately.
 
 Current state: read-only MAX17043-compatible voltage/SOC telemetry, simulated
-UPS input, persistent low-voltage inference, mute, dashboard, and dry-run-capable
+UPS input, persistent characterized transition inference, mute, dashboard, and dry-run-capable
 SMS requests are implemented. Test-Pi acceptance, controlled live validation,
 and a future isolated direct-mains evidence source remain outstanding. Current
 and charging status are intentionally absent because the installed gauge does

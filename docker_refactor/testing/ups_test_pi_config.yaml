@@ -34,8 +34,14 @@ services:
     reconnect_interval_seconds: 5
     read_interval_seconds: 1
     power_detection:
-      source: ups_voltage_inference
-      low_voltage_threshold: 4.0
-      outage_confirm_seconds: 10
+      source: ups_transition_inference
+      low_voltage_threshold: 4.05
+      outage_drop_volts: 0.05
+      recovery_rise_volts: 0.062
+      transition_window_seconds: 5
+      recovery_lockout_seconds: 17
+      recovery_charge_rise_percent: null
+      recovery_charge_window_seconds: 120
+      outage_confirm_seconds: 3
       restore_confirm_seconds: 15
       maximum_reading_age_seconds: 15

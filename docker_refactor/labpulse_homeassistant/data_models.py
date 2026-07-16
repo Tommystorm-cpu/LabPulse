@@ -122,17 +122,32 @@ class ReadingModel:
 
 @dataclass
 class PowerModel:
-    """Dedicated UPS low-voltage lifecycle identities and timing settings."""
+    """Dedicated UPS transition lifecycle identities and timing settings."""
 
     source: str
     voltage: ReadingModel
     battery_level: ReadingModel
     low_voltage_threshold: float
+    outage_drop_volts: float
+    recovery_rise_volts: float
+    transition_window_seconds: int
+    recovery_lockout_seconds: int
+    recovery_charge_enabled: bool
+    recovery_charge_rise_percent: float
+    recovery_charge_window_seconds: int
     outage_confirm_seconds: int
     restore_confirm_seconds: int
     maximum_reading_age_seconds: int
     low_voltage_evidence_unique_id: str
     low_voltage_evidence_entity: str
+    voltage_change_unique_id: str
+    voltage_change_entity: str
+    charge_change_unique_id: str
+    charge_change_entity: str
+    outage_transition_unique_id: str
+    outage_transition_entity: str
+    recovery_transition_unique_id: str
+    recovery_transition_entity: str
     sensor_fault_unique_id: str
     sensor_fault_entity: str
     sensor_fault_confirmed_entity: str
@@ -340,11 +355,26 @@ def build_power_model(
         voltage=by_name["voltage"],
         battery_level=by_name["battery_level"],
         low_voltage_threshold=config.low_voltage_threshold,
+        outage_drop_volts=config.outage_drop_volts,
+        recovery_rise_volts=config.recovery_rise_volts,
+        transition_window_seconds=config.transition_window_seconds,
+        recovery_lockout_seconds=config.recovery_lockout_seconds,
+        recovery_charge_enabled=config.recovery_charge_rise_percent is not None,
+        recovery_charge_rise_percent=config.recovery_charge_rise_percent or 0.0,
+        recovery_charge_window_seconds=config.recovery_charge_window_seconds,
         outage_confirm_seconds=config.outage_confirm_seconds,
         restore_confirm_seconds=config.restore_confirm_seconds,
         maximum_reading_age_seconds=config.maximum_reading_age_seconds,
         low_voltage_evidence_unique_id=stable_id(*prefix, "low_voltage_evidence"),
         low_voltage_evidence_entity=entity_id("binary_sensor", *prefix, "low_voltage_evidence"),
+        voltage_change_unique_id=stable_id(*prefix, "voltage_change"),
+        voltage_change_entity=entity_id("sensor", *prefix, "voltage_change"),
+        charge_change_unique_id=stable_id(*prefix, "charge_change"),
+        charge_change_entity=entity_id("sensor", *prefix, "charge_change"),
+        outage_transition_unique_id=stable_id(*prefix, "outage_transition"),
+        outage_transition_entity=entity_id("binary_sensor", *prefix, "outage_transition"),
+        recovery_transition_unique_id=stable_id(*prefix, "recovery_transition"),
+        recovery_transition_entity=entity_id("binary_sensor", *prefix, "recovery_transition"),
         sensor_fault_unique_id=stable_id(*prefix, "sensor_fault"),
         sensor_fault_entity=entity_id("binary_sensor", *prefix, "sensor_fault"),
         sensor_fault_confirmed_entity=entity_id(
