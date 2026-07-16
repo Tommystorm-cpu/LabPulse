@@ -100,6 +100,7 @@ It is not required for the live config: setup always preserves an existing
   compose.yaml                        generated
   generate_compose.sh
   generate_homeassistant_config.sh
+  characterize_ups.sh                 interactive live UPS transition measurement
   simulate_serial.py
 
   labpulse-python/
@@ -234,6 +235,22 @@ across restarts and automation reloads. Maximum UPS evidence age configures the
 MQTT entity's `expire_after` directly and therefore remains a live-config
 setting. See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the
 complete safe acceptance run.
+
+To measure the installed UPS rather than guessing transition thresholds, run
+the interactive characterization helper from the live directory:
+
+```bash
+cd ~/labpulse-ha
+./characterize_ups.sh
+```
+
+It uses `sudo docker`, verifies live MQTT voltage and charge telemetry, then
+prompts for three controlled mains-off/on trials. Raw timestamped readings and
+event markers are retained under `ups-characterisation/`. The final report
+prints candidate drop, rise, lockout, and charge-trend settings only when the
+trials separate them from normal noise and unplugged battery rebound. Use
+`./characterize_ups.sh --quick` for a one-trial exploratory run; do not treat a
+single trial as production calibration.
 
 To group independent devices by physical location, give their services the
 same `display.section`. The Monitor view renders one location heading and a

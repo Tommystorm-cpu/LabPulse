@@ -136,6 +136,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'replace_dir "$SCRIPT_DIR/labpulse_common"',
         'replace_dir "$SCRIPT_DIR/labpulse_hardware"',
         'replace_dir "$SCRIPT_DIR/labpulse_sms"',
+        'copy_file "$SCRIPT_DIR/characterize_ups.sh"',
         'copy_file "$SCRIPT_DIR/simulate_serial.py"',
         'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
         'if [ ! -e "$LIVE_CONFIG" ]; then',
@@ -178,6 +179,22 @@ def test_setup_refresh_and_preservation_contract() -> None:
     for fragment in required_generator_fragments:
         if fragment not in generator_source:
             raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
+
+    characterization_source = (
+        REFACTOR_DIR / "characterize_ups.sh"
+    ).read_text(encoding="utf-8")
+    required_characterization_fragments = (
+        "sudo docker compose exec -T mosquitto",
+        "Disconnect UPS mains safely",
+        "Restore UPS mains safely",
+        "outage_drop_volts:",
+        "recovery_rise_volts:",
+        "recovery_charge_rise_percent:",
+        "ups-characterisation",
+    )
+    for fragment in required_characterization_fragments:
+        if fragment not in characterization_source:
+            raise AssertionError(f"UPS characterization contract missing: {fragment}")
 
 
 def test_real_i2c_compose_is_least_privilege() -> None:
