@@ -381,6 +381,19 @@ automations:
     action:
       - service: input_boolean.turn_off
         target: {entity_id: "[[ power.sensor_fault_confirmed_entity ]]"}
+      # Own the visible-state transition here instead of relying on the
+      # concurrently triggered reconcile automation. That race could clear the
+      # confirmed latch while leaving the displayed state at Sensor Fault.
+      - choose:
+          - conditions: "{{ is_state('[[ power.outage_active_entity ]]', 'on') }}"
+            sequence:
+              - service: input_select.select_option
+                target: {entity_id: "[[ power.state_entity ]]"}
+                data: {option: "Possible On Battery"}
+        default:
+          - service: input_select.select_option
+            target: {entity_id: "[[ power.state_entity ]]"}
+            data: {option: "Normal"}
       - choose:
           - conditions:
               - condition: state
@@ -431,11 +444,23 @@ automations:
               - service: input_boolean.turn_on
                 target: {entity_id: "[[ power.timing_initialized_entity ]]"}
       - choose:
-          - conditions: "{{ is_state('[[ power.sensor_fault_entity ]]', 'on') }}"
+          - conditions: >
+              {{ is_state('[[ power.sensor_fault_entity ]]', 'on')
+                 and is_state('[[ power.sensor_fault_confirmed_entity ]]', 'on') }}
             sequence:
               - service: input_select.select_option
                 target: {entity_id: "[[ power.state_entity ]]"}
                 data: {option: "Sensor Fault"}
+          # A startup-only unavailable state is not a confirmed incident. Keep
+          # the visible lifecycle out of Sensor Fault while its confirmation
+          # automation waits for telemetry to settle.
+          - conditions: "{{ is_state('[[ power.sensor_fault_entity ]]', 'on') }}"
+            sequence:
+              - service: input_select.select_option
+                target: {entity_id: "[[ power.state_entity ]]"}
+                data:
+                  option: >
+                    {{ 'Possible On Battery' if is_state('[[ power.outage_active_entity ]]', 'on') else 'Normal' }}
           - conditions: "{{ is_state('[[ power.outage_active_entity ]]', 'on') }}"
             sequence:
               - service: input_select.select_option

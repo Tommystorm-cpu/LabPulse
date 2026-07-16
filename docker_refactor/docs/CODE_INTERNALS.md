@@ -480,7 +480,10 @@ health reports an explicit error/unknown condition. MQTT discovery sets
 reading unavailable only when its MQTT samples actually stop. Repeated samples
 with an unchanged numeric value remain healthy. `disconnected` and
 `reconnecting` do not immediately fault a previously valid reading: MQTT
-expiry acts as the reconnect grace period.
+expiry acts as the reconnect grace period. After expiry, ordinary readings use
+a second confirmation window of up to 15 seconds before changing the alarm
+state. This filters the brief `unavailable` phase produced when Home Assistant,
+the broker, and every publisher are restarted together.
 
 The `history_stats` observed-danger sensor reports the percentage of the
 sliding observation window for which `danger_zone` was on. It updates on source
@@ -496,7 +499,7 @@ Danger
   -- recovery zone continuously on for recovery time --> Normal
 
 Normal or Danger
-  -- sensor fault zone turns on --> Sensor Fault
+  -- sensor fault remains on through confirmation --> Sensor Fault
 
 Sensor Fault
   -- fault clears and observed danger is high --> Danger
@@ -512,6 +515,8 @@ adds `[TEST]` to titles and sets the validated request flag consumed by the SMS
 recipient router. When a confirmed fault clears, Home
 Assistant creates a persistent sensor-restored notification after reconciling
 the reading to Normal or Danger and publishes a validated recovery SMS request.
+Because the state does not enter Sensor Fault during an unconfirmed startup
+transient, ordinary container restarts do not emit a recovery for every reading.
 
 Danger notifications include the current reading, active threshold, observed
 danger percentage, observation window, approximate time in danger, and required
@@ -551,7 +556,10 @@ automation reload remain silent. A persistent helper records whether a fault
 was actually confirmed. Only recovery from that confirmed state creates a
 telemetry-restored notification and validated recovery SMS request; routine
 restart restoration does neither. Muting suppresses delivery while preserving
-and clearing the confirmed-fault lifecycle correctly. Home Assistant start,
+and clearing the confirmed-fault lifecycle correctly. The recovery automation
+also selects `Normal` or `Possible On Battery` directly; it does not depend on
+a concurrently triggered reconcile automation to clear the visible
+`Sensor Fault` state. Home Assistant start,
 automation reload, and fault recovery all
 run reconciliation; overdue persistent deadlines are then completed by the
 one-second confirmation automations. Duration is calculated from first

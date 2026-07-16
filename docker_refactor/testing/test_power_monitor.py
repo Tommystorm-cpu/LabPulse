@@ -284,12 +284,22 @@ def test_candidates_fault_mute_and_sms_contract() -> None:
         raise AssertionError("UPS recovery is not limited to confirmed faults")
     if sensor_recovery["action"][0].get("service") != "input_boolean.turn_off":
         raise AssertionError("UPS recovery does not clear confirmed incident state")
-    recovery_sequence = sensor_recovery["action"][1]["choose"][0]["sequence"]
+    state_recovery_yaml = yaml.safe_dump(sensor_recovery["action"][1], sort_keys=False)
+    if "input_select.labpulse_ups_monitor_power_state" not in state_recovery_yaml:
+        raise AssertionError("UPS recovery does not explicitly leave Sensor Fault")
+    if "Possible On Battery" not in state_recovery_yaml or "Normal" not in state_recovery_yaml:
+        raise AssertionError("UPS recovery does not reconcile both power outcomes")
+    recovery_sequence = sensor_recovery["action"][2]["choose"][0]["sequence"]
     recovery_payload = recovery_sequence[1]["data"]["payload"]
     if '"event": "recovery"' not in recovery_payload or '"reading": "power"' not in recovery_payload:
         raise AssertionError("UPS sensor recovery SMS payload is not a validated power recovery")
     if sensor_recovery["trigger"][0].get("from") != "on":
         raise AssertionError("UPS sensor recovery can fire without a preceding fault")
+    reconcile_yaml = yaml.safe_dump(
+        aliases["LabPulse UPS Monitor Power Reconcile"], sort_keys=False
+    )
+    if confirmed_entity not in reconcile_yaml:
+        raise AssertionError("UPS reconcile can display an unconfirmed startup fault")
     power_fault_state = package["template"][1]["binary_sensor"][0]["state"]
     if "last_updated" in power_fault_state:
         raise AssertionError("power fault still depends on value changes instead of MQTT expiry")

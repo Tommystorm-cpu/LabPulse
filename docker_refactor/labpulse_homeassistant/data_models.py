@@ -177,6 +177,7 @@ class ServiceModel:
     required_danger_percent_entity: str
     observation_window_seconds_entity: str
     required_recovery_seconds_entity: str
+    sensor_fault_confirm_seconds: int
 
     # Per-reading template models generated from the service configuration.
     readings: list[ReadingModel] = field(default_factory=list)
@@ -292,6 +293,10 @@ def build_render_model(
             required_danger_percent_entity      = entity_id("input_number", service_name, "required_danger_percent"),
             observation_window_seconds_entity  = entity_id("input_number", service_name, "observation_window_seconds"),
             required_recovery_seconds_entity   = entity_id("input_number", service_name, "required_recovery_seconds"),
+            sensor_fault_confirm_seconds       = min(
+                15,
+                service_config.maximum_reading_age_seconds,
+            ),
         )
 
         for reading in service_config.readings:

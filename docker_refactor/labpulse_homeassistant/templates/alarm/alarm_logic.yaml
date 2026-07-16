@@ -434,20 +434,25 @@ automations:
                         "current_reading": states('[[ reading.expected_entity_id ]]')
                       } | to_json }}
 
-    # Any confirmed fault takes priority over Normal or Danger. A serial
-    # disconnected/reconnecting status is not an immediate fault: MQTT keeps
-    # the last reading available until its configured expire_after elapses,
-    # giving the driver time to reconnect without a nuisance notification.
+    # Any confirmed fault takes priority over Normal or Danger. MQTT expiry
+    # rejects acquisition gaps, then this short second-stage confirmation
+    # rejects Home Assistant's transient unavailable states during startup.
+    # The alarm state is not changed until confirmation, so routine startup
+    # recovery cannot generate a misleading recovery notification.
     - alias: "LabPulse [[ reading.label ]] Sensor Fault"
-      mode: single
+      mode: restart
       trigger:
         - platform: state
           entity_id: "[[ reading.sensor_fault_zone_entity ]]"
           to: "on"
-      condition:
+      action:
+        - delay:
+            seconds: "[[ service.sensor_fault_confirm_seconds ]]"
+        - condition: state
+          entity_id: "[[ reading.sensor_fault_zone_entity ]]"
+          state: "on"
         - condition: template
           value_template: "{{ not is_state('[[ reading.alarm_state_entity ]]', 'Sensor Fault') }}"
-      action:
         - service: input_select.select_option
           target:
             entity_id: "[[ reading.alarm_state_entity ]]"

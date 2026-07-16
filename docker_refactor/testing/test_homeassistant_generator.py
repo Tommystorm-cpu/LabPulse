@@ -264,12 +264,27 @@ def test_generated_package_and_entity_map() -> None:
         "sensor fault trigger entity",
     )
     assert_equal(
-        fault_automation["action"][0]["service"],
+        fault_automation["mode"],
+        "restart",
+        "sensor fault confirmation mode",
+    )
+    assert_equal(
+        fault_automation["action"][0]["delay"]["seconds"],
+        15,
+        "sensor fault startup grace",
+    )
+    assert_equal(
+        fault_automation["action"][1]["entity_id"],
+        "binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone",
+        "sensor fault recheck after startup grace",
+    )
+    assert_equal(
+        fault_automation["action"][3]["service"],
         "input_select.select_option",
         "fault selects alarm state",
     )
     assert_equal(
-        fault_automation["action"][0]["data"]["option"],
+        fault_automation["action"][3]["data"]["option"],
         "Sensor Fault",
         "fault option",
     )
