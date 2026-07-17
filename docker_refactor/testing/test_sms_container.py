@@ -727,6 +727,7 @@ def test_shared_sms_template_catalogue() -> None:
     )
     assert_equal(len(templates["alerts"]), 8, "alert template pairs")
     for name, alert in templates["alerts"].items():
+        assert_equal("[TEST]" in alert["title"], False, f"{name} central test prefix")
         assert_contains(
             alert["message"], CURRENT_READING_PLACEHOLDER, f"{name} current reading"
         )

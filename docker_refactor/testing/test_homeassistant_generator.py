@@ -345,7 +345,7 @@ def test_generated_package_and_entity_map() -> None:
 
     recovery_automation = automation_by_alias["LabPulse Pressure Recovery"]
     recovery_sms = recovery_automation["action"][1]["choose"][0]["sequence"][1]
-    if "LabPulse Air Pressure Sensor Hub - Pressure recovery" not in recovery_sms["data"]["payload"]:
+    if "LabPulse Recovery Alert: Air Pressure Sensor Hub - Pressure has recovered from a danger state." not in recovery_sms["data"]["payload"]:
         raise AssertionError("recovery notification should identify both sensor hub and reading")
     assert_equal(recovery_automation["trigger"][0]["platform"], "template", "recovery trigger platform")
     if "recovery_zone" not in recovery_automation["trigger"][0]["value_template"]:
@@ -369,15 +369,15 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("sensor recovery SMS does not use the validated recovery event")
     assert_equal(sensor_recovery["trigger"][0]["from"], "on", "recovery requires a real fault")
     sensor_recovery_payload = sensor_recovery_sms["data"]["payload"]
-    if "sensor restored" not in sensor_recovery_payload:
+    if "Sensor Restored" not in sensor_recovery_payload:
         raise AssertionError("sensor recovery notification has unclear wording")
-    if "LabPulse Air Pressure Sensor Hub - Pressure sensor restored" not in sensor_recovery_payload:
+    if "LabPulse Sensor Restored: Air Pressure Sensor Hub - Pressure" not in sensor_recovery_payload:
         raise AssertionError("sensor-restored notification should identify both sensor hub and reading")
     fault_yaml = yaml.safe_dump(fault_automation, sort_keys=False)
     if "Reason:" not in fault_yaml or "service status" not in fault_yaml:
         raise AssertionError("sensor fault notification does not explain its evidence")
     fault_sms = fault_automation["action"][4]["choose"][0]["sequence"][1]
-    if "LabPulse Air Pressure Sensor Hub - Pressure sensor fault" not in fault_sms["data"]["payload"]:
+    if "LabPulse Sensor Fault Alert: Air Pressure Sensor Hub - Pressure" not in fault_sms["data"]["payload"]:
         raise AssertionError("sensor-fault notification should identify both sensor hub and reading")
 
     assert_equal(

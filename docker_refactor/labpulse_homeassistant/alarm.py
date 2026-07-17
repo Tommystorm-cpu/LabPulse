@@ -1,5 +1,7 @@
 """Build generated Home Assistant alarm package sections from editable YAML."""
 
+from copy import deepcopy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -147,7 +149,7 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
     """Return normal alarms and the dedicated power lifecycle automations."""
 
     result = []
-    sms = load_sms_templates()
+    sms = sms_template_context(model)
     for service in model.services:
         if service.readings and service.power is None:
             context = {"service": service, "model": model, "sms": sms}
@@ -160,6 +162,21 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
             context = {"service": service, "power": service.power, "model": model, "sms": sms}
             result.extend(expand_template(item, context) for item in power_seed.get("automations", []))
     return result
+
+
+def sms_template_context(model: RenderModel) -> dict[str, Any]:
+    """Add the conditional test prefix to every generated SMS alert title."""
+
+    sms = deepcopy(load_sms_templates())
+    test_prefix = json.dumps(f"{sms['formatting']['test_prefix']} ")
+    test_entity = json.dumps(model.test_mode_entity)
+    for alert in sms["alerts"].values():
+        title = alert["title"]
+        alert["title"] = (
+            f"({test_prefix} if is_state({test_entity}, 'on') else \"\") "
+            f"~ ({title})"
+        )
+    return sms
 
 
 def expand_keyed_items(items: list[dict[str, Any]], context: dict[str, object]) -> dict[str, object]:
