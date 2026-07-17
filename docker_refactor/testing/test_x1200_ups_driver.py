@@ -56,6 +56,22 @@ def runner_for(result: object) -> Callable[..., object]:
     return run
 
 
+def sequence_runner(
+    results: list[object], commands: list[list[str]]
+) -> Callable[..., object]:
+    """Return queued results while recording each attempted command."""
+
+    pending = list(results)
+
+    def run(command: list[str], **_kwargs: object) -> object:
+        """Record a command and return its queued fake result."""
+
+        commands.append(command)
+        return pending.pop(0)
+
+    return run
+
+
 def make_driver(reader: GpiodLineReader) -> Driver:
     """Create a composite driver around fake hardware."""
 
@@ -94,6 +110,41 @@ def test_configurable_polarity() -> None:
         raise AssertionError("active-low GPIO did not normalize to mains present")
 
 
+def test_libgpiod_cli_versions() -> None:
+    """Prefer the v2 CLI and fall back to the host's v1 syntax."""
+
+    modern_commands: list[list[str]] = []
+    modern = GpiodLineReader(
+        "/dev/gpiochip0",
+        6,
+        True,
+        sequence_runner([command_result("1\n")], modern_commands),
+    )
+    if modern.read() != 1.0 or modern_commands != [
+        ["gpioget", "-c", "gpiochip0", "6"]
+    ]:
+        raise AssertionError(f"libgpiod 2.x command is incorrect: {modern_commands!r}")
+
+    legacy_commands: list[list[str]] = []
+    legacy = GpiodLineReader(
+        "/dev/gpiochip0",
+        6,
+        True,
+        sequence_runner(
+            [
+                command_result("", 1, "invalid option -- c"),
+                command_result("0\n"),
+            ],
+            legacy_commands,
+        ),
+    )
+    if legacy.read() != 0.0 or legacy_commands != [
+        ["gpioget", "-c", "gpiochip0", "6"],
+        ["gpioget", "gpiochip0", "6"],
+    ]:
+        raise AssertionError(f"libgpiod 1.x fallback is incorrect: {legacy_commands!r}")
+
+
 def test_composite_publishes_mains_and_battery() -> None:
     """Publish direct mains state alongside unchanged battery telemetry."""
 
@@ -130,6 +181,7 @@ def test_gpio_fault_omits_only_mains_reading() -> None:
 TESTS = [
     ("active-high values", test_active_high_gpio_values),
     ("configurable polarity", test_configurable_polarity),
+    ("libgpiod CLI versions", test_libgpiod_cli_versions),
     ("composite readings", test_composite_publishes_mains_and_battery),
     ("GPIO fault", test_gpio_fault_omits_only_mains_reading),
 ]

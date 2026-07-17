@@ -15,7 +15,7 @@ CommandRunner = Callable[..., Any]
 
 
 class GpiodLineReader:
-    """Read one GPIO line with the libgpiod 1.x command-line interface."""
+    """Read one GPIO line with either libgpiod command-line generation."""
 
     def __init__(
         self,
@@ -34,16 +34,25 @@ class GpiodLineReader:
     def read(self) -> float:
         """Return normalized mains presence as 1.0 or 0.0."""
 
-        result = self._command_runner(
-            ["gpioget", Path(self.chip).name, str(self.line)],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=2,
-        )
+        chip_name = Path(self.chip).name
+        result = self._run_gpioget(["gpioget", "-c", chip_name, str(self.line)])
         if result.returncode != 0:
-            detail = result.stderr.strip() or f"gpioget exited {result.returncode}"
-            raise OSError(detail)
+            legacy_result = self._run_gpioget(
+                ["gpioget", chip_name, str(self.line)]
+            )
+            if legacy_result.returncode != 0:
+                modern_detail = (
+                    result.stderr.strip() or f"gpioget exited {result.returncode}"
+                )
+                legacy_detail = (
+                    legacy_result.stderr.strip()
+                    or f"gpioget exited {legacy_result.returncode}"
+                )
+                raise OSError(
+                    f"libgpiod 2.x read failed: {modern_detail}; "
+                    f"libgpiod 1.x read failed: {legacy_detail}"
+                )
+            result = legacy_result
 
         raw = result.stdout.strip()
         if raw not in {"0", "1"}:
@@ -52,6 +61,17 @@ class GpiodLineReader:
         asserted = raw == "1"
         mains_present = asserted if self.active_high else not asserted
         return 1.0 if mains_present else 0.0
+
+    def _run_gpioget(self, command: list[str]) -> Any:
+        """Run one bounded gpioget attempt with consistent process options."""
+
+        return self._command_runner(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
 
 
 class Driver(BaseSensorDriver):
