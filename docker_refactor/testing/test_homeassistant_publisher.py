@@ -23,27 +23,65 @@ class FakeMqttClient:
         self.loop_started = False
         self.loop_stopped = False
         self.disconnected = False
+        self.will: dict[str, object] | None = None
+        self.events: list[str] = []
+
+    class PublishResult:
+        """Record whether a fake publish was flushed."""
+
+        def __init__(self, events: list[str]) -> None:
+            """Store the shared event list."""
+
+            self.events = events
+
+        def wait_for_publish(self, timeout: float | None = None) -> None:
+            """Record a blocking publish flush."""
+
+            self.events.append(f"publish_waited:{timeout}")
+
+    def will_set(
+        self, topic: str, payload: str, qos: int, retain: bool
+    ) -> None:
+        """Record Last Will configuration order and values."""
+
+        self.will = {
+            "topic": topic,
+            "payload": payload,
+            "qos": qos,
+            "retain": retain,
+        }
+        self.events.append("will_set")
 
     def connect(self, broker: str, port: int, keepalive: int) -> None:
         """Record MQTT connection arguments."""
 
         self.connected_to = (broker, port, keepalive)
+        self.events.append("connect")
 
     def loop_start(self) -> None:
         """Record that the MQTT network loop was started."""
 
         self.loop_started = True
 
-    def publish(self, topic: str, payload: Any, retain: bool = False) -> None:
+    def publish(
+        self,
+        topic: str,
+        payload: Any,
+        qos: int = 0,
+        retain: bool = False,
+    ) -> "FakeMqttClient.PublishResult":
         """Record one MQTT publish call."""
 
         self.published.append(
             {
                 "topic": topic,
                 "payload": payload,
+                "qos": qos,
                 "retain": retain,
             }
         )
+        self.events.append(f"publish:{payload}")
+        return self.PublishResult(self.events)
 
     def loop_stop(self) -> None:
         """Record that the MQTT network loop was stopped."""
@@ -102,6 +140,23 @@ def test_connect_and_disconnect() -> None:
     publisher.connect()
     publisher.disconnect()
 
+    assert_equal(
+        publisher.client.will,
+        {
+            "topic": "home/sensor/pressure_monitor/status",
+            "payload": "offline",
+            "qos": 1,
+            "retain": True,
+        },
+        "Last Will",
+    )
+    assert_equal(publisher.client.events[:2], ["will_set", "connect"], "Will order")
+    offline = publisher.client.published[-1]
+    assert_equal(offline["payload"], "offline", "clean shutdown status")
+    assert_equal(offline["qos"], 1, "clean shutdown qos")
+    assert_equal(offline["retain"], True, "clean shutdown retain")
+    if publisher.client.events.index("publish_waited:2.0") > publisher.client.events.index("publish:offline") + 1:
+        raise AssertionError("offline publish was not waited on immediately")
     assert_equal(publisher.client.connected_to, ("mosquitto", 1883, 60), "connect args")
     assert_equal(publisher.client.loop_started, True, "loop started")
     assert_equal(publisher.client.loop_stopped, True, "loop stopped")

@@ -725,7 +725,7 @@ def test_shared_sms_template_catalogue() -> None:
         SUBSCRIBE_CONFIRMATION,
         "subscribe confirmation source",
     )
-    assert_equal(len(templates["alerts"]), 8, "alert template pairs")
+    assert_equal(len(templates["alerts"]), 10, "alert template pairs")
     for name, alert in templates["alerts"].items():
         assert_equal("[TEST]" in alert["title"], False, f"{name} central test prefix")
         assert_contains(

@@ -58,6 +58,15 @@ class SmsConfig(BaseModel):
             raise ValueError("sms.recipients must not be empty when dry_run is false")
         return self
 
+
+class ServiceHealthConfig(BaseModel):
+    """Confirmation timing for whole-service hardware health alarms."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fault_confirm_seconds: int = Field(default=10, ge=1, le=3600)
+    recovery_confirm_seconds: int = Field(default=15, ge=1, le=3600)
+
 class ReadingConfig(BaseModel):
     """One named value published by a LabPulse service."""
 
@@ -195,6 +204,7 @@ class LabPulseConfig(BaseModel):
 
     mqtt: MqttConfig
     sms: SmsConfig = Field(default_factory=SmsConfig)
+    service_health: ServiceHealthConfig = Field(default_factory=ServiceHealthConfig)
     services: dict[str, ServiceConfig]
 
 # ==========================================

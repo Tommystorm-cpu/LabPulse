@@ -519,6 +519,30 @@ the reading to Normal or Danger and publishes a validated recovery SMS request.
 Because the state does not enter Sensor Fault during an unconfirmed startup
 transient, ordinary container restarts do not emit a recovery for every reading.
 
+### Service-health lifecycle
+
+Every hardware MQTT client installs a retained QoS-1 `offline` Last Will before
+connecting and explicitly flushes the same state during clean shutdown. Normal
+driver states remain retained on the shared service-status topic. Home Assistant
+derives one service-wide problem sensor from `disconnected`, `reconnecting`,
+`error`, `offline`, `unknown`, and `unavailable`. `online` is fully healthy;
+component-specific `gpio_fault` means the service is reachable but its X1200
+GPIO input is degraded.
+
+After `service_health.fault_confirm_seconds`, a persistent service-fault latch
+and start timestamp are set and one hub warning is sent. Changes between
+unhealthy status strings cannot duplicate it. When the whole-service problem
+sensor remains off for `recovery_confirm_seconds`, Home Assistant sends one
+recovery with downtime and clears the latch. Startup triggers repeat the same
+confirmed checks because native `for` timers do not survive restart.
+
+While the whole-service problem is present or latched, new per-reading fault,
+Danger, and recovery transitions are gated. MQTT readings may still expire for
+honest dashboard presentation. A reading that was already in a genuine Sensor
+Fault remains latched and recovers only after the service returns and that
+reading becomes valid. Once the service recovery period ends, ordinary stale
+reading confirmation resumes, providing an additional telemetry grace period.
+
 Danger notifications include the current reading, active threshold, observed
 danger percentage, observation window, approximate time in danger, and required
 percentage. Sensor-fault notifications distinguish unavailable/non-numeric
@@ -571,7 +595,7 @@ outage latch. Battery voltage and percentage never determine outage state.
 
 All user-facing SMS text is defined once in
 `labpulse_common/sms_templates.yaml`. The Home Assistant generator expands its
-eight alert title/message pairs into MQTT requests. Each alert body contains a
+alert title/message pairs into MQTT requests. Each alert body contains a
 dedicated `{current_reading}` line labelled for that alert; the SMS worker fills
 that final value or removes the line when no usable reading exists. The worker
 also reads the same file for the test prefix, warning footer, and

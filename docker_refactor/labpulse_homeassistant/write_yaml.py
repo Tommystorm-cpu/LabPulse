@@ -57,7 +57,14 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "resolved_entity_id": service.status_entity.resolved_entity_id,
                 "effective_entity_id": service.status_entity_id,
                 "resolution_status": service.status_entity.resolution_status,
-            }
+            },
+            "service_health": {
+                "unhealthy": service.health_unhealthy_entity,
+                "fault_active": service.health_fault_active_entity,
+                "fault_started": service.health_fault_started_entity,
+                "fault_confirm_seconds": service.health_fault_confirm_seconds,
+                "recovery_confirm_seconds": service.health_recovery_confirm_seconds,
+            },
         }
         for reading in service.readings:
             reading_map = {

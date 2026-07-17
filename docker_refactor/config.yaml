@@ -26,6 +26,12 @@ sms:
   test_recipients:
     - "+447700900001"
 
+# Whole sensor-service failures produce one hub-level warning instead of one
+# stale-reading warning per sensor. These timers also reject brief USB glitches.
+service_health:
+  fault_confirm_seconds: 10
+  recovery_confirm_seconds: 15
+
 services:
   # Ordinary readings expire in Home Assistant after 300 seconds without an
   # MQTT sample. Override maximum_reading_age_seconds per service if needed.

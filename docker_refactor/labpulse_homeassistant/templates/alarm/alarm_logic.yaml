@@ -133,6 +133,13 @@ input_booleans:
         initial: true
 
   service:
+    # Persistent whole-service fault state. Omitting `initial` allows Home
+    # Assistant to restore it across ordinary restarts.
+    - id: "labpulse_[[ service.service_id ]]_service_fault_active"
+      config:
+        name: "[[ service.label ]] Service Fault Active"
+
+  alarm_service:
     # This persistent marker seeds service defaults exactly once. Omitting
     # `initial` lets Home Assistant restore it after later restarts.
     - id: "labpulse_[[ service.service_id ]]_alarm_defaults_initialized"
@@ -156,6 +163,14 @@ input_booleans:
       config:
         name: "[[ reading.label ]] Alarm Muted"
 
+input_datetimes:
+  service:
+    - id: "labpulse_[[ service.service_id ]]_service_fault_started"
+      config:
+        name: "[[ service.label ]] Service Fault Started"
+        has_date: true
+        has_time: true
+
 # Convert the instantaneous danger-zone signal into the observed percentage of
 # the service window spent in danger. history_stats updates on source changes
 # and otherwise once per minute.
@@ -174,8 +189,24 @@ sensors:
 # These are calculated conditions, not persistent alarm states:
 # - danger_zone: the current value is outside its active threshold(s)
 # - recovery_zone: the current value is safely inside the recovery boundary
-# - sensor_fault_zone: the reading or its publishing service is unhealthy
+# - sensor_fault_zone: one reading is invalid while its service is available;
+#   whole-service failures use the service-health lifecycle below
 binary_sensors:
+  service:
+    # Only these values represent a whole-service acquisition failure.
+    # Component-specific values such as X1200 gpio_fault remain healthy here
+    # and continue through their dedicated alarm lifecycle.
+    - name: "[[ service.health_unhealthy_unique_id ]]"
+      unique_id: "[[ service.health_unhealthy_unique_id ]]"
+      device_class: problem
+      state: >
+        {{ states('[[ service.status_entity_id ]]')
+           in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] }}
+      attributes:
+        service_status: "{{ states('[[ service.status_entity_id ]]') }}"
+        fault_confirm_seconds: "[[ service.health_fault_confirm_seconds ]]"
+        recovery_confirm_seconds: "[[ service.health_recovery_confirm_seconds ]]"
+
   reading:
     # Non-numeric readings are handled by sensor_fault_zone, so this sensor is
     # deliberately off for invalid data rather than reporting threshold danger.
@@ -226,14 +257,114 @@ binary_sensors:
       device_class: problem
       state: >
         {% set raw = states('[[ reading.expected_entity_id ]]') %}
-        {% set service_status = states('[[ service.status_entity_id ]]') %}
-        {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
-           or not is_number(raw)
-           or service_status in ['error', 'unavailable', 'unknown'] }}
+        {% set service_blocked = is_state('[[ service.health_unhealthy_entity ]]', 'on')
+           or is_state('[[ service.health_fault_active_entity ]]', 'on') %}
+        {% if service_blocked %}
+          {{ is_state('[[ reading.alarm_state_entity ]]', 'Sensor Fault') }}
+        {% else %}
+          {{ raw in ['unknown', 'unavailable', 'none', 'None', '']
+             or not is_number(raw) }}
+        {% endif %}
 
 # State transition rules. Each automation is expanded once per reading.
 # Notification actions are inside mute checks, while state changes are not.
 automations:
+  service_health:
+    - alias: "LabPulse [[ service.label ]] Service Fault"
+      mode: single
+      trigger:
+        - platform: state
+          entity_id: "[[ service.health_unhealthy_entity ]]"
+          to: "on"
+          for: {seconds: "[[ service.health_fault_confirm_seconds ]]"}
+        - platform: homeassistant
+          event: start
+      action:
+        - choose:
+            - conditions: "{{ trigger.platform == 'homeassistant' }}"
+              sequence:
+                - delay: {seconds: "[[ service.health_fault_confirm_seconds ]]"}
+        - condition: state
+          entity_id: "[[ service.health_unhealthy_entity ]]"
+          state: "on"
+        - condition: state
+          entity_id: "[[ service.health_fault_active_entity ]]"
+          state: "off"
+        - service: input_datetime.set_datetime
+          target: {entity_id: "[[ service.health_fault_started_entity ]]"}
+          data:
+            timestamp: "{{ as_timestamp(now()) - [[ service.health_fault_confirm_seconds ]] }}"
+        - service: input_boolean.turn_on
+          target: {entity_id: "[[ service.health_fault_active_entity ]]"}
+        - choose:
+            - conditions:
+                - condition: state
+                  entity_id: "[[ model.global_muted_entity ]]"
+                  state: "off"
+              sequence:
+                - service: persistent_notification.create
+                  data:
+                    title: >
+                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] disconnected' }}
+                    message: >
+                      LabPulse cannot communicate with [[ service.label ]].
+                      All readings from this service are temporarily unavailable.
+                      Service status: {{ states('[[ service.status_entity_id ]]') }}.
+                    notification_id: "labpulse_[[ service.service_id ]]_service_health"
+                - service: mqtt.publish
+                  data:
+                    topic: "[[ model.sms_send_topic ]]"
+                    qos: 1
+                    retain: false
+                    payload: >
+                      {{ {"request_id": "labpulse_[[ service.service_id ]]_service_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "service_health", "reading_label": "Sensor hub", "state": "Sensor Fault", "title": [[ sms.alerts.service_fault.title ]], "message": [[ sms.alerts.service_fault.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ service.status_entity_id ]]')} | to_json }}
+
+    - alias: "LabPulse [[ service.label ]] Service Restored"
+      mode: single
+      trigger:
+        - platform: state
+          entity_id: "[[ service.health_unhealthy_entity ]]"
+          to: "off"
+          for: {seconds: "[[ service.health_recovery_confirm_seconds ]]"}
+        - platform: homeassistant
+          event: start
+      action:
+        - choose:
+            - conditions: "{{ trigger.platform == 'homeassistant' }}"
+              sequence:
+                - delay: {seconds: "[[ service.health_recovery_confirm_seconds ]]"}
+        - condition: state
+          entity_id: "[[ service.health_unhealthy_entity ]]"
+          state: "off"
+        - condition: state
+          entity_id: "[[ service.health_fault_active_entity ]]"
+          state: "on"
+        - variables:
+            fault_started: "{{ as_timestamp(states('[[ service.health_fault_started_entity ]]'), 0) }}"
+            downtime_seconds: "{{ ([0, as_timestamp(now()) - fault_started] | max) | round(0) }}"
+        - service: input_boolean.turn_off
+          target: {entity_id: "[[ service.health_fault_active_entity ]]"}
+        - choose:
+            - conditions:
+                - condition: state
+                  entity_id: "[[ model.global_muted_entity ]]"
+                  state: "off"
+              sequence:
+                - service: persistent_notification.create
+                  data:
+                    title: >
+                      {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] restored' }}
+                    message: >
+                      Communication with [[ service.label ]] has been restored.
+                      Telemetry is available again. Downtime: {{ downtime_seconds }} seconds.
+                    notification_id: "labpulse_[[ service.service_id ]]_service_health"
+                - service: mqtt.publish
+                  data:
+                    topic: "[[ model.sms_send_topic ]]"
+                    qos: 1
+                    retain: false
+                    payload: >
+                      {{ {"request_id": "labpulse_[[ service.service_id ]]_service_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "service_health", "reading_label": "Sensor hub", "state": "Normal", "title": [[ sms.alerts.service_recovery.title ]], "message": [[ sms.alerts.service_recovery.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ service.status_entity_id ]]')} | to_json }}
   service:
     - alias: "LabPulse [[ service.label ]] Initialize Alarm Defaults"
       mode: single
@@ -305,7 +436,9 @@ automations:
       trigger:
         - platform: template
           value_template: >
-            {{ states('[[ reading.observed_danger_percent_entity ]]') | float(0)
+            {{ is_state('[[ service.health_unhealthy_entity ]]', 'off')
+               and is_state('[[ service.health_fault_active_entity ]]', 'off')
+               and states('[[ reading.observed_danger_percent_entity ]]') | float(0)
                >= states('[[ service.required_danger_percent_entity ]]') | float(70) }}
       condition:
         - condition: state
@@ -382,7 +515,10 @@ automations:
       mode: single
       trigger:
         - platform: template
-          value_template: "{{ is_state('[[ reading.recovery_zone_entity ]]', 'on') }}"
+          value_template: >
+            {{ is_state('[[ service.health_unhealthy_entity ]]', 'off')
+               and is_state('[[ service.health_fault_active_entity ]]', 'off')
+               and is_state('[[ reading.recovery_zone_entity ]]', 'on') }}
           for:
             seconds: "{{ states('[[ service.required_recovery_seconds_entity ]]') | int(120) }}"
       condition:

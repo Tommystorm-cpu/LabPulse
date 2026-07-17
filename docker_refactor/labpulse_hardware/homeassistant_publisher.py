@@ -45,6 +45,12 @@ class HomeAssistantMqttPublisher:
 
     def connect(self) -> None:
         """Connect to the MQTT broker and start the background network loop."""
+        self.client.will_set(
+            service_status_topic(self.service_name),
+            payload="offline",
+            qos=1,
+            retain=True,
+        )
         self.logger.info(
             "Connecting to MQTT broker %s:%s",
             self.mqtt_config.broker,
@@ -175,7 +181,14 @@ class HomeAssistantMqttPublisher:
             #self.logger.info("Published %s reading: %s", reading_name, reading)
 
     def disconnect(self) -> None:
-        """Stop MQTT networking and disconnect from the broker."""
+        """Publish a clean offline state, then stop MQTT networking."""
+        publish_result = self.client.publish(
+            service_status_topic(self.service_name),
+            "offline",
+            qos=1,
+            retain=True,
+        )
+        publish_result.wait_for_publish(timeout=2.0)
         self.client.loop_stop()
         self.client.disconnect()
         self.logger.info("Disconnected from MQTT broker")

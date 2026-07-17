@@ -233,12 +233,23 @@ def test_fault_reconciliation_and_sms_contract() -> None:
     }
     if not required_aliases.issubset(automation):
         raise AssertionError(f"missing restart/fault rules: {required_aliases-set(automation)}")
-    template_binary = package["template"][0]["binary_sensor"]
-    mains, fault = template_binary
+    template_binary = [
+        sensor
+        for block in package["template"]
+        for sensor in block.get("binary_sensor", [])
+    ]
+    by_name = {sensor["name"]: sensor for sensor in template_binary}
+    service_health = by_name["labpulse_ups_monitor_service_unhealthy"]
+    mains = by_name["labpulse_ups_monitor_power_mains_present"]
+    fault = by_name["labpulse_ups_monitor_power_sensor_fault"]
+    if "gpio_fault" in service_health["state"]:
+        raise AssertionError("X1200 component GPIO fault became a whole-service fault")
     if mains["state"] != "{{ states('sensor.labpulse_ups_monitor_mains_present') | float(0) >= 0.5 }}":
         raise AssertionError("mains-present template does not normalize raw GPIO")
     if "not is_number(raw)" not in fault["state"] or "gpio_fault" not in fault["state"]:
         raise AssertionError("unavailable GPIO is not a distinct sensor fault")
+    if "service_fault_active" not in fault["state"]:
+        raise AssertionError("power component faults are not suppressed by whole-service faults")
     if "power_outage_active\n  state: 'off'" not in yaml.safe_dump(
         automation["LabPulse UPS Monitor Reconcile Missed Outage"], sort_keys=False
     ):

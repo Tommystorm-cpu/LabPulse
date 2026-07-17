@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+from pydantic import ValidationError
+
 
 sys.dont_write_bytecode = True
 
@@ -10,6 +12,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.identity import entity_id, stable_id
+from labpulse_common.config import LabPulseConfig
 from labpulse_common.mqtt_contracts import (
     SMS_ALERT_PAYLOAD_FIELDS,
     SMS_RESULT_TOPIC_PREFIX,
@@ -114,10 +117,49 @@ def test_sms_contract() -> None:
     assert_equal(request.test_mode, False, "normal delivery default")
 
 
+def test_service_health_config_contract() -> None:
+    """Validate global service-health defaults and bounded overrides."""
+
+    base = {
+        "mqtt": {"broker": "mosquitto"},
+        "services": {
+            "hub": {
+                "driver": "serial",
+                "parser": "pressure",
+                "serial_port": "/tmp/hub",
+                "device_name": "Hub",
+                "readings": [{"name": "pressure"}],
+            }
+        },
+    }
+    defaulted = LabPulseConfig.model_validate(base)
+    assert_equal(defaulted.service_health.fault_confirm_seconds, 10, "fault default")
+    assert_equal(defaulted.service_health.recovery_confirm_seconds, 15, "recovery default")
+    configured = LabPulseConfig.model_validate(
+        {
+            **base,
+            "service_health": {
+                "fault_confirm_seconds": 7,
+                "recovery_confirm_seconds": 12,
+            },
+        }
+    )
+    assert_equal(configured.service_health.fault_confirm_seconds, 7, "fault override")
+    try:
+        LabPulseConfig.model_validate(
+            {**base, "service_health": {"fault_confirm_seconds": 0}}
+        )
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("zero service-health confirmation was accepted")
+
+
 TESTS = [
     ("stable identity contract", test_stable_identity_contract),
     ("sensor topic contract", test_sensor_topic_contract),
     ("SMS contract", test_sms_contract),
+    ("service health config", test_service_health_config_contract),
 ]
 
 

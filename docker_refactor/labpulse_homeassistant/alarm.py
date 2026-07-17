@@ -37,7 +37,7 @@ def package_context(model: RenderModel) -> dict[str, str]:
         "input_numbers": indented_yaml(input_numbers(seed, power_seed, model), 2),
         "input_selects": indented_yaml(input_selects(seed, power_seed, model), 2),
         "input_booleans": indented_yaml(input_booleans(seed, power_seed, model), 2),
-        "input_datetimes": indented_yaml(input_datetimes(power_seed, model), 2),
+        "input_datetimes": indented_yaml(input_datetimes(seed, power_seed, model), 2),
         "sensors": indented_yaml(sensors(seed, power_seed, model), 2),
         "templates": indented_yaml(templates(seed, power_seed, model), 2),
         "automations": indented_yaml(automations(seed, power_seed, model), 2),
@@ -79,8 +79,9 @@ def input_booleans(seed: dict[str, Any], power_seed: dict[str, Any], model: Rend
     )
     rules = seed["input_booleans"]
     for service in model.services:
+        helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
         if service.readings and service.power is None:
-            helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
+            helpers.update(expand_keyed_items(rules.get("alarm_service", []), {"service": service}))
         if service.power is not None:
             helpers.update(expand_keyed_items(power_seed.get("input_booleans", []), {"service": service, "power": service.power}))
     for service, reading in model.alarm_readings:
@@ -100,11 +101,21 @@ def input_selects(seed: dict[str, Any], power_seed: dict[str, Any], model: Rende
     return helpers
 
 
-def input_datetimes(power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
-    """Return restart-persistent power outage timestamps."""
+def input_datetimes(
+    seed: dict[str, Any],
+    power_seed: dict[str, Any],
+    model: RenderModel,
+) -> dict[str, object]:
+    """Return restart-persistent service-fault and power timestamps."""
 
     helpers: dict[str, object] = {}
     for service in model.services:
+        helpers.update(
+            expand_keyed_items(
+                seed.get("input_datetimes", {}).get("service", []),
+                {"service": service},
+            )
+        )
         if service.power is not None:
             helpers.update(expand_keyed_items(power_seed.get("input_datetimes", []), {"service": service, "power": service.power}))
     return helpers
@@ -134,6 +145,11 @@ def templates(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderMod
     """Return normal alarm and dedicated power template entity blocks."""
 
     normal = []
+    for service in model.services:
+        normal.extend(
+            expand_template(item, {"service": service})
+            for item in seed["binary_sensors"].get("service", [])
+        )
     for service, reading in model.alarm_readings:
         context = {"service": service, "reading": reading}
         normal.extend(expand_template(item, context) for item in seed["binary_sensors"].get("reading", []))
@@ -151,8 +167,12 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
     result = []
     sms = sms_template_context(model)
     for service in model.services:
+        context = {"service": service, "model": model, "sms": sms}
+        result.extend(
+            expand_template(item, context)
+            for item in seed["automations"].get("service_health", [])
+        )
         if service.readings and service.power is None:
-            context = {"service": service, "model": model, "sms": sms}
             result.extend(expand_template(item, context) for item in seed["automations"].get("service", []))
     for service, reading in model.alarm_readings:
         context = {"service": service, "reading": reading, "model": model, "sms": sms}

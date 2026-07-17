@@ -90,6 +90,14 @@ The key boundary is between facts and decisions:
 - The SMS worker validates and delivers an already-decided alert. It does not
   decide whether a reading is dangerous.
 
+Each hardware publisher also owns an MQTT Last Will on its existing retained
+status topic. A lost process or MQTT connection therefore publishes `offline`.
+Home Assistant classifies `disconnected`, `reconnecting`, `error`, `offline`,
+`unknown`, and `unavailable` as whole-service failures. After confirmation it
+sends one hub-level alert and suppresses new per-reading stale faults until the
+service-wide condition has recovered. Component degradation such as the X1200
+`gpio_fault` remains outside that classification and keeps its dedicated alert.
+
 ## Runtime containers
 
 ### `labpulse-homeassistant`

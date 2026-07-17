@@ -20,6 +20,10 @@ def load_sms_templates() -> dict[str, Any]:
         raise ValueError(f"SMS template catalogue must be a mapping: {TEMPLATE_PATH}")
 
     required_paths = (
+        ("alerts", "service_fault", "title"),
+        ("alerts", "service_fault", "message"),
+        ("alerts", "service_recovery", "title"),
+        ("alerts", "service_recovery", "message"),
         ("alerts", "reading_warning", "title"),
         ("alerts", "reading_warning", "message"),
         ("alerts", "reading_recovery", "title"),

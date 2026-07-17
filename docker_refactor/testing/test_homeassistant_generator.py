@@ -172,6 +172,8 @@ def test_generated_package_and_entity_map() -> None:
         "test mode fail-safe startup default",
     )
     assert "labpulse_pressure_monitor_alarm_defaults_initialized" in package["input_boolean"]
+    assert "labpulse_pressure_monitor_service_fault_active" in package["input_boolean"]
+    assert "labpulse_pressure_monitor_service_fault_started" in package["input_datetime"]
     reading_default_markers = [
         helper_id
         for helper_id in package["input_boolean"]
@@ -214,26 +216,62 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("history stats start should use editable window helper")
 
     zone_sensors = package["template"][0]["binary_sensor"]
-    assert_equal(zone_sensors[0]["name"], "labpulse_pressure_monitor_pressure_danger_zone", "danger zone")
-    assert_equal(zone_sensors[1]["name"], "labpulse_pressure_monitor_pressure_recovery_zone", "recovery zone")
-    assert_equal(zone_sensors[2]["name"], "labpulse_pressure_monitor_pressure_sensor_fault_zone", "fault zone")
-    if "alarm_mode" not in zone_sensors[0]["state"]:
+    zones = {sensor["name"]: sensor for sensor in zone_sensors}
+    service_health = zones["labpulse_pressure_monitor_service_unhealthy"]
+    danger_zone = zones["labpulse_pressure_monitor_pressure_danger_zone"]
+    recovery_zone = zones["labpulse_pressure_monitor_pressure_recovery_zone"]
+    fault_zone = zones["labpulse_pressure_monitor_pressure_sensor_fault_zone"]
+    if "'disconnected'" not in service_health["state"] or "'offline'" not in service_health["state"]:
+        raise AssertionError("service health does not classify whole-service failures")
+    if "gpio_fault" in service_health["state"]:
+        raise AssertionError("component GPIO fault became a whole-service fault")
+    if "alarm_mode" not in danger_zone["state"]:
         raise AssertionError("danger zone should use alarm mode helper")
-    if "recovery_deadband" not in zone_sensors[1]["state"]:
+    if "recovery_deadband" not in recovery_zone["state"]:
         raise AssertionError("recovery zone should use recovery deadband helper")
-    if "recovery_minimum" not in zone_sensors[1]["state"] or "recovery_maximum" not in zone_sensors[1]["state"]:
+    if "recovery_minimum" not in recovery_zone["state"] or "recovery_maximum" not in recovery_zone["state"]:
         raise AssertionError("recovery zone should derive deadband recovery thresholds")
-    if "last_updated" in zone_sensors[2]["state"]:
+    if "last_updated" in fault_zone["state"]:
         raise AssertionError("fault zone still mistakes an unchanged value for a missing sample")
-    if "unavailable" not in zone_sensors[2]["state"]:
+    if "unavailable" not in fault_zone["state"]:
         raise AssertionError("fault zone does not consume MQTT expiry state")
-    if "reconnecting" in zone_sensors[2]["state"] or "disconnected" in zone_sensors[2]["state"]:
-        raise AssertionError("reconnect states should use reading age as a grace period")
-    if "'error'" not in zone_sensors[2]["state"]:
-        raise AssertionError("explicit service errors should remain immediate sensor faults")
+    if "service_fault_active" not in fault_zone["state"] or "Sensor Fault" not in fault_zone["state"]:
+        raise AssertionError("reading faults are not safely preserved/suppressed")
 
     automations = package["automation"]
     automation_by_alias = {automation["alias"]: automation for automation in automations}
+    service_fault = automation_by_alias["LabPulse Air Pressure Sensor Hub Service Fault"]
+    service_recovery = automation_by_alias["LabPulse Air Pressure Sensor Hub Service Restored"]
+    assert_equal(service_fault["mode"], "single", "one service fault lifecycle")
+    assert_equal(service_fault["trigger"][0]["for"]["seconds"], 10, "service fault confirmation")
+    assert_equal(service_recovery["trigger"][0]["for"]["seconds"], 15, "service recovery confirmation")
+    assert_equal(service_fault["trigger"][1]["event"], "start", "fault restart reconciliation")
+    assert_equal(service_recovery["trigger"][1]["event"], "start", "recovery restart reconciliation")
+    assert_equal(service_fault["action"][2]["state"], "off", "fault duplicate latch")
+    assert_equal(service_recovery["action"][2]["state"], "on", "recovery requires prior fault")
+    if "fault_started" not in service_recovery["action"][3]["variables"]["downtime_seconds"]:
+        raise AssertionError("service recovery does not calculate downtime")
+    service_fault_yaml = yaml.safe_dump(service_fault, sort_keys=False)
+    service_recovery_yaml = yaml.safe_dump(service_recovery, sort_keys=False)
+    for expected in (
+        "input_boolean.labpulse_pressure_monitor_service_fault_active",
+        "input_datetime.labpulse_pressure_monitor_service_fault_started",
+        '"event": "sensor_fault"',
+        'test_mode',
+        '[TEST]',
+    ):
+        if expected not in service_fault_yaml:
+            raise AssertionError(f"service fault lifecycle lacks {expected}")
+    for expected in (
+        "binary_sensor.labpulse_pressure_monitor_service_unhealthy",
+        "to: 'off'",
+        "downtime_seconds",
+        "input_boolean.turn_off",
+        '"event": "recovery"',
+        'test_mode',
+    ):
+        if expected not in service_recovery_yaml:
+            raise AssertionError(f"service recovery lifecycle lacks {expected}")
     transition_aliases = [
         automation["alias"]
         for automation in automations
@@ -296,6 +334,8 @@ def test_generated_package_and_entity_map() -> None:
     danger_automation = automation_by_alias["LabPulse Pressure Danger"]
     if "observed_danger_percent" not in danger_automation["trigger"][0]["value_template"]:
         raise AssertionError("danger transition should use observed danger percentage")
+    if "service_fault_active" not in danger_automation["trigger"][0]["value_template"]:
+        raise AssertionError("danger transition is not blocked during a service fault")
     assert_equal(
         danger_automation["action"][0]["data"]["option"],
         "Danger",
@@ -503,6 +543,15 @@ def test_dashboard_reset_and_preserve() -> None:
         "Air Pressure Sensor Hub",
         "single-service device subheading",
     )
+    assert_equal(
+        [row["entity"] for row in pressure_cards[2]["entities"]],
+        [
+            "sensor.labpulse_pressure_monitor_status",
+            "input_boolean.labpulse_pressure_monitor_service_fault_active",
+            "input_datetime.labpulse_pressure_monitor_service_fault_started",
+        ],
+        "service health dashboard rows",
+    )
     reading_list = pressure_cards[3]
     assert_equal(reading_list["type"], "entities", "reading list card type")
     assert_equal(reading_list["show_header_toggle"], False, "reading list header toggle")
@@ -708,7 +757,14 @@ def test_dashboard_groups_readings_with_room_environment_last() -> None:
     dashboard = json.loads(paths.lovelace_path.read_text(encoding="utf-8"))
     cards = dashboard["data"]["config"]["views"][0]["sections"][0]["cards"]
 
-    sensor_cards = [card for card in cards if card.get("type") == "entities"]
+    sensor_cards = [
+        card for card in cards
+        if card.get("type") == "entities"
+        and not any(
+            row.get("entity") == "sensor.labpulse_pump_room_status"
+            for row in card.get("entities", [])
+        )
+    ]
     assert_equal(
         len(sensor_cards),
         4,
@@ -747,7 +803,12 @@ def test_starter_dashboard_preserves_monitor_layout() -> None:
     pump_cards = sections[0]["cards"]
     assert_equal(pump_cards[1]["heading"], "Pump Room Sensor Hub", "pump hub heading")
     pump_sensor_cards = [
-        card for card in pump_cards if card.get("type") == "entities"
+        card for card in pump_cards
+        if card.get("type") == "entities"
+        and not any(
+            row.get("entity") == "sensor.labpulse_pump_room_status"
+            for row in card.get("entities", [])
+        )
     ]
     assert_equal(
         len(pump_sensor_cards),

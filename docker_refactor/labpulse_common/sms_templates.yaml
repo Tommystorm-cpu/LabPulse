@@ -6,6 +6,18 @@
 # {current_reading} after Home Assistant has evaluated the surrounding message.
 
 alerts:
+  service_fault:
+    title: >-
+      "LabPulse Service Fault: [[ service.label ]]"
+    message: >-
+      "LabPulse cannot communicate with [[ service.label ]]. All readings from this service are temporarily unavailable.\nService status: {current_reading}."
+
+  service_recovery:
+    title: >-
+      "LabPulse Service Restored: [[ service.label ]]"
+    message: >-
+      "Communication with [[ service.label ]] has been restored. Telemetry is available again.\nDowntime: " ~ (downtime_seconds | string) ~ " seconds.\nService status: {current_reading}."
+
   reading_warning:
     title: >-
       "LabPulse Danger Warning: [[ service.label ]] - [[ reading.label ]] is in danger"

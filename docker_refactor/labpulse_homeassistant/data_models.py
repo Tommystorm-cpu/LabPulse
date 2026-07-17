@@ -165,6 +165,12 @@ class ServiceModel:
 
     # MQTT-discovered health sensor for the hardware service.
     status_entity: EntityReference
+    health_unhealthy_unique_id: str
+    health_unhealthy_entity: str
+    health_fault_active_entity: str
+    health_fault_started_entity: str
+    health_fault_confirm_seconds: int
+    health_recovery_confirm_seconds: int
 
     # Home Assistant helpers shared by every reading in this service. They
     # control danger timing and recovery for the generated alarm state machines.
@@ -284,6 +290,12 @@ def build_render_model(
                 unique_id=stable_id(service_name, "status"),
                 default_entity_id=entity_id("sensor", service_name, "status"),
             ),
+            health_unhealthy_unique_id     = stable_id(service_name, "service_unhealthy"),
+            health_unhealthy_entity        = entity_id("binary_sensor", service_name, "service_unhealthy"),
+            health_fault_active_entity     = entity_id("input_boolean", service_name, "service_fault_active"),
+            health_fault_started_entity    = entity_id("input_datetime", service_name, "service_fault_started"),
+            health_fault_confirm_seconds   = config.service_health.fault_confirm_seconds,
+            health_recovery_confirm_seconds = config.service_health.recovery_confirm_seconds,
             required_danger_percent_entity      = entity_id("input_number", service_name, "required_danger_percent"),
             observation_window_seconds_entity  = entity_id("input_number", service_name, "observation_window_seconds"),
             required_recovery_seconds_entity   = entity_id("input_number", service_name, "required_recovery_seconds"),

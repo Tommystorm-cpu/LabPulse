@@ -72,7 +72,13 @@ templates:
         state: >
           {% set raw = states('[[ power.mains_present.expected_entity_id ]]') %}
           {% set status = states('[[ service.status_entity_id ]]') %}
-          {{ not is_number(raw) or status == 'gpio_fault' }}
+          {% set service_blocked = is_state('[[ service.health_unhealthy_entity ]]', 'on')
+             or is_state('[[ service.health_fault_active_entity ]]', 'on') %}
+          {% if service_blocked %}
+            {{ is_state('[[ power.sensor_fault_confirmed_entity ]]', 'on') }}
+          {% else %}
+            {{ not is_number(raw) or status == 'gpio_fault' }}
+          {% endif %}
         attributes:
           raw_mains_state: "{{ states('[[ power.mains_present.expected_entity_id ]]') }}"
           service_status: "{{ states('[[ service.status_entity_id ]]') }}"

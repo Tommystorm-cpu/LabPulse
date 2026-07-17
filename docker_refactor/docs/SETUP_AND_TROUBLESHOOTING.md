@@ -10,7 +10,7 @@ Run the bootstrap script from the repository. After bootstrap, operate the
 system from the generated live directory:
 
 ```text
-Repository source:  ~/LabPulse/docker_refactor/   example checkout location
+Repository source:  ~/LabPulse-refactor-src/docker_refactor/
 Live installation:  ~/labpulse-ha/
 Live config:         ~/labpulse-ha/config.yaml
 Alarm defaults:      ~/labpulse-ha/alarm_defaults.json
@@ -40,7 +40,7 @@ delivery additionally needs a working ModemManager/modem on the host.
 From the checkout:
 
 ```bash
-cd ~/LabPulse/docker_refactor
+cd ~/LabPulse-refactor-src/docker_refactor
 chmod +x setup_container_fs.sh
 ./setup_container_fs.sh
 ```
@@ -52,7 +52,7 @@ generates Compose and Home Assistant files, and seeds the dashboard.
 ### Simulated hardware
 
 ```bash
-cd ~/LabPulse/docker_refactor
+cd ~/LabPulse-refactor-src/docker_refactor
 chmod +x setup_container_fs.sh
 ./setup_container_fs.sh -fake_usb
 ```
@@ -149,6 +149,10 @@ sms:
   test_recipients:
     - "+447700900001"
 
+service_health:
+  fault_confirm_seconds: 10
+  recovery_confirm_seconds: 15
+
 services:
   pressure_monitor:
     enabled: true
@@ -177,6 +181,8 @@ services:
 | `sms.dry_run` | Log safely when true; use `mmcli` when false |
 | `sms.recipients` | Unique international numbers; keep real values only in the live config |
 | `sms.test_recipients` | Separate international numbers used only while the Alarm Setup test-mode toggle is on |
+| `service_health.fault_confirm_seconds` | Continuous whole-service failure required before one hub alert; default 10 |
+| `service_health.recovery_confirm_seconds` | Continuous absence of a whole-service failure required before one recovery; default 15 |
 | service key | Stable machine ID used in containers, MQTT, and HA entities |
 | `enabled` | Whether Compose and HA generation include the service |
 | `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with MAX17043-compatible UPS gauge |
@@ -233,6 +239,15 @@ present. `maximum_reading_age_seconds` controls MQTT expiry for the raw GPIO
 and battery readings. Voltage and percentage remain dashboard telemetry only.
 See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the complete safe
 acceptance run.
+
+Hardware containers publish `offline` through a retained MQTT Last Will when
+their process or broker connection disappears. Home Assistant also treats
+`disconnected`, `reconnecting`, `error`, `unknown`, and `unavailable` as
+whole-service failures. During a confirmed service fault, individual readings
+may display unavailable but do not each send stale-reading messages. An
+isolated stale reading still alerts normally while its service is healthy.
+Before planned maintenance, use the global notification mute if a container is
+expected to remain stopped longer than the service-health confirmation period.
 
 To group independent devices by physical location, give their services the
 same `display.section`. The Monitor view renders one location heading and a
@@ -414,7 +429,7 @@ Rerun bootstrap to copy the new repository state into the live directory, then
 rebuild:
 
 ```bash
-cd ~/LabPulse/docker_refactor
+cd ~/LabPulse-refactor-src/docker_refactor
 ./setup_container_fs.sh
 cd ~/labpulse-ha
 docker compose up -d --build

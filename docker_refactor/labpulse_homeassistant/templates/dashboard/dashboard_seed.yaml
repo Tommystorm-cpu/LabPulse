@@ -33,8 +33,15 @@ monitor_sections:
     heading_style: subtitle
     icon: "[[ service.icon ]]"
   status_tile:
-    type: tile
-    entity: "[[ service.status_entity_id ]]"
+    type: entities
+    show_header_toggle: false
+    entities:
+      - entity: "[[ service.status_entity_id ]]"
+        name: Service status
+      - entity: "[[ service.health_fault_active_entity ]]"
+        name: Sensor hub fault active
+      - entity: "[[ service.health_fault_started_entity ]]"
+        name: Current fault started
     grid_options:
       columns: full
   reading_list:
