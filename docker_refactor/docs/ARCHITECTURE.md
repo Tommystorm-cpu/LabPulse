@@ -75,10 +75,12 @@ sensor
 ```
 
 UPS power is the deliberate exception to the generic zone/history path. Its
-MAX17043 or simulated telemetry still follows the same driver/MQTT boundary,
-but Home Assistant uses a dedicated `Normal` / `Possible On Battery` /
-`Sensor Fault` lifecycle with persistent candidate deadlines. Possible battery
-operation is inferred from sustained low UPS voltage; mains is not measured.
+X1200 driver publishes MAX17043 battery telemetry plus a normalized
+`mains_present` value read directly from GPIO6. Home Assistant uses a dedicated
+`Normal` / `On Battery` / `Sensor Fault` lifecycle. Brief GPIO changes are
+confirmed for configured periods, and one persistent outage latch prevents
+duplicate warning or recovery messages. Voltage and percentage do not decide
+whether an outage occurred.
 
 The key boundary is between facts and decisions:
 

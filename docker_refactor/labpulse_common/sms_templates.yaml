@@ -34,25 +34,25 @@ alerts:
     title: >-
       "LabPulse Power Outage Alert"
     message: >-
-      "\nCurrent Reading: {current_reading} V" ~ "Evidence: Voltage drop measured \n Five-second voltage change: " ~ states('[[ power.voltage_change_entity ]]') ~ "V" ~ "\nDrop trigger [[ power.outage_drop_volts ]] V \nAbsolute threhold: Below [[ power.low_voltage_threshold ]] V \nConfirmation " ~ states('[[ power.outage_confirm_seconds_entity ]]') ~ " seconds. \nMains is inferred from UPS, not measured directly."
+      "External power has been lost and [[ service.label ]] is running on UPS battery. " ~ "Battery level: " ~ (states('[[ power.battery_level.expected_entity_id ]]') ~ "%" if is_number(states('[[ power.battery_level.expected_entity_id ]]')) else "unavailable") ~ ".\nBattery voltage: {current_reading} V.\nThe GPIO6 signal remained absent for [[ power.outage_confirm_seconds ]] seconds."
 
   power_recovery:
     title: >-
       "LabPulse Power Recovery Alert"
     message: >-
-      "\nCurrent Reading: {current_reading} V" ~ "\nConfirmed recovery evidence after " ~ outage_duration ~ " seconds. \nRise Trigger [[ power.recovery_rise_volts ]] V over [[ power.transition_window_seconds ]] seconds. \nConfirmation " ~ states('[[ power.restore_confirm_seconds_entity ]]') ~ " seconds. Mains restoration is inferred."
+      "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ power.battery_level.expected_entity_id ]]') ~ "%" if is_number(states('[[ power.battery_level.expected_entity_id ]]')) else "unavailable") ~ ".\nBattery voltage: {current_reading} V.\nThe GPIO6 signal remained present for [[ power.restore_confirm_seconds ]] seconds."
 
   power_sensor_fault:
     title: >-
-      "LabPulse Sensor Fault Alert: [[ service.label ]] - UPS Voltage"
+      "LabPulse Sensor Fault Alert: [[ service.label ]] - External Power Detection"
     message: >-
-      "Current Reading: {current_reading} V. \nUPS voltage telemetry is unavailable or invalid. \nVoltage state: " ~ states('[[ power.voltage.expected_entity_id ]]') ~ ". \nService status: " ~ states('[[ service.status_entity_id ]]') ~ ". \nFault confirmed after [[ power.maximum_reading_age_seconds ]] seconds without fresh validated voltage."
+      "The X1200 GPIO6 external-power signal is unavailable or invalid. This is being treated as a sensor fault, not a power outage.\nRaw GPIO state: {current_reading}.\nService status: " ~ states('[[ service.status_entity_id ]]') ~ "."
 
   power_sensor_recovery:
     title: >-
-      "LabPulse Sensor Restored: [[ service.label ]] - UPS Voltage"
+      "LabPulse Sensor Restored: [[ service.label ]] - External Power Detection"
     message: >-
-      "Current Reading: {current_reading} V. \nValid UPS voltage telemetry has resumed. \nService status: " ~ states('[[ service.status_entity_id ]]') ~ ". \nThe UPS voltage sensor has recovered from a confirmed telemetry fault."
+      "The X1200 GPIO6 external-power signal is available again.\nCurrent mains state: {current_reading}.\nService status: " ~ states('[[ service.status_entity_id ]]') ~ "."
 
 formatting:
   test_prefix: "[TEST]"

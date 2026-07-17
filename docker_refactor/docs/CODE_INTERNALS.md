@@ -531,70 +531,48 @@ A service with `power_detection` is excluded from every generic threshold,
 history-stat, and percentage loop above. `PowerModel` instead supplies the IDs
 and configured timings expanded from `templates/alarm/power_logic.yaml`.
 
-Two Home Assistant statistics sensors calculate signed rolling change for
-voltage and charge. The installed UPS was characterized across three controlled
-outages: real five-second drops were 0.079-0.107 V versus at most 0.002 V in
-normal operation; recovery rises were 0.104-0.109 V versus at most 0.019 V of
-unplugged rebound. A later non-outage charger-settling step was below 0.02 V, so
-production config rounds the drop trigger upward to 0.050 V rather than using
-the original 0.041 V midpoint. Recovery uses a 0.062 V rise trigger, five-second
-window, and 17-second rebound lockout. The absolute 4.05 V rule remains only as
-a missed-transition fallback.
+The live X1200 driver combines its read-only MAX17043 fuel-gauge sample with a
+libgpiod read of GPIO6. It publishes `mains_present=1` for external power and
+`mains_present=0` for battery operation. The Compose generator maps only the
+configured I2C bus and gpiochip device into the UPS container. GPIO4 remains
+owned by the independent DHT11 service.
 
-Outage and recovery evidence is momentary, so each edge starts a persistent
-candidate whose start and deadline are stored in helpers. The edge does not
-have to remain present after the rolling window advances. A recovery candidate
-deadline is the later of its editable confirmation period or the outage-start
-plus rebound lockout. A renewed sharp drop or absolute low-voltage condition
-cancels recovery. Outage and recovery confirmation are editable `input_number`
-helpers in LabPulse Alarm Setup; their configured defaults are 3 and 15
-seconds. Changing a timing control affects the next candidate, not one already
-in progress. Candidate booleans, deadlines, active-event state, event history,
-timing controls, and the initialization marker omit `initial` values so Home
-Assistant restores them.
+Home Assistant converts the numeric MQTT value into a `power` binary sensor.
+An off state held for `outage_confirm_seconds` (default three) records the GPIO
+edge time, turns on the persistent outage latch, selects `On Battery`, and
+sends one warning. An on state held for `restore_confirm_seconds` (default
+five) can recover only an active outage; it records duration, clears the latch,
+selects `Normal`, and sends one recovery. Native state-trigger `for` periods
+cancel automatically when a brief flicker reverses.
 
-Charge-rise recovery is supported through
-`recovery_charge_rise_percent` and `recovery_charge_window_seconds`, but it is
-disabled when the threshold is `null`. The characterization was performed at
-100% SOC, so it supplied no defensible charge-rise threshold and the installed
-configuration leaves that path disabled.
+Home Assistant `for` timers do not survive restart, so explicit startup and
+automation-reload reconciliation covers both missed directions. Persistent
+`outage_active` and `outage_started` helpers prevent duplicate warnings and
+allow a restored signal observed after restart to complete the existing event.
+When a new outage begins while Home Assistant is down, its exact remote edge
+time is unknowable; reconciliation records the beginning of the confirmed
+observation window. Normal live transitions retain their actual GPIO edge time.
 
-MQTT expiry makes the voltage entity unavailable after 15 seconds without a
-sample by default. Fault evidence must then remain continuously present for
-one configured maximum-evidence-age window before it becomes a confirmed
-`Sensor Fault`. The confirmation automation restarts whenever the evidence
-changes, so temporary unavailable states during Home Assistant startup or
-automation reload remain silent. A persistent helper records whether a fault
-was actually confirmed. Only recovery from that confirmed state creates a
-telemetry-restored notification and validated recovery SMS request; routine
-restart restoration does neither. Muting suppresses delivery while preserving
-and clearing the confirmed-fault lifecycle correctly. The recovery automation
-also selects `Normal` or `Possible On Battery` directly; it does not depend on
-a concurrently triggered reconcile automation to clear the visible
-`Sensor Fault` state. Home Assistant start,
-automation reload, and fault recovery all
-run reconciliation; overdue persistent deadlines are then completed by the
-one-second confirmation automations. Duration is calculated from first outage
-transition evidence to first recovery transition evidence, not from delayed
-confirmations.
+If GPIO sampling fails, the composite driver publishes `gpio_fault` and omits
+only `mains_present`; voltage and percentage continue. MQTT expiry also makes a
+stale mains value unavailable. Either condition creates `Sensor Fault` and is
+never interpreted as an outage. A confirmed-fault helper prevents routine
+startup restoration from fabricating incidents.
 
 Power has one dedicated mute. It suppresses only power notifications and
 validated SMS requests; telemetry, lifecycle transitions, and history continue.
-The dashboard reads inferred-outage history through template-sensor mirrors, keeping the
+The dashboard reads outage history through template-sensor mirrors, keeping the
 persistent timestamp and duration helpers off the editable Monitor surface. A
 built-in gauge visualizes UPS battery percentage without custom cards. Alarm
-Setup exposes rolling voltage/charge change, transition evidence, and the
-absolute fallback for diagnosis.
-The configured `source: ups_transition_inference` is the replacement seam for a
-future isolated direct-mains input. Lifecycle, dashboard, and SMS consumers
-depend on the normalized evidence entity rather than on MAX17043 registers.
+Setup exposes the normalized and raw mains values, fault state, and active
+outage latch. Battery voltage and percentage never determine outage state.
 
 ## SMS service internals
 
 All user-facing SMS text is defined once in
 `labpulse_common/sms_templates.yaml`. The Home Assistant generator expands its
-eight alert title/message pairs into MQTT requests. Each alert body visibly
-contains its `Current Reading: {current_reading}` line; the SMS worker fills
+eight alert title/message pairs into MQTT requests. Each alert body contains a
+dedicated `{current_reading}` line labelled for that alert; the SMS worker fills
 that final value or removes the line when no usable reading exists. The worker
 also reads the same file for the test prefix, warning footer, and
 subscribe/unsubscribe confirmations. `sms_templates.py` validates the catalogue

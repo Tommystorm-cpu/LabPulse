@@ -291,7 +291,7 @@ def test_discovery_uses_configured_message_expiry() -> None:
 
 
 def test_power_discovery_uses_power_message_expiry() -> None:
-    """Ensure UPS freshness uses its shorter power-specific expiry."""
+    """Ensure all UPS readings use the service's configured expiry."""
 
     publisher = make_publisher(
         service_name="ups_monitor",
@@ -300,8 +300,10 @@ def test_power_discovery_uses_power_message_expiry() -> None:
         readings=[
             {"name": "voltage", "unit": "V"},
             {"name": "battery_level", "unit": "%"},
+            {"name": "mains_present", "state_class": None},
         ],
         power_detection={},
+        maximum_reading_age_seconds=15,
     )
     publisher.publish({"voltage": 4.13})
     payload = json.loads(str(publisher.client.published[0]["payload"]))

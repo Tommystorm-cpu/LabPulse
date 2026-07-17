@@ -23,7 +23,7 @@ been removed so that an implemented feature has one authoritative explanation.
 5. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,
    user-facing, engineering-maturity, and open-source work.
 6. [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) is the exact dry-run
-   acceptance procedure for the simulated UPS power lifecycle.
+   and live GPIO acceptance procedure for the X1200 power lifecycle.
 
 Future implementation specification:
 
@@ -31,10 +31,6 @@ Future implementation specification:
   records the planned move from direct Lovelace `.storage` writes to Home
   Assistant's authenticated WebSocket API. It is intentionally deferred until
   live-Pi sensor acquisition is proven.
-- [FUTURE_POWER_MONITOR_IMPLEMENTATION.md](FUTURE_POWER_MONITOR_IMPLEMENTATION.md)
-  records the reviewed legacy UPS behaviour and acceptance criteria. The code
-  is implemented, but this temporary file remains until test-Pi and live-Pi
-  acceptance and calibration have actually been completed.
 
 ## Which guide answers what?
 
@@ -48,7 +44,7 @@ Future implementation specification:
 | What do I edit on the Raspberry Pi? | `SETUP_AND_TROUBLESHOOTING.md` |
 | How do I identify and assign the real USB devices? | `SETUP_AND_TROUBLESHOOTING.md` |
 | How do I test without hardware? | `SETUP_AND_TROUBLESHOOTING.md` |
-| How do I accept the simulated UPS lifecycle? | `POWER_MONITOR_TEST_PI.md` |
+| How do I accept the X1200 UPS lifecycle? | `POWER_MONITOR_TEST_PI.md` |
 | Why is an entity or dashboard card missing? | `SETUP_AND_TROUBLESHOOTING.md` |
 | What exactly do the Arduino sketches print? | `ARDUINO_AND_CPP.md` |
 | What software work remains and what is already implemented? | `SOFTWARE_TODO.md` |

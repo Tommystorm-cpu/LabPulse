@@ -136,7 +136,6 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'replace_dir "$SCRIPT_DIR/labpulse_common"',
         'replace_dir "$SCRIPT_DIR/labpulse_hardware"',
         'replace_dir "$SCRIPT_DIR/labpulse_sms"',
-        'copy_file "$SCRIPT_DIR/characterize_ups.sh"',
         'copy_file "$SCRIPT_DIR/simulate_serial.py"',
         'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
         'if [ ! -e "$LIVE_CONFIG" ]; then',
@@ -151,11 +150,14 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'adafruit-blinka',
         'lgpio',
         'smbus2',
+        'gpiod modemmanager',
         '"FAKE_UPS_PORT": "/tmp/labpulse-fake-serial/ups_monitor"',
         'convert_power_service_to_fake_serial',
         'RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"',
         '--config "$RUNTIME_CONFIG"',
         'including UPS power',
+        'if [ ! -e "$PROJECT_DIR/homeassistant/config/.storage/lovelace" ]; then',
+        'HOMEASSISTANT_MODE_ARGS+=(--reset-dashboard)',
     )
     for fragment in required_fragments:
         if fragment not in source:
@@ -180,27 +182,8 @@ def test_setup_refresh_and_preservation_contract() -> None:
         if fragment not in generator_source:
             raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
 
-    characterization_source = (
-        REFACTOR_DIR / "characterize_ups.sh"
-    ).read_text(encoding="utf-8")
-    required_characterization_fragments = (
-        "sudo docker compose exec -T mosquitto",
-        "Disconnect UPS mains safely",
-        "Restore UPS mains safely",
-        "outage_drop_volts:",
-        "recovery_rise_volts:",
-        "recovery_charge_rise_percent:",
-        "settling_start",
-        "final mains-on settling baseline",
-        "ups-characterisation",
-    )
-    for fragment in required_characterization_fragments:
-        if fragment not in characterization_source:
-            raise AssertionError(f"UPS characterization contract missing: {fragment}")
-
-
-def test_real_i2c_compose_is_least_privilege() -> None:
-    """Expose only the configured I2C node without privileged mode or all /dev."""
+def test_real_x1200_compose_is_least_privilege() -> None:
+    """Expose only configured I2C and GPIO nodes to the X1200 service."""
 
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
     project_dir = TEST_TMP_DIR / f"i2c-deployment-{uuid4().hex}"
@@ -216,6 +199,9 @@ services:
     enabled: true
     driver: i2c
     i2c_bus: 1
+    power_detection:
+      source: x1200_gpio
+      gpio_chip: /dev/gpiochip0
 """,
             encoding="utf-8",
         )
@@ -228,8 +214,11 @@ services:
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
         service = yaml.safe_load(output_path.read_text(encoding="utf-8"))["services"]["labpulse-ups-monitor"]
-        if service.get("devices") != ["/dev/i2c-1:/dev/i2c-1"]:
-            raise AssertionError(f"unexpected I2C device mapping: {service.get('devices')!r}")
+        if service.get("devices") != [
+            "/dev/i2c-1:/dev/i2c-1",
+            "/dev/gpiochip0:/dev/gpiochip0",
+        ]:
+            raise AssertionError(f"unexpected X1200 device mapping: {service.get('devices')!r}")
         if service.get("privileged") is True or "/dev:/dev" in service.get("volumes", []):
             raise AssertionError("I2C service received broad device privileges")
     finally:
@@ -301,7 +290,7 @@ services:
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("fake USB Compose contract", test_fake_usb_compose_contract),
-    ("real I2C Compose least privilege", test_real_i2c_compose_is_least_privilege),
+    ("real X1200 Compose least privilege", test_real_x1200_compose_is_least_privilege),
     ("SMS delivery mode controls modem access", test_sms_delivery_mode_controls_modem_access),
     ("setup refresh and preservation contract", test_setup_refresh_and_preservation_contract),
 ]

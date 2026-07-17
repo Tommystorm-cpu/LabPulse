@@ -68,13 +68,15 @@ power_monitor:
       columns: full
     entities:
       - entity: "[[ power.state_entity ]]"
-        name: Inferred power state
+        name: Power state
+      - entity: "[[ power.mains_present_entity ]]"
+        name: External power present
       - entity: "[[ power.voltage.expected_entity_id ]]"
         name: UPS battery voltage
       - entity: "[[ power.last_outage_started_sensor_entity ]]"
-        name: Last inferred outage started
+        name: Last outage started
       - entity: "[[ power.last_outage_duration_sensor_entity ]]"
-        name: Last inferred outage duration
+        name: Last outage duration
 
 alarm_setup_sections:
   heading_card:
@@ -159,24 +161,12 @@ power_alarm_setup:
         name: Power lifecycle state
       - entity: "[[ power.muted_entity ]]"
         name: Power alerts muted
-      - entity: "[[ power.outage_confirm_seconds_entity ]]"
-        name: Outage confirmation time
-      - entity: "[[ power.restore_confirm_seconds_entity ]]"
-        name: Recovery confirmation time
       - type: divider
-      - entity: "[[ power.voltage_change_entity ]]"
-        name: Rolling voltage change
-      - entity: "[[ power.charge_change_entity ]]"
-        name: Rolling battery charge change
-      - entity: "[[ power.outage_transition_entity ]]"
-        name: Sharp-drop outage evidence
-      - entity: "[[ power.recovery_transition_entity ]]"
-        name: Sharp-rise recovery evidence
-      - entity: "[[ power.low_voltage_evidence_entity ]]"
-        name: Absolute low-voltage fallback
+      - entity: "[[ power.mains_present_entity ]]"
+        name: Confirmed external-power input
+      - entity: "[[ power.mains_present.expected_entity_id ]]"
+        name: Raw GPIO6 mains value
       - entity: "[[ power.sensor_fault_entity ]]"
-        name: UPS evidence sensor fault
-      - entity: "[[ power.outage_candidate_entity ]]"
-        name: Outage confirmation pending
-      - entity: "[[ power.recovery_candidate_entity ]]"
-        name: Recovery confirmation pending
+        name: External-power sensor fault
+      - entity: "[[ power.outage_active_entity ]]"
+        name: Confirmed outage active

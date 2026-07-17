@@ -122,47 +122,26 @@ class ReadingModel:
 
 @dataclass
 class PowerModel:
-    """Dedicated UPS transition lifecycle identities and timing settings."""
+    """Dedicated direct-mains UPS lifecycle identities and timing settings."""
 
     source: str
     voltage: ReadingModel
     battery_level: ReadingModel
-    low_voltage_threshold: float
-    outage_drop_volts: float
-    recovery_rise_volts: float
-    transition_window_seconds: int
-    recovery_lockout_seconds: int
-    recovery_charge_enabled: bool
-    recovery_charge_rise_percent: float
-    recovery_charge_window_seconds: int
+    mains_present: ReadingModel
+    gpio_chip: str
+    gpio_line: int
+    mains_present_active_high: bool
     outage_confirm_seconds: int
     restore_confirm_seconds: int
     maximum_reading_age_seconds: int
-    low_voltage_evidence_unique_id: str
-    low_voltage_evidence_entity: str
-    voltage_change_unique_id: str
-    voltage_change_entity: str
-    charge_change_unique_id: str
-    charge_change_entity: str
-    outage_transition_unique_id: str
-    outage_transition_entity: str
-    recovery_transition_unique_id: str
-    recovery_transition_entity: str
+    mains_present_unique_id: str
+    mains_present_entity: str
     sensor_fault_unique_id: str
     sensor_fault_entity: str
     sensor_fault_confirmed_entity: str
     state_entity: str
     muted_entity: str
-    outage_confirm_seconds_entity: str
-    restore_confirm_seconds_entity: str
-    timing_initialized_entity: str
-    outage_candidate_entity: str
-    recovery_candidate_entity: str
     outage_active_entity: str
-    outage_candidate_started_entity: str
-    outage_candidate_deadline_entity: str
-    recovery_candidate_started_entity: str
-    recovery_candidate_deadline_entity: str
     outage_started_entity: str
     last_outage_started_entity: str
     last_outage_duration_entity: str
@@ -334,6 +313,7 @@ def build_render_model(
                 service_name,
                 service.readings,
                 service_config.power_detection,
+                service_config.maximum_reading_age_seconds,
             )
 
         services.append(service)
@@ -345,8 +325,9 @@ def build_power_model(
     service_name: str,
     readings: list[ReadingModel],
     config: PowerDetectionConfig,
+    maximum_reading_age_seconds: int,
 ) -> PowerModel:
-    """Build the dedicated power model from normalized telemetry readings."""
+    """Build the dedicated power model from direct GPIO and UPS telemetry."""
 
     by_name = {reading.name: reading for reading in readings}
     prefix = (service_name, "power")
@@ -354,27 +335,15 @@ def build_power_model(
         source=config.source,
         voltage=by_name["voltage"],
         battery_level=by_name["battery_level"],
-        low_voltage_threshold=config.low_voltage_threshold,
-        outage_drop_volts=config.outage_drop_volts,
-        recovery_rise_volts=config.recovery_rise_volts,
-        transition_window_seconds=config.transition_window_seconds,
-        recovery_lockout_seconds=config.recovery_lockout_seconds,
-        recovery_charge_enabled=config.recovery_charge_rise_percent is not None,
-        recovery_charge_rise_percent=config.recovery_charge_rise_percent or 0.0,
-        recovery_charge_window_seconds=config.recovery_charge_window_seconds,
+        mains_present=by_name["mains_present"],
+        gpio_chip=config.gpio_chip,
+        gpio_line=config.gpio_line,
+        mains_present_active_high=config.mains_present_active_high,
         outage_confirm_seconds=config.outage_confirm_seconds,
         restore_confirm_seconds=config.restore_confirm_seconds,
-        maximum_reading_age_seconds=config.maximum_reading_age_seconds,
-        low_voltage_evidence_unique_id=stable_id(*prefix, "low_voltage_evidence"),
-        low_voltage_evidence_entity=entity_id("binary_sensor", *prefix, "low_voltage_evidence"),
-        voltage_change_unique_id=stable_id(*prefix, "voltage_change"),
-        voltage_change_entity=entity_id("sensor", *prefix, "voltage_change"),
-        charge_change_unique_id=stable_id(*prefix, "charge_change"),
-        charge_change_entity=entity_id("sensor", *prefix, "charge_change"),
-        outage_transition_unique_id=stable_id(*prefix, "outage_transition"),
-        outage_transition_entity=entity_id("binary_sensor", *prefix, "outage_transition"),
-        recovery_transition_unique_id=stable_id(*prefix, "recovery_transition"),
-        recovery_transition_entity=entity_id("binary_sensor", *prefix, "recovery_transition"),
+        maximum_reading_age_seconds=maximum_reading_age_seconds,
+        mains_present_unique_id=stable_id(*prefix, "mains_present"),
+        mains_present_entity=entity_id("binary_sensor", *prefix, "mains_present"),
         sensor_fault_unique_id=stable_id(*prefix, "sensor_fault"),
         sensor_fault_entity=entity_id("binary_sensor", *prefix, "sensor_fault"),
         sensor_fault_confirmed_entity=entity_id(
@@ -382,16 +351,7 @@ def build_power_model(
         ),
         state_entity=entity_id("input_select", *prefix, "state"),
         muted_entity=entity_id("input_boolean", *prefix, "muted"),
-        outage_confirm_seconds_entity=entity_id("input_number", *prefix, "outage_confirm_seconds"),
-        restore_confirm_seconds_entity=entity_id("input_number", *prefix, "restore_confirm_seconds"),
-        timing_initialized_entity=entity_id("input_boolean", *prefix, "timing_initialized"),
-        outage_candidate_entity=entity_id("input_boolean", *prefix, "outage_candidate"),
-        recovery_candidate_entity=entity_id("input_boolean", *prefix, "recovery_candidate"),
         outage_active_entity=entity_id("input_boolean", *prefix, "outage_active"),
-        outage_candidate_started_entity=entity_id("input_datetime", *prefix, "outage_candidate_started"),
-        outage_candidate_deadline_entity=entity_id("input_datetime", *prefix, "outage_candidate_deadline"),
-        recovery_candidate_started_entity=entity_id("input_datetime", *prefix, "recovery_candidate_started"),
-        recovery_candidate_deadline_entity=entity_id("input_datetime", *prefix, "recovery_candidate_deadline"),
         outage_started_entity=entity_id("input_datetime", *prefix, "outage_started"),
         last_outage_started_entity=entity_id("input_datetime", *prefix, "last_outage_started"),
         last_outage_duration_entity=entity_id("input_number", *prefix, "last_outage_duration"),

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from labpulse_common.identity import title
 
@@ -83,19 +83,27 @@ class DisplayConfig(BaseModel):
 
 
 class PowerDetectionConfig(BaseModel):
-    """Voltage-transition power-inference settings for the installed UPS gauge."""
+    """Direct Geekworm X1200 external-power detection settings."""
 
-    source: Literal["ups_transition_inference"] = "ups_transition_inference"
-    low_voltage_threshold: float = Field(default=4.05, ge=2.0, le=5.0)
-    outage_drop_volts: float = Field(default=0.05, gt=0.0, le=1.0)
-    recovery_rise_volts: float = Field(default=0.062, gt=0.0, le=1.0)
-    transition_window_seconds: int = Field(default=5, ge=2, le=300)
-    recovery_lockout_seconds: int = Field(default=17, ge=0, le=3600)
-    recovery_charge_rise_percent: float | None = Field(default=None, gt=0.0, le=100.0)
-    recovery_charge_window_seconds: int = Field(default=120, ge=10, le=86400)
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["x1200_gpio"] = "x1200_gpio"
+    gpio_chip: str = "/dev/gpiochip0"
+    gpio_line: int = Field(default=6, ge=0, le=53)
+    mains_present_active_high: bool = True
     outage_confirm_seconds: int = Field(default=3, ge=1, le=3600)
-    restore_confirm_seconds: int = Field(default=15, ge=1, le=3600)
-    maximum_reading_age_seconds: int = Field(default=15, ge=2, le=86400)
+    restore_confirm_seconds: int = Field(default=5, ge=1, le=3600)
+
+    @field_validator("gpio_chip")
+    @classmethod
+    def validate_gpio_chip(cls, gpio_chip: str) -> str:
+        """Require an explicit gpiochip device path for safe container mapping."""
+
+        normalized = gpio_chip.strip()
+        chip_number = normalized.removeprefix("/dev/gpiochip")
+        if not chip_number.isdigit():
+            raise ValueError("gpio_chip must be a /dev/gpiochip device path")
+        return normalized
 
 class ServiceConfig(BaseModel):
     """Configuration for one independently running LabPulse sensor service."""
@@ -146,11 +154,16 @@ class ServiceConfig(BaseModel):
             raise ValueError("MAX17043/I2C settings require driver: i2c")
 
         if self.power_detection is not None:
-            required = {"voltage", "battery_level"}
+            required = {"voltage", "battery_level", "mains_present"}
             missing = sorted(required.difference(reading_names))
             if missing:
                 raise ValueError(
                     "power_detection requires readings named: " + ", ".join(missing)
+                )
+            if self.driver not in {"i2c", "serial"}:
+                raise ValueError(
+                    "x1200_gpio power_detection requires the live I2C UPS driver "
+                    "or the fake serial UPS driver"
                 )
             if self.driver == "i2c" and self.read_interval_seconds not in (None, 1.0):
                 raise ValueError(

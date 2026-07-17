@@ -163,8 +163,6 @@ class HomeAssistantMqttPublisher:
     def _reading_expiry_seconds(self) -> int:
         """Return how long Home Assistant may wait without an MQTT sample."""
 
-        if self.service_config.power_detection is not None:
-            return self.service_config.power_detection.maximum_reading_age_seconds
         return self.service_config.maximum_reading_age_seconds
 
     def publish_readings(self, readings: dict[str, float]) -> None:

@@ -295,7 +295,19 @@ for service_name in enabled_services:
             )
             sys.exit(1)
         device = f"/dev/i2c-{i2c_bus}"
-        service_lines.extend(["    devices:", f"      - {device}:{device}"])
+        devices = [device]
+        power_detection = service_config.get("power_detection") or {}
+        if power_detection.get("source") == "x1200_gpio":
+            gpio_chip = power_detection.get("gpio_chip", "/dev/gpiochip0")
+            if not isinstance(gpio_chip, str) or re.fullmatch(r"/dev/gpiochip\d+", gpio_chip) is None:
+                print(
+                    f"ERROR: X1200 service '{service_name}' requires gpio_chip under /dev/gpiochip*",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            devices.append(gpio_chip)
+        service_lines.append("    devices:")
+        service_lines.extend(f"      - {device}:{device}" for device in devices)
     elif driver == "serial":
         serial_port = str(service_config.get("serial_port", ""))
         simulated = fake_usb or serial_port.startswith("/tmp/labpulse-fake-serial")

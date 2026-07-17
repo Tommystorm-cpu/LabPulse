@@ -51,7 +51,7 @@ def load_alarm_seed() -> dict[str, Any]:
 
 
 def load_power_seed() -> dict[str, Any]:
-    """Load the isolated UPS transition-inference lifecycle seed rules."""
+    """Load the isolated direct-GPIO UPS lifecycle seed rules."""
 
     return yaml.safe_load((TEMPLATE_DIR / "power_logic.yaml").read_text(encoding="utf-8"))
 
@@ -101,7 +101,7 @@ def input_selects(seed: dict[str, Any], power_seed: dict[str, Any], model: Rende
 
 
 def input_datetimes(power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
-    """Return restart-persistent power candidate and outage timestamps."""
+    """Return restart-persistent power outage timestamps."""
 
     helpers: dict[str, object] = {}
     for service in model.services:

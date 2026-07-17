@@ -145,7 +145,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends modemmanager \
+    && apt-get install -y --no-install-recommends gpiod modemmanager \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -173,8 +173,6 @@ copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
-copy_file "$SCRIPT_DIR/characterize_ups.sh" "$PROJECT_DIR/characterize_ups.sh"
-chmod +x "$PROJECT_DIR/characterize_ups.sh"
 copy_file "$SCRIPT_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
 copy_file "$SCRIPT_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
@@ -271,11 +269,16 @@ bash "$PROJECT_DIR/generate_compose.sh" \
   --project-dir "$PROJECT_DIR" \
   "${COMPOSE_MODE_ARGS[@]}"
 
+HOMEASSISTANT_MODE_ARGS=()
+if [ ! -e "$PROJECT_DIR/homeassistant/config/.storage/lovelace" ]; then
+  HOMEASSISTANT_MODE_ARGS+=(--reset-dashboard)
+fi
+
 bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
   --config "$RUNTIME_CONFIG" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
   --project-dir "$PROJECT_DIR" \
-  --reset-dashboard
+  "${HOMEASSISTANT_MODE_ARGS[@]}"
 
 FAKE_CONFIG_OUTPUT=""
 NEXT_COMPOSE_COMMAND="./generate_compose.sh"

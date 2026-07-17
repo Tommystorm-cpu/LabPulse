@@ -100,7 +100,6 @@ It is not required for the live config: setup always preserves an existing
   compose.yaml                        generated
   generate_compose.sh
   generate_homeassistant_config.sh
-  characterize_ups.sh                 interactive live UPS transition measurement
   simulate_serial.py
 
   labpulse-python/
@@ -197,7 +196,7 @@ services:
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
 | `maximum_reading_age_seconds` | Seconds without an MQTT sample before an ordinary reading becomes unavailable; default 300 |
 | `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
-| `power_detection` | Characterized voltage drop/rise inference, absolute fallback, rebound lockout, optional charge recovery, and freshness timings |
+| `power_detection` | Direct X1200 GPIO chip/line, polarity, and outage/recovery confirmation timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
@@ -228,34 +227,12 @@ generator gives each reading's initializer a version derived from its JSON
 entry. Dashboard edits therefore survive restarts and ordinary regeneration;
 changing that JSON entry and regenerating applies the new three values once.
 
-Power outage and recovery timings in `power_detection` seed Home Assistant
-controls when that power service is first created. After initialization, those
-two confirmation timings are edited in **LabPulse Alarm Setup** and persist
-across restarts and automation reloads. Drop/rise thresholds, rolling windows,
-rebound lockout, optional charge-rise threshold, absolute fallback, and maximum
-evidence age remain live-config settings. The installed system's characterized
-values are 0.050 V drop, 0.062 V rise, five-second window, and 17-second lockout.
-Maximum UPS evidence age configures MQTT `expire_after` directly. See
-[POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the complete safe
+Power outage and restoration confirmation periods are static settings in
+`power_detection`. The defaults are three seconds absent and five seconds
+present. `maximum_reading_age_seconds` controls MQTT expiry for the raw GPIO
+and battery readings. Voltage and percentage remain dashboard telemetry only.
+See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the complete safe
 acceptance run.
-
-To measure the installed UPS rather than guessing transition thresholds, run
-the interactive characterization helper from the live directory:
-
-```bash
-cd ~/labpulse-ha
-./characterize_ups.sh
-```
-
-It uses `sudo docker`, verifies live MQTT voltage and charge telemetry, then
-prompts for three controlled mains-off/on trials. Raw timestamped readings and
-event markers are retained under `ups-characterisation/`. The final report
-prints candidate drop, rise, lockout, and charge-trend settings only when the
-trials separate them from normal noise and unplugged battery rebound. A final
-five-minute mains-on observation captures delayed charger-settling steps that
-the short pre-test baselines can miss. Use
-`./characterize_ups.sh --quick` for a one-trial exploratory run; do not treat a
-single trial as production calibration.
 
 To group independent devices by physical location, give their services the
 same `display.section`. The Monitor view renders one location heading and a
@@ -444,9 +421,9 @@ docker compose up -d --build
 ```
 
 Existing live config and the Home Assistant config directory are preserved,
-although setup deliberately resets the starter dashboard because it invokes
-the HA generator with `--reset-dashboard`. Back up a dashboard you care about
-before using setup during layout development.
+and setup preserves an existing editable dashboard. On a first installation,
+where no Lovelace store exists yet, setup seeds the starter dashboard. Use the
+explicit dashboard commands below when intentionally replacing a layout.
 
 ### Stop without deleting persistent data
 

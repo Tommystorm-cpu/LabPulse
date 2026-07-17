@@ -181,19 +181,18 @@ back in individually; temporary alarm mute expiry remains undecided.
 ### Power outage message consolidation
 
 - [x] Confirm that UPS/power monitoring remains in scope for the active system.
-- [x] Define and implement the dedicated Normal/Possible On Battery/Sensor Fault model.
+- [x] Define and implement the dedicated Normal/On Battery/Sensor Fault model.
 - [ ] Combine a short outage and restoration into one useful event/message when
   appropriate.
 - [x] Avoid sending an outage and restoration pair for harmless brief
   interruptions.
 - [ ] Test longer outages and repeated flapping separately.
 
-Current state: read-only MAX17043-compatible voltage/SOC telemetry, simulated
-UPS input, persistent characterized transition inference, mute, dashboard, and dry-run-capable
-SMS requests are implemented. Test-Pi acceptance, controlled live validation,
-and a future isolated direct-mains evidence source remain outstanding. Current
-and charging status are intentionally absent because the installed gauge does
-not provide them.
+Current state: the X1200 service publishes read-only MAX17043 voltage/SOC
+telemetry and direct GPIO6 external-power state. Home Assistant confirms the
+GPIO signal, persists one outage lifecycle, reconciles restarts, and emits
+test-mode-capable warning/recovery requests. Battery telemetry is contextual
+only. Full live-Pi alert acceptance remains outstanding.
 
 ### Fridge parameter integration
 

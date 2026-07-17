@@ -1,178 +1,121 @@
-# MAX17043 UPS Monitor: Test-Pi Acceptance Run
+# X1200 power-monitor acceptance on the Raspberry Pi
 
-This run exercises the supported UPS contract without physical I2C hardware:
-realistic battery voltage, gauge state of charge, transition inference,
-freshness faults, lifecycle persistence, and SMS requests. Current and charging
-status are intentionally absent because the live HAT cannot measure them.
+Use this procedure after deploying the direct GPIO6 implementation. Keep Home
+Assistant test mode on and `sms.dry_run: true` until the generated lifecycle and
+recipient routing have both been inspected.
 
-Keep SMS in dry-run mode for this entire procedure.
+## Live configuration
 
-## 1. Prepare the generated test deployment
+Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
+
+```yaml
+  ups_monitor:
+    enabled: true
+    driver: i2c
+    i2c_sensor: max17043_ups
+    i2c_bus: 1
+    i2c_address: 0x36
+    device_name: "UPS Monitor"
+    display:
+      section: "UPS Power"
+      icon: "mdi:battery-charging"
+      order: 10
+    readings:
+      - {name: voltage, label: "UPS Battery Voltage", unit: V, device_class: voltage}
+      - {name: battery_level, label: "UPS Battery Level", unit: "%", device_class: battery}
+      - {name: mains_present, label: "External Power Present", state_class: null}
+    read_interval_seconds: 1
+    reconnect_interval_seconds: 5
+    maximum_reading_age_seconds: 15
+    power_detection:
+      source: x1200_gpio
+      gpio_chip: "/dev/gpiochip0"
+      gpio_line: 6
+      mains_present_active_high: true
+      outage_confirm_seconds: 3
+      restore_confirm_seconds: 5
+```
+
+## Regenerate and start
 
 ```bash
-cd ~/LabPulse/docker_refactor
-./setup_container_fs.sh -fake_usb
 cd ~/labpulse-ha
-```
-
-Confirm the derived config is safe and truthful:
-
-```bash
-grep -nE 'dry_run|ups_monitor|Voltage|Battery Level|transition|outage_drop|recovery_rise' config.fake.yaml
-grep -nE 'Current|charging_current|discharging_current|ina219' config.fake.yaml && echo "UNEXPECTED OLD POWER FIELD"
-```
-
-Generate and inspect Compose and Home Assistant:
-
-```bash
-./generate_compose.sh --config config.fake.yaml
-./generate_homeassistant_config.sh --config config.fake.yaml --reset-dashboard
-grep -n 'labpulse-ups-monitor' compose.yaml
-grep -nE 'Possible On Battery|outage_transition|recovery_transition|voltage_change' homeassistant/config/packages/labpulse_generated.yaml
-```
-
-The fake service must mount `/tmp/labpulse-fake-serial`; it must not receive an
-I2C device or privileged mode.
-
-## 2. Start the simulator and containers
-
-```bash
-cd ~/LabPulse/docker_refactor
-python3 simulate_serial.py start
-python3 simulate_serial.py status
-ls -l /tmp/labpulse-fake-serial/ups_monitor
-
-cd ~/labpulse-ha
+./generate_compose.sh
+./generate_homeassistant_config.sh --reset-dashboard
 sudo docker compose up -d --build
-sudo docker compose logs --tail=100 labpulse-ups-monitor
 ```
 
-Inspect telemetry directly if `mosquitto-clients` is installed:
+Confirm the UPS container has least-privilege device access:
 
 ```bash
-mosquitto_sub -h 127.0.0.1 -t 'home/sensor/ups_monitor/#' -v
+grep -A20 'labpulse-ups-monitor:' compose.yaml
 ```
 
-Only voltage and battery level should be published approximately once per
-second. The service status must be online.
+It should list `/dev/i2c-1` and `/dev/gpiochip0`, not privileged mode or the
+whole `/dev` directory.
 
-## 3. Exercise the lifecycle
+## Verify raw hardware state
 
-Start from normal voltage:
+With the X1200 input connected:
 
 ```bash
-cd ~/LabPulse/docker_refactor
-python3 simulate_serial.py set ups_monitor.power mains
+sudo gpioget gpiochip0 6
 ```
 
-Home Assistant should show `Normal`, approximately 4.13 V, and approximately
-94.2%.
+Expected: `1`. Disconnect only the low-voltage input to the X1200 while leaving
+the Pi running on its batteries. Expected: `0`. Reconnect it and expect `1`.
+Never connect or probe mains voltage with Raspberry Pi GPIO equipment.
 
-Test candidate cancellation by selecting battery and returning to mains before
-the three-second outage confirmation expires:
+## Verify MQTT and Home Assistant
 
-```bash
-python3 simulate_serial.py set ups_monitor.power battery
-# wait less than 3 seconds
-python3 simulate_serial.py set ups_monitor.power mains
-```
-
-No warning or recovery SMS request should be produced.
-
-Confirm a characterized sharp-drop event:
-
-```bash
-python3 simulate_serial.py set ups_monitor.power battery
-```
-
-After three seconds, the latched lifecycle should become
-`Possible On Battery` and produce exactly one dry-run warning request. Wording
-must report the configured five-second drop threshold and state that mains is
-inferred rather than measured.
-
-Test recovery cancellation by returning to `mains`, then selecting `battery`
-again before the recovery confirmation deadline. No recovery should be sent.
-Finally select `mains` continuously beyond both the 15-second confirmation and
-17-second rebound lockout. One recovery request should be produced, and event
-duration must use the first outage and recovery edges, excluding confirmation
-delays.
-
-## 4. Exercise stale evidence and reconnect grace
-
-Stop UPS emissions without disconnecting the pseudo-terminal:
-
-```bash
-python3 simulate_serial.py set ups_monitor.power stale
-```
-
-After MQTT expiry, keep the simulator stale for one further configured maximum
-evidence-age window. Home Assistant should then enter `Sensor Fault` and create
-one persistent notification plus one dry-run SMS request. Restore telemetry:
-
-```bash
-python3 simulate_serial.py set ups_monitor.power mains
-```
-
-The fault should clear only after fresh voltage evidence arrives. A persistent
-sensor-restored notification and recovery SMS request should be produced.
-
-Restart Home Assistant while normal UPS telemetry is arriving. Its temporary
-startup state must not create either a telemetry-fault or telemetry-restored
-notification/SMS request.
-
-Now test an actual pseudo-device removal:
-
-```bash
-python3 simulate_serial.py disconnect ups_monitor
-# reconnect before and after the configured evidence-age grace in separate runs
-python3 simulate_serial.py connect ups_monitor
-```
-
-Brief reconnect attempts must not create an immediate sensor fault.
-
-## 5. Persistence and mute
-
-Repeat candidate and active-event cases while restarting Home Assistant:
+Follow the normalized readings and service status:
 
 ```bash
 cd ~/labpulse-ha
+sudo docker compose exec -T mosquitto mosquitto_sub -v \
+  -t 'labpulse/ups_monitor/#'
+```
+
+Expected during a controlled test:
+
+1. Connected: `mains_present` is `1`; power state is `Normal`.
+2. Disconnect for under three seconds: no warning and no active outage.
+3. Disconnect for over three seconds: state becomes `On Battery` and exactly
+   one warning request is published.
+4. Leave it disconnected: no duplicate warning.
+5. Reconnect for under five seconds and interrupt it again: no recovery.
+6. Reconnect for over five seconds: state becomes `Normal`, exactly one
+   recovery request is published, and duration is recorded.
+
+The Monitor dashboard should continue showing voltage and percentage throughout
+the test. Those values are informational; changing them must not create power
+events.
+
+## Test-mode recipient safety
+
+In **LabPulse Alarm Setup**, confirm **Test mode** is on. Check container logs:
+
+```bash
+sudo docker compose logs --since=10m labpulse-sms
+```
+
+Every generated test alert must have `test_mode: true`, a `[TEST]` title, and
+only the configured `sms.test_recipients`. The full recipient list must not be
+selected. Subscription filtering and the standard unsubscribe footer remain
+owned by the SMS worker.
+
+## Fault and restart checks
+
+An unavailable raw mains reading or `gpio_fault` service status must select
+`Sensor Fault`, never `On Battery`. Restore access and confirm the state returns
+to the actual current power condition.
+
+During a confirmed outage, restart Home Assistant:
+
+```bash
 sudo docker compose restart homeassistant
 ```
 
-Test restart during an outage candidate, recovery candidate, and confirmed
-inferred outage. Persistent deadlines must reconcile without duplicate SMS.
-
-Enable the dedicated power mute in LabPulse Alarm Setup, repeat a sustained
-drop/recovery cycle, and confirm state/history still update while
-notifications and SMS requests are suppressed.
-
-Useful entities include:
-
-- `input_select.labpulse_ups_monitor_power_state`
-- `sensor.labpulse_ups_monitor_power_voltage_change`
-- `sensor.labpulse_ups_monitor_power_charge_change`
-- `binary_sensor.labpulse_ups_monitor_power_outage_transition`
-- `binary_sensor.labpulse_ups_monitor_power_recovery_transition`
-- `binary_sensor.labpulse_ups_monitor_power_low_voltage_evidence`
-- `binary_sensor.labpulse_ups_monitor_power_sensor_fault`
-- `input_boolean.labpulse_ups_monitor_power_muted`
-- `sensor.labpulse_ups_monitor_power_last_outage_started`
-- `sensor.labpulse_ups_monitor_power_last_outage_duration`
-
-## 6. Inspect and reset
-
-```bash
-cd ~/labpulse-ha
-sudo docker compose logs --since=30m labpulse-ups-monitor labpulse-sms homeassistant
-
-cd ~/LabPulse/docker_refactor
-python3 simulate_serial.py clear ups_monitor.power
-python3 simulate_serial.py reset
-python3 simulate_serial.py status
-```
-
-Do not claim live-Pi acceptance from this procedure. The live run must still
-confirm the real `0x36` gauge readings. The current installed system was
-characterized with a 0.050 V drop trigger, 0.062 V recovery-rise trigger,
-five-second window, and 17-second rebound lockout; repeat characterization if
-the battery, UPS HAT, or connected load changes.
+The outage must remain active without a duplicate warning. Reconnect power,
+restart Home Assistant during the five-second recovery period, and confirm the
+startup reconciliation emits at most one recovery.
