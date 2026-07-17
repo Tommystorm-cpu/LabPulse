@@ -244,7 +244,7 @@ def test_test_mode_routes_only_to_test_recipients() -> None:
     )
     results: list[DeliveryResult] = []
     sender.set_result_handler(results.append)
-    test_request = request().model_copy(
+    test_request = request(event="notification").model_copy(
         update={"test_mode": True, "title": "LabPulse Flow warning"}
     )
     try:
@@ -695,6 +695,12 @@ def test_message_formatting_and_privacy_helpers() -> None:
     assert_equal(
         UNSUBSCRIBE_FOOTER in recovery, False, "recovery has no warning footer"
     )
+    notification = format_sms_message(request("notification-message", "notification"))
+    assert_equal(
+        UNSUBSCRIBE_FOOTER in notification,
+        False,
+        "notification does not gain duplicate warning footer",
+    )
     missing_reading = request().model_copy(update={"current_reading": "unknown"})
     assert_equal(
         "Current Reading:" in format_sms_message(missing_reading),
@@ -731,6 +737,20 @@ def test_shared_sms_template_catalogue() -> None:
         assert_contains(
             alert["message"], CURRENT_READING_PLACEHOLDER, f"{name} current reading"
         )
+    phone_book = templates["notifications"]["phone_book"]
+    assert_equal("[TEST]" in phone_book["title"], False, "notification test prefix")
+    assert_contains(
+        phone_book["title"],
+        "LabPulse Phone Book Notification",
+        "phone book notification title",
+    )
+    for expected in (
+        "t.k.davey@lancaster.ac.uk",
+        "UNSUBSCRIBE",
+        "SUBSCRIBE",
+        "No further action is required.",
+    ):
+        assert_contains(phone_book["message"], expected, "phone book notification")
 
 
 TESTS = [

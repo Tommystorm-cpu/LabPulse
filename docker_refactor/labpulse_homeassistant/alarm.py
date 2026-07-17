@@ -40,6 +40,7 @@ def package_context(model: RenderModel) -> dict[str, str]:
         "input_datetimes": indented_yaml(input_datetimes(seed, power_seed, model), 2),
         "sensors": indented_yaml(sensors(seed, power_seed, model), 2),
         "templates": indented_yaml(templates(seed, power_seed, model), 2),
+        "scripts": indented_yaml(scripts(seed, model), 2),
         "automations": indented_yaml(automations(seed, power_seed, model), 2),
     }
 
@@ -141,6 +142,15 @@ def sensors(
     return result
 
 
+def scripts(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
+    """Return generated global dashboard action scripts."""
+
+    return expand_keyed_items(
+        seed.get("scripts", {}).get("global", []),
+        {"model": model, "sms": sms_template_context(model)},
+    )
+
+
 def templates(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
     """Return normal alarm and dedicated power template entity blocks."""
 
@@ -166,6 +176,11 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
 
     result = []
     sms = sms_template_context(model)
+    global_context = {"model": model, "sms": sms}
+    result.extend(
+        expand_template(item, global_context)
+        for item in seed["automations"].get("global", [])
+    )
     for service in model.services:
         context = {"service": service, "model": model, "sms": sms}
         result.extend(
@@ -190,12 +205,13 @@ def sms_template_context(model: RenderModel) -> dict[str, Any]:
     sms = deepcopy(load_sms_templates())
     test_prefix = json.dumps(f"{sms['formatting']['test_prefix']} ")
     test_entity = json.dumps(model.test_mode_entity)
-    for alert in sms["alerts"].values():
-        title = alert["title"]
-        alert["title"] = (
-            f"({test_prefix} if is_state({test_entity}, 'on') else \"\") "
-            f"~ ({title})"
-        )
+    for category in ("alerts", "notifications"):
+        for item in sms.get(category, {}).values():
+            title = item["title"]
+            item["title"] = (
+                f"({test_prefix} if is_state({test_entity}, 'on') else \"\") "
+                f"~ ({title})"
+            )
     return sms
 
 

@@ -160,6 +160,7 @@ def global_alarm_setup_section(
         "cards": [
             expand_template(rules["heading_card"], {"model": model}),
             expand_template(rules["settings_card"], {"model": model}),
+            expand_template(rules["phone_book_button"], {"model": model}),
         ],
     }
 

@@ -311,6 +311,7 @@ def test_power_dashboard_rendering() -> None:
         if isinstance(row, dict) and "entity" in row
     }
     required = {
+        "input_boolean.labpulse_ups_monitor_service_fault_active",
         "binary_sensor.labpulse_ups_monitor_power_mains_present",
         "sensor.labpulse_ups_monitor_mains_present",
         "binary_sensor.labpulse_ups_monitor_power_sensor_fault",

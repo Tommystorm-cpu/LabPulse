@@ -33,15 +33,8 @@ monitor_sections:
     heading_style: subtitle
     icon: "[[ service.icon ]]"
   status_tile:
-    type: entities
-    show_header_toggle: false
-    entities:
-      - entity: "[[ service.status_entity_id ]]"
-        name: Service status
-      - entity: "[[ service.health_fault_active_entity ]]"
-        name: Sensor hub fault active
-      - entity: "[[ service.health_fault_started_entity ]]"
-        name: Current fault started
+    type: tile
+    entity: "[[ service.status_entity_id ]]"
     grid_options:
       columns: full
   reading_list:
@@ -102,6 +95,9 @@ alarm_setup_sections:
     title: "[[ service.label ]] Timing"
     show_header_toggle: false
     entities:
+      - entity: "[[ service.health_fault_active_entity ]]"
+        name: Sensor hub fault active
+      - type: divider
       - entity: "[[ service.required_danger_percent_entity ]]"
         name: Required danger
       - entity: "[[ service.observation_window_seconds_entity ]]"
@@ -158,12 +154,27 @@ global_alarm_setup:
         name: Mute all notifications
       - entity: "[[ model.test_mode_entity ]]"
         name: Test mode
+  phone_book_button:
+    type: button
+    entity: "[[ model.phone_book_notification_script_entity ]]"
+    name: Send phone book notification
+    icon: mdi:account-multiple-check
+    show_state: false
+    tap_action:
+      action: perform-action
+      perform_action: "[[ model.phone_book_notification_script_entity ]]"
+      confirmation:
+        text: >-
+          Send the phone book notification to the active recipient list? Test mode uses only test recipients; live mode uses normal recipients. Nothing is sent while all notifications are muted.
 
 power_alarm_setup:
   settings_card:
     type: entities
     show_header_toggle: false
     entities:
+      - entity: "[[ service.health_fault_active_entity ]]"
+        name: Sensor hub fault active
+      - type: divider
       - entity: "[[ power.state_entity ]]"
         name: Power lifecycle state
       - entity: "[[ power.muted_entity ]]"

@@ -204,6 +204,9 @@ class RenderModel:
     sms_send_topic: str = SMS_SEND_TOPIC
     global_muted_entity: str = "input_boolean.labpulse_global_notifications_muted"
     test_mode_entity: str = "input_boolean.labpulse_notification_test_mode"
+    phone_book_notification_script_entity: str = (
+        "script.labpulse_send_phone_book_notification"
+    )
 
     @property
     def readings(self) -> list[tuple[ServiceModel, ReadingModel]]:

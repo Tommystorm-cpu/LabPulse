@@ -115,6 +115,18 @@ def test_sms_contract() -> None:
     )
     assert_equal(request.event, "test", "validated SMS request")
     assert_equal(request.test_mode, False, "normal delivery default")
+    notification = SmsRequest.model_validate(
+        {
+            "request_id": "notification-1",
+            "event": "notification",
+            "service": "labpulse",
+            "reading": "phone_book",
+            "state": "Notification",
+            "title": "LabPulse Phone Book Notification",
+            "message": "Phone book notification",
+        }
+    )
+    assert_equal(notification.event, "notification", "validated notification request")
 
 
 def test_service_health_config_contract() -> None:

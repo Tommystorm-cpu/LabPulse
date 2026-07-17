@@ -255,7 +255,7 @@ labelled subgroup for each service, while MQTT identities, service health, and
 Alarm Setup sections remain independent. The first service in display order
 provides the shared section icon.
 
-The first Alarm Setup section contains two global delivery controls. **Mute all
+The first Alarm Setup section contains the global delivery controls. **Mute all
 notifications** suppresses Home Assistant notifications and SMS without
 changing any per-reading or power mute helper. Turning it off therefore leaves
 individually muted readings muted. **Test mode** prefixes notification titles
@@ -263,6 +263,12 @@ with `[TEST]` and routes SMS requests only to `sms.test_recipients`; alarm state
 calculation and thresholds are unchanged. Test mode initializes to **on** after
 every Home Assistant start. An operator must deliberately turn it off before
 normal recipients can receive alerts.
+
+**Send phone book notification** opens a confirmation prompt before publishing
+the standard phone-book notice. It uses the same safe routing as every other
+SMS: Test mode sends only to `sms.test_recipients`, normal mode sends to
+`sms.recipients`, and numbers that have sent `UNSUBSCRIBE` are excluded in
+either mode. The action sends nothing while **Mute all notifications** is on.
 
 Within a multi-purpose service, assign the same `readings[].group` to related
 readings. Monitor renders one compact, untitled sensor card per group,

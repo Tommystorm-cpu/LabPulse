@@ -163,6 +163,25 @@ input_booleans:
       config:
         name: "[[ reading.label ]] Alarm Muted"
 
+scripts:
+  global:
+    - id: "labpulse_send_phone_book_notification"
+      config:
+        alias: "Send LabPulse Phone Book Notification"
+        icon: mdi:account-multiple-check
+        mode: single
+        sequence:
+          - condition: state
+            entity_id: "[[ model.global_muted_entity ]]"
+            state: "off"
+          - service: mqtt.publish
+            data:
+              topic: "[[ model.sms_send_topic ]]"
+              qos: 1
+              retain: false
+              payload: >
+                {{ {"request_id": "labpulse_phone_book_notification_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "notification", "service": "labpulse", "service_label": "LabPulse", "reading": "phone_book", "reading_label": "Phone book", "state": "Notification", "title": [[ sms.notifications.phone_book.title ]], "message": [[ sms.notifications.phone_book.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": none} | to_json }}
+
 input_datetimes:
   service:
     - id: "labpulse_[[ service.service_id ]]_service_fault_started"

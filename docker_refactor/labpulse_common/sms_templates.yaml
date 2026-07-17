@@ -76,3 +76,10 @@ commands:
     You have been unsubscribed from LabPulse messages. Reply SUBSCRIBE to receive messages again.
   subscribe_confirmation: >-
     You have been subscribed to LabPulse messages. Reply UNSUBSCRIBE to stop receiving messages.
+
+notifications:
+  phone_book:
+    title: >-
+      "LabPulse Phone Book Notification"
+    message: >-
+      "You are receiving this message because your phone number is registered for LabPulse monitoring alerts. No action is required. To pause notifications, reply UNSUBSCRIBE to this phone number. To re-enable notifications, reply SUBSCRIBE. For permanent removal, contact t.k.davey@lancaster.ac.uk. (This message was triggered manually from the LabPulse dashboard)"

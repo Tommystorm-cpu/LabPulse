@@ -595,14 +595,14 @@ outage latch. Battery voltage and percentage never determine outage state.
 
 All user-facing SMS text is defined once in
 `labpulse_common/sms_templates.yaml`. The Home Assistant generator expands its
-alert title/message pairs into MQTT requests. Each alert body contains a
+alert and notification title/message pairs into MQTT requests. Each alert body contains a
 dedicated `{current_reading}` line labelled for that alert; the SMS worker fills
 that final value or removes the line when no usable reading exists. The worker
 also reads the same file for the test prefix, warning footer, and
 subscribe/unsubscribe confirmations. `sms_templates.py` validates the catalogue
 at startup so a missing, empty, or incomplete alert entry fails clearly.
 The Home Assistant generator applies the conditional `[TEST]` prefix centrally
-to every alert title, so individual title templates contain only their normal
+to every alert and notification title, so individual title templates contain only their normal
 wording. The SMS worker retains a no-duplication prefix check as a safety net.
 
 `labpulse_sms/cli.py` loads config, creates the persistent

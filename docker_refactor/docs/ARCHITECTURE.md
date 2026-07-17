@@ -285,6 +285,10 @@ mode does not alter alarm evaluation; it marks notifications `[TEST]` and sends
 SMS only to the configured test list. Zone calculation and state transitions
 continue under either mode.
 
+The Alarm Setup phone-book action publishes a validated `notification` request
+through the same path. It therefore inherits test/live recipient selection,
+persistent unsubscribe filtering, deduplication, and delivery-result reporting.
+
 ## Failure behavior
 
 - A missing serial device does not terminate the service loop. The driver

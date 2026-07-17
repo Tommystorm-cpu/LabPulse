@@ -44,6 +44,8 @@ def load_sms_templates() -> dict[str, Any]:
         ("formatting", "unsubscribe_footer"),
         ("commands", "unsubscribe_confirmation"),
         ("commands", "subscribe_confirmation"),
+        ("notifications", "phone_book", "title"),
+        ("notifications", "phone_book", "message"),
     )
     for path in required_paths:
         value: object = payload

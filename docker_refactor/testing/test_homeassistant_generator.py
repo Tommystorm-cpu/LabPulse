@@ -174,6 +174,7 @@ def test_generated_package_and_entity_map() -> None:
     assert "labpulse_pressure_monitor_alarm_defaults_initialized" in package["input_boolean"]
     assert "labpulse_pressure_monitor_service_fault_active" in package["input_boolean"]
     assert "labpulse_pressure_monitor_service_fault_started" in package["input_datetime"]
+    assert "labpulse_send_phone_book_notification" in package["script"]
     reading_default_markers = [
         helper_id
         for helper_id in package["input_boolean"]
@@ -240,6 +241,28 @@ def test_generated_package_and_entity_map() -> None:
 
     automations = package["automation"]
     automation_by_alias = {automation["alias"]: automation for automation in automations}
+    phone_book = package["script"]["labpulse_send_phone_book_notification"]
+    assert_equal(
+        phone_book["sequence"][0],
+        {
+            "condition": "state",
+            "entity_id": "input_boolean.labpulse_global_notifications_muted",
+            "state": "off",
+        },
+        "phone book action obeys global mute",
+    )
+    phone_book_yaml = yaml.safe_dump(phone_book, sort_keys=False)
+    for expected in (
+        '"event": "notification"',
+        '"test_mode": is_state(',
+        "[TEST]",
+        "LabPulse Phone Book Notification",
+        "t.k.davey@lancaster.ac.uk",
+        "UNSUBSCRIBE",
+        "SUBSCRIBE",
+    ):
+        if expected not in phone_book_yaml:
+            raise AssertionError(f"phone book notification lacks {expected}")
     service_fault = automation_by_alias["LabPulse Air Pressure Sensor Hub Service Fault"]
     service_recovery = automation_by_alias["LabPulse Air Pressure Sensor Hub Service Restored"]
     assert_equal(service_fault["mode"], "single", "one service fault lifecycle")
@@ -543,14 +566,11 @@ def test_dashboard_reset_and_preserve() -> None:
         "Air Pressure Sensor Hub",
         "single-service device subheading",
     )
+    assert_equal(pressure_cards[2]["type"], "tile", "service health tracker tile")
     assert_equal(
-        [row["entity"] for row in pressure_cards[2]["entities"]],
-        [
-            "sensor.labpulse_pressure_monitor_status",
-            "input_boolean.labpulse_pressure_monitor_service_fault_active",
-            "input_datetime.labpulse_pressure_monitor_service_fault_started",
-        ],
-        "service health dashboard rows",
+        pressure_cards[2]["entity"],
+        "sensor.labpulse_pressure_monitor_status",
+        "service health tracker entity",
     )
     reading_list = pressure_cards[3]
     assert_equal(reading_list["type"], "entities", "reading list card type")
@@ -583,9 +603,30 @@ def test_dashboard_reset_and_preserve() -> None:
         ],
         "global notification controls",
     )
+    assert_equal(global_cards[2]["type"], "button", "phone book notification card")
+    assert_equal(
+        global_cards[2]["entity"],
+        "script.labpulse_send_phone_book_notification",
+        "phone book notification entity",
+    )
+    confirmation = global_cards[2]["tap_action"]["confirmation"]["text"]
+    if "Test mode uses only test recipients" not in confirmation:
+        raise AssertionError("phone book action does not explain safe recipient routing")
     setup_cards = views[1]["sections"][1]["cards"]
     assert_equal(setup_cards[1]["type"], "entities", "service timing card type")
     assert_equal(setup_cards[1]["title"], "Air Pressure Sensor Hub Timing", "service timing card title")
+    assert_equal(
+        setup_cards[1]["entities"][0]["entity"],
+        "input_boolean.labpulse_pressure_monitor_service_fault_active",
+        "service fault indicator belongs in Alarm Setup",
+    )
+    if any(
+        row.get("entity") == "input_datetime.labpulse_pressure_monitor_service_fault_started"
+        for card in pressure_cards + setup_cards
+        for row in card.get("entities", [])
+        if isinstance(row, dict)
+    ):
+        raise AssertionError("service fault timestamp should remain internal")
     assert_equal(
         setup_cards[2]["entity"],
         "input_boolean.labpulse_pressure_monitor_pressure_alarm_controls_expanded",
