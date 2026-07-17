@@ -111,14 +111,14 @@ def test_configurable_polarity() -> None:
 
 
 def test_libgpiod_cli_versions() -> None:
-    """Prefer the v2 CLI and fall back to the host's v1 syntax."""
+    """Support the v2 output format and fall back to the host's v1 syntax."""
 
     modern_commands: list[list[str]] = []
     modern = GpiodLineReader(
         "/dev/gpiochip0",
         6,
         True,
-        sequence_runner([command_result("1\n")], modern_commands),
+        sequence_runner([command_result('"6"=active\n')], modern_commands),
     )
     if modern.read() != 1.0 or modern_commands != [
         ["gpioget", "-c", "gpiochip0", "6"]
@@ -143,6 +143,15 @@ def test_libgpiod_cli_versions() -> None:
         ["gpioget", "gpiochip0", "6"],
     ]:
         raise AssertionError(f"libgpiod 1.x fallback is incorrect: {legacy_commands!r}")
+
+    modern_inactive = GpiodLineReader(
+        "/dev/gpiochip0",
+        6,
+        True,
+        runner_for(command_result('"6"=inactive\n')),
+    )
+    if modern_inactive.read() != 0.0:
+        raise AssertionError("libgpiod 2.x inactive output was not normalized")
 
 
 def test_composite_publishes_mains_and_battery() -> None:

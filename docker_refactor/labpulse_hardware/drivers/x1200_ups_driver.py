@@ -55,10 +55,11 @@ class GpiodLineReader:
             result = legacy_result
 
         raw = result.stdout.strip()
-        if raw not in {"0", "1"}:
+        value = raw.rsplit("=", 1)[-1].strip().lower()
+        if value not in {"0", "1", "active", "inactive"}:
             raise ValueError(f"unexpected gpioget output: {raw!r}")
 
-        asserted = raw == "1"
+        asserted = value in {"1", "active"}
         mains_present = asserted if self.active_high else not asserted
         return 1.0 if mains_present else 0.0
 
