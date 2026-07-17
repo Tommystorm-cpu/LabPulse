@@ -129,7 +129,9 @@ queue. Validated requests carry a strict `test_mode` flag: normal requests fan
 out to `sms.recipients`, while test requests fan out only to
 `sms.test_recipients`. In safe `dry_run` mode it only logs masked recipients.
 In real mode it uses `mmcli`, so Compose additionally exposes D-Bus and devices
-to this one container.
+to this one container. It also accepts `SUBSCRIBE` and `UNSUBSCRIBE` only from
+numbers in either configured list. One persistent subscription choice filters
+both normal and test delivery.
 
 ## Python package boundaries
 
@@ -172,8 +174,8 @@ renamed MQTT entity IDs.
 ### `labpulse_sms`
 
 Owns alert-request validation, duplicate/flood protection, recipient fan-out,
-the bounded delivery queue, dry-run logging, `mmcli` retries, and result/status
-publishing.
+the bounded delivery queue, persistent allow-listed subscription commands,
+dry-run logging, `mmcli` retries, and result/status publishing.
 
 ## Configuration and state ownership
 
@@ -300,6 +302,7 @@ continue under either mode.
 | Add/validate a config field | `labpulse_common/config.py` |
 | Change stable IDs | `labpulse_common/identity.py` |
 | Change topics or SMS request fields | `labpulse_common/mqtt_contracts.py` |
+| Change any user-facing SMS wording | `labpulse_common/sms_templates.yaml` |
 | Change acquisition or reconnect behavior | `labpulse_hardware/drivers/` |
 | Adapt current Arduino text | `labpulse_hardware/legacy_parsing/serial_parser.py` |
 | Change discovery/state publishing | `labpulse_hardware/homeassistant_publisher.py` |

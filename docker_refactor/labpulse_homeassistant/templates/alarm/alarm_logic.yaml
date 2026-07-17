@@ -128,6 +128,9 @@ input_booleans:
     - id: "labpulse_notification_test_mode"
       config:
         name: "LabPulse Notification Test Mode"
+        # Fail safe after every Home Assistant start. Operators must deliberately
+        # turn test mode off before normal recipients can receive alerts.
+        initial: true
 
   service:
     # This persistent marker seeds service defaults exactly once. Omitting
@@ -367,8 +370,8 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": "Danger",
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] warning",
-                        "message": "Danger threshold: " ~ threshold ~ ". Evidence: " ~ (observed | round(1) | string) ~ "% of " ~ (window | string) ~ " seconds (about " ~ (danger_seconds | string) ~ " seconds); required " ~ states('[[ service.required_danger_percent_entity ]]') ~ "%.",
+                        "title": [[ sms.alerts.reading_warning.title ]],
+                        "message": [[ sms.alerts.reading_warning.message ]],
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": states('[[ reading.expected_entity_id ]]')
                       } | to_json }}
@@ -428,8 +431,8 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": "Normal",
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] recovery",
-                        "message": "Recovered after " ~ states('[[ service.required_recovery_seconds_entity ]]') ~ " seconds in the deadband-adjusted safe zone. Thresholds: " ~ states('[[ reading.minimum_threshold_entity ]]') ~ " to " ~ states('[[ reading.maximum_threshold_entity ]]') ~ "; deadband " ~ states('[[ reading.recovery_deadband_entity ]]') ~ ".",
+                        "title": [[ sms.alerts.reading_recovery.title ]],
+                        "message": [[ sms.alerts.reading_recovery.message ]],
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": states('[[ reading.expected_entity_id ]]')
                       } | to_json }}
@@ -497,8 +500,8 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": "Sensor Fault",
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] sensor fault",
-                        "message": "Sensor fault reason: " ~ reason ~ ". Service status: " ~ service_status ~ ".",
+                        "title": [[ sms.alerts.reading_sensor_fault.title ]],
+                        "message": [[ sms.alerts.reading_sensor_fault.message ]],
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": raw
                       } | to_json }}
@@ -577,8 +580,8 @@ automations:
                         "reading": "[[ reading.name ]]",
                         "reading_label": "[[ reading.label ]]",
                         "state": states('[[ reading.alarm_state_entity ]]'),
-                        "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] sensor restored",
-                        "message": "Valid numeric telemetry resumed. Service status: " ~ states('[[ service.status_entity_id ]]') ~ "; alarm state: " ~ states('[[ reading.alarm_state_entity ]]') ~ ".",
+                        "title": [[ sms.alerts.reading_sensor_recovery.title ]],
+                        "message": [[ sms.alerts.reading_sensor_recovery.message ]],
                         "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'),
                         "current_reading": states('[[ reading.expected_entity_id ]]')
                       } | to_json }}

@@ -1,0 +1,66 @@
+# Single source of truth for every user-facing LabPulse SMS template.
+#
+# Alert title/message values are Home Assistant Jinja expressions. LabPulse
+# placeholders such as [[ service.label ]] are expanded by the generator before
+# Home Assistant receives the generated package. The SMS worker replaces
+# {current_reading} after Home Assistant has evaluated the surrounding message.
+
+alerts:
+  reading_warning:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse Danger Warning: [[ service.label ]] - [[ reading.label ]] is in danger"
+    message: >-
+      "Current Reading: {current_reading}. \nDanger threshold: " ~ threshold ~ ". \nEvidence: " ~ (observed | round(1) | string) ~ "% of the past " ~ (window | string) ~ " seconds spent in danger zone; required " ~ states('[[ service.required_danger_percent_entity ]]') ~ "% for warning. \nManual intervention may be required."
+
+  reading_recovery:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse Recovery Aler: [[ service.label ]] - [[ reading.label ]] has recovered from a danger state."
+    message: >-
+      "Current Reading: {current_reading}. \nRecovered after " ~ states('[[ service.required_recovery_seconds_entity ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ reading.minimum_threshold_entity ]]') ~ " to " ~ states('[[ reading.maximum_threshold_entity ]]') ~ "; deadband " ~ states('[[ reading.recovery_deadband_entity ]]') ~ "."
+
+  reading_sensor_fault:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] sensor fault"
+    message: >-
+      "Sensor fault reason: " ~ reason ~ ". Service status: " ~ service_status ~ "." ~ "\nCurrent Reading: {current_reading}"
+
+  reading_sensor_recovery:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse [[ service.label ]] - [[ reading.label ]] sensor restored"
+    message: >-
+      "Valid numeric telemetry resumed. Service status: " ~ states('[[ service.status_entity_id ]]') ~ "; alarm state: " ~ states('[[ reading.alarm_state_entity ]]') ~ "." ~ "\nCurrent Reading: {current_reading}"
+
+  power_warning:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse possible UPS outage"
+    message: >-
+      "Confirmed outage evidence: five-second voltage change " ~ states('[[ power.voltage_change_entity ]]') ~ " V; drop trigger [[ power.outage_drop_volts ]] V; absolute fallback [[ power.low_voltage_threshold ]] V; confirmation " ~ states('[[ power.outage_confirm_seconds_entity ]]') ~ " seconds. Mains is inferred, not measured directly." ~ "\nCurrent Reading: {current_reading}"
+
+  power_recovery:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS power recovery inferred"
+    message: >-
+      "Confirmed recovery evidence after " ~ outage_duration ~ " seconds: rise trigger [[ power.recovery_rise_volts ]] V over [[ power.transition_window_seconds ]] seconds; rebound lockout [[ power.recovery_lockout_seconds ]] seconds; confirmation " ~ states('[[ power.restore_confirm_seconds_entity ]]') ~ " seconds. Mains restoration is inferred." ~ "\nCurrent Reading: {current_reading}"
+
+  power_sensor_fault:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS telemetry fault"
+    message: >-
+      "No fresh validated voltage remained after MQTT expiry. Voltage state: " ~ states('[[ power.voltage.expected_entity_id ]]') ~ "; service status: " ~ states('[[ service.status_entity_id ]]') ~ "; additional confirmation: [[ power.maximum_reading_age_seconds ]] seconds." ~ "\nCurrent Reading: {current_reading}"
+
+  power_sensor_recovery:
+    title: >-
+      ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS telemetry restored"
+    message: >-
+      "Fresh validated voltage resumed after a confirmed telemetry fault. Service status: " ~ states('[[ service.status_entity_id ]]') ~ "." ~ "\nCurrent Reading: {current_reading}"
+
+formatting:
+  test_prefix: "[TEST]"
+  unsubscribe_footer: >-
+    If you wish to stop receiving messages from LabPulse, reply with UNSUBSCRIBE. To resubscribe, message SUBSCRIBE
+
+commands:
+  unsubscribe_confirmation: >-
+    You have been unsubscribed from LabPulse messages. Reply SUBSCRIBE to receive messages again.
+  subscribe_confirmation: >-
+    You have been subscribed to LabPulse messages. Reply UNSUBSCRIBE to stop receiving messages.

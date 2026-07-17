@@ -5,6 +5,8 @@ from typing import Any
 
 import yaml
 
+from labpulse_common.sms_templates import load_sms_templates
+
 from .data_models import GeneratorPaths, RenderModel
 from .template_utils import expand_template, render_template_file
 
@@ -145,16 +147,17 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
     """Return normal alarms and the dedicated power lifecycle automations."""
 
     result = []
+    sms = load_sms_templates()
     for service in model.services:
         if service.readings and service.power is None:
-            context = {"service": service, "model": model}
+            context = {"service": service, "model": model, "sms": sms}
             result.extend(expand_template(item, context) for item in seed["automations"].get("service", []))
     for service, reading in model.alarm_readings:
-        context = {"service": service, "reading": reading, "model": model}
+        context = {"service": service, "reading": reading, "model": model, "sms": sms}
         result.extend(expand_template(item, context) for item in seed["automations"].get("reading", []))
     for service in model.services:
         if service.power is not None:
-            context = {"service": service, "power": service.power, "model": model}
+            context = {"service": service, "power": service.power, "model": model, "sms": sms}
             result.extend(expand_template(item, context) for item in power_seed.get("automations", []))
     return result
 

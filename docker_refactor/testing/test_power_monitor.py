@@ -217,7 +217,11 @@ def test_dedicated_lifecycle_and_timing_semantics() -> None:
     power_helpers = [
         package["input_select"]["labpulse_ups_monitor_power_state"],
         *package["input_number"].values(),
-        *package["input_boolean"].values(),
+        *(
+            helper
+            for helper_id, helper in package["input_boolean"].items()
+            if helper_id != "labpulse_notification_test_mode"
+        ),
     ]
     if any("initial" in helper for helper in power_helpers):
         raise AssertionError("power lifecycle helpers would reset instead of restore after restart")

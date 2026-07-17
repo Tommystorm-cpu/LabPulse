@@ -8,11 +8,22 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Sequence
+from typing import Protocol
 
 from labpulse_common.mqtt_contracts import SmsRequest
+from labpulse_common.sms_templates import CURRENT_READING_PLACEHOLDER, sms_template
 
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+
+class SubscriptionLookup(Protocol):
+    """Minimal subscription interface required by outbound routing."""
+
+    def is_subscribed(self, phone_number: str) -> bool:
+        """Return whether one configured recipient currently accepts alerts."""
+
+        ...
 
 
 @dataclass(frozen=True)
@@ -27,17 +38,40 @@ class DeliveryResult:
 
 ResultHandler = Callable[[DeliveryResult], None]
 
+UNSUBSCRIBE_FOOTER = sms_template("formatting", "unsubscribe_footer")
+TEST_PREFIX = sms_template("formatting", "test_prefix")
+
+
+@dataclass(frozen=True)
+class InboundSms:
+    """One complete received SMS returned by ModemManager."""
+
+    path: str
+    phone_number: str
+    text: str
+
 
 def format_sms_message(request: SmsRequest) -> str:
     """Create one concise SMS body from a validated request."""
 
     title = request.title
-    if request.test_mode and not title.startswith("[TEST]"):
-        title = f"[TEST] {title}"
-    lines = [title, request.message]
-    if request.current_reading not in (None, "", "unknown", "None"):
-        lines.append(f"Current Reading: {request.current_reading}")
+    if request.test_mode and not title.startswith(TEST_PREFIX):
+        title = f"{TEST_PREFIX} {title}"
+    message = render_alert_message(request.message, request.current_reading)
+    lines = [title, message]
+    if request.event == "warning":
+        lines.extend(("", UNSUBSCRIBE_FOOTER))
     return "\n".join(lines)
+
+
+def render_alert_message(message: str, current_reading: str | None) -> str:
+    """Fill the reading placeholder or remove its template line when absent."""
+
+    if current_reading not in (None, "", "unknown", "None"):
+        return message.replace(CURRENT_READING_PLACEHOLDER, str(current_reading))
+    return "\n".join(
+        line for line in message.splitlines() if CURRENT_READING_PLACEHOLDER not in line
+    )
 
 
 def mask_phone_number(phone_number: str) -> str:
@@ -62,6 +96,7 @@ class SmsSender:
         retry_delay_seconds: float = 2.0,
         sleeper: Callable[[float], None] = time.sleep,
         queue_size: int = 100,
+        subscription_registry: SubscriptionLookup | None = None,
     ) -> None:
         """Store delivery settings and start the background send worker."""
 
@@ -73,6 +108,8 @@ class SmsSender:
         self.retries = retries
         self.retry_delay_seconds = retry_delay_seconds
         self.sleeper = sleeper
+        self.subscription_registry = subscription_registry
+        self.modem_lock = threading.RLock()
         self.result_handler: ResultHandler | None = None
         self.queue: queue.Queue[tuple[str, SmsRequest] | None] = queue.Queue(
             maxsize=queue_size
@@ -112,15 +149,32 @@ class SmsSender:
             )
             return False
 
+        active_recipients = []
+        for recipient in recipients:
+            if (
+                self.subscription_registry is not None
+                and not self.subscription_registry.is_subscribed(recipient)
+            ):
+                self._report(
+                    DeliveryResult(
+                        request.request_id,
+                        mask_phone_number(recipient),
+                        "unsubscribed",
+                        "recipient has unsubscribed",
+                    )
+                )
+            else:
+                active_recipients.append(recipient)
+
         available_slots = self.queue.maxsize - self.queue.qsize()
-        if self.queue.maxsize and available_slots < len(recipients):
+        if self.queue.maxsize and available_slots < len(active_recipients):
             self.logger.error("SMS queue is full; request %s was rejected", request.request_id)
             self._report(
                 DeliveryResult(request.request_id, "", "failed", "sender queue full")
             )
             return False
         try:
-            for recipient in recipients:
+            for recipient in active_recipients:
                 self.queue.put_nowait((recipient, request))
         except queue.Full:
             self.logger.error("SMS queue is full; request %s was rejected", request.request_id)
@@ -140,7 +194,70 @@ class SmsSender:
                 message,
             )
             return True
-        return self._send_with_mmcli(phone_number, message)
+        with self.modem_lock:
+            return self._send_with_mmcli(phone_number, message)
+
+    def list_received_sms(self) -> list[InboundSms]:
+        """Return complete received text messages currently stored by the modem."""
+
+        with self.modem_lock:
+            modem_id = self.get_modem_id()
+            if modem_id is None:
+                return []
+            try:
+                result = self.runner(
+                    ["mmcli", "-m", modem_id, "--messaging-list-sms"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=15,
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                self.logger.warning(
+                    "Could not list received SMS objects: %s", type(error).__name__
+                )
+                return []
+
+            messages = []
+            paths = dict.fromkeys(
+                re.findall(r"/org/freedesktop/ModemManager1/SMS/\d+", result.stdout)
+            )
+            for sms_path in paths:
+                message = self._read_received_sms(sms_path)
+                if message is not None:
+                    messages.append(message)
+            return messages
+
+    def _read_received_sms(self, sms_path: str) -> InboundSms | None:
+        """Read one SMS object and return it only when reception is complete."""
+
+        try:
+            result = self.runner(
+                ["mmcli", "-s", sms_path, "--output-keyvalue"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=15,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            self.logger.warning("Could not read SMS object %s: %s", sms_path, error)
+            return None
+        fields = parse_mmcli_key_values(result.stdout)
+        if fields.get("sms.properties.state") != "received":
+            return None
+        phone_number = fields.get("sms.content.number", "").strip()
+        text = fields.get("sms.content.text", "")
+        if not phone_number or not text:
+            return None
+        return InboundSms(sms_path, phone_number, text)
+
+    def delete_received_sms(self, sms_path: str) -> None:
+        """Delete one processed received SMS object from modem storage."""
+
+        with self.modem_lock:
+            modem_id = self.get_modem_id()
+            if modem_id is not None:
+                self.delete_sms(modem_id, sms_path)
 
     def close(self, timeout: float = 15) -> None:
         """Drain pending sends and stop the worker thread."""
@@ -309,3 +426,14 @@ def quote_mmcli_value(value: str) -> str:
 
     escaped = value.replace("\\", "\\\\").replace("'", "\\'")
     return f"'{escaped}'"
+
+
+def parse_mmcli_key_values(output: str) -> dict[str, str]:
+    """Parse mmcli's stable machine-readable key-value output."""
+
+    fields = {}
+    for line in output.splitlines():
+        key, separator, value = line.partition(":")
+        if separator:
+            fields[key.strip()] = value.strip()
+    return fields

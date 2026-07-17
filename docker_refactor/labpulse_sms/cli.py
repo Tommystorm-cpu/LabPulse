@@ -12,6 +12,7 @@ from labpulse_common.config import load_config
 from labpulse_common.logging_config import configure_logging
 from labpulse_sms.sender import SmsSender
 from labpulse_sms.subscriber import RecentRequestCache, SMSSubscriber
+from labpulse_sms.subscriptions import SmsCommandMonitor, SubscriptionRegistry
 
 APP_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = APP_DIR / "config.yaml"
@@ -37,18 +38,26 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
 
     logger = logging.getLogger("LabPulse.SMS")
+    log_dir = Path(os.environ.get("LABPULSE_LOG_DIR", APP_DIR / "logs"))
+    subscription_registry = SubscriptionRegistry(
+        [*cfg.sms.recipients, *cfg.sms.test_recipients],
+        log_dir / "sms_subscriptions.json",
+    )
     sender = SmsSender(
         cfg.sms.recipients,
         logger,
         test_recipients=cfg.sms.test_recipients,
         dry_run=cfg.sms.dry_run,
+        subscription_registry=subscription_registry,
     )
-    log_dir = Path(os.environ.get("LABPULSE_LOG_DIR", APP_DIR / "logs"))
     subscriber = SMSSubscriber(
         cfg.mqtt,
         sender,
         request_cache=RecentRequestCache(log_dir / "sms_processed_requests.json"),
     )
+    command_monitor = None
+    if not cfg.sms.dry_run:
+        command_monitor = SmsCommandMonitor(sender, subscription_registry, logger)
 
     def stop_service(_signum: int, _frame: object) -> None:
         """Interrupt the MQTT loop so finally can drain queued messages."""
@@ -58,11 +67,15 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, stop_service)
     signal.signal(signal.SIGINT, stop_service)
     try:
+        if command_monitor is not None:
+            command_monitor.start()
         subscriber.connect()
         subscriber.loop_forever()
     except KeyboardInterrupt:
         logger.info("SMS service stopping")
     finally:
+        if command_monitor is not None:
+            command_monitor.close()
         subscriber.close()
     return 0
 

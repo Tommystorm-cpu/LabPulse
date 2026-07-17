@@ -49,7 +49,10 @@ entity_registry.py
   query Home Assistant by (platform, unique_id) and overlay actual entity IDs
 
 template_utils.py
-  recursive [[ service... ]]/[[ reading... ]] expansion and output-file writes
+  recursive LabPulse placeholder expansion and output-file writes
+
+../labpulse_common/sms_templates.yaml
+  shared alert, formatting, and subscription-command SMS wording
 
 templates/core/
   outer core/entity-map templates
@@ -84,6 +87,8 @@ and synchronization commands are documented in
 
 - Change alarm helpers, zones, transitions, or notifications in
   `templates/alarm/alarm_logic.yaml`.
+- Change every user-facing SMS title/message in
+  `../labpulse_common/sms_templates.yaml`.
 - Change the reset-dashboard structure in
   `templates/dashboard/dashboard_seed.yaml`.
 - Change entity modelling/defaults in `data_models.py`.

@@ -20,12 +20,20 @@ from labpulse_common.mqtt_contracts import (
     SmsRequest,
     sms_result_topic,
 )
+from labpulse_common.sms_templates import (
+    CURRENT_READING_PLACEHOLDER,
+    TEMPLATE_PATH,
+    load_sms_templates,
+)
 from labpulse_sms.cli import DEFAULT_CONFIG_PATH, parse_args
 from labpulse_sms.sender import (
     DeliveryResult,
+    InboundSms,
     SmsSender,
+    UNSUBSCRIBE_FOOTER,
     format_sms_message,
     mask_phone_number,
+    parse_mmcli_key_values,
     quote_mmcli_value,
 )
 from labpulse_sms.subscriber import (
@@ -33,6 +41,12 @@ from labpulse_sms.subscriber import (
     SMSSubscriber,
     SmsPayloadError,
     parse_sms_payload,
+)
+from labpulse_sms.subscriptions import (
+    SUBSCRIBE_CONFIRMATION,
+    UNSUBSCRIBE_CONFIRMATION,
+    SmsCommandMonitor,
+    SubscriptionRegistry,
 )
 
 
@@ -89,6 +103,31 @@ class FakeSender:
         self.closed = True
 
 
+class FakeCommandSender:
+    """Modem-facing sender stand-in for inbound command tests."""
+
+    def __init__(self, messages: list[InboundSms]) -> None:
+        self.messages = messages
+        self.sent: list[tuple[str, str]] = []
+        self.deleted: list[str] = []
+
+    def list_received_sms(self) -> list[InboundSms]:
+        """Return the currently configured fake inbox."""
+
+        return list(self.messages)
+
+    def delete_received_sms(self, sms_path: str) -> None:
+        """Record deletion of a processed modem object."""
+
+        self.deleted.append(sms_path)
+
+    def send_sms(self, phone_number: str, message: str) -> bool:
+        """Record one direct confirmation message."""
+
+        self.sent.append((phone_number, message))
+        return True
+
+
 def quiet_logger() -> object:
     """Return a logger-like object suitable for isolated backend tests."""
 
@@ -116,7 +155,7 @@ def request_payload(request_id: str = "request-1", event: str = "warning") -> di
         "reading_label": "Flow 1",
         "state": "Danger",
         "title": "LabPulse Flow warning",
-        "message": "Pump Room / Flow 1 is in Danger.",
+        "message": "Pump Room / Flow 1 is in Danger.\nCurrent Reading: {current_reading}",
         "test_mode": False,
         "current_reading": "0.2",
     }
@@ -220,6 +259,168 @@ def test_test_mode_routes_only_to_test_recipients() -> None:
         "test recipients only",
     )
     assert_contains(format_sms_message(test_request), "[TEST]", "test prefix")
+
+
+def test_unsubscribed_numbers_are_filtered_in_both_modes() -> None:
+    """Apply one persistent subscription choice to live and test routing."""
+
+    registry = SubscriptionRegistry(
+        ["+447700900000", "+447700900001", "+447700900002"]
+    )
+    registry.set_subscribed("+447700900000", False)
+    registry.set_subscribed("+447700900002", False)
+    sender = SmsSender(
+        ["+447700900000", "+447700900001"],
+        quiet_logger(),
+        test_recipients=["+447700900001", "+447700900002"],
+        dry_run=True,
+        subscription_registry=registry,
+    )
+    results: list[DeliveryResult] = []
+    sender.set_result_handler(results.append)
+    try:
+        assert_equal(sender.broadcast(request("live-filter")), True, "live accepted")
+        test_request = request("test-filter").model_copy(update={"test_mode": True})
+        assert_equal(sender.broadcast(test_request), True, "test accepted")
+        sender.queue.join()
+    finally:
+        sender.close()
+    suppressed = [
+        result.recipient for result in results if result.status == "unsubscribed"
+    ]
+    assert_equal(
+        suppressed,
+        ["+44*******000", "+44*******002"],
+        "suppression spans delivery modes",
+    )
+    delivered = [result for result in results if result.status == "logged"]
+    assert_equal(len(delivered), 2, "one active recipient per mode")
+
+
+def test_subscription_registry_persists_and_rejects_outsiders() -> None:
+    """Persist choices while preventing unconfigured numbers from changing state."""
+
+    temp_dir = REFACTOR_DIR / "testing" / "tmp" / "sms-subscription-test"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    state_path = temp_dir / "subscriptions.json"
+    if state_path.exists():
+        state_path.unlink()
+    try:
+        registry = SubscriptionRegistry(
+            ["+447700900000", "+447700900001"], state_path
+        )
+        assert_equal(
+            registry.set_subscribed("+447700999999", False),
+            False,
+            "outsider rejected",
+        )
+        assert_equal(
+            registry.set_subscribed("+447700900000", False),
+            True,
+            "unsubscribe accepted",
+        )
+        restored = SubscriptionRegistry(
+            ["+447700900000", "+447700900001"], state_path
+        )
+        assert_equal(
+            restored.is_subscribed("+447700900000"), False, "unsubscribe restored"
+        )
+        restored.set_subscribed("+447700900000", True)
+        subscribed = SubscriptionRegistry(
+            ["+447700900000", "+447700900001"], state_path
+        )
+        assert_equal(
+            subscribed.is_subscribed("+447700900000"), True, "subscribe restored"
+        )
+    finally:
+        if state_path.exists():
+            state_path.unlink()
+        if temp_dir.exists():
+            temp_dir.rmdir()
+
+
+def test_inbound_subscription_commands_are_allow_listed() -> None:
+    """Confirm valid commands, ignore outsiders, and delete every received object."""
+
+    registry = SubscriptionRegistry(["+447700900000", "+447700900001"])
+    sender = FakeCommandSender(
+        [
+            InboundSms("/sms/1", "+447700900000", " unsubscribe \n"),
+            InboundSms("/sms/2", "+447700999999", "UNSUBSCRIBE"),
+            InboundSms("/sms/3", "+447700900001", "hello"),
+        ]
+    )
+    monitor = SmsCommandMonitor(sender, registry, quiet_logger())  # type: ignore[arg-type]
+    monitor.poll_once()
+    assert_equal(
+        registry.is_subscribed("+447700900000"), False, "allowed unsubscribe"
+    )
+    assert_equal(
+        sender.sent,
+        [("+447700900000", UNSUBSCRIBE_CONFIRMATION)],
+        "unsubscribe confirmation only",
+    )
+    assert_equal(sender.deleted, ["/sms/1", "/sms/2", "/sms/3"], "inbox cleanup")
+
+    sender.messages = [InboundSms("/sms/4", "+447700900000", "SuBsCrIbE")]
+    monitor.poll_once()
+    assert_equal(registry.is_subscribed("+447700900000"), True, "allowed subscribe")
+    assert_equal(sender.sent[-1], ("+447700900000", SUBSCRIBE_CONFIRMATION), "subscribe confirmation")
+
+
+def test_mmcli_received_sms_parsing() -> None:
+    """Read only complete received ModemManager objects via key-value output."""
+
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], **_kwargs: object) -> object:
+        """Return a mixed received/sent modem inbox."""
+
+        calls.append(command)
+        if command == ["mmcli", "-L"]:
+            stdout = "/org/freedesktop/ModemManager1/Modem/7\n"
+        elif command[-1] == "--messaging-list-sms":
+            stdout = (
+                "/org/freedesktop/ModemManager1/SMS/8 (received)\n"
+                "/org/freedesktop/ModemManager1/SMS/9 (sent)\n"
+            )
+        elif command[2] == "/org/freedesktop/ModemManager1/SMS/8":
+            stdout = (
+                "sms.content.number : +447700900000\n"
+                "sms.content.text : UNSUBSCRIBE: now\n"
+                "sms.properties.state : received\n"
+            )
+        else:
+            stdout = (
+                "sms.content.number : +447700900001\n"
+                "sms.content.text : outbound\n"
+                "sms.properties.state : sent\n"
+            )
+        return type("Completed", (), {"stdout": stdout, "stderr": "", "returncode": 0})()
+
+    sender = SmsSender([], quiet_logger(), dry_run=False, runner=runner)
+    try:
+        messages = sender.list_received_sms()
+    finally:
+        sender.close()
+    assert_equal(
+        messages,
+        [
+            InboundSms(
+                "/org/freedesktop/ModemManager1/SMS/8",
+                "+447700900000",
+                "UNSUBSCRIBE: now",
+            )
+        ],
+        "received object parsing",
+    )
+    assert_equal(
+        parse_mmcli_key_values("sms.content.text : value: with colon\n")[
+            "sms.content.text"
+        ],
+        "value: with colon",
+        "key-value colon preservation",
+    )
 
 
 def test_test_requests_do_not_rate_limit_live_alerts() -> None:
@@ -487,8 +688,48 @@ def test_message_formatting_and_privacy_helpers() -> None:
     formatted = format_sms_message(request())
     assert_equal(formatted.count("Pump Room / Flow 1"), 1, "identity not duplicated")
     assert_contains(formatted, "Current Reading: 0.2", "current reading")
+    assert_equal(
+        formatted.endswith(UNSUBSCRIBE_FOOTER), True, "warning unsubscribe footer"
+    )
+    recovery = format_sms_message(request("recovery-message", "recovery"))
+    assert_equal(
+        UNSUBSCRIBE_FOOTER in recovery, False, "recovery has no warning footer"
+    )
+    missing_reading = request().model_copy(update={"current_reading": "unknown"})
+    assert_equal(
+        "Current Reading:" in format_sms_message(missing_reading),
+        False,
+        "missing reading line removed",
+    )
     assert_equal(mask_phone_number("+447700900000"), "+44*******000", "masked number")
     assert_equal(quote_mmcli_value("Dave's lab"), "'Dave\\'s lab'", "mmcli quote")
+
+
+def test_shared_sms_template_catalogue() -> None:
+    """Check all runtime SMS wording comes from the shared YAML catalogue."""
+
+    templates = load_sms_templates()
+    assert_equal(TEMPLATE_PATH.name, "sms_templates.yaml", "catalogue filename")
+    assert_equal(
+        templates["formatting"]["unsubscribe_footer"],
+        UNSUBSCRIBE_FOOTER,
+        "footer source",
+    )
+    assert_equal(
+        templates["commands"]["unsubscribe_confirmation"],
+        UNSUBSCRIBE_CONFIRMATION,
+        "unsubscribe confirmation source",
+    )
+    assert_equal(
+        templates["commands"]["subscribe_confirmation"],
+        SUBSCRIBE_CONFIRMATION,
+        "subscribe confirmation source",
+    )
+    assert_equal(len(templates["alerts"]), 8, "alert template pairs")
+    for name, alert in templates["alerts"].items():
+        assert_contains(
+            alert["message"], CURRENT_READING_PLACEHOLDER, f"{name} current reading"
+        )
 
 
 TESTS = [
@@ -496,6 +737,10 @@ TESTS = [
     ("SMS entry accepts explicit argv", test_sms_entry_accepts_explicit_argv),
     ("SMS config validates recipients", test_sms_config_validates_recipients),
     ("test mode routes only to test recipients", test_test_mode_routes_only_to_test_recipients),
+    ("unsubscribed numbers filtered in both modes", test_unsubscribed_numbers_are_filtered_in_both_modes),
+    ("subscription registry persists", test_subscription_registry_persists_and_rejects_outsiders),
+    ("inbound commands are allow-listed", test_inbound_subscription_commands_are_allow_listed),
+    ("mmcli received SMS parsing", test_mmcli_received_sms_parsing),
     ("test requests do not rate limit live alerts", test_test_requests_do_not_rate_limit_live_alerts),
     ("subscriber uses persistent QoS 1 session", test_subscriber_uses_persistent_qos_one_session),
     ("payload parser is strict", test_payload_parser_is_strict),
@@ -508,6 +753,7 @@ TESTS = [
     ("mmcli sends and deletes created object", test_mmcli_sends_and_deletes_created_object),
     ("retry does not sleep after final failure", test_retry_does_not_sleep_after_final_failure),
     ("message formatting and privacy helpers", test_message_formatting_and_privacy_helpers),
+    ("shared SMS template catalogue", test_shared_sms_template_catalogue),
 ]
 
 

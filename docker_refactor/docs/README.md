@@ -65,6 +65,7 @@ problems.
 | Initial per-reading Min, Max, and Deadband | `~/labpulse-ha/alarm_defaults.json` |
 | Fresh-install starter values | repository `docker_refactor/config.yaml` and `alarm_defaults.json` |
 | Live dashboard arrangement and helper values | Home Assistant UI/state |
+| All user-facing SMS wording | `labpulse_common/sms_templates.yaml` |
 | Generated starter dashboard structure | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
 | Generated alarm behavior | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
 | Generated UPS power lifecycle | `labpulse_homeassistant/templates/alarm/power_logic.yaml` |

@@ -153,14 +153,15 @@ discovering an undocumented local step.
 
 ### Explicit SMS test mode
 
-- [ ] Add a deliberate test-delivery mode distinct from `sms.dry_run`.
-- [ ] Prefix every test SMS title or body with `[Test]`.
-- [ ] Preserve the `event: test` value through validation and delivery results.
-- [ ] Test both dry-run logging and real modem delivery of marked test messages.
-- [ ] Make it impossible for a test message to look like an unmarked real alarm.
+- [x] Add a deliberate test-delivery mode distinct from `sms.dry_run`.
+- [x] Prefix every test SMS title or body with `[TEST]`.
+- [x] Preserve test-mode routing through validation and delivery results.
+- [x] Test dry-run logging and the real-modem delivery path for marked messages.
+- [x] Make it impossible for a test message to look like an unmarked real alarm.
 
-Current state: `test` is a valid event and dry-run mode exists, but
-`format_sms_message()` does not add a `[Test]` prefix.
+Current state: Home Assistant starts in test mode, test requests route only to
+`sms.test_recipients`, and the SMS service has explicit normal/test routing
+tests. Per-number `SUBSCRIBE`/`UNSUBSCRIBE` choices apply to both modes.
 
 ### Temporary message suppression
 
@@ -174,7 +175,8 @@ Current state: `test` is a valid event and dry-run mode exists, but
 - [ ] Make muted/expiry state obvious on the dashboard.
 
 Current state: every reading has a global mute toggle. It suppresses
-notifications and SMS but does not expire and is not recipient-specific.
+notifications and SMS but does not expire. SMS recipients can now opt out and
+back in individually; temporary alarm mute expiry remains undecided.
 
 ### Power outage message consolidation
 
@@ -372,7 +374,7 @@ with corresponding P0 verification tasks remain part of release acceptance.
 1. Close the real-device reconnect and restart tests.
 2. Establish correct alarm behavior across Home Assistant/Pi restarts.
 3. Run the first soak test and fix what it exposes.
-4. Complete explicit SMS test mode and agree temporary mute semantics.
+4. Agree temporary mute semantics and complete real-Pi subscription-command acceptance.
 5. Complete backup/reconstruction and external watchdog decisions.
 6. Add CI, dependency/version discipline, and a release workflow.
 7. Add the open-source licence, contribution, citation, and governance files.

@@ -271,7 +271,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse possible UPS outage", "message": "Confirmed outage evidence: five-second voltage change " ~ states('[[ power.voltage_change_entity ]]') ~ " V; drop trigger [[ power.outage_drop_volts ]] V; absolute fallback [[ power.low_voltage_threshold ]] V; confirmation " ~ states('[[ power.outage_confirm_seconds_entity ]]') ~ " seconds. Mains is inferred, not measured directly.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Possible On Battery", "title": [[ sms.alerts.power_warning.title ]], "message": [[ sms.alerts.power_warning.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_recovery_candidate_start"
     alias: "LabPulse [[ service.label ]] Recovery Candidate Start"
@@ -379,7 +379,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS power recovery inferred", "message": "Confirmed recovery evidence after " ~ outage_duration ~ " seconds: rise trigger [[ power.recovery_rise_volts ]] V over [[ power.transition_window_seconds ]] seconds; rebound lockout [[ power.recovery_lockout_seconds ]] seconds; confirmation " ~ states('[[ power.restore_confirm_seconds_entity ]]') ~ " seconds. Mains restoration is inferred.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS battery voltage", "state": "Normal", "title": [[ sms.alerts.power_recovery.title ]], "message": [[ sms.alerts.power_recovery.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_fault"
     alias: "LabPulse [[ service.label ]] Power Sensor Fault"
@@ -437,7 +437,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": "Sensor Fault", "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS telemetry fault", "message": "No fresh validated voltage remained after MQTT expiry. Voltage state: " ~ states('[[ power.voltage.expected_entity_id ]]') ~ "; service status: " ~ states('[[ service.status_entity_id ]]') ~ "; additional confirmation: [[ power.maximum_reading_age_seconds ]] seconds.", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": "Sensor Fault", "title": [[ sms.alerts.power_sensor_fault.title ]], "message": [[ sms.alerts.power_sensor_fault.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_recovery"
     alias: "LabPulse [[ service.label ]] Power Sensor Recovery"
@@ -491,7 +491,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": states('[[ power.state_entity ]]'), "title": ("[TEST] " if is_state('[[ model.test_mode_entity ]]', 'on') else "") ~ "LabPulse UPS telemetry restored", "message": "Fresh validated voltage resumed after a confirmed telemetry fault. Service status: " ~ states('[[ service.status_entity_id ]]') ~ ".", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "UPS voltage evidence", "state": states('[[ power.state_entity ]]'), "title": [[ sms.alerts.power_sensor_recovery.title ]], "message": [[ sms.alerts.power_sensor_recovery.message ]], "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile"
     alias: "LabPulse [[ service.label ]] Power Reconcile"

@@ -166,6 +166,11 @@ def test_generated_package_and_entity_map() -> None:
     assert "labpulse_pressure_monitor_pressure_alarm_muted" in package["input_boolean"]
     assert "labpulse_global_notifications_muted" in package["input_boolean"]
     assert "labpulse_notification_test_mode" in package["input_boolean"]
+    assert_equal(
+        package["input_boolean"]["labpulse_notification_test_mode"]["initial"],
+        True,
+        "test mode fail-safe startup default",
+    )
     assert "labpulse_pressure_monitor_alarm_defaults_initialized" in package["input_boolean"]
     reading_default_markers = [
         helper_id
@@ -177,7 +182,7 @@ def test_generated_package_and_entity_map() -> None:
     assert_equal(len(reading_default_markers), 1, "versioned pressure defaults marker")
     for helper_type in ("input_number", "input_select", "input_boolean"):
         for helper_id, helper in package[helper_type].items():
-            if "initial" in helper:
+            if helper_id != "labpulse_notification_test_mode" and "initial" in helper:
                 raise AssertionError(f"persistent helper {helper_type}.{helper_id} must not set initial")
     assert_equal(
         package["input_select"]["labpulse_pressure_monitor_pressure_alarm_state"]["options"],
@@ -310,7 +315,7 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("SMS payload should include reading key")
     if '"state": "Danger"' not in sms_payload:
         raise AssertionError("SMS payload should include alarm state")
-    if "LabPulse Air Pressure Sensor Hub - Pressure warning" not in sms_payload:
+    if "LabPulse Danger Warning: Air Pressure Sensor Hub - Pressure is in danger" not in sms_payload:
         raise AssertionError("danger SMS title should identify both sensor hub and reading")
     if "states('sensor.labpulse_pressure_monitor_pressure')" not in sms_payload:
         raise AssertionError("SMS payload should preserve current reading Jinja")
@@ -333,8 +338,10 @@ def test_generated_package_and_entity_map() -> None:
         raise AssertionError("SMS payload does not carry test-mode routing and prefix")
     if "Danger threshold:" not in sms_payload or "Evidence:" not in sms_payload:
         raise AssertionError("danger SMS lacks threshold and duration evidence")
-    if '"current_reading"' not in sms_payload:
+    if '"current_reading"' not in sms_payload or "Current Reading: {current_reading}" not in sms_payload:
         raise AssertionError("SMS payload does not use Current Reading terminology")
+    if '"title": ""' in sms_payload or '"message": ""' in sms_payload:
+        raise AssertionError("SMS catalogue expressions should not be double-quoted")
 
     recovery_automation = automation_by_alias["LabPulse Pressure Recovery"]
     recovery_sms = recovery_automation["action"][1]["choose"][0]["sequence"][1]

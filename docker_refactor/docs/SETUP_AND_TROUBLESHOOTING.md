@@ -268,7 +268,9 @@ notifications** suppresses Home Assistant notifications and SMS without
 changing any per-reading or power mute helper. Turning it off therefore leaves
 individually muted readings muted. **Test mode** prefixes notification titles
 with `[TEST]` and routes SMS requests only to `sms.test_recipients`; alarm state
-calculation and thresholds are unchanged.
+calculation and thresholds are unchanged. Test mode initializes to **on** after
+every Home Assistant start. An operator must deliberately turn it off before
+normal recipients can receive alerts.
 
 Within a multi-purpose service, assign the same `readings[].group` to related
 readings. Monitor renders one compact, untitled sensor card per group,
@@ -676,6 +678,9 @@ sms:
 The SMS worker validates and queues requests but logs a masked recipient instead
 of using a modem.
 
+Inbound `SUBSCRIBE` and `UNSUBSCRIBE` commands are unavailable in dry-run mode
+because that container deliberately has no modem access.
+
 Publish a manual test with a new request ID each time:
 
 ```bash
@@ -712,6 +717,32 @@ cd ~/labpulse-ha
 docker compose up -d --build
 docker compose exec labpulse-sms mmcli -L
 ```
+
+In real modem mode, the SMS worker polls complete received SMS objects. A
+number must exactly match an entry in either `sms.recipients` or
+`sms.test_recipients` before it can issue a command:
+
+- `UNSUBSCRIBE` suppresses all future LabPulse alerts to that number, in both
+  normal and test mode, and sends a confirmation.
+- `SUBSCRIBE` restores delivery in both modes and sends a confirmation.
+- Matching is case-insensitive and ignores surrounding whitespace.
+- Unknown numbers and unrecognized messages receive no reply.
+
+Subscription choices persist in `logs/sms_subscriptions.json`. Processed
+received SMS objects are removed from modem storage. Every warning SMS ends
+with the opt-out/resubscribe instructions; recovery and sensor-fault messages
+do not repeat the footer. After changing either configured recipient list,
+restart `labpulse-sms` so both outbound routing and the inbound allow-list are
+reloaded.
+
+Verify the feature with one configured test number while Home Assistant Test
+mode is on:
+
+1. Send `UNSUBSCRIBE` to the modem number and wait for the confirmation.
+2. Trigger a warning and confirm that number receives nothing.
+3. Send `SUBSCRIBE` and wait for the confirmation.
+4. Trigger a new warning and confirm delivery resumes.
+5. Repeat after switching Test mode off to prove the choice spans both lists.
 
 Useful topics:
 
@@ -846,6 +877,31 @@ homeassistant/config/packages/labpulse_generated.yaml
 
 The editable source is `templates/alarm/alarm_logic.yaml`. Remember that mute
 suppresses notifications/SMS only; it does not freeze state.
+
+### Edit SMS wording
+
+Every SMS title, body, formatting line, footer, and subscription confirmation
+is stored in one live file:
+
+```text
+~/labpulse-ha/labpulse-python/labpulse_common/sms_templates.yaml
+```
+
+Alert entries contain Home Assistant Jinja expressions, so preserve their
+quoting, `[[ ... ]]` generator placeholders, and the `{current_reading}` worker
+placeholder present in every alert body. After editing the file, regenerate
+Home Assistant YAML without a dashboard reset, validate it, then rebuild only
+the SMS worker:
+
+```bash
+cd ~/labpulse-ha
+./generate_homeassistant_config.sh
+docker compose exec homeassistant python -m homeassistant --script check_config --config /config
+docker compose up -d --build --force-recreate labpulse-sms
+```
+
+Restart Home Assistant, or reload its automations, to activate changed alert
+templates. The generation command above preserves the current dashboard.
 
 ### 8. SMS does not arrive
 

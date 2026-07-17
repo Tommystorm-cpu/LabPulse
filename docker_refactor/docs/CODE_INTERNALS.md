@@ -20,7 +20,7 @@ Read the source in this order if you want to reconstruct the complete system:
 7. `labpulse_homeassistant/cli.py` and `data_models.py`
 8. `labpulse_homeassistant/write_yaml.py`, `alarm.py`, and `dashboard.py`
 9. `labpulse_homeassistant/templates/`
-10. `labpulse_sms/subscriber.py` and `sender.py`
+10. `labpulse_sms/subscriber.py`, `sender.py`, and `subscriptions.py`
 11. `simulate_serial.py` and `setup_usb_devices.py`
 12. `generate_compose.sh` and `setup_container_fs.sh`
 13. `testing/`
@@ -512,7 +512,8 @@ readings. State changes occur whether muted or not; only notifications and SMS
 publishing are inside the combined individual/global mute check. The global
 helper is never used as a state writer for individual mute helpers. Test mode
 adds `[TEST]` to titles and sets the validated request flag consumed by the SMS
-recipient router. When a confirmed fault clears, Home
+recipient router. Its explicit `initial: true` setting makes every Home
+Assistant start default to test delivery until an operator turns it off. When a confirmed fault clears, Home
 Assistant creates a persistent sensor-restored notification after reconciling
 the reading to Normal or Danger and publishes a validated recovery SMS request.
 Because the state does not enter Sensor Fault during an unconfirmed startup
@@ -590,9 +591,20 @@ depend on the normalized evidence entity rather than on MAX17043 registers.
 
 ## SMS service internals
 
-`labpulse_sms/cli.py` loads config, creates `SmsSender`, creates a persistent
-`RecentRequestCache` under the log directory, and starts `SMSSubscriber`.
-SIGTERM/SIGINT becomes a controlled shutdown so the sender can drain.
+All user-facing SMS text is defined once in
+`labpulse_common/sms_templates.yaml`. The Home Assistant generator expands its
+eight alert title/message pairs into MQTT requests. Each alert body visibly
+contains its `Current Reading: {current_reading}` line; the SMS worker fills
+that final value or removes the line when no usable reading exists. The worker
+also reads the same file for the test prefix, warning footer, and
+subscribe/unsubscribe confirmations. `sms_templates.py` validates the catalogue
+at startup so a missing, empty, or incomplete alert entry fails clearly.
+
+`labpulse_sms/cli.py` loads config, creates the persistent
+`SubscriptionRegistry` and `RecentRequestCache` under the log directory,
+creates `SmsSender`, and starts `SMSSubscriber`. In real modem mode it also
+starts `SmsCommandMonitor`. SIGTERM/SIGINT becomes a controlled shutdown so
+the command monitor stops before the sender drains.
 
 ### Subscriber and request cache
 
@@ -613,8 +625,11 @@ Only successfully enqueued requests are remembered.
 ### Sender queue and modem delivery
 
 `SmsSender` owns a bounded `queue.Queue` and one non-daemon worker thread. A
-request is expanded to one queued item per configured recipient only if the
-whole fan-out fits. Results are reported back through a callback.
+request is expanded to one queued item per configured, currently subscribed
+recipient only if the whole active fan-out fits. Suppressed recipients receive
+an `unsubscribed` delivery result. Results are reported back through a
+callback. One re-entrant lock serializes inbound polling and outbound modem
+operations.
 
 In dry-run mode, the worker logs a masked number and reports `logged`. In real
 mode `_send_with_mmcli()`:
@@ -628,6 +643,25 @@ mode `_send_with_mmcli()`:
 
 Each per-recipient outcome is published to
 `labpulse/sms/result/<request_id>`.
+
+### Subscription commands
+
+`SubscriptionRegistry` builds an exact allow-list from the union of normal and
+test recipients and atomically persists an `unsubscribed` set. The same set is
+checked after normal/test routing, so a choice applies in both modes. Direct
+command confirmations intentionally bypass suppression.
+
+`SmsCommandMonitor` polls ModemManager every five seconds. `SmsSender` lists
+SMS objects, reads each through `mmcli --output-keyvalue`, and returns only
+complete `received` text messages. The monitor accepts case-insensitive exact
+`SUBSCRIBE` and `UNSUBSCRIBE` commands after trimming whitespace. It never
+replies to a number outside the current config allow-list and deletes every
+inspected received object from modem storage. Paths already handled during the
+current process are not answered twice if deletion initially fails.
+
+Warning formatting appends the required unsubscribe/resubscribe footer after
+the current reading. Subscription confirmations and non-warning events do not
+receive that footer.
 
 ## Serial simulator internals
 
