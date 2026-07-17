@@ -748,7 +748,8 @@ def test_shared_sms_template_catalogue() -> None:
         "t.k.davey@lancaster.ac.uk",
         "UNSUBSCRIBE",
         "SUBSCRIBE",
-        "No further action is required.",
+        "No action is required.",
+        "triggered manually from the LabPulse dashboard",
     ):
         assert_contains(phone_book["message"], expected, "phone book notification")
 
