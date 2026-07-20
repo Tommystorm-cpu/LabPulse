@@ -8,7 +8,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import LabPulseConfig
 from labpulse_common.identity import stable_id
-from labpulse_homeassistant.model_builder import build_render_model
+from labpulse_homeassistant.render_model import RenderModel
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -31,7 +31,7 @@ def sample_config() -> LabPulseConfig:
                 "parser": "pump_room",
                 "serial_port": "/tmp/labpulse-fake-serial/pump_room",
                 "device_name": "Pump Room Sensor Hub",
-                "readings": [
+                "measurements": [
                     {"name": "flow1", "label": "Flow 1", "setups": ["pump_room"], "unit": "L/min"},
                     {"name": "temp0", "label": "Temperature 0", "setups": ["pump_room"], "unit": "\u00b0C"},
                 ],
@@ -42,7 +42,7 @@ def sample_config() -> LabPulseConfig:
                 "parser": "pressure",
                 "serial_port": "/tmp/labpulse-fake-serial/disabled",
                 "device_name": "Disabled",
-                "readings": [{"name": "ignored", "setups": ["pump_room"]}],
+                "measurements": [{"name": "ignored", "setups": ["pump_room"]}],
             },
         },
     })
@@ -57,10 +57,10 @@ def test_stable_id_prefix() -> None:
 def test_render_model_stable_entities() -> None:
     """Check render model creates predictable Home Assistant entity IDs."""
 
-    model = build_render_model(sample_config())
+    model = RenderModel.from_config(sample_config())
     service = model.services[0]
-    flow = service.readings[0]
-    temp = service.readings[1]
+    flow = service.measurements[0]
+    temp = service.measurements[1]
 
     assert_equal(len(model.services), 1, "enabled services")
     assert_equal(len(model.setups), 1, "active setups")
@@ -69,75 +69,75 @@ def test_render_model_stable_entities() -> None:
         "input_boolean.labpulse_setup_pump_room_notifications_muted",
         "setup mute",
     )
-    assert_equal(service.status_entity_id, "sensor.labpulse_pump_room_status", "status entity")
-    assert_equal(flow.expected_entity_id, "sensor.labpulse_pump_room_flow1", "flow entity")
+    assert_equal(service.status_entity.entity_id, "sensor.labpulse_pump_room_status", "status entity")
+    assert_equal(flow.mqtt_entity.entity_id, "sensor.labpulse_pump_room_flow1", "flow entity")
     assert_equal(
-        flow.alarm_controls_expanded_entity,
+        flow.entities["alarm_controls_expanded"],
         "input_boolean.labpulse_pump_room_flow1_alarm_controls_expanded",
         "flow alarm controls toggle",
     )
     assert_equal(
-        temp.alarm_controls_expanded_entity,
+        temp.entities["alarm_controls_expanded"],
         "input_boolean.labpulse_pump_room_temp0_alarm_controls_expanded",
         "temperature alarm controls toggle",
     )
-    assert_equal(flow.alarm_state_entity, "input_select.labpulse_pump_room_flow1_alarm_state", "flow state")
-    assert_equal(flow.alarm_mode_entity, "input_select.labpulse_pump_room_flow1_alarm_mode", "flow mode")
-    assert_equal(flow.alarm_muted_entity, "input_boolean.labpulse_pump_room_flow1_alarm_muted", "flow mute")
+    assert_equal(flow.entities["alarm_state"], "input_select.labpulse_pump_room_flow1_alarm_state", "flow state")
+    assert_equal(flow.entities["alarm_mode"], "input_select.labpulse_pump_room_flow1_alarm_mode", "flow mode")
+    assert_equal(flow.entities["alarm_muted"], "input_boolean.labpulse_pump_room_flow1_alarm_muted", "flow mute")
     assert_equal(
         flow.setup_muted_entities,
         ("input_boolean.labpulse_setup_pump_room_notifications_muted",),
         "flow setup mute gates",
     )
-    assert_equal(flow.danger_zone_entity, "binary_sensor.labpulse_pump_room_flow1_danger_zone", "flow danger")
-    assert_equal(flow.recovery_zone_entity, "binary_sensor.labpulse_pump_room_flow1_recovery_zone", "flow recovery")
+    assert_equal(flow.entities["danger_zone"], "binary_sensor.labpulse_pump_room_flow1_danger_zone", "flow danger")
+    assert_equal(flow.entities["recovery_zone"], "binary_sensor.labpulse_pump_room_flow1_recovery_zone", "flow recovery")
     assert_equal(
-        flow.sensor_fault_zone_entity,
+        flow.entities["sensor_fault_zone"],
         "binary_sensor.labpulse_pump_room_flow1_sensor_fault_zone",
         "flow fault",
     )
     assert_equal(
-        flow.observed_danger_percent_entity,
+        flow.entities["observed_danger_percent"],
         "sensor.labpulse_pump_room_flow1_observed_danger_percent",
         "observed flow danger",
     )
     assert_equal(flow.threshold.range_min, 0, "flow editor minimum")
     assert_equal(temp.threshold.range_min, -20, "temperature editor minimum")
     assert_equal(
-        flow.minimum_threshold_entity,
+        flow.entities["minimum_threshold"],
         "input_number.labpulse_pump_room_flow1_minimum_threshold",
         "flow threshold",
     )
     assert_equal(
-        flow.maximum_threshold_entity,
+        flow.entities["maximum_threshold"],
         "input_number.labpulse_pump_room_flow1_maximum_threshold",
         "flow max threshold",
     )
     assert_equal(
-        flow.recovery_deadband_entity,
+        flow.entities["recovery_deadband"],
         "input_number.labpulse_pump_room_flow1_recovery_deadband",
         "flow recovery deadband",
     )
-    assert_equal(temp.maximum_threshold_entity, "input_number.labpulse_pump_room_temp0_maximum_threshold", "temp max")
+    assert_equal(temp.entities["maximum_threshold"], "input_number.labpulse_pump_room_temp0_maximum_threshold", "temp max")
     assert_equal(
-        flow.required_danger_percent_entity,
+        flow.entities["required_danger_percent"],
         "input_number.labpulse_pump_room_flow1_required_danger_percent",
-        "required reading danger",
+        "required measurement danger",
     )
     assert_equal(
-        flow.observation_window_seconds_entity,
+        flow.entities["observation_window_seconds"],
         "input_number.labpulse_pump_room_flow1_observation_window_seconds",
-        "reading observation window",
+        "measurement observation window",
     )
     assert_equal(
-        flow.required_recovery_seconds_entity,
+        flow.entities["required_recovery_seconds"],
         "input_number.labpulse_pump_room_flow1_required_recovery_seconds",
         "required recovery",
     )
     assert_equal(
-        flow.alarm_timing_initialized_entity,
+        flow.entities["alarm_timing_initialized"],
         "input_boolean.labpulse_pump_room_flow1_alarm_timing_initialized",
-        "reading timing initializer",
+        "measurement timing initializer",
     )
 
 

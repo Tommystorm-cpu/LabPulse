@@ -21,7 +21,7 @@ from labpulse_common.mqtt_contracts import (
     sms_result_topic,
 )
 from labpulse_common.sms_templates import (
-    CURRENT_READING_PLACEHOLDER,
+    CURRENT_MEASUREMENT_PLACEHOLDER,
     TEMPLATE_PATH,
     load_sms_templates,
 )
@@ -151,13 +151,13 @@ def request_payload(request_id: str = "request-1", event: str = "warning") -> di
         "event": event,
         "service": "pump_room",
         "service_label": "Pump Room",
-        "reading": "flow1",
-        "reading_label": "Flow 1",
+        "measurement": "flow1",
+        "measurement_label": "Flow 1",
         "state": "Danger",
         "title": "LabPulse Flow warning",
-        "message": "Pump Room / Flow 1 is in Danger.\nCurrent Reading: {current_reading}",
+        "message": "Pump Room / Flow 1 is in Danger.\nCurrent Measurement: {current_measurement}",
         "test_mode": False,
-        "current_reading": "0.2",
+        "current_measurement": "0.2",
     }
 
 
@@ -471,7 +471,7 @@ def test_payload_parser_is_strict() -> None:
 
     parsed = parse_sms_payload(json.dumps(request_payload()).encode())
     assert_equal(parsed.service, "pump_room", "payload service")
-    assert_equal(parsed.reading, "flow1", "payload reading")
+    assert_equal(parsed.measurement, "flow1", "payload measurement")
 
     invalid_payloads = [
         b"plain text",
@@ -687,7 +687,7 @@ def test_message_formatting_and_privacy_helpers() -> None:
 
     formatted = format_sms_message(request())
     assert_equal(formatted.count("Pump Room / Flow 1"), 1, "identity not duplicated")
-    assert_contains(formatted, "Current Reading: 0.2", "current reading")
+    assert_contains(formatted, "Current Measurement: 0.2", "current measurement")
     assert_equal(
         formatted.endswith(UNSUBSCRIBE_FOOTER), True, "warning unsubscribe footer"
     )
@@ -701,11 +701,11 @@ def test_message_formatting_and_privacy_helpers() -> None:
         False,
         "notification does not gain duplicate warning footer",
     )
-    missing_reading = request().model_copy(update={"current_reading": "unknown"})
+    missing_measurement = request().model_copy(update={"current_measurement": "unknown"})
     assert_equal(
-        "Current Reading:" in format_sms_message(missing_reading),
+        "Current Measurement:" in format_sms_message(missing_measurement),
         False,
-        "missing reading line removed",
+        "missing measurement line removed",
     )
     assert_equal(mask_phone_number("+447700900000"), "+44*******000", "masked number")
     assert_equal(quote_mmcli_value("Dave's lab"), "'Dave\\'s lab'", "mmcli quote")
@@ -735,7 +735,7 @@ def test_shared_sms_template_catalogue() -> None:
     for name, alert in templates["alerts"].items():
         assert_equal("[TEST]" in alert["title"], False, f"{name} central test prefix")
         assert_contains(
-            alert["message"], CURRENT_READING_PLACEHOLDER, f"{name} current reading"
+            alert["message"], CURRENT_MEASUREMENT_PLACEHOLDER, f"{name} current measurement"
         )
     phone_book = templates["notifications"]["phone_book"]
     assert_equal("[TEST]" in phone_book["title"], False, "notification test prefix")

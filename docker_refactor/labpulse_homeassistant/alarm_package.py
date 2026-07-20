@@ -1,4 +1,4 @@
-"""Build generated Home Assistant alarm package sections from editable YAML."""
+"""Build the Home Assistant alarm package from editable YAML rules."""
 
 from copy import deepcopy
 import json
@@ -9,7 +9,7 @@ import yaml
 
 from labpulse_common.sms_templates import load_sms_templates
 
-from .models import RenderModel
+from .render_model import RenderModel
 from .paths import GeneratorPaths
 from .template_utils import expand_template, render_template_file
 
@@ -70,9 +70,9 @@ def input_numbers(seed: dict[str, Any], power_seed: dict[str, Any], model: Rende
     )
     rules = seed["input_numbers"]
     for service in model.services:
-        if service.readings and service.power is None:
-            for reading in service.readings:
-                helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
+        if service.measurements and service.power is None:
+            for measurement in service.measurements:
+                helpers.update(expand_keyed_items(rules.get("measurement", []), {"service": service, "measurement": measurement}))
         if service.power is not None:
             helpers.update(expand_keyed_items(power_seed.get("input_numbers", []), {"service": service, "power": service.power}))
     return helpers
@@ -91,8 +91,8 @@ def input_booleans(seed: dict[str, Any], power_seed: dict[str, Any], model: Rend
         helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
         if service.power is not None:
             helpers.update(expand_keyed_items(power_seed.get("input_booleans", []), {"service": service, "power": service.power}))
-    for service, reading in model.alarm_readings:
-        helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
+    for service, measurement in model.alarm_measurements:
+        helpers.update(expand_keyed_items(rules.get("measurement", []), {"service": service, "measurement": measurement}))
     return helpers
 
 
@@ -106,8 +106,8 @@ def input_selects(seed: dict[str, Any], power_seed: dict[str, Any], model: Rende
         if model.bulk_timing_targets
         else {}
     )
-    for service, reading in model.alarm_readings:
-        helpers.update(expand_keyed_items(seed["input_selects"].get("reading", []), {"service": service, "reading": reading}))
+    for service, measurement in model.alarm_measurements:
+        helpers.update(expand_keyed_items(seed["input_selects"].get("measurement", []), {"service": service, "measurement": measurement}))
     for service in model.services:
         if service.power is not None:
             helpers.update(expand_keyed_items(power_seed.get("input_selects", []), {"service": service, "power": service.power}))
@@ -142,8 +142,8 @@ def sensors(
     """Return normal history and UPS rolling-change sensor entries."""
 
     result = []
-    for service, reading in model.alarm_readings:
-        result.extend(expand_template(item, {"service": service, "reading": reading}) for item in seed["sensors"].get("reading", []))
+    for service, measurement in model.alarm_measurements:
+        result.extend(expand_template(item, {"service": service, "measurement": measurement}) for item in seed["sensors"].get("measurement", []))
     for service in model.services:
         if service.power is not None:
             context = {"service": service, "power": service.power}
@@ -167,7 +167,7 @@ def scripts(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
 
 
 def bulk_timing_script(model: RenderModel) -> dict[str, object]:
-    """Return one validated-target script that copies timing to many readings."""
+    """Return one validated-target script that copies timing to many measurements."""
 
     choices: list[dict[str, object]] = []
     for target in model.bulk_timing_targets:
@@ -184,17 +184,17 @@ def bulk_timing_script(model: RenderModel) -> dict[str, object]:
                 "sequence": [
                     bulk_timing_action(
                         target.required_danger_percent_entities,
-                        model.bulk_required_danger_percent_entity,
+                        model.entities["bulk_required_danger_percent"],
                         "float(70)",
                     ),
                     bulk_timing_action(
                         target.observation_window_seconds_entities,
-                        model.bulk_observation_window_seconds_entity,
+                        model.entities["bulk_observation_window_seconds"],
                         "int(120)",
                     ),
                     bulk_timing_action(
                         target.required_recovery_seconds_entities,
-                        model.bulk_required_recovery_seconds_entity,
+                        model.entities["bulk_required_recovery_seconds"],
                         "int(120)",
                     ),
                 ],
@@ -208,7 +208,7 @@ def bulk_timing_script(model: RenderModel) -> dict[str, object]:
             {
                 "variables": {
                     "selected_target": (
-                        "{{ states('" + model.bulk_timing_target_entity + "') }}"
+                        "{{ states('" + model.entities["bulk_timing_target"] + "') }}"
                     )
                 }
             },
@@ -240,9 +240,9 @@ def templates(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderMod
             expand_template(item, {"service": service})
             for item in seed["binary_sensors"].get("service", [])
         )
-    for service, reading in model.alarm_readings:
-        context = {"service": service, "reading": reading}
-        normal.extend(expand_template(item, context) for item in seed["binary_sensors"].get("reading", []))
+    for service, measurement in model.alarm_measurements:
+        context = {"service": service, "measurement": measurement}
+        normal.extend(expand_template(item, context) for item in seed["binary_sensors"].get("measurement", []))
     result: list[dict[str, object]] = [{"binary_sensor": normal}] if normal else []
     for service in model.services:
         if service.power is not None:
@@ -267,9 +267,9 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
             expand_template(item, context)
             for item in seed["automations"].get("service_health", [])
         )
-    for service, reading in model.alarm_readings:
-        context = {"service": service, "reading": reading, "model": model, "sms": sms}
-        result.extend(expand_template(item, context) for item in seed["automations"].get("reading", []))
+    for service, measurement in model.alarm_measurements:
+        context = {"service": service, "measurement": measurement, "model": model, "sms": sms}
+        result.extend(expand_template(item, context) for item in seed["automations"].get("measurement", []))
     for service in model.services:
         if service.power is not None:
             context = {"service": service, "power": service.power, "model": model, "sms": sms}
@@ -282,7 +282,7 @@ def sms_template_context(model: RenderModel) -> dict[str, Any]:
 
     sms = deepcopy(load_sms_templates())
     test_prefix = json.dumps(f"{sms['formatting']['test_prefix']} ")
-    test_entity = json.dumps(model.test_mode_entity)
+    test_entity = json.dumps(model.entities["test_mode"])
     for category in ("alerts", "notifications"):
         for item in sms.get(category, {}).values():
             title = item["title"]

@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from labpulse_common.mqtt_contracts import SmsRequest
-from labpulse_common.sms_templates import CURRENT_READING_PLACEHOLDER, sms_template
+from labpulse_common.sms_templates import CURRENT_MEASUREMENT_PLACEHOLDER, sms_template
 
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -57,20 +57,20 @@ def format_sms_message(request: SmsRequest) -> str:
     title = request.title
     if request.test_mode and not title.startswith(TEST_PREFIX):
         title = f"{TEST_PREFIX} {title}"
-    message = render_alert_message(request.message, request.current_reading)
+    message = render_alert_message(request.message, request.current_measurement)
     lines = [title, message]
     if request.event == "warning":
         lines.extend(("", UNSUBSCRIBE_FOOTER))
     return "\n".join(lines)
 
 
-def render_alert_message(message: str, current_reading: str | None) -> str:
-    """Fill the reading placeholder or remove its template line when absent."""
+def render_alert_message(message: str, current_measurement: str | None) -> str:
+    """Fill the measurement placeholder or remove its template line when absent."""
 
-    if current_reading not in (None, "", "unknown", "None"):
-        return message.replace(CURRENT_READING_PLACEHOLDER, str(current_reading))
+    if current_measurement not in (None, "", "unknown", "None"):
+        return message.replace(CURRENT_MEASUREMENT_PLACEHOLDER, str(current_measurement))
     return "\n".join(
-        line for line in message.splitlines() if CURRENT_READING_PLACEHOLDER not in line
+        line for line in message.splitlines() if CURRENT_MEASUREMENT_PLACEHOLDER not in line
     )
 
 

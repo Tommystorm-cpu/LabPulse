@@ -1,5 +1,5 @@
 # Native Home Assistant card fragments for the generated LabPulse dashboard.
-# Durable layout changes belong here or in yaml_dashboard.py.
+# Alarm fragments live here; view assembly lives in the dashboard/ package.
 
 alarm_setup_sections:
   setup_mute_tile:
@@ -27,7 +27,7 @@ alarm_setup_sections:
         target:
           entity_id: "[[ setup.muted_entity ]]"
         confirmation:
-          text: "[[ setup.shared_reading_warning ]]"
+          text: "[[ setup.shared_measurement_warning ]]"
   shared_setup_mute_on:
     type: conditional
     conditions:
@@ -47,51 +47,66 @@ alarm_setup_sections:
           entity_id: "[[ setup.muted_entity ]]"
   controls_toggle_tile:
     type: tile
-    entity: "[[ reading.alarm_controls_expanded_entity ]]"
-    name: "[[ reading.label ]]: Show Controls"
-    grid_options:
-      columns: full
-  reading_settings_card:
+    entity: "[[ measurement.entities.alarm_controls_expanded ]]"
+    name: "[[ measurement.label ]]"
+    icon: mdi:tune-variant
+    hide_state: true
+    tap_action:
+      action: toggle
+    icon_tap_action:
+      action: toggle
+  measurement_settings_card:
     type: conditional
     conditions:
-      - entity: "[[ reading.alarm_controls_expanded_entity ]]"
+      - entity: "[[ measurement.entities.alarm_controls_expanded ]]"
         state: "on"
     grid_options:
       columns: full
     card:
       type: entities
-      title: "[[ reading.label ]] Alarm"
+      title: "[[ measurement.label ]]"
       show_header_toggle: false
       entities:
-        - entity: "[[ reading.expected_entity_id ]]"
-          name: Current Reading
-        - entity: "[[ reading.alarm_state_entity ]]"
-          name: Alarm state
-        - entity: "[[ reading.alarm_mode_entity ]]"
+        - entity: "[[ measurement.entities.alarm_mode ]]"
           name: Alarm mode
-        - entity: "[[ reading.alarm_muted_entity ]]"
+        - entity: "[[ measurement.entities.alarm_muted ]]"
           name: Muted
-        - entity: "[[ reading.minimum_threshold_entity ]]"
+        - entity: "[[ measurement.entities.minimum_threshold ]]"
           name: Minimum threshold
-        - entity: "[[ reading.maximum_threshold_entity ]]"
+        - entity: "[[ measurement.entities.maximum_threshold ]]"
           name: Maximum threshold
-        - entity: "[[ reading.recovery_deadband_entity ]]"
+        - entity: "[[ measurement.entities.recovery_deadband ]]"
           name: Recovery deadband
         - type: divider
-        - entity: "[[ reading.required_danger_percent_entity ]]"
+        - entity: "[[ measurement.entities.required_danger_percent ]]"
           name: Required danger
-        - entity: "[[ reading.observation_window_seconds_entity ]]"
+        - entity: "[[ measurement.entities.observation_window_seconds ]]"
           name: Observation window
-        - entity: "[[ reading.required_recovery_seconds_entity ]]"
+        - entity: "[[ measurement.entities.required_recovery_seconds ]]"
           name: Required recovery
-        - type: divider
-        - entity: "[[ reading.observed_danger_percent_entity ]]"
+  measurement_status_card:
+    type: conditional
+    conditions:
+      - entity: "[[ measurement.entities.alarm_controls_expanded ]]"
+        state: "on"
+    grid_options:
+      columns: full
+    card:
+      type: entities
+      title: "[[ measurement.label ]]"
+      show_header_toggle: false
+      entities:
+        - entity: "[[ measurement.mqtt_entity.entity_id ]]"
+          name: Current measurement
+        - entity: "[[ measurement.entities.alarm_state ]]"
+          name: Alarm state
+        - entity: "[[ measurement.entities.observed_danger_percent ]]"
           name: Observed danger
-        - entity: "[[ reading.danger_zone_entity ]]"
+        - entity: "[[ measurement.entities.danger_zone ]]"
           name: Danger zone
-        - entity: "[[ reading.recovery_zone_entity ]]"
+        - entity: "[[ measurement.entities.recovery_zone ]]"
           name: Recovery zone
-        - entity: "[[ reading.sensor_fault_zone_entity ]]"
+        - entity: "[[ measurement.entities.sensor_fault_zone ]]"
           name: Sensor fault zone
 
 global_alarm_setup:
@@ -104,19 +119,21 @@ global_alarm_setup:
     type: entities
     show_header_toggle: false
     entities:
-      - entity: "[[ model.global_muted_entity ]]"
+      - entity: "[[ model.entities.global_muted ]]"
         name: Mute all notifications
-      - entity: "[[ model.test_mode_entity ]]"
+      - entity: "[[ model.entities.test_mode ]]"
         name: Test mode
   phone_book_button:
-    type: button
-    entity: "[[ model.phone_book_notification_script_entity ]]"
+    type: tile
+    entity: "[[ model.entities.phone_book_notification_script ]]"
     name: Send phone book notification
     icon: mdi:account-multiple-check
-    show_state: false
+    hide_state: true
+    grid_options:
+      columns: full
     tap_action:
       action: perform-action
-      perform_action: "[[ model.phone_book_notification_script_entity ]]"
+      perform_action: "[[ model.entities.phone_book_notification_script ]]"
       confirmation:
         text: >-
           Send the phone book notification to the active recipient list? Test mode uses only test recipients; live mode uses normal recipients. Nothing is sent while all notifications are muted.
@@ -131,45 +148,47 @@ bulk_timing:
     type: entities
     show_header_toggle: false
     entities:
-      - entity: "[[ model.bulk_timing_target_entity ]]"
+      - entity: "[[ model.entities.bulk_timing_target ]]"
         name: Apply to
-      - entity: "[[ model.bulk_required_danger_percent_entity ]]"
+      - entity: "[[ model.entities.bulk_required_danger_percent ]]"
         name: Required danger
-      - entity: "[[ model.bulk_observation_window_seconds_entity ]]"
+      - entity: "[[ model.entities.bulk_observation_window_seconds ]]"
         name: Observation window
-      - entity: "[[ model.bulk_required_recovery_seconds_entity ]]"
+      - entity: "[[ model.entities.bulk_required_recovery_seconds ]]"
         name: Required recovery
   apply_button:
-    type: button
-    entity: "[[ model.bulk_apply_timing_script_entity ]]"
-    name: Apply timing to selected readings
+    type: tile
+    entity: "[[ model.entities.bulk_apply_timing_script ]]"
+    name: Apply timing to selected measurements
     icon: mdi:timer-check-outline
-    show_state: false
+    hide_state: true
+    grid_options:
+      columns: full
     tap_action:
       action: perform-action
-      perform_action: "[[ model.bulk_apply_timing_script_entity ]]"
+      perform_action: "[[ model.entities.bulk_apply_timing_script ]]"
       confirmation:
         text: >-
-          Replace all three timing values for every reading in the selected target?
+          Replace all three timing values for every measurement in the selected target?
 
 power_alarm_setup:
   settings_card:
     type: entities
     show_header_toggle: false
     entities:
-      - entity: "[[ service.health_fault_active_entity ]]"
+      - entity: "[[ service.entities.health_fault_active ]]"
         name: Sensor hub fault active
       - type: divider
-      - entity: "[[ power.state_entity ]]"
+      - entity: "[[ power.entities.state ]]"
         name: Power lifecycle state
-      - entity: "[[ power.muted_entity ]]"
+      - entity: "[[ power.entities.muted ]]"
         name: Power alerts muted
       - type: divider
-      - entity: "[[ power.mains_present_entity ]]"
+      - entity: "[[ power.entities.mains_present ]]"
         name: Confirmed external-power input
-      - entity: "[[ power.mains_present.expected_entity_id ]]"
+      - entity: "[[ power.mains_present.mqtt_entity.entity_id ]]"
         name: Raw GPIO6 mains value
-      - entity: "[[ power.sensor_fault_entity ]]"
+      - entity: "[[ power.entities.sensor_fault ]]"
         name: External-power sensor fault
-      - entity: "[[ power.outage_active_entity ]]"
+      - entity: "[[ power.entities.outage_active ]]"
         name: Confirmed outage active

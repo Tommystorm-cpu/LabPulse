@@ -32,18 +32,18 @@ services:
     parser: pressure
     serial_port: /dev/ttyACM0  # replace only this line
     device_name: Air Pressure Sensor Hub
-    readings: []
+    measurements: []
   pump_room:
     driver: serial
     parser: pump_room
     serial_port: FAKE_PUMP_ROOM_PORT
     device_name: Pump Room Sensor Hub
-    readings: []
+    measurements: []
   room_environment:
     driver: gpio
     gpio_sensor: dht11
     device_name: Room Sensor
-    readings: []
+    measurements: []
 """
 
 

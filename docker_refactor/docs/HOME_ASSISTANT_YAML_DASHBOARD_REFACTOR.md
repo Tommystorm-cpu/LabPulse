@@ -17,7 +17,7 @@ required part of this refactor.
    files.
 3. Preserve the existing generated/expanding dashboard behavior using native
    Home Assistant cards.
-4. Let users group readings by logical experimental setup independently of
+4. Let users group measurements by logical experimental setup independently of
    the physical service or sensor hub that reads them.
 5. Provide both setup-oriented operational views and hub-oriented diagnostic
    views.
@@ -35,7 +35,7 @@ required part of this refactor.
 - Do not use the Lovelace WebSocket save commands.
 - Do not retain direct `.storage` mutation as a fallback mode.
 - Do not create separate MQTT entities or alarms for each setup in which a
-  reading appears.
+  measurement appears.
 - Do not add compatibility layers for the current pre-release dashboard
   format. Update the starter and live configuration to the new design.
 - Do not move alarm decisions out of Home Assistant.
@@ -48,32 +48,32 @@ The current dashboard hierarchy conflates two independent relationships:
 Physical topology                 Logical topology
 -----------------                 ----------------
 service / sensor hub              experimental setup
-  -> driver                         -> selected readings
+  -> driver                         -> selected measurements
   -> serial/GPIO/I2C path           -> presentation groups
   -> parser                         -> operator context
   -> service health
-  -> owned readings
+  -> owned measurements
 ```
 
-A reading is physically owned by exactly one service. Every ordinary reading
+A measurement is physically owned by exactly one service. Every ordinary measurement
 explicitly names one or more logical setups. Dedicated power telemetry is not
 an experimental setup and omits membership.
 
-The implementation must build one canonical reading inventory and project it
+The implementation must build one canonical measurement catalog and project it
 in two ways:
 
 ```text
 Validated configuration
         |
         v
-Canonical reading inventory
+Canonical measurement catalog
         |
         +-- by setup   -> Monitor and Alarm Setup
         |
         +-- by service -> Diagnostics
 ```
 
-The projections must reference the same reading model rather than copying
+The projections must reference the same measurement model rather than copying
 identity, threshold, or alarm data into separate setup-specific models.
 
 ## User configuration
@@ -90,7 +90,7 @@ starter.
 ### Setup definitions
 
 Top-level `setups` define presentation metadata only. They do not repeat the
-reading inventory.
+measurement catalog.
 
 ```yaml
 setups:
@@ -124,9 +124,9 @@ class SetupConfig(BaseModel):
 
 When `label` is omitted, derive a readable label from the setup ID.
 
-### Reading membership
+### Measurement membership
 
-Each reading is declared once under its physical service. A required `setups`
+Each measurement is declared once under its physical service. A required `setups`
 field specifies its logical scope.
 
 The accepted form is a non-empty list:
@@ -148,7 +148,7 @@ services:
     serial_port: "/dev/serial/by-id/..."
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
-    readings:
+    measurements:
       - name: "plant_room_temperature"
         label: "Plant Room Temperature"
         unit: "°C"
@@ -177,7 +177,7 @@ services:
     gpio_sensor: dht11
     gpio_pin: "D4"
     device_name: "Room Environment Sensor"
-    readings:
+    measurements:
       - name: "temperature"
         label: "Room Temperature"
         unit: "°C"
@@ -190,7 +190,7 @@ services:
 
 Services do not have a separate `display` block. Logical setup metadata owns
 Monitor presentation, while `device_name` is the physical hub label used by
-Diagnostics. Physical services and their readings retain their order from
+Diagnostics. Physical services and their measurements retain their order from
 `config.yaml`, and service headings use a standard icon by default.
 
 Do not use presentation-only service sections to represent physical
@@ -201,16 +201,16 @@ The meanings are:
 
 | Value | Meaning |
 | --- | --- |
-| List of IDs | Reading applies to exactly those setups |
+| List of IDs | Measurement applies to exactly those setups |
 
 If a condition is conceptually general or applies across the lab, give it a
 descriptive setup of its own, such as `room_conditions`. Require membership on
-every ordinary reading. Readings in a service with `power_detection` instead
+every ordinary measurement. Measurements in a service with `power_detection` instead
 omit `setups`, because the dedicated power lifecycle is rendered separately.
 
-### Reading subcategories
+### Measurement subcategories
 
-An optional `subcategory` groups related readings within their effective
+An optional `subcategory` groups related measurements within their effective
 setup section. It is presentation
 only and does not alter setup membership, physical ownership, identity, or
 alarms. Use it for operational context such as `Cooling Water` or `Room
@@ -238,36 +238,36 @@ Configuration validation must reject:
 - blank setup IDs or labels;
 - invalid setup icons or ordering values where applicable;
 - a selected setup ID that is not declared under top-level `setups`;
-- duplicate setup IDs in one reading's selected list;
-- missing or empty membership on an ordinary reading;
+- duplicate setup IDs in one measurement's selected list;
+- missing or empty membership on an ordinary measurement;
 - membership on dedicated power telemetry;
-- duplicate reading names within a service, as today.
+- duplicate measurement names within a service, as today.
 
 Validation must allow:
 
-- one hub serving readings from several setups;
-- one setup containing readings from several hubs;
-- one reading appearing in several selected setups;
-- explicit single-setup readings;
-- explicit shared readings;
-- setup-independent dedicated power readings;
-- a setup temporarily containing no enabled readings;
-- disabled services whose readings are omitted from generated views.
+- one hub serving measurements from several setups;
+- one setup containing measurements from several hubs;
+- one measurement appearing in several selected setups;
+- explicit single-setup measurements;
+- explicit shared measurements;
+- setup-independent dedicated power measurements;
+- a setup temporarily containing no enabled measurements;
+- disabled services whose measurements are omitted from generated views.
 
 ## Identity and state rules
 
 Setup membership is presentation and notification context. It must never
-change the physical reading identity.
+change the physical measurement identity.
 
 For example:
 
 ```text
 service: pump_room
-reading: flow1
+measurement: flow1
 entity:  sensor.labpulse_pump_room_flow1
 ```
 
-Moving that reading between setups must not:
+Moving that measurement between setups must not:
 
 - change its MQTT topic or unique ID;
 - create another Home Assistant sensor;
@@ -291,9 +291,14 @@ The Monitor view is the main operator view and is grouped logically.
 The Monitor view uses native masonry so independently sized columns pack
 compactly across the available screen width. Render columns in this order:
 
-1. Dedicated Power: one independent column for a service with
+1. Active Problems: a native entity-filter nested at the top of the first
+   available column. It hides when empty and watches confirmed service faults,
+   persistent ordinary-measurement alarm state, and persistent power state. Measurement
+   rows require their individual and every owning setup mute to be off; the
+   global mute does not affect this operational summary.
+2. Dedicated Power: one independent column for a service with
    `power_detection`; it is never grouped into a setup.
-2. One ordered column per configured setup.
+3. One ordered column per configured setup.
 
 Membership behavior:
 
@@ -302,7 +307,7 @@ Membership behavior:
 | One selected setup | Full card in that setup |
 | Several selected setups | Full card in each selected setup with a Shared indicator |
 
-Repeating a selected shared reading means repeating only its card/entity
+Repeating a selected shared measurement means repeating only its card/entity
 reference. There remains one Home Assistant entity and one alarm state.
 
 Where practical, a shared card should show the other affected setup labels.
@@ -322,26 +327,42 @@ Render controls by logical setup, with no physical sensor-hub grouping:
 
 ```text
 Alarm Setup
-  Notification Controls
-  Bulk Timing
-    target: all readings or one configured setup
-  One section per setup
-    independent setup notification mute
-    every reading assigned to that setup
+  Masonry landing page
+  Notification Controls card
+  Bulk Timing card
+    target: all measurements or one configured setup
+  Configure Alarms card
+    each setup: navigation | setup mute
+    one tile per non-empty setup
+    dedicated power tile when configured
+
+Setup subview
+  repeated setup notification mute
+  left: two-column measurement launcher grid
+  middle: conditional editable alarm settings
+  right: conditional live alarm status
 ```
 
-Shared readings appear in each affected setup, but every appearance references
+Shared measurements appear in each affected setup, but every appearance references
 the same physical helper entities and alarm state. Observation window, required
-danger percentage, and recovery duration are per-reading controls. The bulk
-editor copies all three values to all ordinary readings or one selected setup
+danger percentage, and recovery duration are per-measurement controls. The bulk
+editor copies all three values to all ordinary measurements or one selected setup
 after explicit confirmation.
 
-Each non-empty setup has an independent notification mute. Ordinary reading
+Each non-empty setup uses a native Home Assistant subview with a stable path and
+an explicit back path to the Alarm Setup landing page. The internal expansion
+helper state is hidden from the compact measurement tiles. The same helper reveals
+two separate cards: editable alarm settings in the middle column and read-only
+live alarm status in the right column. Live status contains current value,
+alarm state, observed danger, and danger/recovery/fault zones. Physical
+Diagnostics excludes these alarm-engine entities and remains hub-oriented.
+
+Each non-empty setup has an independent notification mute. Ordinary measurement
 delivery requires the global mute, every assigned setup mute, and the individual
-reading mute to be open; toggling one must never write to another. Because a
-shared reading has one physical notification, muting any owning setup suppresses
+measurement mute to be open; toggling one must never write to another. Because a
+shared measurement has one physical notification, muting any owning setup suppresses
 that notification everywhere. The dashboard warns and requires confirmation
-before enabling a mute for a setup containing shared readings, while allowing
+before enabling a mute for a setup containing shared measurements, while allowing
 unmute without confirmation. Logical setup mutes do not govern physical
 service-health or dedicated power alarms.
 
@@ -359,31 +380,31 @@ automations, helpers, and scripts continue to own alarm decisions and state.
 
 ### 3. Diagnostics
 
-Diagnostics ignores setup membership and groups readings by physical service
-or sensor hub.
+Diagnostics ignores setup membership and uses native masonry with one compact
+vertical card per physical service or sensor hub.
 
 Each service section should show:
 
-- device/hub label;
-- service connection and health state;
-- last-reading or availability information where available;
-- every reading physically owned by the service;
-- power and GPIO diagnostic state where applicable;
-- raw zone/fault entities useful for troubleshooting.
+- a device/hub heading;
+- one prominent connection tile;
+- paired Service Health and Confirmed service fault tiles;
+- one latest-measurements entity card containing every physically owned measurement;
+- a power lifecycle card where applicable.
 
-Service sections follow their order under `services` in `config.yaml` and use
-`device_name` as the heading. No separate service display order is required.
+Service cards follow their order under `services` in `config.yaml` and use
+`device_name` as the heading. Their different heights pack naturally without a
+separate service display order.
 
-Every reading appears exactly once in Diagnostics, even if it appears in
+Every measurement appears exactly once in Diagnostics, even if it appears in
 several logical setup sections on Monitor.
 
 ## Setup status and notifications
 
-A setup's displayed health may be derived from all readings that effectively
+A setup's displayed health may be derived from all measurements that effectively
 apply to it:
 
-- readings explicitly assigned to the setup;
-- selected readings shared with that setup;
+- measurements explicitly assigned to the setup;
+- selected measurements shared with that setup;
 
 If setup-level summary entities are implemented, their initial precedence
 should be:
@@ -395,7 +416,7 @@ Sensor Fault > Danger > Unknown > Normal
 This summary is presentation state only and must not create additional alarm
 events.
 
-One physical reading produces one notification. Include setup context in the
+One physical measurement produces one notification. Include setup context in the
 message rather than sending one message per setup:
 
 | Scope | Notification context |
@@ -455,7 +476,7 @@ Do not emit `.storage` fields such as `version`, `minor_version`, `key`, or
 
 | Concern | Durable source |
 | --- | --- |
-| Services, readings, labels, setup membership | `~/labpulse-ha/config.yaml` |
+| Services, measurements, labels, setup membership | `~/labpulse-ha/config.yaml` |
 | Thresholds, modes, deadband, and mute state | Home Assistant state/UI |
 | Dashboard layout/card rules | repository dashboard seed/templates |
 | Expanded live dashboard | generated `labpulse-dashboard.yaml` |
@@ -470,8 +491,8 @@ The generated dashboard must begin with a warning similar to:
 ```
 
 Advanced users may experiment by editing the generated YAML, but durable
-changes must be moved into `templates/dashboard/cards.yaml` or
-`labpulse_homeassistant/yaml_dashboard.py` before regeneration.
+changes must be moved into `templates/dashboard/cards.yaml` or the matching
+module under `labpulse_homeassistant/dashboard/` before regeneration.
 
 ## Generator simplification
 
@@ -480,7 +501,7 @@ Normal generation becomes:
 ```text
 load config
   -> validate and normalize
-  -> build canonical inventory
+  -> build canonical catalog
   -> build setup and service projections
   -> render packages/entity map
   -> render labpulse-dashboard.yaml
@@ -504,20 +525,22 @@ The implementation should favor a small number of clear models:
 ```text
 labpulse_common/config.py
   SetupConfig
-  normalized reading SetupScope
+  normalized measurement SetupScope
   cross-reference validation
 
 labpulse_homeassistant/
-  inventory/models
-    canonical service and reading identity
+  catalog/models
+    canonical service and measurement identity
   projections
-    readings by effective setup
-    readings by service
+    measurements by effective setup
+    measurements by service
     none/shared/all classifications
   dashboard
     pure native-card Lovelace rendering
-  write_yaml
-    generated file output
+  core_config.py
+    core Home Assistant configuration output
+  dashboard_writer.py
+    dashboard composition and generated file output
 ```
 
 Exact filenames may be chosen during implementation. Do not duplicate config
@@ -543,12 +566,12 @@ configuration.
 ## Related alarm-model issue
 
 Service-wide danger percentage, observation window, and recovery duration are
-currently shared because readings are attached to the same physical hub. The
+currently shared because measurements are attached to the same physical hub. The
 new setup model demonstrates that physical co-location does not necessarily
 mean shared alarm policy.
 
 This refactor must not accidentally add further service/setup coupling.
-Moving timing to per-reading helpers or named alarm profiles is a related
+Moving timing to per-measurement helpers or named alarm profiles is a related
 follow-up design decision, not an implicit part of the first dashboard
 implementation. Record and test whichever policy is selected before changing
 alarm semantics.
@@ -557,8 +580,8 @@ alarm semantics.
 
 1. Add setup configuration models and normalized membership validation.
 2. Update the starter `config.yaml` with explicit membership for every
-   reading.
-3. Build a canonical inventory and separate setup/service projections.
+   measurement.
+3. Build a canonical catalog and separate setup/service projections.
 4. Add projection tests for `none`, one, selected-many, and `all`.
 5. Change dashboard rendering to return a plain Lovelace configuration.
 6. Generate and register `labpulse-dashboard.yaml` through
@@ -577,7 +600,7 @@ Only YAML dashboard generation is maintained.
 ### Configuration tests
 
 - valid setup metadata and inferred labels;
-- required reading membership;
+- required measurement membership;
 - one and selected-many normalization;
 - missing setup references;
 - duplicate selected setup IDs;
@@ -587,34 +610,37 @@ Only YAML dashboard generation is maintained.
 
 ### Projection tests
 
-- one hub contributes readings to different setups;
-- one setup receives readings from different hubs;
-- one reading appears in several selected setups;
+- one hub contributes measurements to different setups;
+- one setup receives measurements from different hubs;
+- one measurement appears in several selected setups;
 - dedicated power stays outside setup projections;
-- every reading appears once under its physical service in Diagnostics;
-- projections reuse canonical reading identity.
+- every measurement appears once under its physical service in Diagnostics;
+- projections reuse canonical measurement identity.
 
 ### Dashboard tests
 
 - generated file is valid Lovelace YAML with no storage wrapper;
 - generated `configuration.yaml` registers the dashboard in YAML mode;
-- view order is Monitor, Alarm Setup, Diagnostics;
-- setup, subcategory, and reading order is deterministic;
-- shared readings reference the same entity IDs in every appearance;
+- visible view order is Monitor, Alarm Setup, Diagnostics;
+- non-empty setup and dedicated power editors are native hidden subviews;
+- setup, subcategory, and measurement order is deterministic;
+- shared measurements reference the same entity IDs in every appearance;
 - alarm controls are grouped by setup and reuse shared physical identities;
-- setup mutes are independent and shared-reading impact requires confirmation;
-- timing is per reading and the bulk script has exact logical targets;
+- setup mutes are independent and shared-measurement impact requires confirmation;
+- timing is per measurement and the bulk script has exact logical targets;
 - native conditional expansion still works;
+- collapsed measurement launchers are state-hidden and arranged two across;
+- each expansion aligns editable settings with read-only live status;
 - no custom card/resource is required;
 - generated-file warning is present.
 
 ### Alarm and notification tests
 
 - setup membership does not change alarm/entity identity;
-- one reading event produces one notification;
+- one measurement event produces one notification;
 - context correctly distinguishes one and selected-many;
-- every assigned setup independently gates shared-reading delivery;
-- no setup, reading, global, or power mute writes another mute helper;
+- every assigned setup independently gates shared-measurement delivery;
+- no setup, measurement, global, or power mute writes another mute helper;
 - service faults remain hub-level diagnostics;
 - setup summary state, if implemented, does not emit duplicate alarms.
 
@@ -632,14 +658,14 @@ Only YAML dashboard generation is maintained.
 
 The refactor is complete when:
 
-- every ordinary reading explicitly selects one or more setup IDs;
-- dedicated power readings remain setup-independent;
+- every ordinary measurement explicitly selects one or more setup IDs;
+- dedicated power measurements remain setup-independent;
 - Monitor and Alarm Setup are organized logically by setup;
 - Diagnostics is organized physically by service/hub;
-- shared readings are contextually repeated without duplicating entities,
+- shared measurements are contextually repeated without duplicating entities,
   alarms, history, or notifications;
-- setup-grouped alarm controls share one physical state per reading;
-- per-reading timing and confirmed bulk timing are generated;
+- setup-grouped alarm controls share one physical state per measurement;
+- per-measurement timing and confirmed bulk timing are generated;
 - the dashboard is generated as supported YAML and registered normally;
 - ordinary generation never reads or writes `.storage`;
 - storage dashboard flags, backups, ownership handling, and documentation are

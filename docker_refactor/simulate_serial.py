@@ -110,7 +110,7 @@ def receive_message(connection: socket.socket) -> dict[str, Any]:
     return json.loads(bytes(chunks).split(b"\n", 1)[0].decode("utf-8"))
 
 
-class ReadingGenerator:
+class MeasurementGenerator:
     """Generate the serial payloads emitted by the simulated devices."""
 
     def __init__(
@@ -126,20 +126,20 @@ class ReadingGenerator:
             validate_scenario(target, state)
 
     def set_scenario(self, target: str, state: str) -> None:
-        """Set one reading's simulated behavior."""
+        """Set one measurement's simulated behavior."""
 
         validate_scenario(target, state)
         self.scenarios[target] = state
 
     def clear_scenario(self, target: str) -> None:
-        """Return one reading to its default random behavior."""
+        """Return one measurement to its default random behavior."""
 
         if target not in SCENARIO_TARGETS:
             raise ValueError(f"Unsupported scenario target: {target}")
         self.scenarios.pop(target, None)
 
     def reset(self) -> None:
-        """Return every reading to its default random behavior."""
+        """Return every measurement to its default random behavior."""
 
         self.scenarios.clear()
 
@@ -152,7 +152,7 @@ class ReadingGenerator:
         high_range: tuple[int, int],
         stale_value: int,
     ) -> int:
-        """Select an integer-scaled value for one reading and scenario."""
+        """Select an integer-scaled value for one measurement and scenario."""
 
         state = self.scenarios.get(target)
         if state is None:
@@ -168,7 +168,7 @@ class ReadingGenerator:
         return self.random.randint(*bounds)
 
     def _hundredths(self, target: str, turbo: bool = False) -> str:
-        """Return one flow reading with two decimal places."""
+        """Return one flow measurement with two decimal places."""
 
         random_range = (150, 420) if turbo else (150, 550)
         value = self._integer_value(
@@ -182,7 +182,7 @@ class ReadingGenerator:
         return f"{value / 100:.2f}"
 
     def _temperature(self, target: str, turbo: bool = False) -> str:
-        """Return one temperature reading with one decimal place."""
+        """Return one temperature measurement with one decimal place."""
 
         random_range = (205, 260) if turbo else (185, 235)
         value = self._integer_value(
@@ -209,7 +209,7 @@ class ReadingGenerator:
         return f"{value / 10:.1f}"
 
     def _pump_pressure(self, target: str) -> str:
-        """Return one pump-room pressure reading in bar."""
+        """Return one pump-room pressure measurement in bar."""
 
         value = self._integer_value(
             target,
@@ -251,12 +251,12 @@ class ReadingGenerator:
         )
 
     def _is_stale(self, target: str) -> bool:
-        """Return whether a simulated reading should stop being emitted."""
+        """Return whether a simulated measurement should stop being emitted."""
 
         return self.scenarios.get(target) == "stale"
 
     @staticmethod
-    def _firmware_payload(device: str, readings: dict[str, float]) -> str:
+    def _firmware_payload(device: str, measurements: dict[str, float]) -> str:
         """Return one compact schema-1 firmware JSON line."""
 
         return json.dumps(
@@ -265,7 +265,7 @@ class ReadingGenerator:
                 "schema": 1,
                 "firmware": "simulator",
                 "type": "sample",
-                "readings": readings,
+                "measurements": measurements,
             },
             separators=(",", ":"),
         ) + "\n"
@@ -273,41 +273,41 @@ class ReadingGenerator:
     def payloads(self) -> dict[str, str]:
         """Build one complete emission for every simulated serial device."""
 
-        pump_readings: dict[str, float] = {}
+        pump_measurements: dict[str, float] = {}
         for index in (1, 2):
             target = f"pump_room.flow{index}"
             if not self._is_stale(target):
-                pump_readings[f"flow{index}"] = float(self._hundredths(target))
+                pump_measurements[f"flow{index}"] = float(self._hundredths(target))
 
         for index in range(4):
             target = f"pump_room.temp{index}"
             if not self._is_stale(target):
-                pump_readings[f"temp{index}"] = float(self._temperature(target))
+                pump_measurements[f"temp{index}"] = float(self._temperature(target))
 
         if not self._is_stale("pump_room.roomtemp"):
-            pump_readings["roomtemp"] = float(
+            pump_measurements["roomtemp"] = float(
                 self._temperature("pump_room.roomtemp")
             )
         if not self._is_stale("pump_room.roomhum"):
-            pump_readings["roomhum"] = float(self._humidity("pump_room.roomhum"))
+            pump_measurements["roomhum"] = float(self._humidity("pump_room.roomhum"))
         for index in (1, 2):
             target = f"pump_room.press{index}"
             if not self._is_stale(target):
-                pump_readings[f"press{index}"] = float(
+                pump_measurements[f"press{index}"] = float(
                     self._pump_pressure(target)
                 )
 
-        turbo_readings: dict[str, float] = {}
+        turbo_measurements: dict[str, float] = {}
         for index in (1, 2):
             target = f"turbo_pump.flow{index}"
             if not self._is_stale(target):
-                turbo_readings[f"flow{index}"] = float(
+                turbo_measurements[f"flow{index}"] = float(
                     self._hundredths(target, turbo=True)
                 )
         for index in range(4):
             target = f"turbo_pump.temp{index}"
             if not self._is_stale(target):
-                turbo_readings[f"temp{index}"] = float(
+                turbo_measurements[f"temp{index}"] = float(
                     self._temperature(target, turbo=True)
                 )
 
@@ -328,13 +328,13 @@ class ReadingGenerator:
                 "pressure_monitor",
                 {"pressure": round(float(self._pressure_mpa()) * 10.0, 4)},
             )
-        if pump_readings:
+        if pump_measurements:
             payloads["pump_room"] = self._firmware_payload(
-                "pump_room", pump_readings
+                "pump_room", pump_measurements
             )
-        if turbo_readings:
+        if turbo_measurements:
             payloads["turbo_pump"] = self._firmware_payload(
-                "turbo_pump", turbo_readings
+                "turbo_pump", turbo_measurements
             )
         if room_parts:
             payloads["room_environment"] = "|".join(room_parts) + "\n"
@@ -413,7 +413,7 @@ class SimulatorService:
         self.sim_dir = sim_dir
         self.interval = interval
         self.socket_path = sim_dir / CONTROL_SOCKET_NAME
-        self.generator = ReadingGenerator(scenarios)
+        self.generator = MeasurementGenerator(scenarios)
         self.endpoints: dict[str, SerialEndpoint] = {}
         self.server: socket.socket | None = None
         self.running = True
@@ -616,7 +616,7 @@ def print_status(response: dict[str, Any]) -> None:
     print("Scenarios:")
     scenarios = response["scenarios"]
     if not scenarios:
-        print("  all readings: random healthy values")
+        print("  all measurements: random healthy values")
     else:
         for target, state in scenarios.items():
             print(f"  {target}: {state}")
@@ -644,12 +644,12 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--interval", type=float, default=DEFAULT_INTERVAL)
     serve.add_argument("--scenario", action="append", default=[])
 
-    set_command = subparsers.add_parser("set", help="change one reading scenario")
+    set_command = subparsers.add_parser("set", help="change one measurement scenario")
     add_directory_argument(set_command)
     set_command.add_argument("target")
     set_command.add_argument("state")
 
-    clear = subparsers.add_parser("clear", help="clear one reading scenario")
+    clear = subparsers.add_parser("clear", help="clear one measurement scenario")
     add_directory_argument(clear)
     clear.add_argument("target")
 

@@ -242,12 +242,21 @@ def test_offline_dashboard_generation_is_deterministic() -> None:
         dashboard = yaml.safe_load(
             (ha_dir / "labpulse-dashboard.yaml").read_text(encoding="utf-8")
         )
-        if [view["title"] for view in dashboard["views"]] != [
+        visible_views = [
+            view for view in dashboard["views"] if not view.get("subview")
+        ]
+        if [view["title"] for view in visible_views] != [
             "Monitor",
             "Alarm Setup",
             "Diagnostics",
         ]:
-            raise AssertionError("offline dashboard view contract changed")
+            raise AssertionError("offline visible dashboard view contract changed")
+        subviews = [view for view in dashboard["views"] if view.get("subview")]
+        if not subviews or any(
+            view.get("back_path") != "/labpulse-monitor/alarm-setup"
+            for view in subviews
+        ):
+            raise AssertionError("offline alarm subview contract changed")
 
         ui_markers = {
             "automations.yaml": "- id: user-owned-automation\n",

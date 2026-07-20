@@ -31,7 +31,7 @@ class BaseSensorDriver(ABC):
     def read(self) -> Optional[dict[str, float]]:
         """
         Read data from the hardware.
-        MUST return a dictionary of {reading_name: value} (e.g., {"pump_flow2": 4.5})
+        MUST return a dictionary of {measurement_name: value} (e.g., {"pump_flow2": 4.5})
         or None if the read fails/times out.
         """
         pass

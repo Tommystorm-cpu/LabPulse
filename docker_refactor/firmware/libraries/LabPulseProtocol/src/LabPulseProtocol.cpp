@@ -33,23 +33,23 @@ bool finiteInRange(float value, float minimum, float maximum) {
   return isfinite(value) && value >= minimum && value <= maximum;
 }
 
-ThermistorReading readGe1337(uint8_t pin, float fixedResistanceOhms) {
-  ThermistorReading reading = {analogRead(pin), 0.0F, false};
-  if (reading.adc < ADC_VALID_MIN || reading.adc > ADC_VALID_MAX) {
-    return reading;
+ThermistorMeasurement readGe1337(uint8_t pin, float fixedResistanceOhms) {
+  ThermistorMeasurement measurement = {analogRead(pin), 0.0F, false};
+  if (measurement.adc < ADC_VALID_MIN || measurement.adc > ADC_VALID_MAX) {
+    return measurement;
   }
 
   const float voltage =
-      reading.adc * (ADC_REFERENCE_VOLTS / static_cast<float>(ADC_MAX));
+      measurement.adc * (ADC_REFERENCE_VOLTS / static_cast<float>(ADC_MAX));
   const float fixedResistorVoltage = ADC_REFERENCE_VOLTS - voltage;
   if (fixedResistorVoltage <= 0.0F) {
-    return reading;
+    return measurement;
   }
 
   const float sensorResistance =
       (voltage / fixedResistorVoltage) * fixedResistanceOhms;
   if (!isfinite(sensorResistance) || sensorResistance <= 0.0F) {
-    return reading;
+    return measurement;
   }
 
   const float lnResistance = log(sensorResistance);
@@ -58,15 +58,15 @@ ThermistorReading readGe1337(uint8_t pin, float fixedResistanceOhms) {
       STEINHART_C * pow(lnResistance, 2) +
       STEINHART_D * pow(lnResistance, 3);
   if (!isfinite(denominator) || denominator <= 0.0F) {
-    return reading;
+    return measurement;
   }
 
-  reading.celsius = (1.0F / denominator) - 273.15F;
-  reading.valid = finiteInRange(
-      reading.celsius,
+  measurement.celsius = (1.0F / denominator) - 273.15F;
+  measurement.valid = finiteInRange(
+      measurement.celsius,
       TEMPERATURE_VALID_MIN_C,
       TEMPERATURE_VALID_MAX_C);
-  return reading;
+  return measurement;
 }
 
 void printFloatOrNull(float value, bool valid, uint8_t digits) {
@@ -91,7 +91,7 @@ void printSampleStart(
   printEnvelopeStart(device, firmware);
   Serial.print(F(",\"type\":\"sample\",\"uptime_ms\":"));
   Serial.print(uptimeMs);
-  Serial.print(F(",\"readings\":{"));
+  Serial.print(F(",\"measurements\":{"));
 }
 
 }  // namespace LabPulseProtocol

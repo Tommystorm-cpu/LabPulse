@@ -16,13 +16,13 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
     i2c_bus: 1
     i2c_address: 0x36
     device_name: "UPS Monitor"
-    readings:
+    measurements:
       - {name: voltage, label: "UPS Battery Voltage", unit: V, device_class: voltage}
       - {name: battery_level, label: "UPS Battery Level", unit: "%", device_class: battery}
       - {name: mains_present, label: "External Power Present", state_class: null}
     read_interval_seconds: 1
     reconnect_interval_seconds: 5
-    maximum_reading_age_seconds: 15
+    maximum_measurement_age_seconds: 15
     power_detection:
       source: x1200_gpio
       gpio_chip: "/dev/gpiochip0"
@@ -64,7 +64,7 @@ Never connect or probe mains voltage with Raspberry Pi GPIO equipment.
 
 ## Verify MQTT and Home Assistant
 
-Follow the normalized readings and service status:
+Follow the normalized measurements and service status:
 
 ```bash
 cd ~/labpulse-ha
@@ -102,7 +102,7 @@ owned by the SMS worker.
 
 ## Fault and restart checks
 
-An unavailable raw mains reading or `gpio_fault` service status must select
+An unavailable raw mains measurement or `gpio_fault` service status must select
 `Sensor Fault`, never `On Battery`. Restore access and confirm the state returns
 to the actual current power condition.
 

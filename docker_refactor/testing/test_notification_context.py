@@ -11,14 +11,14 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import LabPulseConfig
-from labpulse_homeassistant.alarm import (
+from labpulse_homeassistant.alarm_package import (
     automations,
     input_booleans,
     load_alarm_seed,
     load_power_seed,
 )
-from labpulse_homeassistant.model_builder import build_render_model
-from labpulse_homeassistant.inventory import build_reading_inventory
+from labpulse_homeassistant.render_model import RenderModel
+from labpulse_homeassistant.measurement_catalog import build_measurement_catalog
 
 
 def config_data() -> dict[str, object]:
@@ -36,12 +36,12 @@ def config_data() -> dict[str, object]:
                 "parser": "pump_room",
                 "serial_port": "/tmp/shared-hub",
                 "device_name": "Shared Sensor Hub",
-                "readings": [
-                    {"name": "alpha", "label": "Alpha Reading", "setups": ["alpha"]},
-                    {"name": "beta", "label": "Beta Reading", "setups": ["beta"]},
+                "measurements": [
+                    {"name": "alpha", "label": "Alpha Measurement", "setups": ["alpha"]},
+                    {"name": "beta", "label": "Beta Measurement", "setups": ["beta"]},
                     {
                         "name": "shared",
-                        "label": "Shared Reading",
+                        "label": "Shared Measurement",
                         "setups": ["beta", "alpha"],
                     },
                 ],
@@ -85,10 +85,10 @@ def service_actions(
 
 
 def rendered_automations(config: LabPulseConfig) -> list[dict[str, object]]:
-    """Render alarm automations from the canonical inventory."""
+    """Render alarm automations from the canonical catalog."""
 
-    inventory = build_reading_inventory(config)
-    model = build_render_model(config, inventory=inventory)
+    catalog = build_measurement_catalog(config)
+    model = RenderModel.from_config(config, catalog=catalog)
     return automations(load_alarm_seed(), load_power_seed(), model)
 
 
@@ -98,9 +98,9 @@ def test_context_for_every_scope_without_duplicate_events() -> None:
     config = LabPulseConfig.model_validate(config_data())
     generated = rendered_automations(config)
     expected = {
-        "Alpha Reading": "Affected setup: Alpha Experiment.",
-        "Beta Reading": "Affected setup: Beta Experiment.",
-        "Shared Reading": "Affected setups: Alpha Experiment, Beta Experiment.",
+        "Alpha Measurement": "Affected setup: Alpha Experiment.",
+        "Beta Measurement": "Affected setup: Beta Experiment.",
+        "Shared Measurement": "Affected setups: Alpha Experiment, Beta Experiment.",
     }
     transition_suffixes = (
         " Danger",
@@ -109,17 +109,17 @@ def test_context_for_every_scope_without_duplicate_events() -> None:
         " Sensor Recovery",
     )
     for label, context in expected.items():
-        reading_automations = [
+        measurement_automations = [
             item
             for item in generated
             if str(item.get("alias", "")).startswith(f"LabPulse {label} ")
             and str(item.get("alias", "")).endswith(transition_suffixes)
         ]
-        if len(reading_automations) != 4:
+        if len(measurement_automations) != 4:
             raise AssertionError(
                 f"{label} should retain four physical transition automations"
             )
-        for automation in reading_automations:
+        for automation in measurement_automations:
             if service_call_count(automation, "persistent_notification.create") != 1:
                 raise AssertionError(f"{automation['alias']} duplicates HA notifications")
             if service_call_count(automation, "mqtt.publish") != 1:
@@ -141,31 +141,36 @@ def test_membership_does_not_change_alarm_identity() -> None:
 
     first_data = config_data()
     second_data = config_data()
-    second_data["services"]["shared_hub"]["readings"][1]["setups"] = [
+    second_data["services"]["shared_hub"]["measurements"][1]["setups"] = [
         "alpha",
         "beta",
     ]
-    first = build_render_model(LabPulseConfig.model_validate(first_data)).services[0]
-    second = build_render_model(LabPulseConfig.model_validate(second_data)).services[0]
-    first_reading = first.readings[1]
-    second_reading = second.readings[1]
-    identities = (
-        "reading_id",
-        "mqtt_unique_id",
-        "expected_entity_id",
-        "alarm_state_entity",
-        "alarm_mode_entity",
-        "alarm_muted_entity",
+    first = RenderModel.from_config(LabPulseConfig.model_validate(first_data)).services[0]
+    second = RenderModel.from_config(LabPulseConfig.model_validate(second_data)).services[0]
+    first_measurement = first.measurements[1]
+    second_measurement = second.measurements[1]
+    first_identity = (
+        first_measurement.measurement_id,
+        first_measurement.mqtt_entity,
+        first_measurement.entities["alarm_state"],
+        first_measurement.entities["alarm_mode"],
+        first_measurement.entities["alarm_muted"],
     )
-    for attribute in identities:
-        if getattr(first_reading, attribute) != getattr(second_reading, attribute):
-            raise AssertionError(f"setup membership changed {attribute}")
-    if first_reading.notification_context == second_reading.notification_context:
+    second_identity = (
+        second_measurement.measurement_id,
+        second_measurement.mqtt_entity,
+        second_measurement.entities["alarm_state"],
+        second_measurement.entities["alarm_mode"],
+        second_measurement.entities["alarm_muted"],
+    )
+    if first_identity != second_identity:
+        raise AssertionError("setup membership changed physical alarm identity")
+    if first_measurement.notification_context == second_measurement.notification_context:
         raise AssertionError("setup membership did not update notification context")
 
 
 def test_service_faults_remain_hub_level() -> None:
-    """Do not apply reading/setup context to physical service-health alarms."""
+    """Do not apply measurement/setup context to physical service-health alarms."""
 
     generated = rendered_automations(LabPulseConfig.model_validate(config_data()))
     service_health = [
@@ -186,8 +191,8 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
     """Gate alerts by all memberships without changing another mute helper."""
 
     config = LabPulseConfig.model_validate(config_data())
-    inventory = build_reading_inventory(config)
-    model = build_render_model(config, inventory=inventory)
+    catalog = build_measurement_catalog(config)
+    model = RenderModel.from_config(config, catalog=catalog)
     alpha_mute = "input_boolean.labpulse_setup_alpha_notifications_muted"
     beta_mute = "input_boolean.labpulse_setup_beta_notifications_muted"
     helpers = input_booleans(load_alarm_seed(), load_power_seed(), model)
@@ -200,9 +205,9 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
 
     generated = rendered_automations(config)
     expected_gates = {
-        "Alpha Reading": (alpha_mute,),
-        "Beta Reading": (beta_mute,),
-        "Shared Reading": (alpha_mute, beta_mute),
+        "Alpha Measurement": (alpha_mute,),
+        "Beta Measurement": (beta_mute,),
+        "Shared Measurement": (alpha_mute, beta_mute),
     }
     for label, gates in expected_gates.items():
         transitions = [

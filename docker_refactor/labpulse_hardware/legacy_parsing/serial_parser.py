@@ -19,8 +19,8 @@ class SerialParser:
         """
         Create a parser for one configured LabPulse service.
 
-        name identifies the service in logs; parsed reading keys come from the
-        Arduino labels and must match `readings[].name` in config.yaml.
+        name identifies the service in logs; parsed measurement keys come from the
+        Arduino labels and must match `measurements[].name` in config.yaml.
         parser_type selects the expected Arduino output format.
         """
         self.name = name
@@ -35,7 +35,7 @@ class SerialParser:
 
     def parse(self, line: str) -> Optional[dict[str, float]]:
         """
-        Parse one raw serial line into reading/value pairs.
+        Parse one raw serial line into measurement/value pairs.
 
         Returns None when the line is empty, malformed, or not relevant to the
         configured parser type.
@@ -72,25 +72,25 @@ class SerialParser:
         if payload.get("device") != self.name or payload.get("type") != "sample":
             return None
 
-        readings = payload.get("readings")
-        if not isinstance(readings, dict):
+        measurements = payload.get("measurements")
+        if not isinstance(measurements, dict):
             # Startup hello and future status records intentionally contain no
-            # readings and must not become telemetry.
+            # measurements and must not become telemetry.
             return None
 
         parsed: dict[str, float] = {}
-        for reading_name, raw_value in readings.items():
-            if not isinstance(reading_name, str):
+        for measurement_name, raw_value in measurements.items():
+            if not isinstance(measurement_name, str):
                 continue
             if isinstance(raw_value, bool) or not isinstance(
                 raw_value, (int, float)
             ):
                 # JSON null represents an invalid sensor channel. Metadata and
-                # diagnostics live outside readings and are ignored entirely.
+                # diagnostics live outside measurements and are ignored entirely.
                 continue
             value = float(raw_value)
             if math.isfinite(value):
-                parsed[reading_name] = value
+                parsed[measurement_name] = value
 
         return parsed if parsed else None
 
@@ -160,7 +160,7 @@ class SerialParser:
 
     def _key(self, label: str) -> str:
         """
-        Convert an Arduino label into the config reading key.
+        Convert an Arduino label into the config measurement key.
 
         Example: label Flow1 becomes flow1.
         """

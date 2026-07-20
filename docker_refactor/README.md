@@ -65,4 +65,4 @@ docs/                     the four maintained guides
 ```
 
 Home Assistant owns alarm decisions and operator settings. Hardware services
-publish readings and health; the SMS worker delivers validated requests.
+publish measurements and health; the SMS worker delivers validated requests.

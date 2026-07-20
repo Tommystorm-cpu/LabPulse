@@ -11,13 +11,13 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import load_config
 from labpulse_hardware.legacy_parsing.serial_parser import SerialParser
-from simulate_serial import ReadingGenerator, SimulatorService, build_parser
+from simulate_serial import MeasurementGenerator, SimulatorService, build_parser
 
 
 def test_generated_payloads_match_parsers() -> None:
     """Check every generated device format remains consumable by LabPulse."""
 
-    payloads = ReadingGenerator(seed=4).payloads()
+    payloads = MeasurementGenerator(seed=4).payloads()
 
     pressure = SerialParser("pressure_monitor", "pressure").parse(
         payloads["pressure"].strip()
@@ -37,17 +37,17 @@ def test_generated_payloads_match_parsers() -> None:
         raise AssertionError(f"invalid pressure payload: {payloads['pressure']!r}")
     if pump is None:
         raise AssertionError(f"invalid pump payload: {payloads['pump_room']!r}")
-    configured_pump_readings = {
-        reading.name
-        for reading in load_config(REFACTOR_DIR / "config.yaml").services[
+    configured_pump_measurements = {
+        measurement.name
+        for measurement in load_config(REFACTOR_DIR / "config.yaml").services[
             "pump_room"
-        ].readings
+        ].measurements
     }
-    parsed_pump_readings = set(pump)
-    if configured_pump_readings != parsed_pump_readings:
+    parsed_pump_measurements = set(pump)
+    if configured_pump_measurements != parsed_pump_measurements:
         raise AssertionError(
             "pump-room starter config and simulated Arduino payload differ: "
-            f"configured={configured_pump_readings!r}, parsed={parsed_pump_readings!r}"
+            f"configured={configured_pump_measurements!r}, parsed={parsed_pump_measurements!r}"
         )
     if turbo is None or set(turbo) != {
         "flow1",
@@ -67,7 +67,7 @@ def test_generated_payloads_match_parsers() -> None:
 def test_ups_power_scenarios_and_stale_suppression() -> None:
     """Check UPS scenarios use real gauge fields and stale stops publication."""
 
-    generator = ReadingGenerator(seed=2)
+    generator = MeasurementGenerator(seed=2)
     parser = SerialParser("ups_monitor", "ups_simulator")
     expected_voltage = {"mains": 4.13, "battery": 3.95}
     for state, voltage in expected_voltage.items():
@@ -92,9 +92,9 @@ def test_ups_power_scenarios_and_stale_suppression() -> None:
 
 
 def test_scenarios_change_generated_values() -> None:
-    """Check danger scenarios emit values while stale stops one reading."""
+    """Check danger scenarios emit values while stale stops one measurement."""
 
-    generator = ReadingGenerator(seed=8)
+    generator = MeasurementGenerator(seed=8)
     generator.set_scenario("room_environment.humidity", "danger-high")
     generator.set_scenario("pressure_monitor.pressure", "danger-low")
     generator.set_scenario("room_environment.temperature", "stale")

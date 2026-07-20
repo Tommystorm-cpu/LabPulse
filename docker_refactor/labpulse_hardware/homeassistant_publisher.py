@@ -1,4 +1,4 @@
-"""Hand hardware readings to Home Assistant through MQTT discovery/state."""
+"""Hand hardware measurements to Home Assistant through MQTT discovery/state."""
 
 import json
 import logging
@@ -17,7 +17,7 @@ from labpulse_common.mqtt_contracts import (
 
 class HomeAssistantMqttPublisher:
     """
-    Publishes LabPulse readings to MQTT using Home Assistant discovery.
+    Publishes LabPulse measurements to MQTT using Home Assistant discovery.
     """
 
     def __init__(
@@ -31,11 +31,11 @@ class HomeAssistantMqttPublisher:
         self.service_name = service_name
         self.service_config = service_config
         self.mqtt_config = mqtt_config
-        self.reading_configs = {
-            reading.name: reading
-            for reading in service_config.readings
+        self.measurement_configs = {
+            measurement.name: measurement
+            for measurement in service_config.measurements
         }
-        self.discovered_readings: set[str] = set()
+        self.discovered_measurements: set[str] = set()
         self.status_discovery_published = False
         self.logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
         self.client = mqtt.Client(
@@ -59,33 +59,33 @@ class HomeAssistantMqttPublisher:
         self.client.connect(self.mqtt_config.broker, self.mqtt_config.port, 60)
         self.client.loop_start()
 
-    def publish(self, readings: dict[str, float]) -> None:
+    def publish(self, measurements: dict[str, float]) -> None:
         """
-        Publish Home Assistant discovery for new readings, then publish values.
+        Publish Home Assistant discovery for new measurements, then publish values.
         """
-        readings = self.configured_readings(readings)
-        undiscovered_readings = {
-            reading_name: reading
-            for reading_name, reading in readings.items()
-            if reading_name not in self.discovered_readings
+        measurements = self.configured_measurements(measurements)
+        undiscovered_measurements = {
+            measurement_name: measurement
+            for measurement_name, measurement in measurements.items()
+            if measurement_name not in self.discovered_measurements
         }
 
-        if undiscovered_readings:
-            self.publish_discovery(undiscovered_readings)
-            self.discovered_readings.update(undiscovered_readings)
+        if undiscovered_measurements:
+            self.publish_discovery(undiscovered_measurements)
+            self.discovered_measurements.update(undiscovered_measurements)
 
-        self.publish_readings(readings)
+        self.publish_measurements(measurements)
 
-    def configured_readings(self, readings: dict[str, float]) -> dict[str, float]:
-        """Return only readings declared exactly in this service's config."""
+    def configured_measurements(self, measurements: dict[str, float]) -> dict[str, float]:
+        """Return only measurements declared exactly in this service's config."""
 
         configured = {}
 
-        for reading_name, reading in readings.items():
-            if reading_name in self.reading_configs:
-                configured[reading_name] = reading
+        for measurement_name, measurement in measurements.items():
+            if measurement_name in self.measurement_configs:
+                configured[measurement_name] = measurement
             else:
-                self.logger.warning("Ignoring unconfigured reading: %s", reading_name)
+                self.logger.warning("Ignoring unconfigured measurement: %s", measurement_name)
 
         return configured
 
@@ -127,58 +127,58 @@ class HomeAssistantMqttPublisher:
         )
         self.logger.info("Published Home Assistant status discovery")
 
-    def publish_discovery(self, readings: dict[str, float]) -> None:
-        """Publish Home Assistant MQTT discovery config for each reading."""
-        for reading_name in readings:
-            reading_config = self.reading_configs.get(reading_name)
-            reading_id = stable_id(self.service_name, reading_name)
-            reading_label = (
-                reading_config.display_label
-                if reading_config
-                else reading_name.replace("_", " ").title()
+    def publish_discovery(self, measurements: dict[str, float]) -> None:
+        """Publish Home Assistant MQTT discovery config for each measurement."""
+        for measurement_name in measurements:
+            measurement_config = self.measurement_configs.get(measurement_name)
+            measurement_id = stable_id(self.service_name, measurement_name)
+            measurement_label = (
+                measurement_config.display_label
+                if measurement_config
+                else measurement_name.replace("_", " ").title()
             )
             payload = {
-                "name": reading_label,
-                "state_topic": sensor_state_topic(self.service_name, reading_name),
-                "expire_after": self._reading_expiry_seconds(),
-                "unique_id": reading_id,
-                "object_id": reading_id,
-                "default_entity_id": entity_id("sensor", self.service_name, reading_name),
+                "name": measurement_label,
+                "state_topic": sensor_state_topic(self.service_name, measurement_name),
+                "expire_after": self._measurement_expiry_seconds(),
+                "unique_id": measurement_id,
+                "object_id": measurement_id,
+                "default_entity_id": entity_id("sensor", self.service_name, measurement_name),
                 "device": {
                     "identifiers": [self.service_name],
                     "name": self.service_config.device_name,
                 },
             }
 
-            if reading_config and reading_config.unit:
-                payload["unit_of_measurement"] = reading_config.unit
+            if measurement_config and measurement_config.unit:
+                payload["unit_of_measurement"] = measurement_config.unit
 
-            if reading_config and reading_config.device_class:
-                payload["device_class"] = reading_config.device_class
+            if measurement_config and measurement_config.device_class:
+                payload["device_class"] = measurement_config.device_class
 
-            if reading_config and reading_config.state_class:
-                payload["state_class"] = reading_config.state_class
+            if measurement_config and measurement_config.state_class:
+                payload["state_class"] = measurement_config.state_class
 
             self.client.publish(
-                sensor_discovery_topic(self.service_name, reading_name),
+                sensor_discovery_topic(self.service_name, measurement_name),
                 json.dumps(payload),
                 retain=True,
             )
-            self.logger.info("Published Home Assistant discovery for %s", reading_name)
+            self.logger.info("Published Home Assistant discovery for %s", measurement_name)
 
-    def _reading_expiry_seconds(self) -> int:
+    def _measurement_expiry_seconds(self) -> int:
         """Return how long Home Assistant may wait without an MQTT sample."""
 
-        return self.service_config.maximum_reading_age_seconds
+        return self.service_config.maximum_measurement_age_seconds
 
-    def publish_readings(self, readings: dict[str, float]) -> None:
-        """Publish current sensor readings to their MQTT state topics."""
-        for reading_name, reading in readings.items():
+    def publish_measurements(self, measurements: dict[str, float]) -> None:
+        """Publish current sensor measurements to their MQTT state topics."""
+        for measurement_name, measurement in measurements.items():
             self.client.publish(
-                sensor_state_topic(self.service_name, reading_name),
-                reading,
+                sensor_state_topic(self.service_name, measurement_name),
+                measurement,
             )
-            #self.logger.info("Published %s reading: %s", reading_name, reading)
+            #self.logger.info("Published %s measurement: %s", measurement_name, measurement)
 
     def disconnect(self) -> None:
         """Publish a clean offline state, then stop MQTT networking."""

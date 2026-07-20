@@ -31,7 +31,7 @@ DEFAULT_FAKE_POWER_SERVICE = {
     "serial_port": FAKE_UPS_PORT,
     "baud_rate": 9600,
     "device_name": "UPS Monitor",
-    "readings": [
+    "measurements": [
         {
             "name": "voltage",
             "label": "UPS Battery Voltage",
@@ -52,7 +52,7 @@ DEFAULT_FAKE_POWER_SERVICE = {
     ],
     "reconnect_interval_seconds": 5,
     "read_interval_seconds": 1,
-    "maximum_reading_age_seconds": 15,
+    "maximum_measurement_age_seconds": 15,
     "power_detection": {
         "source": "x1200_gpio",
         "gpio_chip": "/dev/gpiochip0",
@@ -68,7 +68,7 @@ def convert_power_service_to_fake_serial(text: str) -> str:
     """Switch one enabled power service to the UPS pseudo-serial endpoint.
 
     Only hardware transport keys inside the selected service are replaced.
-    Labels, readings, dashboard metadata, battery settings, power timings,
+    Labels, measurements, dashboard metadata, battery settings, power timings,
     comments elsewhere in the file, and the service's stable name are retained.
     """
 

@@ -1,4 +1,4 @@
-"""DHT11 GPIO driver for Raspberry Pi environment readings."""
+"""DHT11 GPIO driver for Raspberry Pi environment measurements."""
 
 from collections.abc import Callable
 from typing import Any, Optional
@@ -26,7 +26,7 @@ class Driver(BaseSensorDriver):
         pin_name: str,
         read_interval_seconds: float,
         reconnect_interval_seconds: float,
-        maximum_reading_age_seconds: float,
+        maximum_measurement_age_seconds: float,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         """Create a DHT11 driver from GPIO pin and timing configuration."""
@@ -35,7 +35,7 @@ class Driver(BaseSensorDriver):
         self.pin_name = pin_name
         self.read_interval_seconds = read_interval_seconds
         self.reconnect_interval_seconds = reconnect_interval_seconds
-        self.maximum_reading_age_seconds = maximum_reading_age_seconds
+        self.maximum_measurement_age_seconds = maximum_measurement_age_seconds
         self._monotonic = monotonic
         self.device: Any | None = None
         self.last_read_at = 0.0
@@ -79,7 +79,7 @@ class Driver(BaseSensorDriver):
         return True
 
     def read(self) -> Optional[dict[str, float]]:
-        """Return temperature and humidity readings, or None when unavailable."""
+        """Return temperature and humidity measurements, or None when unavailable."""
 
         if not self.connected or self.device is None:
             self._try_reconnect()
@@ -111,7 +111,7 @@ class Driver(BaseSensorDriver):
             return None
 
         if self.sample_failure_active:
-            self.logger.info("DHT11 readings recovered")
+            self.logger.info("DHT11 measurements recovered")
         self.sample_failure_active = False
         self.last_success_at = now
         self.status = "online"
@@ -153,7 +153,7 @@ class Driver(BaseSensorDriver):
         )
         missing_seconds = now - freshness_reference
         if (
-            missing_seconds >= self.maximum_reading_age_seconds
+            missing_seconds >= self.maximum_measurement_age_seconds
             and self.status != "error"
         ):
             self.status = "error"

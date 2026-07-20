@@ -41,7 +41,7 @@ void emitSample(unsigned long now, unsigned long elapsedMs) {
 
   const float flow1 = flowLitresPerMinute(flow1Pulses, elapsedMs);
   const float flow2 = flowLitresPerMinute(flow2Pulses, elapsedMs);
-  LabPulseProtocol::ThermistorReading temperatures[4];
+  LabPulseProtocol::ThermistorMeasurement temperatures[4];
   for (uint8_t index = 0; index < 4; ++index) {
     temperatures[index] =
         LabPulseProtocol::readGe1337(TEMPERATURE_PINS[index]);

@@ -7,7 +7,7 @@ identified, backed up, flashed, and checked.
 
 ## Sketch map
 
-| Sketch | Device identity | Readings |
+| Sketch | Device identity | Measurements |
 | --- | --- | --- |
 | `pressure_monitor/pressure_monitor.ino` | `pressure_monitor` | compressed-air pressure in bar |
 | `pump_room/pump_room.ino` | `pump_room` | two flows, four water temperatures, DHT11 room environment, two pressures |
@@ -28,17 +28,17 @@ Startup emits a non-telemetry identity record:
 Each sample has one envelope:
 
 ```json
-{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","uptime_ms":5000,"readings":{"flow1":0.267,"flow2":0.000,"temp0":18.87,"temp1":18.28,"temp2":null,"temp3":null},"diagnostics":{"sample_ms":5000,"flow1_pulses":10,"flow2_pulses":0,"temp0_adc":512,"temp1_adc":508,"temp2_adc":1023,"temp3_adc":1023}}
+{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","uptime_ms":5000,"measurements":{"flow1":0.267,"flow2":0.000,"temp0":18.87,"temp1":18.28,"temp2":null,"temp3":null},"diagnostics":{"sample_ms":5000,"flow1_pulses":10,"flow2_pulses":0,"temp0_adc":512,"temp1_adc":508,"temp2_adc":1023,"temp3_adc":1023}}
 ```
 
 - `device` must exactly match the service key in `config.yaml`.
 - `schema` is the serial contract version, currently `1`.
 - `firmware` identifies the flashed sketch revision.
-- `readings` contains only values that may be published to Home Assistant.
-- An invalid sensor reading is JSON `null`; the Python parser omits it so its
+- `measurements` contains only values that may be published to Home Assistant.
+- An invalid sensor measurement is JSON `null`; the Python parser omits it so its
   MQTT entity expires instead of displaying a plausible sentinel value.
 - `diagnostics` contains raw pulse/ADC evidence. It is deliberately not
-  returned as readings or published as normal Home Assistant telemetry.
+  returned as measurements or published as normal Home Assistant telemetry.
 
 The parser rejects a JSON record with a different device or schema. This makes
 an incorrect USB-to-service assignment fail visibly instead of silently
@@ -102,5 +102,5 @@ arduino-cli compile --fqbn arduino:avr:uno \
 
 Do not flash a live board until its stable `/dev/serial/by-id/...` identity,
 physical role, current sketch, and pin wiring have been recorded. Flash one
-board at a time, read its `hello` line, verify every configured reading, and
+board at a time, read its `hello` line, verify every configured measurement, and
 then run its LabPulse container.

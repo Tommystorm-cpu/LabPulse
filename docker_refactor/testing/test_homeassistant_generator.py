@@ -25,7 +25,7 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
 
 
 def sample_config() -> dict[str, object]:
-    """Return a minimal ordinary-reading configuration."""
+    """Return a minimal ordinary-measurement configuration."""
 
     return {
         "mqtt": {"broker": "mosquitto"},
@@ -36,7 +36,7 @@ def sample_config() -> dict[str, object]:
                 "parser": "pressure",
                 "serial_port": "/tmp/labpulse-fake-serial/pressure",
                 "device_name": "Air Pressure Sensor Hub",
-                "readings": [
+                "measurements": [
                     {
                         "name": "pressure",
                         "label": "Pressure",
@@ -126,12 +126,12 @@ def test_generated_package_and_entity_map() -> None:
     assert_equal(
         pressure["mqtt_unique_id"],
         "labpulse_pressure_monitor_pressure",
-        "reading unique ID",
+        "measurement unique ID",
     )
     assert_equal(
         pressure["entity_id"],
         "sensor.labpulse_pressure_monitor_pressure",
-        "reading entity ID",
+        "measurement entity ID",
     )
     assert_equal(
         pressure["alarm_state"],
@@ -194,7 +194,7 @@ def test_thresholds_need_no_defaults_file() -> None:
             raise AssertionError(f"threshold helper has a seeded value: {helper_id}")
     aliases = {item["alias"] for item in package["automation"]}
     if "LabPulse Pressure Initialize Alarm Defaults" in aliases:
-        raise AssertionError("per-reading threshold initializer remains")
+        raise AssertionError("per-measurement threshold initializer remains")
     assert_equal(
         package["input_select"]["labpulse_pressure_monitor_pressure_alarm_mode"]["options"][0],
         "Disabled",

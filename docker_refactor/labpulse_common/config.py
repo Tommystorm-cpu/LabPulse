@@ -107,7 +107,7 @@ class SetupConfig(BaseModel):
 
 
 class SetupScope(BaseModel):
-    """Normalized explicit logical-setup membership for one physical reading."""
+    """Normalized explicit logical-setup membership for one physical measurement."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -115,7 +115,7 @@ class SetupScope(BaseModel):
 
     @model_validator(mode="after")
     def validate_shape(self) -> "SetupScope":
-        """Require every ordinary reading to name at least one setup."""
+        """Require every ordinary measurement to name at least one setup."""
 
         if not self.setup_ids:
             raise ValueError("setup membership must not be empty")
@@ -132,7 +132,7 @@ def validate_setup_id(setup_id: str) -> str:
         )
     return normalized
 
-class ReadingConfig(BaseModel):
+class MeasurementConfig(BaseModel):
     """One named value published by a LabPulse service."""
 
     model_config = ConfigDict(extra="forbid")
@@ -212,19 +212,19 @@ class ServiceConfig(BaseModel):
     serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
     device_name: str
-    readings: list[ReadingConfig]
+    measurements: list[MeasurementConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
-    maximum_reading_age_seconds: int = Field(default=300, ge=2, le=86400)
+    maximum_measurement_age_seconds: int = Field(default=300, ge=2, le=86400)
     power_detection: PowerDetectionConfig | None = None
 
     @model_validator(mode="after")
     def validate_hardware_contract(self) -> "ServiceConfig":
-        """Validate driver-specific fields and the normalized UPS readings."""
+        """Validate driver-specific fields and the normalized UPS measurements."""
 
-        reading_names = [reading.name for reading in self.readings]
-        if len(set(reading_names)) != len(reading_names):
-            raise ValueError("readings[].name values must be unique within a service")
+        measurement_names = [measurement.name for measurement in self.measurements]
+        if len(set(measurement_names)) != len(measurement_names):
+            raise ValueError("measurements[].name values must be unique within a service")
 
         if self.driver == "i2c":
             if self.i2c_sensor != "max17043_ups":
@@ -247,10 +247,10 @@ class ServiceConfig(BaseModel):
 
         if self.power_detection is not None:
             required = {"voltage", "battery_level", "mains_present"}
-            missing = sorted(required.difference(reading_names))
+            missing = sorted(required.difference(measurement_names))
             if missing:
                 raise ValueError(
-                    "power_detection requires readings named: " + ", ".join(missing)
+                    "power_detection requires measurements named: " + ", ".join(missing)
                 )
             if self.driver not in {"i2c", "serial"}:
                 raise ValueError(
@@ -262,14 +262,14 @@ class ServiceConfig(BaseModel):
                     "MAX17043 power monitoring requires read_interval_seconds: 1"
                 )
 
-            if any(reading.setups is not None for reading in self.readings):
+            if any(measurement.setups is not None for measurement in self.measurements):
                 raise ValueError(
-                    "dedicated power readings must omit setups because power is "
+                    "dedicated power measurements must omit setups because power is "
                     "not grouped as an experimental setup"
                 )
-        elif any(reading.setups is None for reading in self.readings):
+        elif any(measurement.setups is None for measurement in self.measurements):
             raise ValueError(
-                "every ordinary reading must declare a non-empty setups list"
+                "every ordinary measurement must declare a non-empty setups list"
             )
 
         return self
@@ -285,21 +285,21 @@ class LabPulseConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_setup_membership(self) -> "LabPulseConfig":
-        """Validate setup IDs and every reading's logical references."""
+        """Validate setup IDs and every measurement's logical references."""
 
         for setup_id in self.setups:
             validate_setup_id(setup_id)
 
         available = set(self.setups)
         for service_name, service in self.services.items():
-            for reading in service.readings:
-                scope = reading.setups
+            for measurement in service.measurements:
+                scope = measurement.setups
                 if scope is None:
                     continue
                 missing = sorted(set(scope.setup_ids).difference(available))
                 if missing:
                     raise ValueError(
-                        f"{service_name}.{reading.name} references unknown setups: "
+                        f"{service_name}.{measurement.name} references unknown setups: "
                         + ", ".join(missing)
                     )
         return self

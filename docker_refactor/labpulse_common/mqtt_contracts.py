@@ -21,14 +21,14 @@ class SmsRequest(BaseModel):
     request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
     event: Literal["sensor_fault", "warning", "recovery", "notification", "test"]
     service: str = Field(min_length=1, max_length=80)
-    reading: str = Field(min_length=1, max_length=80)
+    measurement: str = Field(min_length=1, max_length=80)
     state: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=1, max_length=120)
     message: str = Field(min_length=1, max_length=500)
     test_mode: bool = Field(default=False, strict=True)
     service_label: str | None = Field(default=None, max_length=120)
-    reading_label: str | None = Field(default=None, max_length=120)
-    current_reading: str | None = Field(default=None, max_length=80)
+    measurement_label: str | None = Field(default=None, max_length=120)
+    current_measurement: str | None = Field(default=None, max_length=80)
 
 
 SMS_ALERT_PAYLOAD_FIELDS = frozenset(SmsRequest.model_fields)
@@ -40,10 +40,10 @@ def sms_result_topic(request_id: str) -> str:
     return f"{SMS_RESULT_TOPIC_PREFIX}/{request_id}"
 
 
-def sensor_state_topic(service_name: str, reading_name: str) -> str:
-    """Return the MQTT state topic for one hardware reading."""
+def sensor_state_topic(service_name: str, measurement_name: str) -> str:
+    """Return the MQTT state topic for one hardware measurement."""
 
-    return f"{SENSOR_STATE_TOPIC_PREFIX}/{service_name}/{reading_name}/state"
+    return f"{SENSOR_STATE_TOPIC_PREFIX}/{service_name}/{measurement_name}/state"
 
 
 def service_status_topic(service_name: str) -> str:
@@ -52,12 +52,12 @@ def service_status_topic(service_name: str) -> str:
     return f"{SENSOR_STATE_TOPIC_PREFIX}/{service_name}/status"
 
 
-def sensor_discovery_topic(service_name: str, reading_name: str) -> str:
-    """Return the Home Assistant discovery topic for one sensor reading."""
+def sensor_discovery_topic(service_name: str, measurement_name: str) -> str:
+    """Return the Home Assistant discovery topic for one sensor measurement."""
 
     return (
         f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/sensor/"
-        f"{service_name}_{reading_name}/config"
+        f"{service_name}_{measurement_name}/config"
     )
 
 

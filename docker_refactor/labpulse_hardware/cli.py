@@ -32,7 +32,7 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--print",
         action="store_true",
-        help="Print readings to stdout"
+        help="Print measurements to stdout"
     )
 
     parser.add_argument(
@@ -44,7 +44,7 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Read one valid reading and exit",
+        help="Read one valid measurement and exit",
     )
 
     return parser.parse_args()
@@ -83,23 +83,23 @@ def main() -> None:
 
     try:
         while True:
-            readings = driver.read()
+            measurements = driver.read()
             current_status = driver.get_status()
 
             if publisher and current_status != last_status:
                 publisher.publish_status(current_status)
                 last_status = current_status
 
-            if not readings:
+            if not measurements:
                 # Serial devices often produce blank lines while starting up.
                 time.sleep(0.1)
                 continue
 
             if args.print:
-                logger.info("Readings: %s", readings)
+                logger.info("Measurements: %s", measurements)
 
             if publisher:
-                publisher.publish(readings)
+                publisher.publish(measurements)
 
             if args.once:
                 break

@@ -72,10 +72,10 @@ def test_register_conversion_is_read_only() -> None:
     driver = make_driver(lambda _: bus)
     if not driver.setup():
         raise AssertionError("driver failed to open fake MAX17043")
-    readings = driver.read()
+    measurements = driver.read()
     expected = {"voltage": 4.13, "battery_level": 94.2}
-    if readings != expected:
-        raise AssertionError(f"expected {expected!r}, got {readings!r}")
+    if measurements != expected:
+        raise AssertionError(f"expected {expected!r}, got {measurements!r}")
     if bus.reads != [(0x36, REG_VCELL, 2), (0x36, REG_SOC, 2)]:
         raise AssertionError(f"unexpected register reads: {bus.reads!r}")
     if decode_voltage(3304 << 4) != 4.13:
@@ -95,9 +95,9 @@ def test_full_charge_soc_is_capped_without_disconnect() -> None:
     driver = make_driver(lambda _: bus)
     if not driver.setup():
         raise AssertionError("driver failed to open fake MAX17043")
-    readings = driver.read()
-    if readings != {"voltage": 4.13, "battery_level": 100.0}:
-        raise AssertionError(f"over-full SOC was not capped: {readings!r}")
+    measurements = driver.read()
+    if measurements != {"voltage": 4.13, "battery_level": 100.0}:
+        raise AssertionError(f"over-full SOC was not capped: {measurements!r}")
     if driver.get_status() != "online" or bus.closed:
         raise AssertionError("over-full SOC incorrectly disconnected the gauge")
 
@@ -128,7 +128,7 @@ def test_rejects_wrong_address_and_invalid_responses() -> None:
 
 
 def test_fault_disconnect_and_reconnect() -> None:
-    """Close a failed bus and resume readings through reconnect throttling."""
+    """Close a failed bus and resume measurements through reconnect throttling."""
 
     clock = [0.0]
     failed_bus = FakeBus(healthy_registers())

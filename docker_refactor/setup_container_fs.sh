@@ -233,7 +233,7 @@ if fake_usb:
     baud_rate: 9600'''
     text = text.replace(real_room_environment, simulated_room_environment, 1)
 
-    # Convert the configured power service to the same normalized readings and
+    # Convert the configured power service to the same normalized measurements and
     # stable identities through the ups_monitor pseudo-serial endpoint. The
     # converter changes only transport-specific keys in that service block.
     sys.path.insert(0, str(python_package_dir))

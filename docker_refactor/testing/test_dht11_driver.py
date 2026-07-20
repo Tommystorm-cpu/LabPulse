@@ -105,7 +105,7 @@ def make_driver(**overrides: Any) -> Driver:
         "pin_name": "D4",
         "read_interval_seconds": 2.0,
         "reconnect_interval_seconds": 5.0,
-        "maximum_reading_age_seconds": 300.0,
+        "maximum_measurement_age_seconds": 300.0,
     }
     settings.update(overrides)
     return Driver(name="room_environment", **settings)
@@ -126,14 +126,14 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
 
 
 def test_setup_and_read_returns_rounded_values() -> None:
-    """Check setup and one sample return normalized DHT11 readings."""
+    """Check setup and one sample return normalized DHT11 measurements."""
 
     install_fake_modules()
     driver = make_driver(read_interval_seconds=0.01)
 
     assert_equal(driver.setup(), True, "setup")
     assert_equal(driver.get_status(), "online", "status")
-    assert_equal(driver.read(), {"temperature": 21.3, "humidity": 45.7}, "readings")
+    assert_equal(driver.read(), {"temperature": 21.3, "humidity": 45.7}, "measurements")
 
 
 def test_read_interval_throttles_samples() -> None:
@@ -143,8 +143,8 @@ def test_read_interval_throttles_samples() -> None:
     driver = make_driver(read_interval_seconds=60.0)
 
     assert_equal(driver.setup(), True, "setup")
-    assert_equal(driver.read(), {"temperature": 21.3, "humidity": 45.7}, "first reading")
-    assert_equal(driver.read(), None, "throttled reading")
+    assert_equal(driver.read(), {"temperature": 21.3, "humidity": 45.7}, "first measurement")
+    assert_equal(driver.read(), None, "throttled measurement")
 
 
 def test_runtime_error_keeps_driver_online() -> None:
@@ -167,7 +167,7 @@ def test_sustained_runtime_errors_report_and_recover_health() -> None:
     install_fake_modules(device)
     driver = make_driver(
         read_interval_seconds=1.0,
-        maximum_reading_age_seconds=5.0,
+        maximum_measurement_age_seconds=5.0,
         monotonic=clock,
     )
 
@@ -186,7 +186,7 @@ def test_sustained_runtime_errors_report_and_recover_health() -> None:
     assert_equal(
         driver.read(),
         {"temperature": 21.3, "humidity": 45.7},
-        "recovery reading",
+        "recovery measurement",
     )
     assert_equal(driver.get_status(), "online", "recovered status")
 
@@ -200,7 +200,7 @@ def test_repeated_runtime_errors_are_log_rate_limited() -> None:
     )
     driver = make_driver(
         read_interval_seconds=1.0,
-        maximum_reading_age_seconds=300.0,
+        maximum_measurement_age_seconds=300.0,
         monotonic=clock,
     )
     driver.logger = Mock()
@@ -244,7 +244,7 @@ def test_unexpected_error_disconnects_then_reconnects() -> None:
     assert_equal(
         driver.read(),
         {"temperature": 21.3, "humidity": 45.7},
-        "reading after reconnect",
+        "measurement after reconnect",
     )
 
 

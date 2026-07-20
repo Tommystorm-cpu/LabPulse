@@ -98,9 +98,9 @@ def make_publisher(
     service_name: str = "pressure_monitor",
     parser: str = "pressure",
     device_name: str = "Air Pressure Sensor Hub",
-    readings: list[dict[str, str]] | None = None,
+    measurements: list[dict[str, str]] | None = None,
     power_detection: dict[str, object] | None = None,
-    maximum_reading_age_seconds: int = 300,
+    maximum_measurement_age_seconds: int = 300,
 ) -> HomeAssistantMqttPublisher:
     """Create a publisher wired to FakeMqttClient."""
 
@@ -111,10 +111,10 @@ def make_publisher(
         serial_port="/tmp/labpulse-fake-serial/pressure",
         baud_rate=9600,
         device_name=device_name,
-        readings=readings or [
+        measurements=measurements or [
             {"name": "pressure", "label": "Pressure", "setups": ["test_setup"], "unit": "bar"}
         ],
-        maximum_reading_age_seconds=maximum_reading_age_seconds,
+        maximum_measurement_age_seconds=maximum_measurement_age_seconds,
         power_detection=power_detection,
     )
     mqtt_config = MqttConfig(broker="mosquitto", port=1883)
@@ -165,14 +165,14 @@ def test_connect_and_disconnect() -> None:
     assert_equal(publisher.client.disconnected, True, "disconnected")
 
 
-def test_publish_discovery_once_then_readings() -> None:
-    """Check discovery is retained once and state readings publish every time."""
+def test_publish_discovery_once_then_measurements() -> None:
+    """Check discovery is retained once and state measurements publish every time."""
 
     publisher = make_publisher()
-    readings = {"pressure": 1.23}
+    measurements = {"pressure": 1.23}
 
-    publisher.publish(readings)
-    publisher.publish(readings)
+    publisher.publish(measurements)
+    publisher.publish(measurements)
 
     published = publisher.client.published
     assert_equal(len(published), 3, "publish count")
@@ -190,7 +190,7 @@ def test_publish_discovery_once_then_readings() -> None:
 
     payload = json.loads(str(discovery["payload"]))
     assert_equal(payload["name"], "Pressure", "entity name")
-    assert_equal(payload["expire_after"], 300, "reading expiry")
+    assert_equal(payload["expire_after"], 300, "measurement expiry")
     assert_equal(payload["unique_id"], "labpulse_pressure_monitor_pressure", "unique id")
     assert_equal(payload["object_id"], "labpulse_pressure_monitor_pressure", "object id")
     assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_pressure", "default entity id")
@@ -243,14 +243,14 @@ def test_publish_status_discovery_once_then_status() -> None:
     assert_equal(second_status["payload"], "reconnecting", "second status payload")
 
 
-def test_publish_discovery_for_new_readings() -> None:
-    """Check multi-format hubs discover readings that appear after first publish."""
+def test_publish_discovery_for_new_measurements() -> None:
+    """Check multi-format hubs discover measurements that appear after first publish."""
 
     publisher = make_publisher(
         service_name="pump_room",
         parser="pump_room",
         device_name="Pump Room Sensor Hub",
-        readings=[
+        measurements=[
             {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
             {"name": "temp0", "label": "Temperature 0", "setups": ["test_setup"], "unit": "\u00b0C"},
         ],
@@ -312,14 +312,14 @@ def test_publish_discovery_for_new_readings() -> None:
     )
 
 
-def test_ignore_unconfigured_readings() -> None:
-    """Check readings not declared in config are ignored."""
+def test_ignore_unconfigured_measurements() -> None:
+    """Check measurements not declared in config are ignored."""
 
     publisher = make_publisher(
         service_name="pump_room",
         parser="pump_room",
         device_name="Pump Room Sensor Hub",
-        readings=[
+        measurements=[
             {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
         ],
     )
@@ -340,40 +340,40 @@ def test_ignore_unconfigured_readings() -> None:
 def test_discovery_uses_configured_message_expiry() -> None:
     """Ensure unchanged values stay healthy without forced recorder writes."""
 
-    publisher = make_publisher(maximum_reading_age_seconds=420)
+    publisher = make_publisher(maximum_measurement_age_seconds=420)
     publisher.publish({"pressure": 1.23})
     payload = json.loads(str(publisher.client.published[0]["payload"]))
-    assert_equal(payload["expire_after"], 420, "ordinary reading expiry")
+    assert_equal(payload["expire_after"], 420, "ordinary measurement expiry")
     assert_equal("force_update" in payload, False, "ordinary force update omitted")
 
 
 def test_power_discovery_uses_power_message_expiry() -> None:
-    """Ensure all UPS readings use the service's configured expiry."""
+    """Ensure all UPS measurements use the service's configured expiry."""
 
     publisher = make_publisher(
         service_name="ups_monitor",
         parser="ups_simulator",
         device_name="UPS Monitor",
-        readings=[
+        measurements=[
             {"name": "voltage", "unit": "V"},
             {"name": "battery_level", "unit": "%"},
             {"name": "mains_present", "state_class": None},
         ],
         power_detection={},
-        maximum_reading_age_seconds=15,
+        maximum_measurement_age_seconds=15,
     )
     publisher.publish({"voltage": 4.13})
     payload = json.loads(str(publisher.client.published[0]["payload"]))
-    assert_equal(payload["expire_after"], 15, "power reading expiry")
+    assert_equal(payload["expire_after"], 15, "power measurement expiry")
     assert_equal("force_update" in payload, False, "power force update omitted")
 
 
 TESTS = [
     ("connect and disconnect", test_connect_and_disconnect),
-    ("publish discovery once then readings", test_publish_discovery_once_then_readings),
+    ("publish discovery once then measurements", test_publish_discovery_once_then_measurements),
     ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
-    ("publish discovery for new readings", test_publish_discovery_for_new_readings),
-    ("ignore unconfigured readings", test_ignore_unconfigured_readings),
+    ("publish discovery for new measurements", test_publish_discovery_for_new_measurements),
+    ("ignore unconfigured measurements", test_ignore_unconfigured_measurements),
     ("configured message expiry", test_discovery_uses_configured_message_expiry),
     ("power-specific message expiry", test_power_discovery_uses_power_message_expiry),
 ]

@@ -27,13 +27,13 @@ sms:
     - "+447700900001"
 
 # Whole sensor-service failures produce one hub-level warning instead of one
-# stale-reading warning per sensor. These timers also reject brief USB glitches.
+# stale-measurement warning per sensor. These timers also reject brief USB glitches.
 service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
 # Logical experimental setups are independent of the physical sensor hubs
-# under services. Every ordinary reading explicitly selects one or more setups.
+# under services. Every ordinary measurement explicitly selects one or more setups.
 setups:
   compressed_air:
     label: "Compressed Air"
@@ -53,8 +53,8 @@ setups:
     order: 40
 
 services:
-  # Ordinary readings expire in Home Assistant after 300 seconds without an
-  # MQTT sample. Override maximum_reading_age_seconds per service if needed.
+  # Ordinary measurements expire in Home Assistant after 300 seconds without an
+  # MQTT sample. Override maximum_measurement_age_seconds per service if needed.
   pressure_monitor:
     enabled: true
     driver: serial
@@ -62,7 +62,7 @@ services:
     serial_port: "FAKE_PRESSURE_PORT"
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
-    readings:
+    measurements:
       - name: "pressure"
         label: "Pressure"
         setups: [compressed_air]
@@ -77,7 +77,7 @@ services:
     serial_port: "FAKE_PUMP_ROOM_PORT"
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
-    readings:
+    measurements:
       - name: "flow1"
         label: "Flow 1"
         subcategory: "Flow"
@@ -147,7 +147,7 @@ services:
     serial_port: "FAKE_TURBO_PUMP_PORT"
     baud_rate: 9600
     device_name: "Turbo Pump Hub"
-    readings:
+    measurements:
       - name: "flow1"
         label: "Flow 1"
         subcategory: "Flow"
@@ -192,7 +192,7 @@ services:
     gpio_sensor: dht11
     gpio_pin: "D4"
     device_name: "Cryogenics Room Environment Sensor"
-    readings:
+    measurements:
       - name: "temperature"
         label: "Room Temperature"
         setups: [cryogenics_room]
@@ -206,7 +206,7 @@ services:
     read_interval_seconds: 2
 
 # Verified X1200 UPS hardware. Fake-USB setup changes only this service's
-# transport to the UPS simulator while preserving these readings and IDs.
+# transport to the UPS simulator while preserving these measurements and IDs.
   ups_monitor:
     enabled: true
     driver: i2c
@@ -214,7 +214,7 @@ services:
     i2c_bus: 1
     i2c_address: 0x36
     device_name: "UPS Monitor"
-    readings:
+    measurements:
       - name: voltage
         label: "UPS Battery Voltage"
         unit: V
@@ -228,7 +228,7 @@ services:
         state_class: null
     read_interval_seconds: 1
     reconnect_interval_seconds: 5
-    maximum_reading_age_seconds: 15
+    maximum_measurement_age_seconds: 15
     power_detection:
       source: x1200_gpio
       gpio_chip: "/dev/gpiochip0"

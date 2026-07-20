@@ -19,7 +19,7 @@ volatile unsigned long flow1PulseCount = 0;
 volatile unsigned long flow2PulseCount = 0;
 unsigned long lastSampleMs = 0;
 
-struct PressureReading {
+struct PressureMeasurement {
   int adc;
   float bar;
   bool valid;
@@ -41,20 +41,20 @@ float flowLitresPerMinute(unsigned long pulses, unsigned long elapsedMs) {
       (FLOW_PULSES_PER_LITRE * static_cast<float>(elapsedMs));
 }
 
-PressureReading readPressure(uint8_t pin) {
-  PressureReading reading = {analogRead(pin), 0.0F, false};
-  if (reading.adc < 2 || reading.adc > LabPulseProtocol::ADC_MAX - 2) {
-    return reading;
+PressureMeasurement readPressure(uint8_t pin) {
+  PressureMeasurement measurement = {analogRead(pin), 0.0F, false};
+  if (measurement.adc < 2 || measurement.adc > LabPulseProtocol::ADC_MAX - 2) {
+    return measurement;
   }
-  const float voltage = reading.adc *
+  const float voltage = measurement.adc *
       (LabPulseProtocol::ADC_REFERENCE_VOLTS /
        static_cast<float>(LabPulseProtocol::ADC_MAX));
-  reading.bar = (((voltage - 0.5F) / 4.0F) * PRESSURE_MAX_MPA) * 10.0F;
-  reading.valid = LabPulseProtocol::finiteInRange(reading.bar, -0.25F, 16.5F);
-  if (reading.valid && reading.bar < 0.0F) {
-    reading.bar = 0.0F;
+  measurement.bar = (((voltage - 0.5F) / 4.0F) * PRESSURE_MAX_MPA) * 10.0F;
+  measurement.valid = LabPulseProtocol::finiteInRange(measurement.bar, -0.25F, 16.5F);
+  if (measurement.valid && measurement.bar < 0.0F) {
+    measurement.bar = 0.0F;
   }
-  return reading;
+  return measurement;
 }
 
 void emitSample(unsigned long now, unsigned long elapsedMs) {
@@ -69,7 +69,7 @@ void emitSample(unsigned long now, unsigned long elapsedMs) {
 
   const float flow1 = flowLitresPerMinute(flow1Pulses, elapsedMs);
   const float flow2 = flowLitresPerMinute(flow2Pulses, elapsedMs);
-  LabPulseProtocol::ThermistorReading temperatures[4];
+  LabPulseProtocol::ThermistorMeasurement temperatures[4];
   for (uint8_t index = 0; index < 4; ++index) {
     temperatures[index] =
         LabPulseProtocol::readGe1337(TEMPERATURE_PINS[index]);
@@ -81,8 +81,8 @@ void emitSample(unsigned long now, unsigned long elapsedMs) {
       LabPulseProtocol::finiteInRange(roomTemperature, -40.0F, 80.0F);
   const bool roomHumidityValid =
       LabPulseProtocol::finiteInRange(roomHumidity, 0.0F, 100.0F);
-  const PressureReading pressure1 = readPressure(PRESSURE1_PIN);
-  const PressureReading pressure2 = readPressure(PRESSURE2_PIN);
+  const PressureMeasurement pressure1 = readPressure(PRESSURE1_PIN);
+  const PressureMeasurement pressure2 = readPressure(PRESSURE2_PIN);
 
   LabPulseProtocol::printSampleStart(
       F("pump_room"), F("pump-room-1.0.0"), now);

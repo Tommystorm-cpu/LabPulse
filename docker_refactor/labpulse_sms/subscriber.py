@@ -79,7 +79,7 @@ class RecentRequestCache:
         """Return the key used for short-term repeated-event suppression."""
 
         delivery_mode = "test" if request.test_mode else "live"
-        return f"{delivery_mode}:{request.service}:{request.reading}:{request.event}"
+        return f"{delivery_mode}:{request.service}:{request.measurement}:{request.event}"
 
     def _prune(self, now: float) -> None:
         """Remove expired and excess entries."""
@@ -239,11 +239,11 @@ class SMSSubscriber:
             return
 
         self.logger.info(
-            "SMS request accepted: request_id=%s event=%s service=%s reading=%s",
+            "SMS request accepted: request_id=%s event=%s service=%s measurement=%s",
             request.request_id,
             request.event,
             request.service,
-            request.reading,
+            request.measurement,
         )
         if self.sender.broadcast(request):
             self.request_cache.remember(request)

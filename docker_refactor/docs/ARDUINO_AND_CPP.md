@@ -23,14 +23,14 @@ docker_refactor/firmware/
 ```
 
 Every sketch uses 9600 baud and emits exactly one compact JSON object per line.
-The shared schema separates publishable readings from raw diagnostics:
+The shared schema separates publishable measurements from raw diagnostics:
 
 ```json
-{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","uptime_ms":5000,"readings":{"flow1":0.267,"flow2":0.0,"temp0":18.87,"temp2":null},"diagnostics":{"flow1_pulses":10,"flow2_pulses":0,"temp0_adc":512,"temp2_adc":1023}}
+{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","uptime_ms":5000,"measurements":{"flow1":0.267,"flow2":0.0,"temp0":18.87,"temp2":null},"diagnostics":{"flow1_pulses":10,"flow2_pulses":0,"temp0_adc":512,"temp2_adc":1023}}
 ```
 
 The Python parser validates `device` and `schema`, returns finite numeric
-members of `readings`, and ignores metadata, diagnostics, booleans, and JSON
+members of `measurements`, and ignores metadata, diagnostics, booleans, and JSON
 `null`. Consequently, an invalid channel stops producing numeric MQTT samples
 and becomes unavailable through `expire_after` rather than displaying a
 sentinel such as -273.15 C.
@@ -48,12 +48,12 @@ build prerequisites, pin map, and safe flashing sequence.
 The Arduinos inspected on the live Pi still use the repository-root `Arduino/`
 sketches and their human-readable output. Python reads one newline-terminated
 line at a time and returns a `dict[str, float]`. Parsed keys must appear as
-`readings[].name` in the live config.
+`measurements[].name` in the live config.
 
 ```text
 Arduino text
   -> SerialParser
-  -> {reading_name: numeric_value}
+  -> {measurement_name: numeric_value}
   -> config allow-list
   -> MQTT
 ```
@@ -67,7 +67,7 @@ Home Assistant device classes come from config.
 | --- | --- | --- |
 | `Arduino/Pressure_Arduino.cpp` | `pressure_monitor`, `parser: pressure` | Main compressed-air input |
 | `Arduino/Pump_Room_Arduino.cpp` | `pump_room`, `parser: pump_room` | Flow, water temperatures, room DHT, and two pressures |
-| `Arduino/full_water_sensor_code.cpp` | `turbo_pump`, `parser: water` | Two flow and four water-temperature readings |
+| `Arduino/full_water_sensor_code.cpp` | `turbo_pump`, `parser: water` | Two flow and four water-temperature measurements |
 | `Arduino/Water flow meter code/Temporary flow reader.cpp` | labelled parser such as `water` if adopted | Development sketch, not a main configured link |
 
 Files named as Arduino instructions, calibration programs, older Python
@@ -139,7 +139,7 @@ DHT11 and two analog pressure sensors:
 RoomTemp: 21.2C | RoomHum: 45.0% | Press1: 1.23 bar | Press2: 1.45 bar
 ```
 
-The current starter config publishes all ten pump-room readings:
+The current starter config publishes all ten pump-room measurements:
 
 ```text
 flow1, flow2, temp0, temp1, temp2, temp3,
@@ -232,7 +232,7 @@ FlowRate:1.234,TotalLitres:0.567
 `pulseCount` is correctly declared `volatile`, and interrupts are detached
 while the interval is calculated. The sketch is not represented by a default
 service or simulator device. If adopted with the current parser, use a labelled
-parser type such as `water` and config reading names `flowrate` and
+parser type such as `water` and config measurement names `flowrate` and
 `totallitres`.
 
 The comment says 7.5 pulses/second/L/min is usual while the code uses
@@ -262,7 +262,7 @@ recognized label and the next. This means:
 - unexpected labels are not parsed into surprise keys.
 
 The final MQTT filter is stricter still: a parsed key must exactly match a
-configured `readings[].name`.
+configured `measurements[].name`.
 
 ## Simulator equivalence
 

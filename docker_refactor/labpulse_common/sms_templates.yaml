@@ -3,68 +3,68 @@
 # Alert title/message values are Home Assistant Jinja expressions. LabPulse
 # placeholders such as [[ service.label ]] are expanded by the generator before
 # Home Assistant receives the generated package. The SMS worker replaces
-# {current_reading} after Home Assistant has evaluated the surrounding message.
+# {current_measurement} after Home Assistant has evaluated the surrounding message.
 
 alerts:
   service_fault:
     title: >-
       "LabPulse Service Fault: [[ service.label ]]"
     message: >-
-      "LabPulse cannot communicate with [[ service.label ]]. All readings from this service are temporarily unavailable.\nService status: {current_reading}."
+      "LabPulse cannot communicate with [[ service.label ]]. All measurements from this service are temporarily unavailable.\nService status: {current_measurement}."
 
   service_recovery:
     title: >-
       "LabPulse Service Restored: [[ service.label ]]"
     message: >-
-      "Communication with [[ service.label ]] has been restored. Telemetry is available again.\nDowntime: " ~ (downtime_seconds | string) ~ " seconds.\nService status: {current_reading}."
+      "Communication with [[ service.label ]] has been restored. Telemetry is available again.\nDowntime: " ~ (downtime_seconds | string) ~ " seconds.\nService status: {current_measurement}."
 
-  reading_warning:
+  measurement_warning:
     title: >-
-      "LabPulse Danger Warning: [[ service.label ]] - [[ reading.label ]] is in danger"
+      "LabPulse Danger Warning: [[ service.label ]] - [[ measurement.label ]] is in danger"
     message: >-
-      "Current Reading: {current_reading}. \nDanger threshold: " ~ threshold ~ ". \nEvidence: " ~ (observed | round(1) | string) ~ "% of the past " ~ (window | string) ~ " seconds spent in danger zone; required " ~ states('[[ reading.required_danger_percent_entity ]]') ~ "% for warning. \nManual intervention may be required."
+      "Current Measurement: {current_measurement}. \nDanger threshold: " ~ threshold ~ ". \nEvidence: " ~ (observed | round(1) | string) ~ "% of the past " ~ (window | string) ~ " seconds spent in danger zone; required " ~ states('[[ measurement.entities.required_danger_percent ]]') ~ "% for warning. \nManual intervention may be required."
 
-  reading_recovery:
+  measurement_recovery:
     title: >-
-      "LabPulse Recovery Alert: [[ service.label ]] - [[ reading.label ]] has recovered from a danger state."
+      "LabPulse Recovery Alert: [[ service.label ]] - [[ measurement.label ]] has recovered from a danger state."
     message: >-
-      "Current Reading: {current_reading}. \nRecovered after " ~ states('[[ reading.required_recovery_seconds_entity ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ reading.minimum_threshold_entity ]]') ~ " to " ~ states('[[ reading.maximum_threshold_entity ]]') ~ "; deadband " ~ states('[[ reading.recovery_deadband_entity ]]') ~ "."
+      "Current Measurement: {current_measurement}. \nRecovered after " ~ states('[[ measurement.entities.required_recovery_seconds ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ measurement.entities.minimum_threshold ]]') ~ " to " ~ states('[[ measurement.entities.maximum_threshold ]]') ~ "; deadband " ~ states('[[ measurement.entities.recovery_deadband ]]') ~ "."
 
-  reading_sensor_fault:
+  measurement_sensor_fault:
     title: >-
-      "LabPulse Sensor Fault Alert: [[ service.label ]] - [[ reading.label ]]"
+      "LabPulse Sensor Fault Alert: [[ service.label ]] - [[ measurement.label ]]"
     message: >-
-      "Sensor fault reason: " ~ reason ~ ". \nService status: " ~ service_status ~ "." ~ "\nCurrent Reading: {current_reading}"
+      "Sensor fault reason: " ~ reason ~ ". \nService status: " ~ service_status ~ "." ~ "\nCurrent Measurement: {current_measurement}"
 
-  reading_sensor_recovery:
+  measurement_sensor_recovery:
     title: >-
-      "LabPulse Sensor Restored: [[ service.label ]] - [[ reading.label ]]"
+      "LabPulse Sensor Restored: [[ service.label ]] - [[ measurement.label ]]"
     message: >-
-      "Valid numeric telemetry resumed. \nService status: " ~ states('[[ service.status_entity_id ]]') ~ ". \nAlarm state: " ~ states('[[ reading.alarm_state_entity ]]') ~ "." ~ "\nCurrent Reading: {current_reading}"
+      "Valid numeric telemetry resumed. \nService status: " ~ states('[[ service.status_entity.entity_id ]]') ~ ". \nAlarm state: " ~ states('[[ measurement.entities.alarm_state ]]') ~ "." ~ "\nCurrent Measurement: {current_measurement}"
 
   power_warning:
     title: >-
       "LabPulse Power Outage Alert"
     message: >-
-      "External power has been lost and [[ service.label ]] is running on UPS battery. " ~ "Battery level: " ~ (states('[[ power.battery_level.expected_entity_id ]]') ~ "%" if is_number(states('[[ power.battery_level.expected_entity_id ]]')) else "unavailable") ~ ".\nBattery voltage: {current_reading} V.\nThe GPIO6 signal remained absent for [[ power.outage_confirm_seconds ]] seconds."
+      "External power has been lost and [[ service.label ]] is running on UPS battery. " ~ "Battery level: " ~ (states('[[ power.battery_level.mqtt_entity.entity_id ]]') ~ "%" if is_number(states('[[ power.battery_level.mqtt_entity.entity_id ]]')) else "unavailable") ~ ".\nBattery voltage: {current_measurement} V.\nThe GPIO6 signal remained absent for [[ power.config.outage_confirm_seconds ]] seconds."
 
   power_recovery:
     title: >-
       "LabPulse Power Recovery Alert"
     message: >-
-      "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ power.battery_level.expected_entity_id ]]') ~ "%" if is_number(states('[[ power.battery_level.expected_entity_id ]]')) else "unavailable") ~ ".\nBattery voltage: {current_reading} V.\nThe GPIO6 signal remained present for [[ power.restore_confirm_seconds ]] seconds."
+      "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ power.battery_level.mqtt_entity.entity_id ]]') ~ "%" if is_number(states('[[ power.battery_level.mqtt_entity.entity_id ]]')) else "unavailable") ~ ".\nBattery voltage: {current_measurement} V.\nThe GPIO6 signal remained present for [[ power.config.restore_confirm_seconds ]] seconds."
 
   power_sensor_fault:
     title: >-
       "LabPulse Sensor Fault Alert: [[ service.label ]] - External Power Detection"
     message: >-
-      "The X1200 GPIO6 external-power signal is unavailable or invalid. This is being treated as a sensor fault, not a power outage.\nRaw GPIO state: {current_reading}.\nService status: " ~ states('[[ service.status_entity_id ]]') ~ "."
+      "The X1200 GPIO6 external-power signal is unavailable or invalid. This is being treated as a sensor fault, not a power outage.\nRaw GPIO state: {current_measurement}.\nService status: " ~ states('[[ service.status_entity.entity_id ]]') ~ "."
 
   power_sensor_recovery:
     title: >-
       "LabPulse Sensor Restored: [[ service.label ]] - External Power Detection"
     message: >-
-      "The X1200 GPIO6 external-power signal is available again.\nCurrent mains state: {current_reading}.\nService status: " ~ states('[[ service.status_entity_id ]]') ~ "."
+      "The X1200 GPIO6 external-power signal is available again.\nCurrent mains state: {current_measurement}.\nService status: " ~ states('[[ service.status_entity.entity_id ]]') ~ "."
 
 formatting:
   test_prefix: "[TEST]"

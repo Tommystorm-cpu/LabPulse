@@ -3,12 +3,12 @@ import sys
 
 from labpulse_common.config import load_config
 
-from .alarm import render_alarm
-from .inventory import build_reading_inventory
-from .model_builder import build_render_model
+from .alarm_package import render_alarm
+from .measurement_catalog import build_measurement_catalog
+from .render_model import RenderModel
 from .paths import GeneratorPaths
-from .write_yaml import render_core
-from .yaml_dashboard import render_yaml_dashboard
+from .core_config import render_core
+from .dashboard_writer import render_yaml_dashboard
 
 
 def parse_args(
@@ -38,11 +38,11 @@ def main(argv: list[str]) -> int:
 
     paths = parse_args(argv)
     config = load_config(paths.config_path)
-    inventory = build_reading_inventory(config)
-    model = build_render_model(config, inventory)
+    catalog = build_measurement_catalog(config)
+    model = RenderModel.from_config(config, catalog)
     render_core(paths, model)
     render_alarm(paths, model)
-    render_yaml_dashboard(paths, config, inventory, model)
+    render_yaml_dashboard(paths, config, catalog, model)
     return 0
 
 

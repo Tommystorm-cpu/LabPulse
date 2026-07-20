@@ -28,7 +28,7 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
         "baud_rate": 9600,
         "reconnect_interval_seconds": 5.0,
         "device_name": "Pump Room Sensor Hub",
-        "readings": [{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}],
+        "measurements": [{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}],
     }
     config.update(overrides)
     return ServiceConfig(**config)
@@ -100,7 +100,7 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
             baud_rate=9600,
             reconnect_interval_seconds=5.0,
             device_name="Pump Room Sensor Hub",
-            readings=[{{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}}],
+            measurements=[{{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}}],
         )
         build_driver("pump_room", config)
 
@@ -157,7 +157,7 @@ def test_gpio_dht11_driver_builds() -> None:
         parser=None,
         serial_port=None,
         read_interval_seconds=3.0,
-        readings=[
+        measurements=[
             {"name": "temperature", "label": "Temperature", "setups": ["test_setup"], "unit": "\u00b0C"},
             {"name": "humidity", "label": "Humidity", "setups": ["test_setup"], "unit": "%"},
         ],
@@ -170,7 +170,7 @@ def test_gpio_dht11_driver_builds() -> None:
     assert_equal(driver.pin_name, "D4", "pin")
     assert_equal(driver.read_interval_seconds, 3.0, "read interval")
     assert_equal(driver.reconnect_interval_seconds, 5.0, "reconnect interval")
-    assert_equal(driver.maximum_reading_age_seconds, 300, "maximum reading age")
+    assert_equal(driver.maximum_measurement_age_seconds, 300, "maximum measurement age")
 
 
 def test_gpio_dht11_requires_pin() -> None:
@@ -202,7 +202,7 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
         i2c_bus=1,
         i2c_address=0x36,
         power_detection={},
-        readings=[
+        measurements=[
             {"name": "voltage", "unit": "V"},
             {"name": "battery_level", "unit": "%"},
             {"name": "mains_present", "state_class": None},

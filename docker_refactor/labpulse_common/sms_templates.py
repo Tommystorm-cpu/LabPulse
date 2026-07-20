@@ -8,7 +8,7 @@ import yaml
 
 
 TEMPLATE_PATH = Path(__file__).resolve().with_name("sms_templates.yaml")
-CURRENT_READING_PLACEHOLDER = "{current_reading}"
+CURRENT_MEASUREMENT_PLACEHOLDER = "{current_measurement}"
 
 
 @lru_cache(maxsize=1)
@@ -24,14 +24,14 @@ def load_sms_templates() -> dict[str, Any]:
         ("alerts", "service_fault", "message"),
         ("alerts", "service_recovery", "title"),
         ("alerts", "service_recovery", "message"),
-        ("alerts", "reading_warning", "title"),
-        ("alerts", "reading_warning", "message"),
-        ("alerts", "reading_recovery", "title"),
-        ("alerts", "reading_recovery", "message"),
-        ("alerts", "reading_sensor_fault", "title"),
-        ("alerts", "reading_sensor_fault", "message"),
-        ("alerts", "reading_sensor_recovery", "title"),
-        ("alerts", "reading_sensor_recovery", "message"),
+        ("alerts", "measurement_warning", "title"),
+        ("alerts", "measurement_warning", "message"),
+        ("alerts", "measurement_recovery", "title"),
+        ("alerts", "measurement_recovery", "message"),
+        ("alerts", "measurement_sensor_fault", "title"),
+        ("alerts", "measurement_sensor_fault", "message"),
+        ("alerts", "measurement_sensor_recovery", "title"),
+        ("alerts", "measurement_sensor_recovery", "message"),
         ("alerts", "power_warning", "title"),
         ("alerts", "power_warning", "message"),
         ("alerts", "power_recovery", "title"),
@@ -58,9 +58,9 @@ def load_sms_templates() -> dict[str, Any]:
             dotted_path = ".".join(path)
             raise ValueError(f"SMS template must be non-empty text: {dotted_path}")
     for name, alert in payload["alerts"].items():
-        if CURRENT_READING_PLACEHOLDER not in alert["message"]:
+        if CURRENT_MEASUREMENT_PLACEHOLDER not in alert["message"]:
             raise ValueError(
-                f"SMS alert message must contain {CURRENT_READING_PLACEHOLDER}: {name}"
+                f"SMS alert message must contain {CURRENT_MEASUREMENT_PLACEHOLDER}: {name}"
             )
     return payload
 

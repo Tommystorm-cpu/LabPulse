@@ -113,7 +113,7 @@ class Driver(BaseSensorDriver):
                 decode_state_of_charge(self._read_register(REG_SOC)),
                 100.0,
             )
-            self._validate_readings(voltage, battery_level)
+            self._validate_measurements(voltage, battery_level)
         except (OSError, IOError, ValueError) as error:
             self.logger.error("MAX17043 read failed: %s", error)
             self._mark_disconnected()
@@ -139,7 +139,7 @@ class Driver(BaseSensorDriver):
         return register_word([int(value) for value in data])
 
     @staticmethod
-    def _validate_readings(voltage: float, battery_level: float) -> None:
+    def _validate_measurements(voltage: float, battery_level: float) -> None:
         """Reject values outside the physical single-cell/fuel-gauge range."""
 
         if not 2.0 <= voltage <= 5.0:

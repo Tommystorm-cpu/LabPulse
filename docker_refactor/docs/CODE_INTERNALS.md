@@ -7,7 +7,7 @@ centralized.
 
 Paths in this document are relative to `docker_refactor/`.
 
-## Recommended reading order
+## Recommended documentation order
 
 Read the source in this order if you want to reconstruct the complete system:
 
@@ -17,8 +17,9 @@ Read the source in this order if you want to reconstruct the complete system:
 4. `labpulse_hardware/drivers/`
 5. `labpulse_hardware/legacy_parsing/serial_parser.py`
 6. `labpulse_hardware/homeassistant_publisher.py`
-7. `labpulse_homeassistant/cli.py`, `models.py`, and `model_builder.py`
-8. `labpulse_homeassistant/write_yaml.py`, `alarm.py`, and `yaml_dashboard.py`
+7. `labpulse_homeassistant/cli.py`, `measurement_model.py`, and `render_model.py`
+8. `labpulse_homeassistant/core_config.py`, `alarm_package.py`,
+   `dashboard_writer.py`, and `dashboard/`
 9. `labpulse_homeassistant/templates/`
 10. `labpulse_sms/subscriber.py`, `sender.py`, and `subscriptions.py`
 11. `simulate_serial.py` and `setup_usb_devices.py`
@@ -43,11 +44,11 @@ ServiceConfig
   parser, serial_port, baud_rate
   gpio_sensor, gpio_pin
   device_name
-  readings: list[ReadingConfig]
+  measurements: list[MeasurementConfig]
   reconnect_interval_seconds
   read_interval_seconds
 
-ReadingConfig
+MeasurementConfig
   name, label
   subcategory: str | None
   setups: SetupScope
@@ -55,13 +56,13 @@ ReadingConfig
 ```
 
 The `services` dictionary key is the stable service identity. A
-`ReadingConfig.name` is the stable reading identity. `device_name`, `label`,
+`MeasurementConfig.name` is the stable measurement identity. `device_name`, `label`,
 setup metadata, and `subcategory` are presentation. Services follow their
 order in `config.yaml`; there is no separate service `display` block.
 
 Important computed properties are:
 
-- `ReadingConfig.display_label`: configured label or a title made from `name`.
+- `MeasurementConfig.display_label`: configured label or a title made from `name`.
 - `SetupConfig.display_label(setup_id)`: configured label or a title made from
   the stable setup ID.
 
@@ -90,9 +91,9 @@ functions. This prevents the two sides from guessing different IDs.
 `labpulse_common/mqtt_contracts.py` owns all cross-process topic strings:
 
 ```text
-home/sensor/<service>/<reading>/state
+home/sensor/<service>/<measurement>/state
 home/sensor/<service>/status
-homeassistant/sensor/<service>_<reading>/config
+homeassistant/sensor/<service>_<measurement>/config
 homeassistant/sensor/<service>_status/config
 labpulse/sms/send
 labpulse/sms/status
@@ -111,9 +112,9 @@ worker. Extra fields are forbidden. Supported events are `sensor_fault`,
 
 - `--service`: required config service key
 - `--config`: config path
-- `--print`: log valid reading dictionaries
+- `--print`: log valid measurement dictionaries
 - `--no-mqtt`: acquire without publishing
-- `--once`: stop after one valid reading
+- `--once`: stop after one valid measurement
 
 `main()` is intentionally orchestration-only:
 
@@ -125,10 +126,10 @@ create HomeAssistantMqttPublisher unless --no-mqtt
 driver.setup()
 publish initial driver status
 loop:
-  readings = driver.read()
+  measurements = driver.read()
   publish changed driver status
   skip empty/invalid samples
-  publish readings
+  publish measurements
   stop after one sample when --once
 finally disconnect driver and MQTT
 ```
@@ -189,7 +190,7 @@ On failure it closes/clears state and returns false.
 `read()` has two paths:
 
 1. If disconnected, `_try_reconnect()` is rate-limited by
-   `reconnect_interval_seconds` and returns no reading.
+   `reconnect_interval_seconds` and returns no measurement.
 2. If connected, one line is read, decoded as UTF-8, stripped, and sent to the
    parser. Serial/OSError failures mark the driver disconnected.
 
@@ -209,7 +210,7 @@ worker.
 
 `read()` throttles requests with monotonic time. A normal DHT `RuntimeError`
 means one sample was missed and does not immediately mark the service offline.
-If valid samples remain absent for `maximum_reading_age_seconds`, status becomes
+If valid samples remain absent for `maximum_measurement_age_seconds`, status becomes
 `error`; warnings are rate-limited to one per minute. A valid sample restores
 `online`.
 
@@ -227,7 +228,7 @@ returns exactly:
 `legacy_parsing/serial_parser.py::SerialParser` first detects the standardized
 schema-1 JSON envelope emitted by `docker_refactor/firmware`. It requires the
 record's `device` to match the configured service name and returns only finite
-numeric members of its `readings` object. Startup records, JSON `null`, booleans,
+numeric members of its `measurements` object. Startup records, JSON `null`, booleans,
 metadata, and `diagnostics` are not returned as telemetry.
 
 If the line is not JSON, `parser_type` selects the temporary compatibility
@@ -256,21 +257,21 @@ values. `_key()` lowercases labels. Both paths produce the same normalized
 important state is:
 
 ```python
-reading_configs: dict[str, ReadingConfig]
-discovered_readings: set[str]
+measurement_configs: dict[str, MeasurementConfig]
+discovered_measurements: set[str]
 status_discovery_published: bool
 client: paho.mqtt.client.Client
 ```
 
-`publish(readings)` first calls `configured_readings()`. Keys not declared in
-the service’s `readings` list are ignored and logged. This makes config the
+`publish(measurements)` first calls `configured_measurements()`. Keys not declared in
+the service’s `measurements` list are ignored and logged. This makes config the
 allow-list for MQTT entities.
 
-Discovery is published once per reading when that reading first appears.
-Reading discovery contains its label, state topic, stable `unique_id`,
+Discovery is published once per measurement when that measurement first appears.
+Measurement discovery contains its label, state topic, stable `unique_id`,
 `object_id`, `default_entity_id`, device grouping, and optional unit,
 device-class, and state-class metadata. Discovery and service status are
-retained; live numeric reading values are not retained.
+retained; live numeric measurement values are not retained.
 
 Service status has its own MQTT sensor and is published when the driver changes
 between values such as `online`, `disconnected`, and `reconnecting`.
@@ -289,7 +290,7 @@ python3 -m labpulse_homeassistant \
 
 ```text
 load validated config
-build canonical reading inventory and RenderModel
+build canonical measurement catalog and RenderModel
 render_core()
 render_alarm()
 render_yaml_dashboard()
@@ -299,27 +300,28 @@ render_yaml_dashboard()
 
 The Home Assistant-specific boundary is split by responsibility:
 
-- `models.py` contains only typed render data.
-- `model_builder.py` converts validated config and the canonical inventory into
-  render data, including threshold-editor bounds and deterministic IDs.
+- `measurement_model.py` declares measurement render data and derives its
+  threshold-editor bounds and deterministic IDs in `from_config()`.
+- `render_model.py` declares aggregate render data and builds it directly from
+  validated config and the canonical catalog with `RenderModel.from_config()`.
 - `paths.py` derives generated output locations.
 
-`RenderModel` contains an ordered `list[ServiceModel]`. Its `readings` property
-flattens that into `list[tuple[ServiceModel, ReadingModel]]`, preserving access
-to both parents during per-reading expansion.
+`RenderModel` contains an ordered `list[ServiceModel]`. Its `measurements` property
+flattens that into `list[tuple[ServiceModel, MeasurementModel]]`, preserving access
+to both parents during per-measurement expansion.
 
 `ServiceModel` contains:
 
 - stable identity and physical `device_name` label
 - deterministic MQTT status unique and entity IDs
 - entity IDs for four service-level timing helpers
-- `list[ReadingModel]`
+- `list[MeasurementModel]`
 
-`ReadingModel` contains:
+`MeasurementModel` contains:
 
-- reading identity and label
-- logical setup notification context derived from the canonical inventory
-- deterministic MQTT reading unique and entity IDs
+- measurement identity and label
+- logical setup notification context derived from the canonical catalog
+- deterministic MQTT measurement unique and entity IDs
 - every generated alarm helper/entity ID
 - a `ThresholdModel` with units, steps, and editable ranges
 
@@ -339,11 +341,12 @@ unsupported because static dashboard and alarm YAML reference the stable IDs.
 
 ### Building the model
 
-`model_builder.build_render_model()` follows service order from `config.yaml`, skips disabled
-services, constructs service IDs/helpers, and calls `build_reading_model()` for
-each configured reading.
+`RenderModel.from_config()` follows service order from `config.yaml`, skips
+disabled services, and delegates to each model class's named `from_config()`
+constructor. This keeps derived identities beside the data that owns them and
+avoids a parallel builder module.
 
-Editable threshold-helper ranges are inferred from the normalized reading name:
+Editable threshold-helper ranges are inferred from the normalized measurement name:
 
 | Name contains | Editor range concept |
 | --- | --- |
@@ -365,7 +368,7 @@ observation and recovery timing retains its separate one-time initializer.
 
 There are two deliberately separate syntaxes:
 
-- `[[ service.label ]]`, `[[ reading... ]]`, and `[[ model... ]]` are expanded
+- `[[ service.label ]]`, `[[ measurement... ]]`, and `[[ model... ]]` are expanded
   by LabPulse Python during generation.
 - `{{ ... }}` and `{% ... %}` are Home Assistant Jinja and are preserved for
   Home Assistant to evaluate at runtime.
@@ -383,7 +386,7 @@ avoids a second delimiter configuration.
 
 ### Core YAML output
 
-`write_yaml.render_core()` writes `configuration.yaml` and
+`core_config.render_core()` writes `configuration.yaml` and
 `labpulse_entity_map.yaml`. `ensure_ui_yaml_files()` creates empty
 `automations.yaml`, `scripts.yaml`, and `scenes.yaml` only when absent.
 
@@ -394,29 +397,68 @@ uncertain.
 
 ### YAML dashboard rendering
 
-`yaml_dashboard.py` is the active dashboard renderer. It transforms the
-validated config, Milestone 1 canonical reading inventory, and render
-model into `homeassistant/config/labpulse-dashboard.yaml`.
+For the visual end-to-end pipeline from `cli.py` through the in-memory config,
+catalog, and render model to every generated Home Assistant file, see the
+[Home Assistant generator flow](../labpulse_homeassistant/README.md#generation-flow).
+
+Dashboard generation is deliberately split at view boundaries:
+
+- `dashboard/monitor.py` owns logical setup projection and Active Problems;
+- `dashboard/alarm_setup.py` owns the landing page and focused alarm subviews;
+- `dashboard/diagnostics.py` owns the physical-service projection;
+- `dashboard/primitives.py` contains shared native-card builders, template
+  loading, and canonical-catalog-to-render-model lookups; and
+- `dashboard_writer.py` fixes view order and serializes the assembled document
+  to `homeassistant/config/labpulse-dashboard.yaml`.
+
+This division keeps page-specific policy next to the page it affects while
+retaining one canonical catalog and one set of physical entity identities.
 `templates/core/configuration.yaml.j2` registers that file as the YAML-mode
 `labpulse-monitor` dashboard. The generated file starts with a warning because
 normal regeneration replaces it.
 
-The Monitor view projects the same physical reading entities into each
-explicitly selected setup in deterministic order. Shared readings may appear
+The Monitor view projects the same physical measurement entities into each
+explicitly selected setup in deterministic order. Shared measurements may appear
 under more than one setup, but every appearance references the same entity.
 Dedicated power telemetry bypasses setup projection and uses its own column.
-Readings are ordered and grouped by `subcategory`, with a deterministic
-fallback for readings without one.
+Measurements are ordered and grouped by `subcategory`, with a deterministic
+fallback for measurements without one.
 
-Alarm Setup renders notification controls, one persistent mute per non-empty
-setup, setup-grouped reading controls, per-reading timing, and a confirmed bulk
-timing editor. Shared visual controls reuse the same physical helper IDs. A
-setup containing shared readings requires confirmation before its mute is
-enabled and names those readings in the warning; unmuting does not require
-confirmation. Diagnostics uses the physical service projection in config order,
-showing each hub's
-`device_name`, health/status entities, physical readings once, and power
-lifecycle diagnostics where applicable.
+The first Monitor column begins with a native `entity-filter` card titled
+**Active Problems**. Nesting it inside an existing masonry column prevents the
+page from repacking when the card appears. It is built from the canonical
+physical catalog, so shared measurements are not duplicated. It watches only
+persistent lifecycle state: confirmed service-fault latches, ordinary measurement
+`Danger`/`Sensor Fault` alarm states, and power `On Battery`/`Sensor Fault`.
+Each ordinary-measurement row also requires its individual alarm mute and every
+owning setup mute to be off. A shared measurement is therefore hidden if either
+owning setup is muted, matching its single-notification semantics. The global
+mute deliberately does not conceal operational state. Home Assistant removes
+the card when no eligible confirmed state matches.
+
+Alarm Setup is a masonry landing page containing independently packed global
+notification tools, bulk timing, and a configuration card. Each setup row in
+that card pairs its navigation tile with the setup mute control; the same mute
+remains available inside the setup editor. Every landing-page block is a
+self-contained vertical stack so its heading cannot separate from its controls
+at narrower widths. Every non-empty setup has a native
+hidden three-column subview: a two-across measurement launcher grid on the left,
+conditional editable settings in the middle, and matching conditional live
+alarm status on the right. One expansion helper reveals both cards for the
+selected measurement. Dedicated power controls use their own subview. Shared visual
+controls reuse the same physical helper IDs. A setup
+containing shared measurements requires confirmation before its mute is enabled and
+names those measurements in the warning; unmuting does not require confirmation.
+Derived alarm zones and observed danger remain in the read-only live-status
+column rather than the editable form. Diagnostics contains no ordinary alarm
+engine state. It uses native masonry and the physical service projection in
+config order: one compact column per hub with its `device_name`, a connection
+tile, paired health tiles, physical measurements once, and power lifecycle
+diagnostics where applicable. **Service Health** is the immediate derived
+problem signal from the current connection status. **Confirmed service fault**
+is the persistent latch set only after `fault_confirm_seconds` and cleared only
+after `recovery_confirm_seconds`; alerts and Active Problems use this stable
+state.
 
 There is no storage-backed dashboard renderer, dashboard synchronization path,
 or live registry-resolution path. Generation is fully offline and uses the
@@ -424,9 +466,9 @@ same stable entity-ID functions as MQTT discovery.
 
 ## Alarm state machine
 
-`alarm.py` reshapes the rules in `templates/alarm/alarm_logic.yaml` into native
+`alarm_package.py` reshapes the rules in `templates/alarm/alarm_logic.yaml` into native
 Home Assistant package sections. Service rules are expanded once per service;
-reading rules once per reading.
+measurement rules once per measurement.
 
 ### Generated helpers
 
@@ -436,7 +478,7 @@ Each service receives:
 - observation-window seconds
 - required recovery seconds
 
-Each reading receives:
+Each measurement receives:
 
 - persistent alarm state: Normal, Danger, or Sensor Fault
 - alarm mode: Disabled, Low Only, High Only, or Range
@@ -445,20 +487,20 @@ Each reading receives:
 
 ### Calculated entities
 
-`danger_zone` is on when a numeric reading violates the active threshold mode.
-Disabled or invalid readings are not considered threshold danger.
+`danger_zone` is on when a numeric measurement violates the active threshold mode.
+Disabled or invalid measurements are not considered threshold danger.
 
-`recovery_zone` applies the deadband inward. For example, a Low Only reading
+`recovery_zone` applies the deadband inward. For example, a Low Only measurement
 recovers only at or above `minimum + deadband`. Disabled mode is considered
-recovered when the reading is numeric.
+recovered when the measurement is numeric.
 
-`sensor_fault_zone` is on when the reading is invalid/unavailable or service
+`sensor_fault_zone` is on when the measurement is invalid/unavailable or service
 health reports an explicit error/unknown condition. MQTT discovery sets
-`expire_after` from `maximum_reading_age_seconds`, so Home Assistant makes a
-reading unavailable only when its MQTT samples actually stop. Repeated samples
+`expire_after` from `maximum_measurement_age_seconds`, so Home Assistant makes a
+measurement unavailable only when its MQTT samples actually stop. Repeated samples
 with an unchanged numeric value remain healthy. `disconnected` and
-`reconnecting` do not immediately fault a previously valid reading: MQTT
-expiry acts as the reconnect grace period. After expiry, ordinary readings use
+`reconnecting` do not immediately fault a previously valid measurement: MQTT
+expiry acts as the reconnect grace period. After expiry, ordinary measurements use
 a second confirmation window of up to 15 seconds before changing the alarm
 state. This filters the brief `unavailable` phase produced when Home Assistant,
 the broker, and every publisher are restarted together.
@@ -486,18 +528,18 @@ Sensor Fault
 ```
 
 Sensor fault takes priority. Danger entry excludes faulted and Disabled
-readings. State changes occur whether muted or not; only notifications and SMS
+measurements. State changes occur whether muted or not; only notifications and SMS
 publishing are inside the combined global/setup/individual mute check. Every
-setup assigned to a shared reading must be unmuted. No mute helper is used as a
+setup assigned to a shared measurement must be unmuted. No mute helper is used as a
 state writer for another mute helper. Physical service-health and dedicated
 power alarms are not gated by logical setup mutes. Test mode
 adds `[TEST]` to titles and sets the validated request flag consumed by the SMS
 recipient router. Its explicit `initial: true` setting makes every Home
 Assistant start default to test delivery until an operator turns it off. When a confirmed fault clears, Home
 Assistant creates a persistent sensor-restored notification after reconciling
-the reading to Normal or Danger and publishes a validated recovery SMS request.
+the measurement to Normal or Danger and publishes a validated recovery SMS request.
 Because the state does not enter Sensor Fault during an unconfirmed startup
-transient, ordinary container restarts do not emit a recovery for every reading.
+transient, ordinary container restarts do not emit a recovery for every measurement.
 
 ### Service-health lifecycle
 
@@ -516,21 +558,21 @@ sensor remains off for `recovery_confirm_seconds`, Home Assistant sends one
 recovery with downtime and clears the latch. Startup triggers repeat the same
 confirmed checks because native `for` timers do not survive restart.
 
-While the whole-service problem is present or latched, new per-reading fault,
-Danger, and recovery transitions are gated. MQTT readings may still expire for
-honest dashboard presentation. A reading that was already in a genuine Sensor
+While the whole-service problem is present or latched, new per-measurement fault,
+Danger, and recovery transitions are gated. MQTT measurements may still expire for
+honest dashboard presentation. A measurement that was already in a genuine Sensor
 Fault remains latched and recovers only after the service returns and that
-reading becomes valid. Once the service recovery period ends, ordinary stale
-reading confirmation resumes, providing an additional telemetry grace period.
+measurement becomes valid. Once the service recovery period ends, ordinary stale
+measurement confirmation resumes, providing an additional telemetry grace period.
 
-Danger notifications include the current reading, active threshold, observed
+Danger notifications include the current measurement, active threshold, observed
 danger percentage, observation window, approximate time in danger, and required
 percentage. Sensor-fault notifications distinguish unavailable/non-numeric
-readings from unhealthy service status. The SMS contract calls the optional
-value `current_reading`, and rendered SMS labels it `Current Reading`. Every
-ordinary reading notification also includes one canonical context line:
+measurements from unhealthy service status. The SMS contract calls the optional
+value `current_measurement`, and rendered SMS labels it `Current Measurement`. Every
+ordinary measurement notification also includes one canonical context line:
 one affected setup or selected affected setups. This text is derived from the
-inventory and does not create additional
+catalog and does not create additional
 automations, MQTT requests, or cooldown identities.
 
 ### Dedicated UPS power lifecycle
@@ -580,8 +622,8 @@ outage latch. Battery voltage and percentage never determine outage state.
 All user-facing SMS text is defined once in
 `labpulse_common/sms_templates.yaml`. The Home Assistant generator expands its
 alert and notification title/message pairs into MQTT requests. Each alert body contains a
-dedicated `{current_reading}` line labelled for that alert; the SMS worker fills
-that final value or removes the line when no usable reading exists. The worker
+dedicated `{current_measurement}` line labelled for that alert; the SMS worker fills
+that final value or removes the line when no usable measurement exists. The worker
 also reads the same file for the test prefix, warning footer, and
 subscribe/unsubscribe confirmations. `sms_templates.py` validates the catalogue
 at startup so a missing, empty, or incomplete alert entry fails clearly.
@@ -605,7 +647,7 @@ sets an offline last will.
 an in-memory mapping of event keys to their latest time. It provides:
 
 - 24-hour duplicate-ID protection
-- a 30-second cooldown per `service:reading:event`
+- a 30-second cooldown per `service:measurement:event`
 - a 2,000-entry bound
 - atomic best-effort persistence to `sms_processed_requests.json`
 
@@ -649,13 +691,13 @@ inspected received object from modem storage. Paths already handled during the
 current process are not answered twice if deletion initially fails.
 
 Warning formatting appends the required unsubscribe/resubscribe footer after
-the current reading. Subscription confirmations and non-warning events do not
+the current measurement. Subscription confirmations and non-warning events do not
 receive that footer.
 
 ## Serial simulator internals
 
 `simulate_serial.py` represents all fake devices as pseudo-terminals. A
-`SerialEndpoint` owns the PTY and stable symlink; `ReadingGenerator` produces
+`SerialEndpoint` owns the PTY and stable symlink; `MeasurementGenerator` produces
 Arduino-shaped payloads; `SimulatorService` writes them at the configured
 interval.
 
@@ -676,8 +718,8 @@ Scenario state is `dict[target, state]`. Normal sensor targets use `normal`,
 UPS `stale` emits no payload at all so the real 15-second MQTT expiry is
 exercised.
 
-For ordinary sensor targets, `stale` suppresses only the selected reading while
-leaving the serial link and peer readings active. Its MQTT entity becomes
+For ordinary sensor targets, `stale` suppresses only the selected measurement while
+leaving the serial link and peer measurements active. Its MQTT entity becomes
 unavailable after the configured expiry. A steady sensor that continues
 publishing the same value does not expire.
 

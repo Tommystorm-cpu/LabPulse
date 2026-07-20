@@ -163,13 +163,13 @@ def test_composite_publishes_mains_and_battery() -> None:
     driver = make_driver(reader)
     if not driver.setup():
         raise AssertionError("fake X1200 driver did not connect")
-    readings = driver.read()
+    measurements = driver.read()
     expected = {"voltage": 4.1, "battery_level": 82.0, "mains_present": 1.0}
-    if readings != expected or driver.status != "online":
-        raise AssertionError(f"unexpected composite sample: {readings!r}, {driver.status}")
+    if measurements != expected or driver.status != "online":
+        raise AssertionError(f"unexpected composite sample: {measurements!r}, {driver.status}")
 
 
-def test_gpio_fault_omits_only_mains_reading() -> None:
+def test_gpio_fault_omits_only_mains_measurement() -> None:
     """Keep battery telemetry while allowing the mains entity to expire."""
 
     reader = GpiodLineReader(
@@ -180,9 +180,9 @@ def test_gpio_fault_omits_only_mains_reading() -> None:
     )
     driver = make_driver(reader)
     driver.setup()
-    readings = driver.read()
-    if readings != {"voltage": 4.1, "battery_level": 82.0}:
-        raise AssertionError(f"GPIO fault discarded battery telemetry: {readings!r}")
+    measurements = driver.read()
+    if measurements != {"voltage": 4.1, "battery_level": 82.0}:
+        raise AssertionError(f"GPIO fault discarded battery telemetry: {measurements!r}")
     if driver.status != "gpio_fault":
         raise AssertionError("GPIO failure did not publish a distinct service status")
 
@@ -191,8 +191,8 @@ TESTS = [
     ("active-high values", test_active_high_gpio_values),
     ("configurable polarity", test_configurable_polarity),
     ("libgpiod CLI versions", test_libgpiod_cli_versions),
-    ("composite readings", test_composite_publishes_mains_and_battery),
-    ("GPIO fault", test_gpio_fault_omits_only_mains_reading),
+    ("composite measurements", test_composite_publishes_mains_and_battery),
+    ("GPIO fault", test_gpio_fault_omits_only_mains_measurement),
 ]
 
 

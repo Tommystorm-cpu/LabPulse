@@ -11,7 +11,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import LabPulseConfig, SetupConfig
-from labpulse_homeassistant.inventory import ReadingKey, build_reading_inventory
+from labpulse_homeassistant.measurement_catalog import MeasurementKey, build_measurement_catalog
 
 
 def config_data() -> dict[str, object]:
@@ -37,7 +37,7 @@ def config_data() -> dict[str, object]:
                 "parser": "pump_room",
                 "serial_port": "/tmp/pump-room",
                 "device_name": "Pump Room Hub",
-                "readings": [
+                "measurements": [
                     {"name": "cryostat_only", "setups": ["cryostat"]},
                     {"name": "turbo", "setups": ["turbo_pump"]},
                     {
@@ -51,7 +51,7 @@ def config_data() -> dict[str, object]:
                 "gpio_sensor": "dht11",
                 "gpio_pin": "D4",
                 "device_name": "Room Hub",
-                "readings": [{"name": "temperature", "setups": ["cryostat"]}],
+                "measurements": [{"name": "temperature", "setups": ["cryostat"]}],
             },
             "disabled": {
                 "enabled": False,
@@ -59,7 +59,7 @@ def config_data() -> dict[str, object]:
                 "parser": "pressure",
                 "serial_port": "/tmp/disabled",
                 "device_name": "Disabled Hub",
-                "readings": [{"name": "ignored", "setups": ["cryostat"]}],
+                "measurements": [{"name": "ignored", "setups": ["cryostat"]}],
             },
         },
     }
@@ -81,39 +81,39 @@ def test_scope_normalization_and_validation() -> None:
     """Normalize explicit lists and reject missing or removed membership forms."""
 
     config = LabPulseConfig.model_validate(config_data())
-    readings = config.services["pump_room"].readings
-    if [item.setups.setup_ids for item in readings if item.setups is not None] != [
+    measurements = config.services["pump_room"].measurements
+    if [item.setups.setup_ids for item in measurements if item.setups is not None] != [
         ("cryostat",),
         ("turbo_pump",),
         ("turbo_pump", "cryostat"),
     ]:
-        raise AssertionError("reading setup scopes were not normalized")
+        raise AssertionError("measurement setup scopes were not normalized")
 
     missing_membership = config_data()
-    missing_membership["services"]["pump_room"]["readings"][0].pop("setups")
+    missing_membership["services"]["pump_room"]["measurements"][0].pop("setups")
     assert_rejected(missing_membership, "setups")
 
     duplicate = config_data()
-    duplicate["services"]["pump_room"]["readings"][1]["setups"] = [
+    duplicate["services"]["pump_room"]["measurements"][1]["setups"] = [
         "turbo_pump",
         "turbo_pump",
     ]
     assert_rejected(duplicate, "must be unique")
 
     unknown = config_data()
-    unknown["services"]["pump_room"]["readings"][1]["setups"] = ["missing"]
+    unknown["services"]["pump_room"]["measurements"][1]["setups"] = ["missing"]
     assert_rejected(unknown, "unknown setups: missing")
 
     empty = config_data()
-    empty["services"]["pump_room"]["readings"][1]["setups"] = []
+    empty["services"]["pump_room"]["measurements"][1]["setups"] = []
     assert_rejected(empty, "at least one setup ID")
 
     removed_none = config_data()
-    removed_none["services"]["pump_room"]["readings"][1]["setups"] = "none"
+    removed_none["services"]["pump_room"]["measurements"][1]["setups"] = "none"
     assert_rejected(removed_none, "non-empty list")
 
     removed_all = config_data()
-    removed_all["services"]["pump_room"]["readings"][1]["setups"] = "all"
+    removed_all["services"]["pump_room"]["measurements"][1]["setups"] = "all"
     assert_rejected(removed_all, "non-empty list")
 
 
@@ -144,7 +144,7 @@ def test_setup_metadata_validation() -> None:
     assert_rejected(obsolete_display, "display")
 
     obsolete_group = config_data()
-    obsolete_group["services"]["pump_room"]["readings"][0]["group"] = "General"
+    obsolete_group["services"]["pump_room"]["measurements"][0]["group"] = "General"
     assert_rejected(obsolete_group, "group")
 
     no_setups = config_data()
@@ -164,7 +164,7 @@ def test_dedicated_power_omits_setup_membership() -> None:
                 "parser": "ups_simulator",
                 "serial_port": "/tmp/ups",
                 "device_name": "UPS",
-                "readings": [
+                "measurements": [
                     {"name": "voltage"},
                     {"name": "battery_level"},
                     {"name": "mains_present", "state_class": None},
@@ -174,46 +174,46 @@ def test_dedicated_power_omits_setup_membership() -> None:
         },
     }
     config = LabPulseConfig.model_validate(power)
-    if any(reading.setups is not None for reading in config.services["ups"].readings):
-        raise AssertionError("power reading unexpectedly gained setup membership")
+    if any(measurement.setups is not None for measurement in config.services["ups"].measurements):
+        raise AssertionError("power measurement unexpectedly gained setup membership")
 
-    power["services"]["ups"]["readings"][0]["setups"] = ["power"]
-    assert_rejected(power, "dedicated power readings must omit setups")
+    power["services"]["ups"]["measurements"][0]["setups"] = ["power"]
+    assert_rejected(power, "dedicated power measurements must omit setups")
 
 
-def test_canonical_inventory_and_projections() -> None:
-    """Project the same canonical reading objects by setup and physical service."""
+def test_canonical_catalog_and_projections() -> None:
+    """Project the same canonical measurement objects by setup and physical service."""
 
-    inventory = build_reading_inventory(LabPulseConfig.model_validate(config_data()))
-    if [item.key.service_name for item in inventory.readings] != [
+    catalog = build_measurement_catalog(LabPulseConfig.model_validate(config_data()))
+    if [item.key.service_name for item in catalog.measurements] != [
         "pump_room",
         "pump_room",
         "pump_room",
         "room_environment",
     ]:
-        raise AssertionError("inventory did not follow YAML service order")
-    if "disabled" in inventory.by_service:
-        raise AssertionError("disabled service entered the reading inventory")
+        raise AssertionError("catalog did not follow YAML service order")
+    if "disabled" in catalog.by_service:
+        raise AssertionError("disabled service entered the measurement catalog")
 
-    cryostat_only = inventory.by_key[ReadingKey("pump_room", "cryostat_only")]
-    turbo = inventory.by_key[ReadingKey("pump_room", "turbo")]
-    shared = inventory.by_key[ReadingKey("pump_room", "shared")]
-    global_reading = inventory.by_key[ReadingKey("room_environment", "temperature")]
+    cryostat_only = catalog.by_key[MeasurementKey("pump_room", "cryostat_only")]
+    turbo = catalog.by_key[MeasurementKey("pump_room", "turbo")]
+    shared = catalog.by_key[MeasurementKey("pump_room", "shared")]
+    global_measurement = catalog.by_key[MeasurementKey("room_environment", "temperature")]
 
-    if inventory.selected_shared_readings != (shared,):
+    if catalog.selected_shared_measurements != (shared,):
         raise AssertionError("selected shared projection is incorrect")
     if shared.effective_setup_ids != ("cryostat", "turbo_pump"):
         raise AssertionError("selected setups did not follow configured setup order")
-    if global_reading.effective_setup_ids != ("cryostat",):
+    if global_measurement.effective_setup_ids != ("cryostat",):
         raise AssertionError("single setup membership is incorrect")
-    if inventory.by_setup["cryostat"] != (cryostat_only, shared, global_reading):
+    if catalog.by_setup["cryostat"] != (cryostat_only, shared, global_measurement):
         raise AssertionError("cryostat projection is incorrect")
-    if inventory.by_setup["turbo_pump"] != (turbo, shared):
+    if catalog.by_setup["turbo_pump"] != (turbo, shared):
         raise AssertionError("turbo projection is incorrect")
-    if inventory.by_service["pump_room"] != (cryostat_only, turbo, shared):
+    if catalog.by_service["pump_room"] != (cryostat_only, turbo, shared):
         raise AssertionError("physical service projection is incorrect")
-    if inventory.by_setup["turbo_pump"][0] is not turbo:
-        raise AssertionError("setup projection copied a canonical reading")
+    if catalog.by_setup["turbo_pump"][0] is not turbo:
+        raise AssertionError("setup projection copied a canonical measurement")
     if turbo.key.stable_id != "labpulse_pump_room_turbo":
         raise AssertionError("setup membership changed physical stable identity")
 
@@ -222,7 +222,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("scope normalization and validation", test_scope_normalization_and_validation),
     ("setup metadata validation", test_setup_metadata_validation),
     ("dedicated power membership", test_dedicated_power_omits_setup_membership),
-    ("canonical inventory and projections", test_canonical_inventory_and_projections),
+    ("canonical catalog and projections", test_canonical_catalog_and_projections),
 ]
 
 

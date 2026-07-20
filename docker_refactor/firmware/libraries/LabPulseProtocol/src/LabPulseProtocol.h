@@ -9,7 +9,7 @@ constexpr uint8_t SCHEMA_VERSION = 1;
 constexpr float ADC_REFERENCE_VOLTS = 5.0F;
 constexpr int ADC_MAX = 1023;
 
-struct ThermistorReading {
+struct ThermistorMeasurement {
   int adc;
   float celsius;
   bool valid;
@@ -17,7 +17,7 @@ struct ThermistorReading {
 
 bool finiteInRange(float value, float minimum, float maximum);
 
-ThermistorReading readGe1337(
+ThermistorMeasurement readGe1337(
     uint8_t pin,
     float fixedResistanceOhms = 4700.0F);
 

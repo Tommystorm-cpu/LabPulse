@@ -57,13 +57,13 @@ repository docker_refactor/
 `setup_container_fs.sh` is the bootstrap and code-copy step. After it has run,
 normal operator work happens from `~/labpulse-ha`, not from the checkout.
 
-### Runtime readings and alerts
+### Runtime measurements and alerts
 
 ```text
 sensor
   -> driver
   -> normalized dict[str, float]
-  -> configured-reading filter
+  -> configured-measurement filter
   -> MQTT discovery and state topics
   -> Home Assistant sensor entities
   -> zone sensors and history statistics
@@ -87,13 +87,13 @@ The key boundary is between facts and decisions:
 - Home Assistant owns thresholds, timing, mute controls, alarm state, and
   operator-facing notifications.
 - The SMS worker validates and delivers an already-decided alert. It does not
-  decide whether a reading is dangerous.
+  decide whether a measurement is dangerous.
 
 Each hardware publisher also owns an MQTT Last Will on its existing retained
 status topic. A lost process or MQTT connection therefore publishes `offline`.
 Home Assistant classifies `disconnected`, `reconnecting`, `error`, `offline`,
 `unknown`, and `unavailable` as whole-service failures. After confirmation it
-sends one hub-level alert and suppresses new per-reading stale faults until the
+sends one hub-level alert and suppresses new per-measurement stale faults until the
 service-wide condition has recovered. Component degradation such as the X1200
 `gpio_fault` remains outside that classification and keeps its dedicated alert.
 
@@ -128,7 +128,7 @@ python -m labpulse_hardware --service <service-key>
 ```
 
 The service key selects configuration and therefore its driver, parser,
-readings, labels, and hardware path. One container per service isolates device
+measurements, labels, and hardware path. One container per service isolates device
 disconnects and restarts.
 
 ### `labpulse-sms`
@@ -191,16 +191,33 @@ The live config describes deployment facts:
 ~/labpulse-ha/config.yaml
 ```
 
-It owns enabled services, hardware access, parser choice, readings, display
+It owns enabled services, hardware access, parser choice, measurements, display
 metadata, MQTT connection settings, SMS mode, and recipients.
 
-Thresholds, alarm modes, and per-reading timing are configured in the generated
-Alarm Setup view. A confirmed bulk editor copies timing to all ordinary
-readings or one logical setup. These values are Home Assistant state rather
-than deployment configuration. A fresh
-installation starts with every ordinary-reading alarm mode disabled and the
+Thresholds, alarm modes, and per-measurement timing are configured through the
+generated masonry Alarm Setup landing page and its native setup subviews. The
+landing page pairs each setup navigation tile with its setup mute control while
+retaining the same control in the corresponding subview. A confirmed
+bulk editor copies timing to all ordinary measurements or one logical setup. These
+values are Home Assistant state rather than deployment configuration. A fresh
+installation starts with every ordinary-measurement alarm mode disabled and the
 global notification mute enabled. After that first initialization, Home
 Assistant restores the operator's choices across restarts.
+
+Each setup subview separates measurement selection, editable alarm settings, and
+read-only live alarm status into three columns. The live column owns alarm state,
+observed danger, and danger/recovery/fault zones. The Diagnostics view remains
+physical and uses one compact masonry column per service: connectivity, paired
+health indicators, latest raw measurements, and dedicated power state.
+
+The Monitor view also has a native filtered problem summary derived from the
+canonical physical catalog. It is nested inside the first masonry column,
+absent while healthy, and surfaces only confirmed service faults, persistent
+measurement alarm states, and power lifecycle faults. This avoids threshold-edge
+flicker, page-wide masonry repacking, new aggregate helpers, and duplicate
+shared measurements. Per-entity filter conditions omit individually muted measurements
+and measurements under any muted owning setup. The global notification gate does
+not conceal system health.
 
 A MAX17043 service receives only its configured `/dev/i2c-N` device mapping.
 It does not require privileged mode or a broad `/dev` mount.
@@ -209,11 +226,11 @@ Home Assistant owns operator state:
 
 - minimum/maximum thresholds
 - alarm mode and mute state
-- per-reading observation, danger-percentage, and recovery timing
+- per-measurement observation, danger-percentage, and recovery timing
 - accounts and integrations
 
 The LabPulse dashboard layout is generated from `config.yaml` and the
-canonical reading inventory. Normal regeneration replaces that one YAML file
+canonical measurement catalog. Normal regeneration replaces that one YAML file
 without changing operator-tuned helper values or Home Assistant-owned state.
 
 ## Generated versus user-owned files
@@ -233,12 +250,12 @@ backup, restore, or synchronization path.
 
 ## Identity contract
 
-Machine identifiers are derived from the service key and reading name. For:
+Machine identifiers are derived from the service key and measurement name. For:
 
 ```yaml
 services:
   pressure_monitor:
-    readings:
+    measurements:
       - name: pressure
 ```
 
@@ -251,7 +268,7 @@ state topic:     home/sensor/pressure_monitor/pressure/state
 ```
 
 Labels such as `Pressure` are presentation and can change safely. Renaming the
-service key or reading name changes MQTT topics, unique IDs, generated helper
+service key or measurement name changes MQTT topics, unique IDs, generated helper
 IDs, and history continuity.
 
 LabPulse entity IDs are generated infrastructure referenced by static alarm and
@@ -260,7 +277,7 @@ LabPulse entity IDs through Home Assistant.
 
 ## Home Assistant alarm ownership
 
-Each reading has a persistent state:
+Each measurement has a persistent state:
 
 ```text
 Normal
@@ -268,16 +285,16 @@ Danger
 Sensor Fault
 ```
 
-Instantaneous binary sensors describe whether the reading is in the danger,
+Instantaneous binary sensors describe whether the measurement is in the danger,
 recovery, or fault zone. A `history_stats` sensor measures the percentage of
 the observation window spent in danger. Automations write the persistent state
 only when the timing and zone conditions are met.
 
-Per-reading and power mutes suppress their own persistent notifications and SMS
+Per-measurement and power mutes suppress their own persistent notifications and SMS
 requests. Each logical setup also has a restored-state mute that gates the
-ordinary readings assigned to it. The independent global mute gates every
-delivery path without writing setup, reading, or power mute helpers, so every
-choice survives other mute cycles. A shared reading has one physical alert; all
+ordinary measurements assigned to it. The independent global mute gates every
+delivery path without writing setup, measurement, or power mute helpers, so every
+choice survives other mute cycles. A shared measurement has one physical alert; all
 of its setup gates must be open for that alert to be delivered. Setup mutes do
 not apply to physical service-health alarms or dedicated power alarms. Test mode
 does not alter alarm evaluation; it marks notifications `[TEST]` and sends SMS
@@ -292,11 +309,11 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 
 - A missing serial device does not terminate the service loop. The driver
   reports disconnected/reconnecting and periodically retries. Home Assistant
-  trusts the last valid sample until the MQTT reading's configured
+  trusts the last valid sample until the MQTT measurement's configured
   `expire_after` elapses, so a brief reconnect does not immediately notify.
 - Individual DHT11 timing failures are tolerated. Sustained missing samples
   change service health to `error` at the configured maximum age while MQTT
-  expiry makes readings unavailable; valid samples restore `online`.
+  expiry makes measurements unavailable; valid samples restore `online`.
 - Unexpected DHT11 GPIO/library failures release the device and retry setup at
   the configured reconnect interval without requiring a container restart.
 - Parser output not declared in config is ignored instead of creating surprise
@@ -317,9 +334,9 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 | Change acquisition or reconnect behavior | `labpulse_hardware/drivers/` |
 | Adapt current Arduino text | `labpulse_hardware/legacy_parsing/serial_parser.py` |
 | Change discovery/state publishing | `labpulse_hardware/homeassistant_publisher.py` |
-| Change Home Assistant render types | `labpulse_homeassistant/models.py` |
-| Change Home Assistant model construction/IDs | `labpulse_homeassistant/model_builder.py` |
+| Change measurement render types/IDs | `labpulse_homeassistant/measurement_model.py` |
+| Change aggregate Home Assistant models/construction | `labpulse_homeassistant/render_model.py` |
 | Change generated alarm behavior | `templates/alarm/alarm_logic.yaml` |
-| Change generated dashboard layout | `labpulse_homeassistant/yaml_dashboard.py` and `templates/dashboard/` |
+| Change generated dashboard layout | `labpulse_homeassistant/dashboard/` and `templates/dashboard/` |
 | Change alert transport/delivery | `labpulse_sms/` |
 | Change containers or mounts | `generate_compose.sh` |

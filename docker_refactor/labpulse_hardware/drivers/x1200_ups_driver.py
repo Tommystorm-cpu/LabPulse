@@ -1,4 +1,4 @@
-"""Geekworm X1200 UPS driver combining fuel-gauge and mains GPIO readings."""
+"""Geekworm X1200 UPS driver combining fuel-gauge and mains GPIO measurements."""
 
 from __future__ import annotations
 
@@ -119,26 +119,26 @@ class Driver(BaseSensorDriver):
     def read(self) -> dict[str, float] | None:
         """Return battery telemetry plus mains state when GPIO6 is readable."""
 
-        readings = self.fuel_gauge.read()
+        measurements = self.fuel_gauge.read()
         self.connected = self.fuel_gauge.connected
-        if readings is None:
+        if measurements is None:
             self.status = self.fuel_gauge.get_status()
             return None
 
         try:
-            readings["mains_present"] = self.gpio_reader.read()
+            measurements["mains_present"] = self.gpio_reader.read()
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             if not self._gpio_faulted:
                 self.logger.error("X1200 mains GPIO read failed: %s", error)
             self._gpio_faulted = True
             self.status = "gpio_fault"
-            return readings
+            return measurements
 
         if self._gpio_faulted:
-            self.logger.info("X1200 mains GPIO reading recovered")
+            self.logger.info("X1200 mains GPIO measurement recovered")
         self._gpio_faulted = False
         self.status = "online"
-        return readings
+        return measurements
 
     def disconnect(self) -> None:
         """Close the fuel-gauge connection and mark the composite offline."""

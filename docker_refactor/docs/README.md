@@ -5,7 +5,7 @@ It contains reference guides plus one maintained software roadmap. Design
 proposals, completed refactor plans, and duplicate task-specific notes have
 been removed so that an implemented feature has one authoritative explanation.
 
-## Reading order
+## Documentation order
 
 1. [ARCHITECTURE.md](ARCHITECTURE.md) explains the system at container and
    package level: what runs, how data moves, and which component owns each
@@ -36,8 +36,9 @@ Approved implementation specification:
 | Question | Guide |
 | --- | --- |
 | Why are there several containers and packages? | `ARCHITECTURE.md` |
-| Where does a reading travel from USB to Home Assistant? | `ARCHITECTURE.md`, then `CODE_INTERNALS.md` |
-| Which model contains a service, reading, or entity ID? | `CODE_INTERNALS.md` |
+| Where does a measurement travel from USB to Home Assistant? | `ARCHITECTURE.md`, then `CODE_INTERNALS.md` |
+| Which model contains a service, measurement, or entity ID? | `CODE_INTERNALS.md` |
+| Which Python file produces each Home Assistant resource? | [`labpulse_homeassistant/README.md`](../labpulse_homeassistant/README.md#generation-flow) |
 | How are `[[ ... ]]` and `{{ ... }}` different? | `CODE_INTERNALS.md` |
 | How does Normal/Danger/Sensor Fault work? | `CODE_INTERNALS.md` |
 | What do I edit on the Raspberry Pi? | `SETUP_AND_TROUBLESHOOTING.md` |
@@ -58,7 +59,7 @@ problems.
 | --- | --- |
 | Running Pi services, hardware, labels, and recipients | `~/labpulse-ha/config.yaml` |
 | Fresh-install deployment starter | repository `docker_refactor/config.yaml` |
-| Setup membership, subcategories, and generated dashboard arrangement | `~/labpulse-ha/config.yaml` plus `labpulse_homeassistant/yaml_dashboard.py` |
+| Setup membership, subcategories, and generated dashboard arrangement | `~/labpulse-ha/config.yaml` plus `labpulse_homeassistant/dashboard/` |
 | Thresholds, alarm modes, mute state, and other live alarm controls | Home Assistant state and the Alarm Setup dashboard |
 | All user-facing SMS wording | `labpulse_common/sms_templates.yaml` |
 | Generated dashboard fragments | `labpulse_homeassistant/templates/dashboard/` |

@@ -53,7 +53,7 @@ security boundary is containment:
 
 Additional hardening is justified when it protects monitoring integrity,
 availability, third parties, or unrelated infrastructure. Confidentiality for
-LabPulse's own sensor readings is not a primary requirement.
+LabPulse's own sensor measurements is not a primary requirement.
 
 ## Priority definitions
 
@@ -72,7 +72,7 @@ LabPulse's own sensor readings is not a primary requirement.
 - [ ] Agree a continuous soak-test duration; at least 14 days is recommended.
 - [ ] Run the complete real Pi, real MQTT, Home Assistant, SMS worker, and
   intended sensors for that period without routine manual restarts.
-- [ ] Record every intervention, unexplained container restart, missing reading,
+- [ ] Record every intervention, unexplained container restart, missing measurement,
   false alarm, missed alarm, and duplicate notification.
 - [ ] Fix or explicitly accept every failure before declaring the target met.
 
@@ -81,8 +81,8 @@ monitoring and no routine operator action.
 
 ### Restart and power-loss behavior
 
-- [ ] Power-cycle the Pi while readings are Normal and confirm automatic return.
-- [ ] Power-cycle while a reading is Danger and verify the eventual alarm state
+- [ ] Power-cycle the Pi while measurements are Normal and confirm automatic return.
+- [ ] Power-cycle while a measurement is Danger and verify the eventual alarm state
   is correct rather than silently remaining Normal.
 - [ ] Restart Home Assistant independently and verify helpers, zone sensors,
   history statistics, alarm state, and automations recover correctly.
@@ -99,7 +99,7 @@ dashboard displaying a plausible but incorrect healthy state.
 - [ ] Test repeated unplug/replug with every real serial Arduino using its
   `/dev/serial/by-id/...` path.
 - [ ] Confirm status progresses through disconnected/reconnecting/online.
-- [ ] Confirm readings resume without recreating the container.
+- [ ] Confirm measurements resume without recreating the container.
 - [ ] Confirm a prolonged disconnect becomes Sensor Fault in Home Assistant.
 - [ ] Test malformed, partial, and silent serial output for each parser format.
 - [ ] Test DHT11 startup failure and sustained read failure on the real Pi.
@@ -116,7 +116,7 @@ behaviour are verified repeatedly with the actual devices.
 - [ ] Establish and document what happens to Normal, Danger, and Sensor Fault
   across Home Assistant restarts.
 - [ ] Verify `history_stats` produces safe behavior immediately after startup.
-- [ ] Verify a reading already outside its threshold cannot remain unnoticed
+- [ ] Verify a measurement already outside its threshold cannot remain unnoticed
   because no new threshold crossing occurs after restart.
 - [ ] Verify Sensor Fault clears only into a justified Normal or Danger state.
 - [ ] Add generator or integration tests for every problem found.
@@ -164,16 +164,16 @@ tests. Per-number `SUBSCRIBE`/`UNSUBSCRIBE` choices apply to both modes.
 
 ### Temporary message suppression
 
-- [ ] Decide whether the existing per-reading mute toggle satisfies the actual
+- [ ] Decide whether the existing per-measurement mute toggle satisfies the actual
   user requirement.
 - [ ] If temporary behavior is required, add a clear duration or expiry time and
   automatic unmute.
-- [ ] Decide whether suppression is global per reading or individual per
+- [ ] Decide whether suppression is global per measurement or individual per
   recipient/user.
 - [ ] Keep alarm-state calculation visible while delivery is muted.
 - [ ] Make muted/expiry state obvious on the dashboard.
 
-Current state: every reading has a global mute toggle. It suppresses
+Current state: every measurement has a global mute toggle. It suppresses
 notifications and SMS but does not expire. SMS recipients can now opt out and
 back in individually; temporary alarm mute expiry remains undecided.
 
@@ -245,7 +245,7 @@ Current state: the code is organized into importable packages with
 - [ ] Decide whether Compose should distinguish process-running from
   sensor-connected health.
 - [ ] Ensure logs clearly identify the service, device path, parser, MQTT state,
-  and last successful reading.
+  and last successful measurement.
 - [ ] Avoid restart loops that hide a persistent configuration fault.
 
 ### Release and upgrade workflow
@@ -341,7 +341,7 @@ is under control:
 These original to-do items have working implementations and should not remain
 listed as new feature work:
 
-- [x] User-facing service and reading labels are configurable separately from
+- [x] User-facing service and measurement labels are configurable separately from
   stable IDs.
 - [x] MQTT discovery, generated alarm YAML, and the YAML dashboard use the same
   deterministic entity IDs.
@@ -350,17 +350,17 @@ listed as new feature work:
 - [x] The DHT11 driver reports sustained read failure, rate-limits repeated
   warnings, and reconnects after unexpected GPIO/library errors.
 - [x] Alarm timing includes an observation window, required danger percentage,
-  required recovery time, and deadband; MQTT expiry detects stopped readings
+  required recovery time, and deadband; MQTT expiry detects stopped measurements
   without treating unchanged values as stale.
 - [x] SMS requests have duplicate protection, a short event cooldown, a bounded
   queue, retries, status, and delivery results.
-- [x] Every reading has a mute control that suppresses delivery without hiding
+- [x] Every measurement has a mute control that suppresses delivery without hiding
   alarm state.
 - [x] The generated dashboard puts the Monitor view first, separates Alarm
   Setup, and provides physical-hub Diagnostics.
-- [x] Ordinary readings select one or more explicit setups; dedicated power
+- [x] Ordinary measurements select one or more explicit setups; dedicated power
   stays independent, and shared cards retain one physical entity and alarm.
-- [x] Setup context is included in reading notifications without multiplying
+- [x] Setup context is included in measurement notifications without multiplying
   events or cooldown identities.
 - [x] The supported YAML-mode dashboard is generated deterministically without
   private Home Assistant dashboard mutation or custom frontend cards.

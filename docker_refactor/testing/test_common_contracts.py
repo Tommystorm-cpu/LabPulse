@@ -57,7 +57,7 @@ def test_sensor_topic_contract() -> None:
     assert_equal(
         sensor_state_topic("pump_room", "flow1"),
         "home/sensor/pump_room/flow1/state",
-        "reading state topic",
+        "measurement state topic",
     )
     assert_equal(
         service_status_topic("pump_room"),
@@ -67,7 +67,7 @@ def test_sensor_topic_contract() -> None:
     assert_equal(
         sensor_discovery_topic("pump_room", "flow1"),
         "homeassistant/sensor/pump_room_flow1/config",
-        "reading discovery topic",
+        "measurement discovery topic",
     )
     assert_equal(
         status_discovery_topic("pump_room"),
@@ -93,12 +93,12 @@ def test_sms_contract() -> None:
         "request_id",
         "event",
         "service",
-        "reading",
+        "measurement",
         "state",
         "title",
         "message",
         "test_mode",
-        "current_reading",
+        "current_measurement",
     }
     if not required.issubset(SMS_ALERT_PAYLOAD_FIELDS):
         raise AssertionError("SMS alert contract is missing required fields")
@@ -107,7 +107,7 @@ def test_sms_contract() -> None:
             "request_id": "request-1",
             "event": "test",
             "service": "manual",
-            "reading": "sms",
+            "measurement": "sms",
             "state": "Test",
             "title": "Test",
             "message": "Test message",
@@ -120,7 +120,7 @@ def test_sms_contract() -> None:
             "request_id": "notification-1",
             "event": "notification",
             "service": "labpulse",
-            "reading": "phone_book",
+            "measurement": "phone_book",
             "state": "Notification",
             "title": "LabPulse Phone Book Notification",
             "message": "Phone book notification",
@@ -141,7 +141,7 @@ def test_service_health_config_contract() -> None:
                 "parser": "pressure",
                 "serial_port": "/tmp/hub",
                 "device_name": "Hub",
-                "readings": [{"name": "pressure", "setups": ["test_setup"]}],
+                "measurements": [{"name": "pressure", "setups": ["test_setup"]}],
             }
         },
     }

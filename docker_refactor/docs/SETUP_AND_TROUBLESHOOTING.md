@@ -59,7 +59,7 @@ Fake mode derives `~/labpulse-ha/config.fake.yaml` without altering the
 real-hardware settings in `config.yaml`. It changes configured serial paths to
 pseudo-terminal links, moves the room-environment DHT11 to simulated serial,
 and converts the enabled `power_detection` service from MAX17043/I2C to the
-`ups_monitor` pseudo-serial parser. Service names, readings, display metadata,
+`ups_monitor` pseudo-serial parser. Service names, measurements, display metadata,
 power timings, and Home Assistant identities remain unchanged.
 
 If `config.yaml` has no active power service—as with the commented starter
@@ -161,7 +161,7 @@ services:
     serial_port: "/dev/serial/by-id/usb-Arduino_..."
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
-    readings:
+    measurements:
       - name: pressure
         label: Pressure
         setups: [compressed_air]
@@ -189,69 +189,96 @@ services:
 | `gpio_pin` | Blinka board name such as `D4` |
 | `device_name` | User-facing HA device label |
 | `setups` | Logical experimental setups and their presentation metadata |
-| `readings[].name` | Stable key; must match driver/parser output |
-| `readings[].label` | User-facing label |
-| `readings[].setups` | Required non-empty setup-ID list for ordinary readings; omit it for dedicated `power_detection` telemetry |
-| `readings[].subcategory` | Optional presentation subgroup within a setup section |
+| `measurements[].name` | Stable key; must match driver/parser output |
+| `measurements[].label` | User-facing label |
+| `measurements[].setups` | Required non-empty setup-ID list for ordinary measurements; omit it for dedicated `power_detection` telemetry |
+| `measurements[].subcategory` | Optional presentation subgroup within a setup section |
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
 | `reconnect_interval_seconds` | Delay between serial, GPIO, or I2C reinitialization attempts |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
-| `maximum_reading_age_seconds` | Seconds without an MQTT sample before an ordinary reading becomes unavailable; default 300 |
+| `maximum_measurement_age_seconds` | Seconds without an MQTT sample before an ordinary measurement becomes unavailable; default 300 |
 | `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
 | `power_detection` | Direct X1200 GPIO chip/line, polarity, and outage/recovery confirmation timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
-helpers, not hardware config fields. Configure them from the dashboard's Alarm
-Setup view: expand the required reading, select its alarm mode, and set its Min,
-Max, and Deadband values. Observation window, required danger percentage, and
-required recovery duration also belong to that reading. Use **Bulk Timing** to
-copy all three timing values to all ordinary readings or one selected setup.
+helpers, not hardware config fields. From the dashboard's Alarm Setup landing
+page, open the required setup, select its compact measurement tile, then set that
+measurement's alarm mode, Min, Max, and Deadband. Observation window, required
+danger percentage, and required recovery duration also belong to that measurement.
+Use the subview back button to return to Alarm Setup. Use **Bulk Timing** to
+copy all three timing values to all ordinary measurements or one selected setup.
 
-On a fresh installation, ordinary-reading alarm modes begin Disabled and the
+On a fresh installation, ordinary-measurement alarm modes begin Disabled and the
 global notification mute is switched on automatically. Set and test all alarm
 controls before switching off the global mute. Home Assistant then restores
 those helper values on later restarts. Dedicated UPS power detection remains in
 `config.yaml`.
 
-Each reading receives safe timing values once when its helpers are first
+Each measurement receives safe timing values once when its helpers are first
 created: 70% required danger, a 120-second observation window, and a
 120-second recovery period. Later edits survive restarts and regeneration.
 The bulk editor uses the same values as its initial scratch inputs.
 
 Power outage and restoration confirmation periods are static settings in
 `power_detection`. The defaults are three seconds absent and five seconds
-present. `maximum_reading_age_seconds` controls MQTT expiry for the raw GPIO
-and battery readings. Voltage and percentage remain dashboard telemetry only.
+present. `maximum_measurement_age_seconds` controls MQTT expiry for the raw GPIO
+and battery measurements. Voltage and percentage remain dashboard telemetry only.
 See [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) for the complete safe
 acceptance run.
 
 Hardware containers publish `offline` through a retained MQTT Last Will when
 their process or broker connection disappears. Home Assistant also treats
 `disconnected`, `reconnecting`, `error`, `unknown`, and `unavailable` as
-whole-service failures. During a confirmed service fault, individual readings
-may display unavailable but do not each send stale-reading messages. An
-isolated stale reading still alerts normally while its service is healthy.
+whole-service failures. During a confirmed service fault, individual measurements
+may display unavailable but do not each send stale-measurement messages. An
+isolated stale measurement still alerts normally while its service is healthy.
 Before planned maintenance, use the global notification mute if a container is
 expected to remain stopped longer than the service-health confirmation period.
 
 Physical services follow their order under `services` in `config.yaml`, and
 `device_name` supplies the hub heading. There is no separate service `display`
-block. Setup membership and reading subcategories describe the logical Monitor
+block. Setup membership and measurement subcategories describe the logical Monitor
 layout independently of the physical hub used for Diagnostics.
 
-The first Alarm Setup section contains the global delivery controls. **Mute all
+At the top of Monitor's first column, **Active Problems** lists confirmed hub
+faults, persistent measurement `Danger`/`Sensor Fault` states, and power `On
+Battery`/`Sensor Fault` states. It deliberately ignores instantaneous threshold
+zone changes, is hidden while healthy, and cannot add or remove a masonry
+column. Individually muted measurements and measurements owned by a muted setup are
+omitted; the global mute does not hide problems. A shared measurement appears only
+once and is hidden if any owning setup is muted, matching its single alert.
+
+The Alarm Setup landing page uses masonry for global delivery controls, Bulk
+Timing, and alarm configuration. Each non-empty setup has a two-cell row with
+its navigation tile on the left and setup mute on the right; the mute is also
+available inside the setup editor. Each masonry block keeps its heading and
+controls in one vertical stack. Dedicated power monitoring has its own link.
+Setup tiles open native Home Assistant subviews and do not introduce new alarm
+or selection state. Inside a setup, the left column shows measurement tiles two
+across without the internal expansion helper's `On`/`Off` state. Selecting one
+reveals its editable settings in the middle column and its read-only live alarm
+status in the right column. The live card contains the current measurement, alarm
+state, observed danger, and danger/recovery/fault zones. On narrow screens,
+Home Assistant stacks the three sections. Physical Diagnostics uses masonry
+with one compact column per hub: connection, side-by-side health indicators,
+latest raw measurements, and dedicated power lifecycle information where applicable.
+**Service Health** follows the immediate connection-derived problem signal;
+**Confirmed service fault** appears only after the configured fault delay and
+remains active until the configured recovery delay has completed.
+
+**Mute all
 notifications** suppresses Home Assistant notifications and SMS without
-changing any setup, per-reading, or power mute helper. Turning it off therefore
+changing any setup, per-measurement, or power mute helper. Turning it off therefore
 leaves those independent choices unchanged. Each non-empty setup section has a
-**Mute setup notifications** control. It suppresses ordinary reading alerts for
-that setup without changing the readings' individual mute controls. Physical
+**Mute setup notifications** control. It suppresses ordinary measurement alerts for
+that setup without changing the measurements' individual mute controls. Physical
 sensor-hub health and dedicated power alerts are not controlled by setup mutes.
 
-A reading shared by several setups still produces one physical alert. That
+A measurement shared by several setups still produces one physical alert. That
 alert is delivered only when every owning setup is unmuted. Before enabling a
-mute on a setup containing shared readings, the dashboard names the affected
-readings and warns that their alerts will also be suppressed where they appear
+mute on a setup containing shared measurements, the dashboard names the affected
+measurements and warns that their alerts will also be suppressed where they appear
 in other setups. The warning requires confirmation only while muting; unmuting
 is immediate.
 
@@ -267,16 +294,16 @@ SMS: Test mode sends only to `sms.test_recipients`, normal mode sends to
 `sms.recipients`, and numbers that have sent `UNSUBSCRIBE` are excluded in
 either mode. The action sends nothing while **Mute all notifications** is on.
 
-Assign the same `readings[].subcategory` to related readings. Subcategories
+Assign the same `measurements[].subcategory` to related measurements. Subcategories
 preserve the order in which their names first appear. Use operational context
 such as `Cooling Water` or `Room Conditions`; `device_class` separately
-describes measurement type. Subcategorization is presentation only: readings
+describes measurement type. Subcategorization is presentation only: measurements
 retain their service health, MQTT identity, setup membership, and alarm
 configuration.
 
 ### Stable names
 
-Changing labels is safe. Changing a service key or `readings[].name` creates a
+Changing labels is safe. Changing a service key or `measurements[].name` creates a
 new identity, affecting MQTT topics, Home Assistant entities, generated
 helpers, dashboard references, and history.
 
@@ -323,7 +350,7 @@ room_environment:
   gpio_sensor: dht11
   gpio_pin: "D4"
   device_name: "Room Environment Sensor"
-  readings:
+  measurements:
     - name: temperature
       label: Temperature
       unit: "°C"
@@ -334,7 +361,7 @@ room_environment:
       device_class: humidity
   read_interval_seconds: 2
   reconnect_interval_seconds: 5
-  maximum_reading_age_seconds: 300
+  maximum_measurement_age_seconds: 300
 ```
 
 Run real-hardware rather than fake-USB Compose mode so the container has the
@@ -347,8 +374,8 @@ driver factory lazy-loads hardware modules so unrelated workers cannot claim
 GPIO resources.
 
 Individual DHT timing misses are expected and do not immediately change service
-health. If no valid sample arrives for `maximum_reading_age_seconds`, the
-service status changes to `error` and MQTT expiry makes both readings
+health. If no valid sample arrives for `maximum_measurement_age_seconds`, the
+service status changes to `error` and MQTT expiry makes both measurements
 unavailable. A later valid sample restores `online` automatically. Unexpected
 GPIO/library failures release the device and retry initialization every
 `reconnect_interval_seconds`; routine missing-sensor warnings are limited to
@@ -406,7 +433,7 @@ Home Assistant uses host networking. LabPulse Python containers use
 different.
 
 Hardware services publish discovery for service health immediately and for a
-reading after its first valid sample. On a fresh startup there is no registry
+measurement after its first valid sample. On a fresh startup there is no registry
 to resolve yet. Use the normal generator defaults, start the services, and wait
 for discovery.
 
@@ -450,9 +477,9 @@ Mounted config, Mosquitto data, and logs remain.
 
 `homeassistant/config/labpulse-dashboard.yaml` is a generated file. Every
 normal generation replaces it from validated `config.yaml`, the canonical
-reading inventory, and repository dashboard rules. Edit setups,
-`subcategory`, labels, and reading metadata in `config.yaml`; make permanent
-layout changes in `labpulse_homeassistant/yaml_dashboard.py` or its templates.
+measurement catalog, and repository dashboard rules. Edit setups,
+`subcategory`, labels, and measurement metadata in `config.yaml`; make permanent
+layout changes in `labpulse_homeassistant/dashboard/` or its templates.
 Home Assistant UI edits are not the source of truth for this YAML-mode
 dashboard.
 
@@ -527,7 +554,7 @@ Remove `--dry-run` to exercise the confirmation and surgical config write.
 Because `config.fake.yaml` is derived, rerunning `setup_container_fs.sh
 -fake_usb` will recreate its deterministic fake paths later.
 
-Change one reading without recreating its pseudo-terminal:
+Change one measurement without recreating its pseudo-terminal:
 
 ```bash
 python3 simulate_serial.py set pump_room.flow1 danger-low
@@ -587,8 +614,8 @@ python3 simulate_serial.py start \
 
 Scenario changes affect sensor facts only. Home Assistant still applies its
 configured observation window, required percentage, MQTT expiry, and recovery
-timer. `stale` keeps the link and peer readings active but stops publishing the
-selected reading. Wait for that service's `maximum_reading_age_seconds` before
+timer. `stale` keeps the link and peer measurements active but stops publishing the
+selected measurement. Wait for that service's `maximum_measurement_age_seconds` before
 expecting Sensor Fault. Repeated identical samples remain healthy.
 
 ## SMS setup and testing
@@ -617,7 +644,7 @@ Publish a manual test with a new request ID each time:
 ```bash
 docker compose exec mosquitto mosquitto_pub \
   -h mosquitto -q 1 -t labpulse/sms/send \
-  -m '{"request_id":"manual-test-001","event":"test","service":"manual","reading":"sms","state":"Test","title":"[TEST] LabPulse SMS test","message":"Manual test from LabPulse","test_mode":true}'
+  -m '{"request_id":"manual-test-001","event":"test","service":"manual","measurement":"sms","state":"Test","title":"[TEST] LabPulse SMS test","message":"Manual test from LabPulse","test_mode":true}'
 ```
 
 Watch results:
@@ -748,13 +775,13 @@ Then inspect the specific service log. If the host path exists but the
 container cannot see it, verify Compose was generated in the correct real/fake
 mode and recreate that container.
 
-### 3. The driver connects but there are no readings
+### 3. The driver connects but there are no measurements
 
 Use the hardware CLI inside a suitable Python environment with `--print`, or
 inspect service logs. Compare raw serial output to
 [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md).
 
-Parser keys must exactly match `readings[].name`. Unconfigured keys are
+Parser keys must exactly match `measurements[].name`. Unconfigured keys are
 deliberately ignored by the publisher.
 
 ### 4. MQTT has no values
@@ -772,8 +799,8 @@ Mosquitto logs and use the MQTT subscription command above.
 
 ### 5. Home Assistant has no sensor entity
 
-Confirm the MQTT integration uses `127.0.0.1:1883`. Reading discovery is not
-published until the first valid reading. Inspect discovery traffic and:
+Confirm the MQTT integration uses `127.0.0.1:1883`. Measurement discovery is not
+published until the first valid measurement. Inspect discovery traffic and:
 
 ```text
 ~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
@@ -785,14 +812,14 @@ Compare its ID with `labpulse_entity_map.yaml`. LabPulse entity IDs are
 generated infrastructure and must not be renamed through Home Assistant. If a
 conflicting entity acquired a numeric suffix, remove the stale conflicting
 registry entry and let MQTT discovery recreate the deterministic ID. Permanent
-layout changes belong in `labpulse_homeassistant/yaml_dashboard.py` or
+layout changes belong in `labpulse_homeassistant/dashboard/` or
 `templates/dashboard/cards.yaml`; regeneration overwrites the expanded YAML.
 
 ### 7. Alarm behavior is wrong
 
 Check, in order:
 
-1. current reading is numeric and fresh
+1. current measurement is numeric and fresh
 2. service status entity is online
 3. Alarm Mode
 4. minimum/maximum threshold
@@ -821,7 +848,7 @@ is stored in one live file:
 ```
 
 Alert entries contain Home Assistant Jinja expressions, so preserve their
-quoting, `[[ ... ]]` generator placeholders, and the `{current_reading}` worker
+quoting, `[[ ... ]]` generator placeholders, and the `{current_measurement}` worker
 placeholder present in every alert body. After editing the file, regenerate
 and validate Home Assistant YAML, then rebuild only the SMS worker:
 

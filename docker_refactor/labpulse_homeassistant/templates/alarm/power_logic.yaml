@@ -41,48 +41,48 @@ sensors: []
 
 templates:
   - sensor:
-      - name: "[[ power.last_outage_started_sensor_unique_id ]]"
-        unique_id: "[[ power.last_outage_started_sensor_unique_id ]]"
+      - name: "[[ power.unique_ids.last_outage_started ]]"
+        unique_id: "[[ power.unique_ids.last_outage_started ]]"
         icon: mdi:calendar-clock
         state: >
-          {% set value = states('[[ power.last_outage_started_entity ]]') %}
+          {% set value = states('[[ power.entities.last_outage_started ]]') %}
           {{ 'Unknown' if value in ['unknown', 'unavailable', 'none', 'None', ''] else value }}
-      - name: "[[ power.last_outage_duration_sensor_unique_id ]]"
-        unique_id: "[[ power.last_outage_duration_sensor_unique_id ]]"
+      - name: "[[ power.unique_ids.last_outage_duration ]]"
+        unique_id: "[[ power.unique_ids.last_outage_duration ]]"
         icon: mdi:timer-outline
         device_class: duration
         unit_of_measurement: s
         state_class: measurement
-        state: "{{ states('[[ power.last_outage_duration_entity ]]') | float(0) | round(0) }}"
+        state: "{{ states('[[ power.entities.last_outage_duration ]]') | float(0) | round(0) }}"
     binary_sensor:
-      - name: "[[ power.mains_present_unique_id ]]"
-        unique_id: "[[ power.mains_present_unique_id ]]"
+      - name: "[[ power.unique_ids.mains_present ]]"
+        unique_id: "[[ power.unique_ids.mains_present ]]"
         device_class: power
-        availability: "{{ is_number(states('[[ power.mains_present.expected_entity_id ]]')) }}"
-        state: "{{ states('[[ power.mains_present.expected_entity_id ]]') | float(0) >= 0.5 }}"
+        availability: "{{ is_number(states('[[ power.mains_present.mqtt_entity.entity_id ]]')) }}"
+        state: "{{ states('[[ power.mains_present.mqtt_entity.entity_id ]]') | float(0) >= 0.5 }}"
         attributes:
-          source: "[[ power.source ]]"
-          gpio_chip: "[[ power.gpio_chip ]]"
-          gpio_line: "[[ power.gpio_line ]]"
-          configured_active_high: "[[ power.mains_present_active_high ]]"
+          source: "[[ power.config.source ]]"
+          gpio_chip: "[[ power.config.gpio_chip ]]"
+          gpio_line: "[[ power.config.gpio_line ]]"
+          configured_active_high: "[[ power.config.mains_present_active_high ]]"
           meaning: "On means external power present; off means running on UPS battery"
-      - name: "[[ power.sensor_fault_unique_id ]]"
-        unique_id: "[[ power.sensor_fault_unique_id ]]"
+      - name: "[[ power.unique_ids.sensor_fault ]]"
+        unique_id: "[[ power.unique_ids.sensor_fault ]]"
         device_class: problem
         state: >
-          {% set raw = states('[[ power.mains_present.expected_entity_id ]]') %}
-          {% set status = states('[[ service.status_entity_id ]]') %}
-          {% set service_blocked = is_state('[[ service.health_unhealthy_entity ]]', 'on')
-             or is_state('[[ service.health_fault_active_entity ]]', 'on') %}
+          {% set raw = states('[[ power.mains_present.mqtt_entity.entity_id ]]') %}
+          {% set status = states('[[ service.status_entity.entity_id ]]') %}
+          {% set service_blocked = is_state('[[ service.entities.health_unhealthy ]]', 'on')
+             or is_state('[[ service.entities.health_fault_active ]]', 'on') %}
           {% if service_blocked %}
-            {{ is_state('[[ power.sensor_fault_confirmed_entity ]]', 'on') }}
+            {{ is_state('[[ power.entities.sensor_fault_confirmed ]]', 'on') }}
           {% else %}
             {{ not is_number(raw) or status == 'gpio_fault' }}
           {% endif %}
         attributes:
-          raw_mains_state: "{{ states('[[ power.mains_present.expected_entity_id ]]') }}"
-          service_status: "{{ states('[[ service.status_entity_id ]]') }}"
-          maximum_reading_age_seconds: "[[ power.maximum_reading_age_seconds ]]"
+          raw_mains_state: "{{ states('[[ power.mains_present.mqtt_entity.entity_id ]]') }}"
+          service_status: "{{ states('[[ service.status_entity.entity_id ]]') }}"
+          maximum_measurement_age_seconds: "[[ power.maximum_measurement_age_seconds ]]"
 
 automations:
   - id: "labpulse_[[ service.service_id ]]_power_outage_confirm"
@@ -90,42 +90,42 @@ automations:
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.mains_present_entity ]]"
+        entity_id: "[[ power.entities.mains_present ]]"
         to: "off"
-        for: {seconds: "[[ power.outage_confirm_seconds ]]"}
+        for: {seconds: "[[ power.config.outage_confirm_seconds ]]"}
     condition:
       - condition: state
-        entity_id: "[[ power.outage_active_entity ]]"
+        entity_id: "[[ power.entities.outage_active ]]"
         state: "off"
       - condition: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         state: "off"
     action:
       - variables:
           outage_start: "{{ as_timestamp(trigger.to_state.last_changed, as_timestamp(now())) }}"
       - service: input_datetime.set_datetime
-        target: {entity_id: "[[ power.outage_started_entity ]]"}
+        target: {entity_id: "[[ power.entities.outage_started ]]"}
         data: {timestamp: "{{ outage_start }}"}
       - service: input_boolean.turn_on
-        target: {entity_id: "[[ power.outage_active_entity ]]"}
+        target: {entity_id: "[[ power.entities.outage_active ]]"}
       - service: input_select.select_option
-        target: {entity_id: "[[ power.state_entity ]]"}
+        target: {entity_id: "[[ power.entities.state ]]"}
         data: {option: "On Battery"}
       - choose:
           - conditions:
               - condition: state
-                entity_id: "[[ power.muted_entity ]]"
+                entity_id: "[[ power.entities.muted ]]"
                 state: "off"
               - condition: state
-                entity_id: "[[ model.global_muted_entity ]]"
+                entity_id: "[[ model.entities.global_muted ]]"
                 state: "off"
             sequence:
               - service: persistent_notification.create
                 data:
                   title: >
-                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse external power lost' }}
+                    {{ ('[TEST] ' if is_state('[[ model.entities.test_mode ]]', 'on') else '') ~ 'LabPulse external power lost' }}
                   message: >
-                    [[ service.label ]] has directly detected loss of external power on GPIO[[ power.gpio_line ]]. The monitor is running on UPS battery. Battery level: {{ states('[[ power.battery_level.expected_entity_id ]]') }}%. Battery voltage: {{ states('[[ power.voltage.expected_entity_id ]]') }} V.
+                    [[ service.label ]] has directly detected loss of external power on GPIO[[ power.config.gpio_line ]]. The monitor is running on UPS battery. Battery level: {{ states('[[ power.battery_level.mqtt_entity.entity_id ]]') }}%. Battery voltage: {{ states('[[ power.voltage.mqtt_entity.entity_id ]]') }} V.
                     [[ power.mains_present.notification_context ]]
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
@@ -134,54 +134,54 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "External power", "state": "On Battery", "title": [[ sms.alerts.power_warning.title ]], "message": ([[ sms.alerts.power_warning.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "On Battery", "title": [[ sms.alerts.power_warning.title ]], "message": ([[ sms.alerts.power_warning.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.entities.test_mode ]]', 'on'), "current_measurement": states('[[ power.voltage.mqtt_entity.entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_recovery_confirm"
     alias: "LabPulse [[ service.label ]] Recovery Confirm"
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.mains_present_entity ]]"
+        entity_id: "[[ power.entities.mains_present ]]"
         to: "on"
-        for: {seconds: "[[ power.restore_confirm_seconds ]]"}
+        for: {seconds: "[[ power.config.restore_confirm_seconds ]]"}
     condition:
       - condition: state
-        entity_id: "[[ power.outage_active_entity ]]"
+        entity_id: "[[ power.entities.outage_active ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         state: "off"
     action:
       - variables:
-          outage_start: "{{ as_timestamp(states('[[ power.outage_started_entity ]]'), as_timestamp(now())) }}"
+          outage_start: "{{ as_timestamp(states('[[ power.entities.outage_started ]]'), as_timestamp(now())) }}"
           recovery_start: "{{ as_timestamp(trigger.to_state.last_changed, as_timestamp(now())) }}"
           outage_duration: "{{ [0, recovery_start - outage_start] | max | round(0) }}"
       - service: input_datetime.set_datetime
-        target: {entity_id: "[[ power.last_outage_started_entity ]]"}
+        target: {entity_id: "[[ power.entities.last_outage_started ]]"}
         data: {timestamp: "{{ outage_start }}"}
       - service: input_number.set_value
-        target: {entity_id: "[[ power.last_outage_duration_entity ]]"}
+        target: {entity_id: "[[ power.entities.last_outage_duration ]]"}
         data: {value: "{{ outage_duration }}"}
       - service: input_boolean.turn_off
-        target: {entity_id: "[[ power.outage_active_entity ]]"}
+        target: {entity_id: "[[ power.entities.outage_active ]]"}
       - service: input_select.select_option
-        target: {entity_id: "[[ power.state_entity ]]"}
+        target: {entity_id: "[[ power.entities.state ]]"}
         data: {option: "Normal"}
       - choose:
           - conditions:
               - condition: state
-                entity_id: "[[ power.muted_entity ]]"
+                entity_id: "[[ power.entities.muted ]]"
                 state: "off"
               - condition: state
-                entity_id: "[[ model.global_muted_entity ]]"
+                entity_id: "[[ model.entities.global_muted ]]"
                 state: "off"
             sequence:
               - service: persistent_notification.create
                 data:
                   title: >
-                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse external power restored' }}
+                    {{ ('[TEST] ' if is_state('[[ model.entities.test_mode ]]', 'on') else '') ~ 'LabPulse external power restored' }}
                   message: >
-                    [[ service.label ]] has directly detected restored external power after {{ outage_duration }} seconds. Battery level: {{ states('[[ power.battery_level.expected_entity_id ]]') }}%. Battery voltage: {{ states('[[ power.voltage.expected_entity_id ]]') }} V.
+                    [[ service.label ]] has directly detected restored external power after {{ outage_duration }} seconds. Battery level: {{ states('[[ power.battery_level.mqtt_entity.entity_id ]]') }}%. Battery voltage: {{ states('[[ power.voltage.mqtt_entity.entity_id ]]') }} V.
                     [[ power.mains_present.notification_context ]]
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
@@ -190,14 +190,14 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "External power", "state": "Normal", "title": [[ sms.alerts.power_recovery.title ]], "message": ([[ sms.alerts.power_recovery.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "Normal", "title": [[ sms.alerts.power_recovery.title ]], "message": ([[ sms.alerts.power_recovery.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.entities.test_mode ]]', 'on'), "current_measurement": states('[[ power.voltage.mqtt_entity.entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_fault"
     alias: "LabPulse [[ service.label ]] Power Sensor Fault"
     mode: restart
     trigger:
       - platform: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         to: "on"
       - platform: homeassistant
         event: start
@@ -206,31 +206,31 @@ automations:
     action:
       - delay: {seconds: 2}
       - condition: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.sensor_fault_confirmed_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault_confirmed ]]"
         state: "off"
       - service: input_boolean.turn_on
-        target: {entity_id: "[[ power.sensor_fault_confirmed_entity ]]"}
+        target: {entity_id: "[[ power.entities.sensor_fault_confirmed ]]"}
       - service: input_select.select_option
-        target: {entity_id: "[[ power.state_entity ]]"}
+        target: {entity_id: "[[ power.entities.state ]]"}
         data: {option: "Sensor Fault"}
       - choose:
           - conditions:
               - condition: state
-                entity_id: "[[ power.muted_entity ]]"
+                entity_id: "[[ power.entities.muted ]]"
                 state: "off"
               - condition: state
-                entity_id: "[[ model.global_muted_entity ]]"
+                entity_id: "[[ model.entities.global_muted ]]"
                 state: "off"
             sequence:
               - service: persistent_notification.create
                 data:
                   title: >
-                    {{ ('[TEST] ' if is_state('[[ model.test_mode_entity ]]', 'on') else '') ~ 'LabPulse external-power sensor fault' }}
+                    {{ ('[TEST] ' if is_state('[[ model.entities.test_mode ]]', 'on') else '') ~ 'LabPulse external-power sensor fault' }}
                   message: >
-                    [[ service.label ]] cannot read the X1200 external-power signal. Raw mains state: {{ states('[[ power.mains_present.expected_entity_id ]]') }}. Service status: {{ states('[[ service.status_entity_id ]]') }}. This is not being treated as an outage.
+                    [[ service.label ]] cannot read the X1200 external-power signal. Raw mains state: {{ states('[[ power.mains_present.mqtt_entity.entity_id ]]') }}. Service status: {{ states('[[ service.status_entity.entity_id ]]') }}. This is not being treated as an outage.
                     [[ power.mains_present.notification_context ]]
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish
@@ -239,32 +239,32 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "External-power GPIO", "state": "Sensor Fault", "title": [[ sms.alerts.power_sensor_fault.title ]], "message": ([[ sms.alerts.power_sensor_fault.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.mains_present.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External-power GPIO", "state": "Sensor Fault", "title": [[ sms.alerts.power_sensor_fault.title ]], "message": ([[ sms.alerts.power_sensor_fault.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.entities.test_mode ]]', 'on'), "current_measurement": states('[[ power.mains_present.mqtt_entity.entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_sensor_recovery"
     alias: "LabPulse [[ service.label ]] Power Sensor Recovery"
     mode: single
     trigger:
       - platform: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         from: "on"
         to: "off"
     condition:
       - condition: state
-        entity_id: "[[ power.sensor_fault_confirmed_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault_confirmed ]]"
         state: "on"
     action:
       - service: input_boolean.turn_off
-        target: {entity_id: "[[ power.sensor_fault_confirmed_entity ]]"}
+        target: {entity_id: "[[ power.entities.sensor_fault_confirmed ]]"}
       - choose:
-          - conditions: "{{ is_state('[[ power.outage_active_entity ]]', 'on') }}"
+          - conditions: "{{ is_state('[[ power.entities.outage_active ]]', 'on') }}"
             sequence:
               - service: input_select.select_option
-                target: {entity_id: "[[ power.state_entity ]]"}
+                target: {entity_id: "[[ power.entities.state ]]"}
                 data: {option: "On Battery"}
         default:
           - service: input_select.select_option
-            target: {entity_id: "[[ power.state_entity ]]"}
+            target: {entity_id: "[[ power.entities.state ]]"}
             data: {option: "Normal"}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile"
@@ -278,20 +278,20 @@ automations:
     action:
       - delay: {seconds: 1}
       - choose:
-          - conditions: "{{ is_state('[[ power.sensor_fault_entity ]]', 'on') and is_state('[[ power.sensor_fault_confirmed_entity ]]', 'on') }}"
+          - conditions: "{{ is_state('[[ power.entities.sensor_fault ]]', 'on') and is_state('[[ power.entities.sensor_fault_confirmed ]]', 'on') }}"
             sequence:
               - service: input_select.select_option
-                target: {entity_id: "[[ power.state_entity ]]"}
+                target: {entity_id: "[[ power.entities.state ]]"}
                 data: {option: "Sensor Fault"}
-          - conditions: "{{ is_state('[[ power.outage_active_entity ]]', 'on') and is_state('[[ power.mains_present_entity ]]', 'off') }}"
+          - conditions: "{{ is_state('[[ power.entities.outage_active ]]', 'on') and is_state('[[ power.entities.mains_present ]]', 'off') }}"
             sequence:
               - service: input_select.select_option
-                target: {entity_id: "[[ power.state_entity ]]"}
+                target: {entity_id: "[[ power.entities.state ]]"}
                 data: {option: "On Battery"}
-          - conditions: "{{ is_state('[[ power.outage_active_entity ]]', 'off') and is_state('[[ power.mains_present_entity ]]', 'on') }}"
+          - conditions: "{{ is_state('[[ power.entities.outage_active ]]', 'off') and is_state('[[ power.entities.mains_present ]]', 'on') }}"
             sequence:
               - service: input_select.select_option
-                target: {entity_id: "[[ power.state_entity ]]"}
+                target: {entity_id: "[[ power.entities.state ]]"}
                 data: {option: "Normal"}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile_outage"
@@ -303,31 +303,31 @@ automations:
       - platform: event
         event_type: automation_reloaded
     action:
-      - delay: {seconds: "[[ power.outage_confirm_seconds ]]"}
+      - delay: {seconds: "[[ power.config.outage_confirm_seconds ]]"}
       - condition: state
-        entity_id: "[[ power.mains_present_entity ]]"
+        entity_id: "[[ power.entities.mains_present ]]"
         state: "off"
       - condition: state
-        entity_id: "[[ power.outage_active_entity ]]"
+        entity_id: "[[ power.entities.outage_active ]]"
         state: "off"
       - condition: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         state: "off"
       - service: input_datetime.set_datetime
-        target: {entity_id: "[[ power.outage_started_entity ]]"}
-        data: {timestamp: "{{ as_timestamp(now()) - [[ power.outage_confirm_seconds ]] }}"}
+        target: {entity_id: "[[ power.entities.outage_started ]]"}
+        data: {timestamp: "{{ as_timestamp(now()) - [[ power.config.outage_confirm_seconds ]] }}"}
       - service: input_boolean.turn_on
-        target: {entity_id: "[[ power.outage_active_entity ]]"}
+        target: {entity_id: "[[ power.entities.outage_active ]]"}
       - service: input_select.select_option
-        target: {entity_id: "[[ power.state_entity ]]"}
+        target: {entity_id: "[[ power.entities.state ]]"}
         data: {option: "On Battery"}
       - choose:
           - conditions:
               - condition: state
-                entity_id: "[[ power.muted_entity ]]"
+                entity_id: "[[ power.entities.muted ]]"
                 state: "off"
               - condition: state
-                entity_id: "[[ model.global_muted_entity ]]"
+                entity_id: "[[ model.entities.global_muted ]]"
                 state: "off"
             sequence:
               - service: mqtt.publish
@@ -336,7 +336,7 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_reconcile_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "External power", "state": "On Battery", "title": [[ sms.alerts.power_warning.title ]], "message": ([[ sms.alerts.power_warning.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_reconcile_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "On Battery", "title": [[ sms.alerts.power_warning.title ]], "message": ([[ sms.alerts.power_warning.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.entities.test_mode ]]', 'on'), "current_measurement": states('[[ power.voltage.mqtt_entity.entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile_recovery"
     alias: "LabPulse [[ service.label ]] Reconcile Missed Recovery"
@@ -347,37 +347,37 @@ automations:
       - platform: event
         event_type: automation_reloaded
     action:
-      - delay: {seconds: "[[ power.restore_confirm_seconds ]]"}
+      - delay: {seconds: "[[ power.config.restore_confirm_seconds ]]"}
       - condition: state
-        entity_id: "[[ power.mains_present_entity ]]"
+        entity_id: "[[ power.entities.mains_present ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.outage_active_entity ]]"
+        entity_id: "[[ power.entities.outage_active ]]"
         state: "on"
       - condition: state
-        entity_id: "[[ power.sensor_fault_entity ]]"
+        entity_id: "[[ power.entities.sensor_fault ]]"
         state: "off"
       - variables:
-          outage_start: "{{ as_timestamp(states('[[ power.outage_started_entity ]]'), as_timestamp(now())) }}"
+          outage_start: "{{ as_timestamp(states('[[ power.entities.outage_started ]]'), as_timestamp(now())) }}"
           outage_duration: "{{ [0, as_timestamp(now()) - outage_start] | max | round(0) }}"
       - service: input_datetime.set_datetime
-        target: {entity_id: "[[ power.last_outage_started_entity ]]"}
+        target: {entity_id: "[[ power.entities.last_outage_started ]]"}
         data: {timestamp: "{{ outage_start }}"}
       - service: input_number.set_value
-        target: {entity_id: "[[ power.last_outage_duration_entity ]]"}
+        target: {entity_id: "[[ power.entities.last_outage_duration ]]"}
         data: {value: "{{ outage_duration }}"}
       - service: input_boolean.turn_off
-        target: {entity_id: "[[ power.outage_active_entity ]]"}
+        target: {entity_id: "[[ power.entities.outage_active ]]"}
       - service: input_select.select_option
-        target: {entity_id: "[[ power.state_entity ]]"}
+        target: {entity_id: "[[ power.entities.state ]]"}
         data: {option: "Normal"}
       - choose:
           - conditions:
               - condition: state
-                entity_id: "[[ power.muted_entity ]]"
+                entity_id: "[[ power.entities.muted ]]"
                 state: "off"
               - condition: state
-                entity_id: "[[ model.global_muted_entity ]]"
+                entity_id: "[[ model.entities.global_muted ]]"
                 state: "off"
             sequence:
               - service: mqtt.publish
@@ -386,4 +386,4 @@ automations:
                   qos: 1
                   retain: false
                   payload: >
-                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_reconcile_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "reading": "power", "reading_label": "External power", "state": "Normal", "title": [[ sms.alerts.power_recovery.title ]], "message": ([[ sms.alerts.power_recovery.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.test_mode_entity ]]', 'on'), "current_reading": states('[[ power.voltage.expected_entity_id ]]')} | to_json }}
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_reconcile_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "Normal", "title": [[ sms.alerts.power_recovery.title ]], "message": ([[ sms.alerts.power_recovery.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.entities.test_mode ]]', 'on'), "current_measurement": states('[[ power.voltage.mqtt_entity.entity_id ]]')} | to_json }}
