@@ -47,11 +47,10 @@ repository docker_refactor/
   -> setup_container_fs.sh
   -> ~/labpulse-ha/
        config.yaml                  live user configuration
-       alarm_defaults.json          live per-reading alarm seeds
        generate_compose.sh
        generate_homeassistant_config.sh
   -> compose.yaml                   generated deployment
-  -> Home Assistant YAML/dashboard generated from both user-owned files
+  -> Home Assistant YAML/dashboard generated from config.yaml
   -> docker compose up
 ```
 
@@ -176,10 +175,7 @@ container. It turns typed config into:
 - Home Assistant core configuration
 - the generated alarm package
 - a diagnostic entity map
-- an optional/reset starter dashboard
-
-It may optionally query the live Home Assistant entity registry to discover
-renamed MQTT entity IDs.
+- the generated `labpulse-dashboard.yaml` dashboard
 
 ### `labpulse_sms`
 
@@ -198,29 +194,27 @@ The live config describes deployment facts:
 It owns enabled services, hardware access, parser choice, readings, display
 metadata, MQTT connection settings, SMS mode, and recipients.
 
-The live alarm-default file describes initial ordinary-reading controls:
-
-```text
-~/labpulse-ha/alarm_defaults.json
-```
-
-It supplies Min, Max, and Deadband for each reading. A changed entry is seeded
-into Home Assistant once on the next generation; unchanged entries do not
-overwrite later dashboard tuning.
+Thresholds, alarm modes, and per-reading timing are configured in the generated
+Alarm Setup view. A confirmed bulk editor copies timing to all ordinary
+readings or one logical setup. These values are Home Assistant state rather
+than deployment configuration. A fresh
+installation starts with every ordinary-reading alarm mode disabled and the
+global notification mute enabled. After that first initialization, Home
+Assistant restores the operator's choices across restarts.
 
 A MAX17043 service receives only its configured `/dev/i2c-N` device mapping.
 It does not require privileged mode or a broad `/dev` mount.
 
-Home Assistant owns operator state after each seed:
+Home Assistant owns operator state:
 
 - minimum/maximum thresholds
 - alarm mode and mute state
-- observation and recovery timing
-- live dashboard layout
+- per-reading observation, danger-percentage, and recovery timing
 - accounts and integrations
 
-This distinction prevents a normal regeneration from destroying tuned values
-or dashboard edits.
+The LabPulse dashboard layout is generated from `config.yaml` and the
+canonical reading inventory. Normal regeneration replaces that one YAML file
+without changing operator-tuned helper values or Home Assistant-owned state.
 
 ## Generated versus user-owned files
 
@@ -230,11 +224,12 @@ or dashboard edits.
 | `configuration.yaml` | Home Assistant generator | replaced |
 | `packages/labpulse_generated.yaml` | alarm generator | replaced |
 | `labpulse_entity_map.yaml` | core generator | replaced |
+| `labpulse-dashboard.yaml` | dashboard generator | replaced |
 | `automations.yaml`, `scripts.yaml`, `scenes.yaml` | Home Assistant UI | created only if missing |
-| active Overview store (`.storage/lovelace.<id>` or legacy `.storage/lovelace`) | Home Assistant UI/user | resolved through `lovelace_dashboards`; preserved unless reset or synchronized explicitly |
 
-The dashboard seed is intentionally different from live dashboard state. It is
-used only when `--reset-dashboard` is requested.
+`configuration.yaml` registers the generated file as the YAML-mode
+`labpulse-monitor` dashboard. LabPulse has no private-dashboard mutation,
+backup, restore, or synchronization path.
 
 ## Identity contract
 
@@ -251,7 +246,7 @@ the shared identity functions produce:
 
 ```text
 stable unique ID: labpulse_pressure_monitor_pressure
-default entity:  sensor.labpulse_pressure_monitor_pressure
+entity ID:       sensor.labpulse_pressure_monitor_pressure
 state topic:     home/sensor/pressure_monitor/pressure/state
 ```
 
@@ -259,9 +254,9 @@ Labels such as `Pressure` are presentation and can change safely. Renaming the
 service key or reading name changes MQTT topics, unique IDs, generated helper
 IDs, and history continuity.
 
-Home Assistant is allowed to rename an entity ID while retaining its unique
-ID. The optional registry resolver therefore reconciles by
-`(platform, unique_id)`, not by display name.
+LabPulse entity IDs are generated infrastructure referenced by static alarm and
+dashboard YAML. Change friendly labels in `config.yaml`; do not manually rename
+LabPulse entity IDs through Home Assistant.
 
 ## Home Assistant alarm ownership
 
@@ -279,10 +274,14 @@ the observation window spent in danger. Automations write the persistent state
 only when the timing and zone conditions are met.
 
 Per-reading and power mutes suppress their own persistent notifications and SMS
-requests. The independent global mute gates every delivery path without writing
-those individual helpers, so their settings survive a global mute cycle. Test
-mode does not alter alarm evaluation; it marks notifications `[TEST]` and sends
-SMS only to the configured test list. Zone calculation and state transitions
+requests. Each logical setup also has a restored-state mute that gates the
+ordinary readings assigned to it. The independent global mute gates every
+delivery path without writing setup, reading, or power mute helpers, so every
+choice survives other mute cycles. A shared reading has one physical alert; all
+of its setup gates must be open for that alert to be delivered. Setup mutes do
+not apply to physical service-health alarms or dedicated power alarms. Test mode
+does not alter alarm evaluation; it marks notifications `[TEST]` and sends SMS
+only to the configured test list. Zone calculation and state transitions
 continue under either mode.
 
 The Alarm Setup phone-book action publishes a validated `notification` request
@@ -304,9 +303,7 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
   MQTT entities.
 - A missing/invalid SMS field is rejected before it reaches the delivery queue.
 - Duplicate SMS request IDs and rapid repeated events are suppressed.
-- Normal Home Assistant generation preserves the live dashboard.
-- Strict entity-registry resolution fails before writing if an expected entity
-  is missing, disabled, or ambiguous.
+- Normal Home Assistant generation replaces only generated LabPulse files.
 
 ## Where changes belong
 
@@ -320,8 +317,9 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 | Change acquisition or reconnect behavior | `labpulse_hardware/drivers/` |
 | Adapt current Arduino text | `labpulse_hardware/legacy_parsing/serial_parser.py` |
 | Change discovery/state publishing | `labpulse_hardware/homeassistant_publisher.py` |
-| Change Home Assistant model/IDs | `labpulse_homeassistant/data_models.py` |
+| Change Home Assistant render types | `labpulse_homeassistant/models.py` |
+| Change Home Assistant model construction/IDs | `labpulse_homeassistant/model_builder.py` |
 | Change generated alarm behavior | `templates/alarm/alarm_logic.yaml` |
-| Change reset-dashboard layout | `templates/dashboard/dashboard_seed.yaml` |
+| Change generated dashboard layout | `labpulse_homeassistant/yaml_dashboard.py` and `templates/dashboard/` |
 | Change alert transport/delivery | `labpulse_sms/` |
 | Change containers or mounts | `generate_compose.sh` |

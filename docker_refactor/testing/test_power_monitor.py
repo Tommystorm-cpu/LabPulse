@@ -1,6 +1,5 @@
 """End-to-end generation contracts for direct X1200 power detection."""
 
-import json
 from pathlib import Path
 import sys
 from typing import Callable
@@ -15,7 +14,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 from labpulse_common.config import LabPulseConfig, ServiceConfig, load_config
 from labpulse_common.fake_config import convert_power_service_to_fake_serial
 from labpulse_homeassistant.cli import main as generate_homeassistant
-from labpulse_homeassistant.data_models import build_render_model
+from labpulse_homeassistant.model_builder import build_render_model
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
@@ -128,8 +127,8 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
         raise AssertionError("fake conversion changed power reading identities")
 
 
-def test_fake_usb_adds_power_to_commented_starter_config() -> None:
-    """Activate a complete three-reading fake UPS from the starter config."""
+def test_fake_usb_converts_starter_power_service() -> None:
+    """Convert the starter's complete three-reading UPS to fake transport."""
 
     starter = (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8")
     converted = LabPulseConfig.model_validate(
@@ -151,14 +150,14 @@ def render_power() -> tuple[dict, dict, str]:
 
     temp = REFACTOR_DIR / "testing" / "tmp" / f"power-{uuid4().hex}"
     ha_dir = temp / "homeassistant" / "config"
-    result = generate_homeassistant(["generator", str(SIM_CONFIG), str(ha_dir), "1"])
+    result = generate_homeassistant(["generator", str(SIM_CONFIG), str(ha_dir)])
     if result != 0:
         raise AssertionError(f"generator returned {result}")
     package_text = (ha_dir / "packages" / "labpulse_generated.yaml").read_text(
         encoding="utf-8"
     )
     package = yaml.safe_load(package_text)
-    dashboard = json.loads((ha_dir / ".storage" / "lovelace").read_text(encoding="utf-8"))
+    dashboard = yaml.safe_load((ha_dir / "labpulse-dashboard.yaml").read_text(encoding="utf-8"))
     return package, dashboard, package_text
 
 
@@ -185,6 +184,10 @@ def test_direct_lifecycle_and_confirmation_semantics() -> None:
         raise AssertionError(f"missing persistent direct-power helpers: {required-helper_ids}")
     if any("candidate" in helper for helper in helper_ids):
         raise AssertionError("obsolete candidate helpers remain")
+    if "labpulse_bulk_alarm_timing_target" in package["input_select"]:
+        raise AssertionError("power-only config generated an empty ordinary timing target")
+    if "labpulse_apply_bulk_alarm_timing" in package.get("script", {}):
+        raise AssertionError("power-only config generated an ordinary bulk timing script")
     if package["sensor"] != []:
         raise AssertionError("voltage transition statistics remain")
     for removed in (
@@ -274,6 +277,8 @@ def test_fault_reconciliation_and_sms_contract() -> None:
             raise AssertionError(f"{rule['alias']} bypasses test-mode routing")
         if '"test_mode"' not in rendered:
             raise AssertionError(f"{rule['alias']} omits SMS test_mode")
+        if "Monitoring context: Dedicated power monitoring." not in str(rule):
+            raise AssertionError(f"{rule['alias']} omits setup notification context")
     for field in (
         "request_id",
         "event",
@@ -293,38 +298,26 @@ def test_power_dashboard_rendering() -> None:
     """Expose direct mains state, battery telemetry, history and fault state."""
 
     _, dashboard, _ = render_power()
-    views = dashboard["data"]["config"]["views"]
-    monitor_cards = views[0]["sections"][0]["cards"]
-    entities = monitor_cards[-1]["entities"]
-    if [row["name"] for row in entities] != [
-        "Power state",
-        "External power present",
-        "UPS battery voltage",
-        "Last outage started",
-        "Last outage duration",
-    ]:
-        raise AssertionError("power monitor still describes inferred evidence")
-    setup_entities = views[1]["sections"][1]["cards"][1]["entities"]
-    entity_ids = {
-        row["entity"]
-        for row in setup_entities
-        if isinstance(row, dict) and "entity" in row
-    }
-    required = {
-        "input_boolean.labpulse_ups_monitor_service_fault_active",
-        "binary_sensor.labpulse_ups_monitor_power_mains_present",
+    rendered = yaml.safe_dump(dashboard, sort_keys=False)
+    for required in (
+        "sensor.labpulse_ups_monitor_voltage",
+        "sensor.labpulse_ups_monitor_battery_level",
         "sensor.labpulse_ups_monitor_mains_present",
+        "input_select.labpulse_ups_monitor_power_state",
+        "binary_sensor.labpulse_ups_monitor_power_mains_present",
         "binary_sensor.labpulse_ups_monitor_power_sensor_fault",
         "input_boolean.labpulse_ups_monitor_power_outage_active",
-    }
-    if not required.issubset(entity_ids):
-        raise AssertionError(f"direct power diagnostics missing: {required-entity_ids}")
+        "sensor.labpulse_ups_monitor_power_last_outage_started",
+        "sensor.labpulse_ups_monitor_power_last_outage_duration",
+    ):
+        if required not in rendered:
+            raise AssertionError(f"direct power dashboard entity missing: {required}")
 
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("configuration and identity", test_config_validation_and_stable_identity),
     ("fake conversion", test_fake_usb_conversion_preserves_power_identity_and_metadata),
-    ("starter fake UPS", test_fake_usb_adds_power_to_commented_starter_config),
+    ("starter fake UPS", test_fake_usb_converts_starter_power_service),
     ("direct lifecycle", test_direct_lifecycle_and_confirmation_semantics),
     ("fault/restart/SMS", test_fault_reconciliation_and_sms_contract),
     ("dashboard", test_power_dashboard_rendering),

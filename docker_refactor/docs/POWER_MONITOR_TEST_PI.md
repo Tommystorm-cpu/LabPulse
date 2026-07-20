@@ -16,10 +16,6 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
     i2c_bus: 1
     i2c_address: 0x36
     device_name: "UPS Monitor"
-    display:
-      section: "UPS Power"
-      icon: "mdi:battery-charging"
-      order: 10
     readings:
       - {name: voltage, label: "UPS Battery Voltage", unit: V, device_class: voltage}
       - {name: battery_level, label: "UPS Battery Level", unit: "%", device_class: battery}
@@ -41,7 +37,7 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
 ```bash
 cd ~/labpulse-ha
 ./generate_compose.sh
-./generate_homeassistant_config.sh --reset-dashboard
+./generate_homeassistant_config.sh
 sudo docker compose up -d --build
 ```
 

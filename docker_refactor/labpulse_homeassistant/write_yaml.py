@@ -4,7 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from .data_models import GeneratorPaths, RenderModel
+from .models import RenderModel
+from .paths import GeneratorPaths
 from .template_utils import render_template_file
 
 
@@ -53,10 +54,7 @@ def entity_map(model: RenderModel) -> dict[str, object]:
         service_map: dict[str, object] = {
             "status": {
                 "mqtt_unique_id": service.status_unique_id,
-                "default_entity_id": service.status_entity.default_entity_id,
-                "resolved_entity_id": service.status_entity.resolved_entity_id,
-                "effective_entity_id": service.status_entity_id,
-                "resolution_status": service.status_entity.resolution_status,
+                "entity_id": service.status_entity_id,
             },
             "service_health": {
                 "unhealthy": service.health_unhealthy_entity,
@@ -69,10 +67,7 @@ def entity_map(model: RenderModel) -> dict[str, object]:
         for reading in service.readings:
             reading_map = {
                 "mqtt_unique_id": reading.mqtt_unique_id,
-                "default_entity_id": reading.mqtt_entity.default_entity_id,
-                "resolved_entity_id": reading.mqtt_entity.resolved_entity_id,
-                "effective_entity_id": reading.expected_entity_id,
-                "resolution_status": reading.mqtt_entity.resolution_status,
+                "entity_id": reading.expected_entity_id,
             }
             if service.power is None:
                 reading_map.update(
@@ -86,9 +81,9 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                     recovery_zone=reading.recovery_zone_entity,
                     sensor_fault_zone=reading.sensor_fault_zone_entity,
                     observed_danger_percent=reading.observed_danger_percent_entity,
-                    required_danger_percent=service.required_danger_percent_entity,
-                    observation_window_seconds=service.observation_window_seconds_entity,
-                    required_recovery_seconds=service.required_recovery_seconds_entity,
+                    required_danger_percent=reading.required_danger_percent_entity,
+                    observation_window_seconds=reading.observation_window_seconds_entity,
+                    required_recovery_seconds=reading.required_recovery_seconds_entity,
                     alarm_controls_expanded=reading.alarm_controls_expanded_entity,
                 )
             service_map[reading.name] = reading_map
@@ -111,28 +106,4 @@ def entity_map(model: RenderModel) -> dict[str, object]:
                 "last_outage_duration_storage": power.last_outage_duration_entity,
             }
         result[service.name] = service_map
-    return result
-
-
-def load_previous_entity_ids(entity_map_path: Path) -> dict[str, str]:
-    """Return unique-ID to effective-entity-ID mappings from an earlier run."""
-
-    if not entity_map_path.exists():
-        return {}
-    payload = yaml.safe_load(entity_map_path.read_text(encoding="utf-8")) or {}
-    result: dict[str, str] = {}
-
-    def visit(value: object) -> None:
-        if isinstance(value, dict):
-            unique_id = value.get("mqtt_unique_id")
-            entity_id = value.get("effective_entity_id") or value.get("expected_entity_id")
-            if isinstance(unique_id, str) and isinstance(entity_id, str):
-                result[unique_id] = entity_id
-            for child in value.values():
-                visit(child)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child)
-
-    visit(payload)
     return result

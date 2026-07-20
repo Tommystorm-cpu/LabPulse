@@ -29,7 +29,7 @@ class SerialParser:
         # Restrict labels to the names emitted by the current Arduino sketches.
         # This prevents unit text such as "L/minTemp0" being mistaken for a label.
         self.label_pattern = re.compile(
-            r"(FlowRate|TotalLitres|RoomTemp|RoomHum|Voltage|BatteryLevel|"
+            r"(FlowRate|TotalLitres|RoomTemp|RoomHum|Voltage|BatteryLevel|mains_present|"
             r"Flow[0-9]+|Temp[0-9]+|Press[0-9]+):"
         )
 

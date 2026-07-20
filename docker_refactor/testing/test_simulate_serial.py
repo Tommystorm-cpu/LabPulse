@@ -60,7 +60,7 @@ def test_generated_payloads_match_parsers() -> None:
         raise AssertionError(f"invalid turbo payload: {payloads['turbo_pump']!r}")
     if room is None or set(room) != {"temperature", "humidity"}:
         raise AssertionError(f"invalid room payload: {payloads['room_environment']!r}")
-    if ups is None or set(ups) != {"voltage", "battery_level"}:
+    if ups is None or set(ups) != {"voltage", "battery_level", "mains_present"}:
         raise AssertionError(f"invalid UPS payload: {payloads['ups_monitor']!r}")
 
 
@@ -75,7 +75,12 @@ def test_ups_power_scenarios_and_stale_suppression() -> None:
         parsed = parser.parse(generator.payloads()["ups_monitor"])
         if parsed is None:
             raise AssertionError(f"UPS {state} payload did not parse")
-        if parsed["voltage"] != voltage or set(parsed) != {"voltage", "battery_level"}:
+        expected_mains = 1.0 if state == "mains" else 0.0
+        if (
+            parsed["voltage"] != voltage
+            or parsed["mains_present"] != expected_mains
+            or set(parsed) != {"voltage", "battery_level", "mains_present"}
+        ):
             raise AssertionError(f"UPS {state} payload is not truthful: {parsed!r}")
 
     generator.set_scenario("ups_monitor.power", "stale")

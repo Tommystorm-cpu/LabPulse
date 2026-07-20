@@ -20,9 +20,8 @@ reconstructable from the repository and documented live configuration.
 
 1. Prefer standard, maintained tools such as Python, Docker Compose, MQTT, and
    Home Assistant.
-2. Keep sensor/deployment facts in `~/labpulse-ha/config.yaml`, initial
-   per-reading thresholds in `~/labpulse-ha/alarm_defaults.json`, and ongoing
-   alarm decisions and operator controls in Home Assistant.
+2. Keep sensor/deployment facts in `~/labpulse-ha/config.yaml`, and keep
+   thresholds, alarm decisions, and operator controls in Home Assistant.
 3. Make changes testable without physical hardware wherever possible.
 4. Avoid unnecessary compatibility layers before the first stable release.
 5. Keep the project readable, copyable, and suitable for public GitHub
@@ -138,8 +137,8 @@ monitoring platform.
 
 ### Backup and reconstruction
 
-- [ ] Define which live state must be backed up beyond the current dashboard-only
-  backup.
+- [ ] Define which complete Home Assistant and LabPulse live state must be
+  backed up.
 - [ ] Document a complete recovery onto a blank replacement Pi.
 - [ ] Perform that recovery using only the public repository, retained live
   configuration/state, and documented credentials.
@@ -344,8 +343,8 @@ listed as new feature work:
 
 - [x] User-facing service and reading labels are configurable separately from
   stable IDs.
-- [x] Home Assistant entity-registry resolution can account for renamed MQTT
-  entities.
+- [x] MQTT discovery, generated alarm YAML, and the YAML dashboard use the same
+  deterministic entity IDs.
 - [x] Alarm numeric helpers use box input rather than sliders.
 - [x] Serial drivers contain reconnect logic after USB loss.
 - [x] The DHT11 driver reports sustained read failure, rate-limits repeated
@@ -358,7 +357,13 @@ listed as new feature work:
 - [x] Every reading has a mute control that suppresses delivery without hiding
   alarm state.
 - [x] The generated dashboard puts the Monitor view first, separates Alarm
-  Setup, and orders services from configuration.
+  Setup, and provides physical-hub Diagnostics.
+- [x] Ordinary readings select one or more explicit setups; dedicated power
+  stays independent, and shared cards retain one physical entity and alarm.
+- [x] Setup context is included in reading notifications without multiplying
+  events or cooldown identities.
+- [x] The supported YAML-mode dashboard is generated deterministically without
+  private Home Assistant dashboard mutation or custom frontend cards.
 - [x] Safe SMS dry-run logging exists.
 - [x] Fake serial devices and controllable alarm scenarios support testing
   without physical hardware.

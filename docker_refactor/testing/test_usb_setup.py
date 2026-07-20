@@ -24,6 +24,7 @@ from setup_usb_devices import (
 CONFIG = """# preserve this manual comment
 mqtt:
   broker: mosquitto
+setups: {}
 services:
   pressure_monitor:
     enabled: true

@@ -25,12 +25,11 @@ been removed so that an implemented feature has one authoritative explanation.
 6. [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) is the exact dry-run
    and live GPIO acceptance procedure for the X1200 power lifecycle.
 
-Future implementation specification:
+Approved implementation specification:
 
-- [FUTURE_HOME_ASSISTANT_DASHBOARD_API.md](FUTURE_HOME_ASSISTANT_DASHBOARD_API.md)
-  records the planned move from direct Lovelace `.storage` writes to Home
-  Assistant's authenticated WebSocket API. It is intentionally deferred until
-  live-Pi sensor acquisition is proven.
+- [HOME_ASSISTANT_YAML_DASHBOARD_REFACTOR.md](HOME_ASSISTANT_YAML_DASHBOARD_REFACTOR.md)
+  records the completed YAML-mode dashboard, logical setup grouping, physical
+  sensor-hub diagnostics, and notification-context refactor.
 
 ## Which guide answers what?
 
@@ -48,7 +47,7 @@ Future implementation specification:
 | Why is an entity or dashboard card missing? | `SETUP_AND_TROUBLESHOOTING.md` |
 | What exactly do the Arduino sketches print? | `ARDUINO_AND_CPP.md` |
 | What software work remains and what is already implemented? | `SOFTWARE_TODO.md` |
-| How should dashboard deployment avoid `.storage` ownership problems? | `FUTURE_HOME_ASSISTANT_DASHBOARD_API.md` |
+| How do setup grouping and YAML dashboard generation work? | `HOME_ASSISTANT_YAML_DASHBOARD_REFACTOR.md` |
 
 ## Sources of truth
 
@@ -58,13 +57,14 @@ problems.
 | Concern | Source of truth |
 | --- | --- |
 | Running Pi services, hardware, labels, and recipients | `~/labpulse-ha/config.yaml` |
-| Initial per-reading Min, Max, and Deadband | `~/labpulse-ha/alarm_defaults.json` |
-| Fresh-install starter values | repository `docker_refactor/config.yaml` and `alarm_defaults.json` |
-| Live dashboard arrangement and helper values | Home Assistant UI/state |
+| Fresh-install deployment starter | repository `docker_refactor/config.yaml` |
+| Setup membership, subcategories, and generated dashboard arrangement | `~/labpulse-ha/config.yaml` plus `labpulse_homeassistant/yaml_dashboard.py` |
+| Thresholds, alarm modes, mute state, and other live alarm controls | Home Assistant state and the Alarm Setup dashboard |
 | All user-facing SMS wording | `labpulse_common/sms_templates.yaml` |
-| Generated starter dashboard structure | `labpulse_homeassistant/templates/dashboard/dashboard_seed.yaml` |
+| Generated dashboard fragments | `labpulse_homeassistant/templates/dashboard/` |
 | Generated alarm behavior | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
 | Generated UPS power lifecycle | `labpulse_homeassistant/templates/alarm/power_logic.yaml` |
 
-Do not hand-edit `compose.yaml`, `labpulse_generated.yaml`, or
-`labpulse_entity_map.yaml` as permanent changes. They are generated outputs.
+Do not hand-edit `compose.yaml`, `labpulse_generated.yaml`,
+`labpulse_entity_map.yaml`, or `labpulse-dashboard.yaml` as permanent changes.
+They are generated outputs.

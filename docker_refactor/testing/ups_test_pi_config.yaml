@@ -14,6 +14,8 @@ service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
+setups: {}
+
 services:
   ups_monitor:
     enabled: true
@@ -22,10 +24,6 @@ services:
     serial_port: "/tmp/labpulse-fake-serial/ups_monitor"
     baud_rate: 9600
     device_name: "UPS Monitor"
-    display:
-      section: "UPS Power"
-      icon: "mdi:battery-charging"
-      order: 10
     readings:
       - name: "voltage"
         label: "UPS Battery Voltage"

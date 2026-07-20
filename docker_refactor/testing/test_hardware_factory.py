@@ -28,7 +28,7 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
         "baud_rate": 9600,
         "reconnect_interval_seconds": 5.0,
         "device_name": "Pump Room Sensor Hub",
-        "readings": [{"name": "flow1", "label": "Flow 1", "unit": "L/min"}],
+        "readings": [{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}],
     }
     config.update(overrides)
     return ServiceConfig(**config)
@@ -100,7 +100,7 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
             baud_rate=9600,
             reconnect_interval_seconds=5.0,
             device_name="Pump Room Sensor Hub",
-            readings=[{{"name": "flow1", "label": "Flow 1", "unit": "L/min"}}],
+            readings=[{{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}}],
         )
         build_driver("pump_room", config)
 
@@ -158,8 +158,8 @@ def test_gpio_dht11_driver_builds() -> None:
         serial_port=None,
         read_interval_seconds=3.0,
         readings=[
-            {"name": "temperature", "label": "Temperature", "unit": "\u00b0C"},
-            {"name": "humidity", "label": "Humidity", "unit": "%"},
+            {"name": "temperature", "label": "Temperature", "setups": ["test_setup"], "unit": "\u00b0C"},
+            {"name": "humidity", "label": "Humidity", "setups": ["test_setup"], "unit": "%"},
         ],
     )
 

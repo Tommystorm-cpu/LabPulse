@@ -111,7 +111,9 @@ def make_publisher(
         serial_port="/tmp/labpulse-fake-serial/pressure",
         baud_rate=9600,
         device_name=device_name,
-        readings=readings or [{"name": "pressure", "label": "Pressure", "unit": "bar"}],
+        readings=readings or [
+            {"name": "pressure", "label": "Pressure", "setups": ["test_setup"], "unit": "bar"}
+        ],
         maximum_reading_age_seconds=maximum_reading_age_seconds,
         power_detection=power_detection,
     )
@@ -249,8 +251,8 @@ def test_publish_discovery_for_new_readings() -> None:
         parser="pump_room",
         device_name="Pump Room Sensor Hub",
         readings=[
-            {"name": "flow1", "label": "Flow 1", "unit": "L/min"},
-            {"name": "temp0", "label": "Temperature 0", "unit": "\u00b0C"},
+            {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
+            {"name": "temp0", "label": "Temperature 0", "setups": ["test_setup"], "unit": "\u00b0C"},
         ],
     )
 
@@ -318,7 +320,7 @@ def test_ignore_unconfigured_readings() -> None:
         parser="pump_room",
         device_name="Pump Room Sensor Hub",
         readings=[
-            {"name": "flow1", "label": "Flow 1", "unit": "L/min"},
+            {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
         ],
     )
 

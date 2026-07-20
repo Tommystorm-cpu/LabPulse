@@ -8,8 +8,8 @@
 #
 # This repo file is only copied as a starter template when the live config
 # does not already exist.
-# Per-reading Min, Max, and Deadband values live in the adjacent
-# ~/labpulse-ha/alarm_defaults.json file.
+# Alarm thresholds are configured through the generated Home Assistant
+# dashboard. A fresh installation starts with all notifications muted.
 
 # --- Global Settings ---
 mqtt:
@@ -32,6 +32,26 @@ service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
+# Logical experimental setups are independent of the physical sensor hubs
+# under services. Every ordinary reading explicitly selects one or more setups.
+setups:
+  compressed_air:
+    label: "Compressed Air"
+    icon: "mdi:gauge"
+    order: 10
+  pump_room_system:
+    label: "Pump Room Experiment"
+    icon: "mdi:water-pump"
+    order: 20
+  turbo_pump_experiment:
+    label: "Turbo Pump Experiment"
+    icon: "mdi:snowflake-thermometer"
+    order: 30
+  cryogenics_room:
+    label: "Cryogenics Room"
+    icon: "mdi:home-thermometer-outline"
+    order: 40
+
 services:
   # Ordinary readings expire in Home Assistant after 300 seconds without an
   # MQTT sample. Override maximum_reading_age_seconds per service if needed.
@@ -42,13 +62,10 @@ services:
     serial_port: "FAKE_PRESSURE_PORT"
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
-    display:
-      section: "Air Pressure"
-      icon: "mdi:gauge"
-      order: 40
     readings:
       - name: "pressure"
         label: "Pressure"
+        setups: [compressed_air]
         unit: "bar"
         device_class: "pressure"
     reconnect_interval_seconds: 5
@@ -60,59 +77,65 @@ services:
     serial_port: "FAKE_PUMP_ROOM_PORT"
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
-    display:
-      section: "Pump Room"
-      icon: "mdi:water-pump"
-      order: 20
     readings:
       - name: "flow1"
         label: "Flow 1"
-        group: "Flow"
+        subcategory: "Flow"
+        setups: [pump_room_system]
         unit: "L/min"
         device_class: "volume_flow_rate"
       - name: "flow2"
         label: "Flow 2"
-        group: "Flow"
+        subcategory: "Flow"
+        setups: [pump_room_system]
         unit: "L/min"
         device_class: "volume_flow_rate"
       - name: "temp0"
         label: "Temperature 0"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "temp1"
         label: "Temperature 1"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "temp2"
         label: "Temperature 2"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "temp3"
         label: "Temperature 3"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "press1"
         label: "Pressure 1"
-        group: "Pressure"
+        subcategory: "Pressure"
+        setups: [pump_room_system]
         unit: "bar"
         device_class: "pressure"
       - name: "press2"
         label: "Pressure 2"
-        group: "Pressure"
+        subcategory: "Pressure"
+        setups: [pump_room_system]
         unit: "bar"
         device_class: "pressure"
       - name: "roomtemp"
         label: "Room Temperature"
-        group: "Pump Room Environment Sensor"
+        subcategory: "Pump Room Environment Sensor"
+        setups: [pump_room_system]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "roomhum"
         label: "Room Humidity"
-        group: "Pump Room Environment Sensor"
+        subcategory: "Pump Room Environment Sensor"
+        setups: [pump_room_system]
         unit: "%"
         device_class: "humidity"
     reconnect_interval_seconds: 5
@@ -124,39 +147,41 @@ services:
     serial_port: "FAKE_TURBO_PUMP_PORT"
     baud_rate: 9600
     device_name: "Turbo Pump Hub"
-    display:
-      section: "Cryogenics Room"
-      icon: "mdi:snowflake-thermometer"
-      order: 30
     readings:
       - name: "flow1"
         label: "Flow 1"
-        group: "Flow"
+        subcategory: "Flow"
+        setups: [turbo_pump_experiment]
         unit: "L/min"
         device_class: "volume_flow_rate"
       - name: "flow2"
         label: "Flow 2"
-        group: "Flow"
+        subcategory: "Flow"
+        setups: [turbo_pump_experiment]
         unit: "L/min"
         device_class: "volume_flow_rate"
       - name: "temp0"
         label: "Temperature 0"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "temp1"
         label: "Temperature 1"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "temp2"
         label: "Temperature 2"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "temp3"
         label: "Temperature 3"
-        group: "Water Temperatures"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
         unit: "\u00b0C"
         device_class: "temperature"
     reconnect_interval_seconds: 5
@@ -167,47 +192,48 @@ services:
     gpio_sensor: dht11
     gpio_pin: "D4"
     device_name: "Cryogenics Room Environment Sensor"
-    display:
-      section: "Cryogenics Room"
-      icon: "mdi:home-thermometer"
-      order: 50
     readings:
       - name: "temperature"
         label: "Room Temperature"
+        setups: [cryogenics_room]
         unit: "\u00b0C"
         device_class: "temperature"
       - name: "humidity"
         label: "Room Humidity"
+        setups: [cryogenics_room]
         unit: "%"
         device_class: "humidity"
     read_interval_seconds: 2
 
-# Live UPS example for the verified MAX17043-compatible gauge at address 0x36.
-# Add this beneath `services:` in ~/labpulse-ha/config.yaml when deploying it.
-#
-#  ups_monitor:
-#    enabled: true
-#    driver: i2c
-#    i2c_sensor: max17043_ups
-#    i2c_bus: 1
-#    i2c_address: 0x36
-#    device_name: "UPS Monitor"
-#    display:
-#      section: "UPS Power"
-#      icon: "mdi:battery-charging"
-#      order: 10
-#    readings:
-#      - {name: voltage, label: "UPS Battery Voltage", unit: V, device_class: voltage}
-#      - {name: battery_level, label: "UPS Battery Level", unit: "%", device_class: battery}
-#      - {name: mains_present, label: "External Power Present", state_class: null}
-#    read_interval_seconds: 1
-#    reconnect_interval_seconds: 5
-#    maximum_reading_age_seconds: 15
-#    power_detection:
-#      source: x1200_gpio
-#      gpio_chip: "/dev/gpiochip0"
-#      gpio_line: 6
-#      mains_present_active_high: true
-#      outage_confirm_seconds: 3
-#      restore_confirm_seconds: 5
+# Verified X1200 UPS hardware. Fake-USB setup changes only this service's
+# transport to the UPS simulator while preserving these readings and IDs.
+  ups_monitor:
+    enabled: true
+    driver: i2c
+    i2c_sensor: max17043_ups
+    i2c_bus: 1
+    i2c_address: 0x36
+    device_name: "UPS Monitor"
+    readings:
+      - name: voltage
+        label: "UPS Battery Voltage"
+        unit: V
+        device_class: voltage
+      - name: battery_level
+        label: "UPS Battery Level"
+        unit: "%"
+        device_class: battery
+      - name: mains_present
+        label: "External Power Present"
+        state_class: null
+    read_interval_seconds: 1
+    reconnect_interval_seconds: 5
+    maximum_reading_age_seconds: 15
+    power_detection:
+      source: x1200_gpio
+      gpio_chip: "/dev/gpiochip0"
+      gpio_line: 6
+      mains_present_active_high: true
+      outage_confirm_seconds: 3
+      restore_confirm_seconds: 5
 

@@ -22,13 +22,13 @@ alerts:
     title: >-
       "LabPulse Danger Warning: [[ service.label ]] - [[ reading.label ]] is in danger"
     message: >-
-      "Current Reading: {current_reading}. \nDanger threshold: " ~ threshold ~ ". \nEvidence: " ~ (observed | round(1) | string) ~ "% of the past " ~ (window | string) ~ " seconds spent in danger zone; required " ~ states('[[ service.required_danger_percent_entity ]]') ~ "% for warning. \nManual intervention may be required."
+      "Current Reading: {current_reading}. \nDanger threshold: " ~ threshold ~ ". \nEvidence: " ~ (observed | round(1) | string) ~ "% of the past " ~ (window | string) ~ " seconds spent in danger zone; required " ~ states('[[ reading.required_danger_percent_entity ]]') ~ "% for warning. \nManual intervention may be required."
 
   reading_recovery:
     title: >-
       "LabPulse Recovery Alert: [[ service.label ]] - [[ reading.label ]] has recovered from a danger state."
     message: >-
-      "Current Reading: {current_reading}. \nRecovered after " ~ states('[[ service.required_recovery_seconds_entity ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ reading.minimum_threshold_entity ]]') ~ " to " ~ states('[[ reading.maximum_threshold_entity ]]') ~ "; deadband " ~ states('[[ reading.recovery_deadband_entity ]]') ~ "."
+      "Current Reading: {current_reading}. \nRecovered after " ~ states('[[ reading.required_recovery_seconds_entity ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ reading.minimum_threshold_entity ]]') ~ " to " ~ states('[[ reading.maximum_threshold_entity ]]') ~ "; deadband " ~ states('[[ reading.recovery_deadband_entity ]]') ~ "."
 
   reading_sensor_fault:
     title: >-

@@ -31,11 +31,6 @@ DEFAULT_FAKE_POWER_SERVICE = {
     "serial_port": FAKE_UPS_PORT,
     "baud_rate": 9600,
     "device_name": "UPS Monitor",
-    "display": {
-        "section": "UPS Power",
-        "icon": "mdi:battery-charging",
-        "order": 10,
-    },
     "readings": [
         {
             "name": "voltage",

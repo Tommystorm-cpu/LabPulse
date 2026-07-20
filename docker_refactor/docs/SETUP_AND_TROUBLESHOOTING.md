@@ -13,12 +13,11 @@ system from the generated live directory:
 Repository source:  ~/LabPulse-refactor-src/docker_refactor/
 Live installation:  ~/labpulse-ha/
 Live config:         ~/labpulse-ha/config.yaml
-Alarm defaults:      ~/labpulse-ha/alarm_defaults.json
 ```
 
-The repository `docker_refactor/config.yaml` and `alarm_defaults.json` files
-are starters copied only when their live counterparts do not exist. Editing a
-repository starter does not change an already installed Pi.
+The repository `docker_refactor/config.yaml` is a starter copied only when the
+live config does not exist. Editing the repository starter does not change an
+already installed Pi.
 
 ## Prerequisites
 
@@ -30,8 +29,7 @@ The Pi needs:
 - the repository checkout
 - stable Arduino serial paths for real hardware, or fake-USB mode
 
-Entity-registry resolution additionally needs `python3-websocket`. Real SMS
-delivery additionally needs a working ModemManager/modem on the host.
+Real SMS delivery additionally needs a working ModemManager/modem on the host.
 
 ## First installation
 
@@ -46,8 +44,8 @@ chmod +x setup_container_fs.sh
 ```
 
 The setup script creates/refreshes `~/labpulse-ha`, copies the current Python
-packages and generators, preserves existing live config and alarm defaults,
-generates Compose and Home Assistant files, and seeds the dashboard.
+packages and generators, preserves existing live config, generates Compose and
+Home Assistant files, and seeds the dashboard.
 
 ### Simulated hardware
 
@@ -96,7 +94,6 @@ It is not required for the live config: setup always preserves an existing
 ```text
 ~/labpulse-ha/
   config.yaml                         edit this
-  alarm_defaults.json                 edit per-reading Min/Max/Deadband here
   compose.yaml                        generated
   generate_compose.sh
   generate_homeassistant_config.sh
@@ -117,10 +114,8 @@ It is not required for the live config: setup always preserves an existing
     scripts.yaml                      UI-owned; created only if absent
     scenes.yaml                       UI-owned; created only if absent
     labpulse_entity_map.yaml          generated diagnostic map
+    labpulse-dashboard.yaml           generated YAML-mode dashboard
     packages/labpulse_generated.yaml  generated alarm package
-    .storage/lovelace*                editable dashboard stores
-
-  homeassistant_backups/              dashboard-only snapshots
   mosquitto/config/
   mosquitto/data/
   mosquitto/log/
@@ -132,7 +127,6 @@ It is not required for the live config: setup always preserves an existing
 ```bash
 cd ~/labpulse-ha
 nano config.yaml
-nano alarm_defaults.json
 ```
 
 Typical shape:
@@ -153,6 +147,12 @@ service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
+setups:
+  compressed_air:
+    label: "Compressed Air"
+    icon: "mdi:gauge"
+    order: 10
+
 services:
   pressure_monitor:
     enabled: true
@@ -161,13 +161,10 @@ services:
     serial_port: "/dev/serial/by-id/usb-Arduino_..."
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
-    display:
-      section: "Air Pressure"
-      icon: "mdi:gauge"
-      order: 40
     readings:
       - name: pressure
         label: Pressure
+        setups: [compressed_air]
         unit: bar
         device_class: pressure
     reconnect_interval_seconds: 5
@@ -191,12 +188,11 @@ services:
 | `gpio_sensor` | Currently only `dht11` |
 | `gpio_pin` | Blinka board name such as `D4` |
 | `device_name` | User-facing HA device label |
-| `display.section` | Reset-dashboard location heading; services with the same value share one Monitor section |
-| `display.icon` | Reset-dashboard heading icon |
-| `display.order` | Service order; lower numbers render first |
+| `setups` | Logical experimental setups and their presentation metadata |
 | `readings[].name` | Stable key; must match driver/parser output |
 | `readings[].label` | User-facing label |
-| `readings[].group` | Optional reset-dashboard subgroup; first appearance controls group order |
+| `readings[].setups` | Required non-empty setup-ID list for ordinary readings; omit it for dedicated `power_detection` telemetry |
+| `readings[].subcategory` | Optional presentation subgroup within a setup section |
 | `unit`, `device_class`, `state_class` | MQTT discovery metadata |
 | `reconnect_interval_seconds` | Delay between serial, GPIO, or I2C reinitialization attempts |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
@@ -206,32 +202,22 @@ services:
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
-helpers, not hardware config fields. Put one Min, Max, and Deadband entry in
-`alarm_defaults.json` for every enabled ordinary reading:
+helpers, not hardware config fields. Configure them from the dashboard's Alarm
+Setup view: expand the required reading, select its alarm mode, and set its Min,
+Max, and Deadband values. Observation window, required danger percentage, and
+required recovery duration also belong to that reading. Use **Bulk Timing** to
+copy all three timing values to all ordinary readings or one selected setup.
 
-```json
-{
-  "services": {
-    "pump_room": {
-      "roomtemp": {
-        "minimum": 5.0,
-        "maximum": 35.0,
-        "deadband": 1.0
-      }
-    }
-  }
-}
-```
+On a fresh installation, ordinary-reading alarm modes begin Disabled and the
+global notification mute is switched on automatically. Set and test all alarm
+controls before switching off the global mute. Home Assistant then restores
+those helper values on later restarts. Dedicated UPS power detection remains in
+`config.yaml`.
 
-Service and reading keys must match `config.yaml`. The generator rejects
-missing enabled readings, unknown keys, `minimum >= maximum`, or an impossible
-deadband. Dedicated UPS power detection stays in `config.yaml` and must not be
-listed here.
-
-These numbers seed the editable controls in **LabPulse Alarm Setup**. The
-generator gives each reading's initializer a version derived from its JSON
-entry. Dashboard edits therefore survive restarts and ordinary regeneration;
-changing that JSON entry and regenerating applies the new three values once.
+Each reading receives safe timing values once when its helpers are first
+created: 70% required danger, a 120-second observation window, and a
+120-second recovery period. Later edits survive restarts and regeneration.
+The bulk editor uses the same values as its initial scratch inputs.
 
 Power outage and restoration confirmation periods are static settings in
 `power_detection`. The defaults are three seconds absent and five seconds
@@ -249,16 +235,27 @@ isolated stale reading still alerts normally while its service is healthy.
 Before planned maintenance, use the global notification mute if a container is
 expected to remain stopped longer than the service-health confirmation period.
 
-To group independent devices by physical location, give their services the
-same `display.section`. The Monitor view renders one location heading and a
-labelled subgroup for each service, while MQTT identities, service health, and
-Alarm Setup sections remain independent. The first service in display order
-provides the shared section icon.
+Physical services follow their order under `services` in `config.yaml`, and
+`device_name` supplies the hub heading. There is no separate service `display`
+block. Setup membership and reading subcategories describe the logical Monitor
+layout independently of the physical hub used for Diagnostics.
 
 The first Alarm Setup section contains the global delivery controls. **Mute all
 notifications** suppresses Home Assistant notifications and SMS without
-changing any per-reading or power mute helper. Turning it off therefore leaves
-individually muted readings muted. **Test mode** prefixes notification titles
+changing any setup, per-reading, or power mute helper. Turning it off therefore
+leaves those independent choices unchanged. Each non-empty setup section has a
+**Mute setup notifications** control. It suppresses ordinary reading alerts for
+that setup without changing the readings' individual mute controls. Physical
+sensor-hub health and dedicated power alerts are not controlled by setup mutes.
+
+A reading shared by several setups still produces one physical alert. That
+alert is delivered only when every owning setup is unmuted. Before enabling a
+mute on a setup containing shared readings, the dashboard names the affected
+readings and warns that their alerts will also be suppressed where they appear
+in other setups. The warning requires confirmation only while muting; unmuting
+is immediate.
+
+**Test mode** prefixes notification titles
 with `[TEST]` and routes SMS requests only to `sms.test_recipients`; alarm state
 calculation and thresholds are unchanged. Test mode initializes to **on** after
 every Home Assistant start. An operator must deliberately turn it off before
@@ -270,15 +267,12 @@ SMS: Test mode sends only to `sms.test_recipients`, normal mode sends to
 `sms.recipients`, and numbers that have sent `UNSUBSCRIBE` are excluded in
 either mode. The action sends nothing while **Mute all notifications** is on.
 
-Within a multi-purpose service, assign the same `readings[].group` to related
-readings. Monitor renders one compact, untitled sensor card per group,
-preserving the order in which group names first appear. The surrounding section
-and service subheading identify the physical room and owning hub without adding
-large titles to every card. Reading rows use the short configured label and do
-not override the Home Assistant icon. Room-environment labels use `Room` as a
-prefix to distinguish them from equipment temperatures and humidity. Grouping
-is presentation only: readings retain their service health, MQTT identity, and
-alarm configuration.
+Assign the same `readings[].subcategory` to related readings. Subcategories
+preserve the order in which their names first appear. Use operational context
+such as `Cooling Water` or `Room Conditions`; `device_class` separately
+describes measurement type. Subcategorization is presentation only: readings
+retain their service health, MQTT identity, setup membership, and alarm
+configuration.
 
 ### Stable names
 
@@ -373,8 +367,7 @@ docker compose up -d --build
 ```
 
 `generate_compose.sh` replaces `compose.yaml`. The Home Assistant generator
-replaces generated YAML but preserves the resolved Overview store without an explicit
-dashboard flag.
+replaces its generated YAML, including `labpulse-dashboard.yaml`.
 
 If Home Assistant was already running and generated package behavior changed,
 restart it so it reloads YAML:
@@ -441,10 +434,8 @@ cd ~/labpulse-ha
 docker compose up -d --build
 ```
 
-Existing live config and the Home Assistant config directory are preserved,
-and setup preserves an existing editable dashboard. On a first installation,
-where no Lovelace store exists yet, setup seeds the starter dashboard. Use the
-explicit dashboard commands below when intentionally replacing a layout.
+Existing live config and the Home Assistant config directory are preserved.
+Setup regenerates and registers `labpulse-dashboard.yaml`.
 
 ### Stop without deleting persistent data
 
@@ -453,91 +444,33 @@ cd ~/labpulse-ha
 docker compose down
 ```
 
-Mounted config, Mosquitto data, logs, and backups remain.
+Mounted config, Mosquitto data, and logs remain.
 
 ## Dashboard safety and commands
 
-The live Overview dashboard is resolved through
-`homeassistant/config/.storage/lovelace_dashboards`. On older installations it
-is `homeassistant/config/.storage/lovelace`; on current Home Assistant releases
-it can be a named store such as `.storage/lovelace.lovelace`. Normal generation
-preserves the resolved dashboard.
+`homeassistant/config/labpulse-dashboard.yaml` is a generated file. Every
+normal generation replaces it from validated `config.yaml`, the canonical
+reading inventory, and repository dashboard rules. Edit setups,
+`subcategory`, labels, and reading metadata in `config.yaml`; make permanent
+layout changes in `labpulse_homeassistant/yaml_dashboard.py` or its templates.
+Home Assistant UI edits are not the source of truth for this YAML-mode
+dashboard.
 
 | Intent | Command |
 | --- | --- |
-| Regenerate YAML, preserve layout | `./generate_homeassistant_config.sh` |
-| Save current layout | `./generate_homeassistant_config.sh --backup-dashboard` |
-| Restore latest saved layout | `./generate_homeassistant_config.sh --load-dashboard` |
-| Replace layout from the seed | `./generate_homeassistant_config.sh --reset-dashboard` |
-| Save then test a new seed | `./generate_homeassistant_config.sh --backup-dashboard --reset-dashboard` |
+| Regenerate configuration and the LabPulse dashboard | `./generate_homeassistant_config.sh` |
 
-Restart Home Assistant after restore/reset:
+Normal generation requires neither a running Home Assistant instance nor a
+token. Restart Home Assistant after regenerating package or registration YAML:
 
 ```bash
 docker compose restart homeassistant
 ```
 
-Home Assistant may create a newly registered Overview store as `root`. If a
-reset reports that it cannot create or write the resolved dashboard, keep Home
-Assistant stopped and apply the exact one-file `touch`/`chown` remedy printed by
-the generator. Do not recursively change ownership of `.storage`.
-
-Dashboard backups contain only Lovelace layout:
-
-```text
-homeassistant_backups/dashboard-YYYYMMDD-HHMMSS/lovelace
-homeassistant_backups/dashboard-latest/lovelace
-```
-
-They do not contain accounts, tokens, integrations, recorder history, or all
-of `.storage`.
-
-The shell wrapper rejects ambiguous combinations, including reset+load,
-backup+load, reset+sync, and load+sync. A dashboard entity sync automatically
-takes a backup.
-
-## Optional entity-registry validation
-
-Most installations never need this. Deterministic IDs work unless someone has
-renamed MQTT entities in Home Assistant.
-
-After all services have published discovery:
-
-1. Install the WebSocket client:
-
-   ```bash
-   sudo apt install python3-websocket
-   ```
-
-2. Create a Home Assistant long-lived access token and expose it only for this
-   shell:
-
-   ```bash
-   export LABPULSE_HA_TOKEN="<token>"
-   ```
-
-3. Validate registry identities:
-
-   ```bash
-   ./generate_homeassistant_config.sh --resolve-entities
-   ```
-
-If every actual ID equals its default, no dashboard change is needed. If an ID
-was renamed, either rebuild the seed using current IDs:
-
-```bash
-./generate_homeassistant_config.sh --resolve-entities --reset-dashboard
-```
-
-or preserve layout and replace exact stale IDs:
-
-```bash
-./generate_homeassistant_config.sh \
-  --resolve-entities --sync-dashboard-entities
-```
-
-Use `--ha-url` or `LABPULSE_HA_URL` if Home Assistant is not at
-`http://127.0.0.1:8123`.
+LabPulse does not mutate, back up, restore, or synchronize Home Assistant's
+private dashboard state. Back up the complete Home Assistant config directory
+using the deployment's normal backup policy when account, integration, helper,
+and recorder recovery is required.
 
 ## Simulator workflow
 
@@ -848,10 +781,12 @@ published until the first valid reading. Inspect discovery traffic and:
 
 ### 6. A dashboard card has the wrong entity
 
-Compare its ID with `labpulse_entity_map.yaml`. If an entity was manually
-renamed, use registry validation/synchronization. Edit normal live layout in the
-Home Assistant UI. Edit `dashboard_seed.yaml` only for the layout produced by
-an explicit reset.
+Compare its ID with `labpulse_entity_map.yaml`. LabPulse entity IDs are
+generated infrastructure and must not be renamed through Home Assistant. If a
+conflicting entity acquired a numeric suffix, remove the stale conflicting
+registry entry and let MQTT discovery recreate the deterministic ID. Permanent
+layout changes belong in `labpulse_homeassistant/yaml_dashboard.py` or
+`templates/dashboard/cards.yaml`; regeneration overwrites the expanded YAML.
 
 ### 7. Alarm behavior is wrong
 
@@ -888,8 +823,7 @@ is stored in one live file:
 Alert entries contain Home Assistant Jinja expressions, so preserve their
 quoting, `[[ ... ]]` generator placeholders, and the `{current_reading}` worker
 placeholder present in every alert body. After editing the file, regenerate
-Home Assistant YAML without a dashboard reset, validate it, then rebuild only
-the SMS worker:
+and validate Home Assistant YAML, then rebuild only the SMS worker:
 
 ```bash
 cd ~/labpulse-ha
@@ -930,6 +864,9 @@ python .\docker_refactor\testing\test_serial_driver.py
 python .\docker_refactor\testing\test_homeassistant_publisher.py
 python .\docker_refactor\testing\test_homeassistant_entities.py
 python .\docker_refactor\testing\test_homeassistant_generator.py
+python .\docker_refactor\testing\test_setup_grouping.py
+python .\docker_refactor\testing\test_yaml_dashboard.py
+python .\docker_refactor\testing\test_notification_context.py
 python .\docker_refactor\testing\test_sms_container.py
 python .\docker_refactor\testing\test_common_contracts.py
 python .\docker_refactor\testing\test_deployment_generation.py
@@ -942,7 +879,7 @@ contracts, run every consumer test.
 
 Deleting `homeassistant/config` removes accounts, tokens, integrations,
 dashboard state, helpers, and local Home Assistant state—not only generated
-LabPulse files. Prefer dashboard backup/restore or regeneration first.
+LabPulse files. Prefer normal regeneration first.
 
 For an intentionally fresh Home Assistant installation only:
 
@@ -951,7 +888,7 @@ cd ~/labpulse-ha
 docker compose stop homeassistant
 rm -rf ~/labpulse-ha/homeassistant/config
 mkdir -p ~/labpulse-ha/homeassistant/config
-./generate_homeassistant_config.sh --reset-dashboard
+./generate_homeassistant_config.sh
 docker compose up -d homeassistant
 ```
 

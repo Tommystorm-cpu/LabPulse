@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 import sys
 
 sys.dont_write_bytecode = True
@@ -9,15 +8,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import LabPulseConfig
 from labpulse_common.identity import stable_id
-from labpulse_homeassistant.data_models import build_render_model
-from labpulse_homeassistant.entity_registry import (
-    EntityResolutionError,
-    RegistryEntry,
-    RegistrySnapshot,
-    fetch_entity_registry,
-    resolve_model_entities,
-    websocket_url,
-)
+from labpulse_homeassistant.model_builder import build_render_model
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -32,6 +23,7 @@ def sample_config() -> LabPulseConfig:
 
     return LabPulseConfig(**{
         "mqtt": {"broker": "mosquitto"},
+        "setups": {"pump_room": {"label": "Pump Room"}},
         "services": {
             "pump_room": {
                 "enabled": True,
@@ -39,10 +31,9 @@ def sample_config() -> LabPulseConfig:
                 "parser": "pump_room",
                 "serial_port": "/tmp/labpulse-fake-serial/pump_room",
                 "device_name": "Pump Room Sensor Hub",
-                "display": {"section": "Pump Room", "icon": "mdi:water-pump", "order": 10},
                 "readings": [
-                    {"name": "flow1", "label": "Flow 1", "unit": "L/min"},
-                    {"name": "temp0", "label": "Temperature 0", "unit": "\u00b0C"},
+                    {"name": "flow1", "label": "Flow 1", "setups": ["pump_room"], "unit": "L/min"},
+                    {"name": "temp0", "label": "Temperature 0", "setups": ["pump_room"], "unit": "\u00b0C"},
                 ],
             },
             "disabled_service": {
@@ -51,9 +42,9 @@ def sample_config() -> LabPulseConfig:
                 "parser": "pressure",
                 "serial_port": "/tmp/labpulse-fake-serial/disabled",
                 "device_name": "Disabled",
-                "readings": [{"name": "ignored"}],
+                "readings": [{"name": "ignored", "setups": ["pump_room"]}],
             },
-        }
+        },
     })
 
 
@@ -72,6 +63,12 @@ def test_render_model_stable_entities() -> None:
     temp = service.readings[1]
 
     assert_equal(len(model.services), 1, "enabled services")
+    assert_equal(len(model.setups), 1, "active setups")
+    assert_equal(
+        model.setups[0].muted_entity,
+        "input_boolean.labpulse_setup_pump_room_notifications_muted",
+        "setup mute",
+    )
     assert_equal(service.status_entity_id, "sensor.labpulse_pump_room_status", "status entity")
     assert_equal(flow.expected_entity_id, "sensor.labpulse_pump_room_flow1", "flow entity")
     assert_equal(
@@ -87,6 +84,11 @@ def test_render_model_stable_entities() -> None:
     assert_equal(flow.alarm_state_entity, "input_select.labpulse_pump_room_flow1_alarm_state", "flow state")
     assert_equal(flow.alarm_mode_entity, "input_select.labpulse_pump_room_flow1_alarm_mode", "flow mode")
     assert_equal(flow.alarm_muted_entity, "input_boolean.labpulse_pump_room_flow1_alarm_muted", "flow mute")
+    assert_equal(
+        flow.setup_muted_entities,
+        ("input_boolean.labpulse_setup_pump_room_notifications_muted",),
+        "flow setup mute gates",
+    )
     assert_equal(flow.danger_zone_entity, "binary_sensor.labpulse_pump_room_flow1_danger_zone", "flow danger")
     assert_equal(flow.recovery_zone_entity, "binary_sensor.labpulse_pump_room_flow1_recovery_zone", "flow recovery")
     assert_equal(
@@ -99,8 +101,8 @@ def test_render_model_stable_entities() -> None:
         "sensor.labpulse_pump_room_flow1_observed_danger_percent",
         "observed flow danger",
     )
-    assert_equal(flow.default_alarm_mode, "Low Only", "flow default mode")
-    assert_equal(temp.default_alarm_mode, "Range", "temperature default mode")
+    assert_equal(flow.threshold.range_min, 0, "flow editor minimum")
+    assert_equal(temp.threshold.range_min, -20, "temperature editor minimum")
     assert_equal(
         flow.minimum_threshold_entity,
         "input_number.labpulse_pump_room_flow1_minimum_threshold",
@@ -118,169 +120,40 @@ def test_render_model_stable_entities() -> None:
     )
     assert_equal(temp.maximum_threshold_entity, "input_number.labpulse_pump_room_temp0_maximum_threshold", "temp max")
     assert_equal(
-        service.required_danger_percent_entity,
-        "input_number.labpulse_pump_room_required_danger_percent",
-        "required service danger",
+        flow.required_danger_percent_entity,
+        "input_number.labpulse_pump_room_flow1_required_danger_percent",
+        "required reading danger",
     )
     assert_equal(
-        service.observation_window_seconds_entity,
-        "input_number.labpulse_pump_room_observation_window_seconds",
-        "service observation window",
+        flow.observation_window_seconds_entity,
+        "input_number.labpulse_pump_room_flow1_observation_window_seconds",
+        "reading observation window",
     )
     assert_equal(
-        service.required_recovery_seconds_entity,
-        "input_number.labpulse_pump_room_required_recovery_seconds",
+        flow.required_recovery_seconds_entity,
+        "input_number.labpulse_pump_room_flow1_required_recovery_seconds",
         "required recovery",
     )
-def registry_snapshot(*, rename_flow: bool = False, omit_temp: bool = False) -> RegistrySnapshot:
-    """Return registry entries matching the sample render model."""
-
-    entries = [
-        RegistryEntry(
-            entity_id="sensor.labpulse_pump_room_status",
-            platform="mqtt",
-            unique_id="labpulse_pump_room_status",
-        ),
-        RegistryEntry(
-            entity_id=(
-                "sensor.pump_room_flow_actual"
-                if rename_flow
-                else "sensor.labpulse_pump_room_flow1"
-            ),
-            platform="mqtt",
-            unique_id="labpulse_pump_room_flow1",
-        ),
-    ]
-    if not omit_temp:
-        entries.append(
-            RegistryEntry(
-                entity_id="sensor.labpulse_pump_room_temp0",
-                platform="mqtt",
-                unique_id="labpulse_pump_room_temp0",
-            )
-        )
-    return RegistrySnapshot(entries=entries, home_assistant_version="2026.7.1")
-
-
-def test_registry_resolution_uses_unique_id() -> None:
-    """Check an actual renamed ID overlays defaults without changing identity."""
-
-    model = build_render_model(sample_config())
-    report = resolve_model_entities(model, registry_snapshot(rename_flow=True))
-    flow = model.services[0].readings[0]
-
-    assert_equal(flow.expected_entity_id, "sensor.pump_room_flow_actual", "resolved flow entity")
-    assert_equal(flow.mqtt_entity.resolution_status, "renamed", "flow resolution status")
     assert_equal(
-        report.replacements(),
-        {"sensor.labpulse_pump_room_flow1": "sensor.pump_room_flow_actual"},
-        "dashboard replacements",
+        flow.alarm_timing_initialized_entity,
+        "input_boolean.labpulse_pump_room_flow1_alarm_timing_initialized",
+        "reading timing initializer",
     )
-
-
-def test_registry_resolution_fails_before_rendering() -> None:
-    """Check strict resolution rejects a missing MQTT entity."""
-
-    model = build_render_model(sample_config())
-    try:
-        resolve_model_entities(model, registry_snapshot(omit_temp=True))
-    except EntityResolutionError as error:
-        assert_equal(len(error.report.failures), 1, "resolution failures")
-        assert_equal(
-            error.report.failures[0].reference.unique_id,
-            "labpulse_pump_room_temp0",
-            "missing unique ID",
-        )
-    else:
-        raise AssertionError("strict resolution accepted a missing entity")
-
-
-class FakeWebSocket:
-    """Small websocket-client stand-in for protocol testing."""
-
-    def __init__(self) -> None:
-        self.messages = [
-            {"type": "auth_required", "ha_version": "2026.7.1"},
-            {"type": "auth_ok", "ha_version": "2026.7.1"},
-            {
-                "id": 1,
-                "type": "result",
-                "success": True,
-                "result": [
-                    {
-                        "entity_id": "sensor.labpulse_pump_room_status",
-                        "platform": "mqtt",
-                        "unique_id": "labpulse_pump_room_status",
-                        "disabled_by": None,
-                    }
-                ],
-            },
-        ]
-        self.sent: list[dict[str, object]] = []
-        self.closed = False
-
-    def recv(self) -> str:
-        return json.dumps(self.messages.pop(0))
-
-    def send(self, message: str) -> None:
-        self.sent.append(json.loads(message))
-
-    def close(self) -> None:
-        self.closed = True
-
-
-def test_registry_websocket_protocol() -> None:
-    """Check URL conversion, authentication, query, parsing, and cleanup."""
-
-    connection = FakeWebSocket()
-    connector_calls: list[tuple[str, float]] = []
-
-    def connector(url: str, timeout: float) -> FakeWebSocket:
-        connector_calls.append((url, timeout))
-        return connection
-
-    snapshot = fetch_entity_registry(
-        "https://homeassistant.example/base/",
-        "secret-token",
-        timeout=4,
-        connector=connector,
-    )
-
-    assert_equal(
-        websocket_url("http://127.0.0.1:8123"),
-        "ws://127.0.0.1:8123/api/websocket",
-        "local websocket URL",
-    )
-    assert_equal(
-        connector_calls,
-        [("wss://homeassistant.example/base/api/websocket", 4)],
-        "connector call",
-    )
-    assert_equal(connection.sent[0], {"type": "auth", "access_token": "secret-token"}, "auth message")
-    assert_equal(connection.sent[1], {"id": 1, "type": "config/entity_registry/list"}, "registry query")
-    assert_equal(snapshot.home_assistant_version, "2026.7.1", "Home Assistant version")
-    assert_equal(len(snapshot.entries), 1, "parsed entries")
-    assert_equal(connection.closed, True, "connection closed")
 
 
 TESTS = [
     ("stable id prefix", test_stable_id_prefix),
     ("render model stable entities", test_render_model_stable_entities),
-    ("registry resolution uses unique ID", test_registry_resolution_uses_unique_id),
-    ("registry resolution fails before rendering", test_registry_resolution_fails_before_rendering),
-    ("registry websocket protocol", test_registry_websocket_protocol),
 ]
 
 
 def main() -> None:
-    """Run Home Assistant entity lookup tests."""
+    """Run Home Assistant render-model tests."""
 
     print("Running Home Assistant render-model tests")
     print(f"Refactor dir: {REFACTOR_DIR}")
     print()
-
     passed_count = 0
-
     for name, test_func in TESTS:
         try:
             test_func()
@@ -289,16 +162,13 @@ def main() -> None:
             print(f"  error: {type(error).__name__}: {error}")
             print()
             continue
-
         print(f"[PASS] {name}")
         print()
         passed_count += 1
 
     total = len(TESTS)
     failed_count = total - passed_count
-
     print(f"Summary: {passed_count}/{total} passed, {failed_count} failed")
-
     if failed_count:
         sys.exit(1)
 

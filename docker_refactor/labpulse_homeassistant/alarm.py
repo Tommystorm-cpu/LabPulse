@@ -9,7 +9,8 @@ import yaml
 
 from labpulse_common.sms_templates import load_sms_templates
 
-from .data_models import GeneratorPaths, RenderModel
+from .models import RenderModel
+from .paths import GeneratorPaths
 from .template_utils import expand_template, render_template_file
 
 
@@ -60,11 +61,16 @@ def load_power_seed() -> dict[str, Any]:
 def input_numbers(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated input_number helpers."""
 
-    helpers: dict[str, object] = {}
+    helpers: dict[str, object] = (
+        expand_keyed_items(
+            seed["input_numbers"].get("global", []), {"model": model}
+        )
+        if model.bulk_timing_targets
+        else {}
+    )
     rules = seed["input_numbers"]
     for service in model.services:
         if service.readings and service.power is None:
-            helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
             for reading in service.readings:
                 helpers.update(expand_keyed_items(rules.get("reading", []), {"service": service, "reading": reading}))
         if service.power is not None:
@@ -79,10 +85,10 @@ def input_booleans(seed: dict[str, Any], power_seed: dict[str, Any], model: Rend
         seed["input_booleans"].get("global", []), {"model": model}
     )
     rules = seed["input_booleans"]
+    for setup in model.setups:
+        helpers.update(expand_keyed_items(rules.get("setup", []), {"setup": setup}))
     for service in model.services:
         helpers.update(expand_keyed_items(rules.get("service", []), {"service": service}))
-        if service.readings and service.power is None:
-            helpers.update(expand_keyed_items(rules.get("alarm_service", []), {"service": service}))
         if service.power is not None:
             helpers.update(expand_keyed_items(power_seed.get("input_booleans", []), {"service": service, "power": service.power}))
     for service, reading in model.alarm_readings:
@@ -93,7 +99,13 @@ def input_booleans(seed: dict[str, Any], power_seed: dict[str, Any], model: Rend
 def input_selects(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated input_select helpers."""
 
-    helpers: dict[str, object] = {}
+    helpers: dict[str, object] = (
+        expand_keyed_items(
+            seed["input_selects"].get("global", []), {"model": model}
+        )
+        if model.bulk_timing_targets
+        else {}
+    )
     for service, reading in model.alarm_readings:
         helpers.update(expand_keyed_items(seed["input_selects"].get("reading", []), {"service": service, "reading": reading}))
     for service in model.services:
@@ -145,10 +157,78 @@ def sensors(
 def scripts(seed: dict[str, Any], model: RenderModel) -> dict[str, object]:
     """Return generated global dashboard action scripts."""
 
-    return expand_keyed_items(
+    result = expand_keyed_items(
         seed.get("scripts", {}).get("global", []),
         {"model": model, "sms": sms_template_context(model)},
     )
+    if model.bulk_timing_targets:
+        result["labpulse_apply_bulk_alarm_timing"] = bulk_timing_script(model)
+    return result
+
+
+def bulk_timing_script(model: RenderModel) -> dict[str, object]:
+    """Return one validated-target script that copies timing to many readings."""
+
+    choices: list[dict[str, object]] = []
+    for target in model.bulk_timing_targets:
+        choices.append(
+            {
+                "conditions": [
+                    {
+                        "condition": "template",
+                        "value_template": (
+                            "{{ selected_target == " + json.dumps(target.option) + " }}"
+                        ),
+                    }
+                ],
+                "sequence": [
+                    bulk_timing_action(
+                        target.required_danger_percent_entities,
+                        model.bulk_required_danger_percent_entity,
+                        "float(70)",
+                    ),
+                    bulk_timing_action(
+                        target.observation_window_seconds_entities,
+                        model.bulk_observation_window_seconds_entity,
+                        "int(120)",
+                    ),
+                    bulk_timing_action(
+                        target.required_recovery_seconds_entities,
+                        model.bulk_required_recovery_seconds_entity,
+                        "int(120)",
+                    ),
+                ],
+            }
+        )
+    return {
+        "alias": "Apply LabPulse Bulk Alarm Timing",
+        "icon": "mdi:timer-sync-outline",
+        "mode": "single",
+        "sequence": [
+            {
+                "variables": {
+                    "selected_target": (
+                        "{{ states('" + model.bulk_timing_target_entity + "') }}"
+                    )
+                }
+            },
+            {"choose": choices},
+        ],
+    }
+
+
+def bulk_timing_action(
+    entity_ids: tuple[str, ...], source_entity: str, conversion: str
+) -> dict[str, object]:
+    """Return one Home Assistant action copying a bulk value to target helpers."""
+
+    return {
+        "service": "input_number.set_value",
+        "target": {"entity_id": list(entity_ids)},
+        "data": {
+            "value": "{{ states('" + source_entity + "') | " + conversion + " }}"
+        },
+    }
 
 
 def templates(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderModel) -> list[dict[str, object]]:
@@ -187,8 +267,6 @@ def automations(seed: dict[str, Any], power_seed: dict[str, Any], model: RenderM
             expand_template(item, context)
             for item in seed["automations"].get("service_health", [])
         )
-        if service.readings and service.power is None:
-            result.extend(expand_template(item, context) for item in seed["automations"].get("service", []))
     for service, reading in model.alarm_readings:
         context = {"service": service, "reading": reading, "model": model, "sms": sms}
         result.extend(expand_template(item, context) for item in seed["automations"].get("reading", []))

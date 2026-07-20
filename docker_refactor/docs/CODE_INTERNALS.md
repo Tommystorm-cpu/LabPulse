@@ -17,8 +17,8 @@ Read the source in this order if you want to reconstruct the complete system:
 4. `labpulse_hardware/drivers/`
 5. `labpulse_hardware/legacy_parsing/serial_parser.py`
 6. `labpulse_hardware/homeassistant_publisher.py`
-7. `labpulse_homeassistant/cli.py` and `data_models.py`
-8. `labpulse_homeassistant/write_yaml.py`, `alarm.py`, and `dashboard.py`
+7. `labpulse_homeassistant/cli.py`, `models.py`, and `model_builder.py`
+8. `labpulse_homeassistant/write_yaml.py`, `alarm.py`, and `yaml_dashboard.py`
 9. `labpulse_homeassistant/templates/`
 10. `labpulse_sms/subscriber.py`, `sender.py`, and `subscriptions.py`
 11. `simulate_serial.py` and `setup_usb_devices.py`
@@ -34,6 +34,7 @@ loads YAML and validates it into these Pydantic objects:
 LabPulseConfig
   mqtt: MqttConfig
   sms: SmsConfig
+  setups: dict[str, SetupConfig]
   services: dict[str, ServiceConfig]
 
 ServiceConfig
@@ -42,22 +43,27 @@ ServiceConfig
   parser, serial_port, baud_rate
   gpio_sensor, gpio_pin
   device_name
-  display: DisplayConfig
   readings: list[ReadingConfig]
   reconnect_interval_seconds
   read_interval_seconds
+
+ReadingConfig
+  name, label
+  subcategory: str | None
+  setups: SetupScope
+  unit, device_class, state_class
 ```
 
 The `services` dictionary key is the stable service identity. A
 `ReadingConfig.name` is the stable reading identity. `device_name`, `label`,
-`display.section`, and `display.icon` are presentation.
+setup metadata, and `subcategory` are presentation. Services follow their
+order in `config.yaml`; there is no separate service `display` block.
 
 Important computed properties are:
 
 - `ReadingConfig.display_label`: configured label or a title made from `name`.
-- `ServiceConfig.display_label`: the device name.
-- `ServiceConfig.dashboard_section`: configured section or device name.
-- `ServiceConfig.dashboard_icon`: configured icon or `mdi:chip`.
+- `SetupConfig.display_label(setup_id)`: configured label or a title made from
+  the stable setup ID.
 
 `SmsConfig.validate_recipients()` applies the same normalization and
 international-number validation to `recipients` and `test_recipients`.
@@ -272,30 +278,31 @@ between values such as `online`, `disconnected`, and `reconnecting`.
 ## Home Assistant generator
 
 The public command is `generate_homeassistant_config.sh`. The shell wrapper
-owns paths, permissions, dashboard backup/restore, flag validation, and the
-optional access-token environment. It then calls:
+owns paths and generated-file permission checks. It then calls:
 
 ```bash
 python3 -m labpulse_homeassistant \
-  CONFIG_PATH HA_CONFIG_DIR RESET RESOLVE SYNC HA_URL
+  CONFIG_PATH HA_CONFIG_DIR
 ```
 
 `labpulse_homeassistant/cli.py::main()` performs the Python orchestration:
 
 ```text
 load validated config
-load and validate alarm_defaults.json beside that config
-build RenderModel
-optionally fetch and resolve the live entity registry
+build canonical reading inventory and RenderModel
 render_core()
 render_alarm()
-render_dashboard()
+render_yaml_dashboard()
 ```
 
 ### Render-model data structures
 
-`data_models.py` is the boundary between general LabPulse config and Home
-Assistant-specific rendering.
+The Home Assistant-specific boundary is split by responsibility:
+
+- `models.py` contains only typed render data.
+- `model_builder.py` converts validated config and the canonical inventory into
+  render data, including threshold-editor bounds and deterministic IDs.
+- `paths.py` derives generated output locations.
 
 `RenderModel` contains an ordered `list[ServiceModel]`. Its `readings` property
 flattens that into `list[tuple[ServiceModel, ReadingModel]]`, preserving access
@@ -303,60 +310,56 @@ to both parents during per-reading expansion.
 
 `ServiceModel` contains:
 
-- stable identity, label, section, icon, and display order
-- an `EntityReference` for the MQTT status sensor
+- stable identity and physical `device_name` label
+- deterministic MQTT status unique and entity IDs
 - entity IDs for four service-level timing helpers
 - `list[ReadingModel]`
 
 `ReadingModel` contains:
 
 - reading identity and label
-- an `EntityReference` for the MQTT reading
+- logical setup notification context derived from the canonical inventory
+- deterministic MQTT reading unique and entity IDs
 - every generated alarm helper/entity ID
-- default alarm mode
-- a `ThresholdModel` with initial values and editable ranges
+- a `ThresholdModel` with units, steps, and editable ranges
 
-`EntityReference` separates identity from the current registry name:
+`MqttEntity` contains the complete generated MQTT identity:
 
 ```python
-platform
 unique_id
-default_entity_id
-resolved_entity_id | None
-resolution_status
+entity_id
 ```
 
-Its `entity_id` property uses the resolved ID when available, otherwise the
-deterministic default. This lets every renderer consume one effective value.
+LabPulse treats these IDs as infrastructure. Friendly labels belong in
+`config.yaml`; manually renaming generated entity IDs in Home Assistant is
+unsupported because static dashboard and alarm YAML reference the stable IDs.
 
 `GeneratorPaths` derives all output locations from `config_path` and
 `ha_config_dir`; renderers do not manually reconstruct paths.
 
 ### Building the model
 
-`build_render_model()` sorts services by `display.order`, skips disabled
+`model_builder.build_render_model()` follows service order from `config.yaml`, skips disabled
 services, constructs service IDs/helpers, and calls `build_reading_model()` for
 each configured reading.
 
-The default alarm mode and editable helper ranges are inferred from the
-normalized reading name:
+Editable threshold-helper ranges are inferred from the normalized reading name:
 
-| Name contains | Default mode | Initial range concept |
-| --- | --- | --- |
-| `flow`, `press`, `pressure` | Low Only | low threshold is meaningful |
-| `temp`, `hum` | Range | both boundaries are meaningful |
-| anything else | Range | generic numeric defaults |
+| Name contains | Editor range concept |
+| --- | --- |
+| `flow`, `press`, `pressure` | non-negative process values |
+| `temp`, `hum` | environmental values |
+| anything else | generic numeric values |
 
-The initial Min, Max, and Deadband values come from the user-owned
-`alarm_defaults.json` beside the selected `config.yaml`. The loader requires an
-entry for every enabled ordinary reading, rejects unknown services/readings,
-and excludes the dedicated power service.
+The generated threshold helpers deliberately omit `initial` values. Operators
+set Min, Max, and Deadband in the Alarm Setup view, and Home Assistant restores
+those values thereafter. The option order makes fresh alarm-mode helpers begin
+Disabled and fresh alarm-state helpers begin Normal.
 
-Each reading's three JSON values are hashed into the suffix of its persistent
-initialization helper. An unchanged suffix leaves operator-tuned Home Assistant
-values alone. Editing that reading's JSON entry and regenerating produces a new
-off marker, so its initialization automation applies the new values exactly
-once. The editable dashboard remains the ongoing owner after that seed.
+One first-install marker enables the global notification mute exactly once.
+Both that marker and the mute helper then use Home Assistant's restored state,
+so an operator's later unmute survives restarts and regeneration. Service-level
+observation and recovery timing retains its separate one-time initializer.
 
 ### Template expansion
 
@@ -385,64 +388,39 @@ avoids a second delimiter configuration.
 `automations.yaml`, `scripts.yaml`, and `scenes.yaml` only when absent.
 
 `entity_map()` is a diagnostic projection of the model. For every MQTT entity
-it records default, resolved, and effective IDs plus all alarm-related entity
-IDs. It is the first file to consult when a dashboard reference is uncertain.
+it records its deterministic unique ID and entity ID plus all alarm-related
+entity IDs. It is the first file to consult when a dashboard reference is
+uncertain.
 
-### Dashboard rendering and preservation
+### YAML dashboard rendering
 
-`dashboard.py` loads `templates/dashboard/dashboard_seed.yaml` and expands it
-into Home Assistant’s active Overview JSON store. The generator resolves a
-named `.storage/lovelace.<id>` through `lovelace_dashboards`, with legacy
-`.storage/lovelace` as the fallback.
+`yaml_dashboard.py` is the active dashboard renderer. It transforms the
+validated config, Milestone 1 canonical reading inventory, and render
+model into `homeassistant/config/labpulse-dashboard.yaml`.
+`templates/core/configuration.yaml.j2` registers that file as the YAML-mode
+`labpulse-monitor` dashboard. The generated file starts with a warning because
+normal regeneration replaces it.
 
-The generated Monitor view contains one section per distinct
-`display.section`. Services with the same section label share that location
-section and receive separate service subheadings and status tiles. A duplicate
-top-level System Health section is intentionally omitted because each service's
-health remains visible beside its readings.
-The first ordered service supplies the shared section icon. Each reading is
-represented by one compact entities list containing only current readings.
-When readings define `group`, the dashboard renders one ordered entities card
-per group. Cards remain untitled; the surrounding section and service
-subheading name the room and owning hub. Reading rows use the short config label
-but do not specify an icon, allowing Home Assistant's entity icon to render.
-Room-environment readings use `Room Temperature` and `Room Humidity` labels.
-Group metadata does not affect acquisition, identity, or alarm ownership.
-Alarm State and Muted are omitted from Monitor to keep scanning concise; both
-remain available inside each reading's expanded controls in Alarm Setup. The
-device name is always rendered between the location and service status, even
-when the location contains only one service, so dashboard columns share the
-same visual hierarchy. Alarm Setup starts with one global notification-control
-section, followed by one section per service containing service timing helpers
-and per-reading show-controls/conditional settings cards.
+The Monitor view projects the same physical reading entities into each
+explicitly selected setup in deterministic order. Shared readings may appear
+under more than one setup, but every appearance references the same entity.
+Dedicated power telemetry bypasses setup projection and uses its own column.
+Readings are ordered and grouped by `subcategory`, with a deterministic
+fallback for readings without one.
 
-`render_dashboard()` has three mutually exclusive behaviors:
+Alarm Setup renders notification controls, one persistent mute per non-empty
+setup, setup-grouped reading controls, per-reading timing, and a confirmed bulk
+timing editor. Shared visual controls reuse the same physical helper IDs. A
+setup containing shared readings requires confirmation before its mute is
+enabled and names those readings in the warning; unmuting does not require
+confirmation. Diagnostics uses the physical service projection in config order,
+showing each hub's
+`device_name`, health/status entities, physical readings once, and power
+lifecycle diagnostics where applicable.
 
-- reset: generate and replace the resolved Overview storage file
-- sync: recursively replace exact stale entity-ID strings in the existing
-  dashboard
-- normal: print that the editable dashboard was preserved
-
-`replace_entity_references()` only replaces complete dictionary keys or string
-values. It does not search/replace text embedded in titles or user content.
-
-### Entity-registry resolution
-
-`entity_registry.fetch_entity_registry()` authenticates to Home Assistant’s
-WebSocket API and retrieves registry entries. `resolve_model_entities()` groups
-entries by `(platform, unique_id)` and gives every `EntityReference` one of:
-
-```text
-matched, renamed, missing, disabled, ambiguous
-```
-
-Strict mode rejects missing, disabled, or ambiguous entities. A renamed entity
-is safe because its unique ID still proves identity. `ResolutionReport` creates
-old-to-current replacements from deterministic defaults and the previous
-entity map, enabling surgical dashboard synchronization.
-
-Fresh startup deliberately does not use this path: entities do not exist until
-hardware services publish MQTT discovery.
+There is no storage-backed dashboard renderer, dashboard synchronization path,
+or live registry-resolution path. Generation is fully offline and uses the
+same stable entity-ID functions as MQTT discovery.
 
 ## Alarm state machine
 
@@ -509,8 +487,10 @@ Sensor Fault
 
 Sensor fault takes priority. Danger entry excludes faulted and Disabled
 readings. State changes occur whether muted or not; only notifications and SMS
-publishing are inside the combined individual/global mute check. The global
-helper is never used as a state writer for individual mute helpers. Test mode
+publishing are inside the combined global/setup/individual mute check. Every
+setup assigned to a shared reading must be unmuted. No mute helper is used as a
+state writer for another mute helper. Physical service-health and dedicated
+power alarms are not gated by logical setup mutes. Test mode
 adds `[TEST]` to titles and sets the validated request flag consumed by the SMS
 recipient router. Its explicit `initial: true` setting makes every Home
 Assistant start default to test delivery until an operator turns it off. When a confirmed fault clears, Home
@@ -547,7 +527,11 @@ Danger notifications include the current reading, active threshold, observed
 danger percentage, observation window, approximate time in danger, and required
 percentage. Sensor-fault notifications distinguish unavailable/non-numeric
 readings from unhealthy service status. The SMS contract calls the optional
-value `current_reading`, and rendered SMS labels it `Current Reading`.
+value `current_reading`, and rendered SMS labels it `Current Reading`. Every
+ordinary reading notification also includes one canonical context line:
+one affected setup or selected affected setups. This text is derived from the
+inventory and does not create additional
+automations, MQTT requests, or cooldown identities.
 
 ### Dedicated UPS power lifecycle
 
@@ -720,7 +704,7 @@ The scripts under `testing/` are grouped by contract:
 | Drivers and parsing | `test_serial_driver.py`, `test_dht11_driver.py`, `test_max17043_driver.py`, `test_legacy_serial_parser.py` |
 | Simulator and USB assignment | `test_simulate_serial.py`, `test_usb_setup.py` |
 | MQTT discovery | `test_homeassistant_publisher.py` |
-| HA model/generation/registry | `test_homeassistant_entities.py`, `test_homeassistant_generator.py`, `test_power_monitor.py` |
+| HA model/generation/registry | `test_setup_grouping.py`, `test_homeassistant_entities.py`, `test_homeassistant_generator.py`, `test_yaml_dashboard.py`, `test_notification_context.py`, `test_power_monitor.py` |
 | SMS | `test_sms_container.py` |
 | Setup and Compose output | `test_deployment_generation.py` |
 

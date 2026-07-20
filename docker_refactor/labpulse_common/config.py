@@ -1,6 +1,7 @@
 """Load and validate LabPulse service configuration."""
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Literal
@@ -8,7 +9,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from labpulse_common.identity import title
+from labpulse_common.identity import slug, title
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
@@ -67,29 +68,110 @@ class ServiceHealthConfig(BaseModel):
     fault_confirm_seconds: int = Field(default=10, ge=1, le=3600)
     recovery_confirm_seconds: int = Field(default=15, ge=1, le=3600)
 
+
+class SetupConfig(BaseModel):
+    """Presentation metadata for one logical experimental setup."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = None
+    icon: str = "mdi:flask-outline"
+    order: int = Field(default=100, ge=0, le=10000)
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, label: str | None) -> str | None:
+        """Normalize an optional label and reject blank display text."""
+
+        if label is None:
+            return None
+        normalized = label.strip()
+        if not normalized:
+            raise ValueError("setup label must not be blank")
+        return normalized
+
+    @field_validator("icon")
+    @classmethod
+    def validate_icon(cls, icon: str) -> str:
+        """Require a stable Material Design icon identifier."""
+
+        normalized = icon.strip()
+        if re.fullmatch(r"mdi:[a-z0-9]+(?:-[a-z0-9]+)*", normalized) is None:
+            raise ValueError("setup icon must use an mdi: icon identifier")
+        return normalized
+
+    def display_label(self, setup_id: str) -> str:
+        """Return the configured label or a readable setup-ID fallback."""
+
+        return self.label or title(setup_id)
+
+
+class SetupScope(BaseModel):
+    """Normalized explicit logical-setup membership for one physical reading."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    setup_ids: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "SetupScope":
+        """Require every ordinary reading to name at least one setup."""
+
+        if not self.setup_ids:
+            raise ValueError("setup membership must not be empty")
+        return self
+
+
+def validate_setup_id(setup_id: str) -> str:
+    """Return one valid stable setup identifier."""
+
+    normalized = setup_id.strip()
+    if not normalized or slug(normalized) != normalized:
+        raise ValueError(
+            "setup IDs must use lowercase letters, numbers, and underscores"
+        )
+    return normalized
+
 class ReadingConfig(BaseModel):
     """One named value published by a LabPulse service."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     label: str | None = None
-    group: str | None = None
+    subcategory: str | None = None
+    setups: SetupScope | None = None
     unit: str | None = None
     device_class: str | None = None
     state_class: str | None = "measurement"
+
+    @field_validator("setups", mode="before")
+    @classmethod
+    def normalize_setups(cls, value: object) -> SetupScope | None:
+        """Normalize an explicit non-empty setup-ID list."""
+
+        if value is None:
+            return None
+        if isinstance(value, SetupScope):
+            return value
+        if isinstance(value, list):
+            if not value:
+                raise ValueError("setups must contain at least one setup ID")
+            normalized_ids: list[str] = []
+            for setup_id in value:
+                if not isinstance(setup_id, str):
+                    raise ValueError("selected setup IDs must be strings")
+                normalized_ids.append(validate_setup_id(setup_id))
+            if len(set(normalized_ids)) != len(normalized_ids):
+                raise ValueError("selected setup IDs must be unique")
+            return SetupScope(setup_ids=tuple(normalized_ids))
+        raise ValueError("setups must be a non-empty list of setup IDs")
 
     @property
     def display_label(self) -> str:
         """Return the configured label or the shared readable-name fallback."""
 
         return self.label or title(self.name)
-
-class DisplayConfig(BaseModel):
-    """Dashboard display hints for one LabPulse service."""
-
-    section: str | None = None
-    icon: str | None = None
-    order: int = 100
-
 
 class PowerDetectionConfig(BaseModel):
     """Direct Geekworm X1200 external-power detection settings."""
@@ -117,6 +199,8 @@ class PowerDetectionConfig(BaseModel):
 class ServiceConfig(BaseModel):
     """Configuration for one independently running LabPulse sensor service."""
 
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     driver: Literal["serial", "gpio", "i2c"]
     gpio_sensor: Literal["dht11"] | None = None
@@ -128,7 +212,6 @@ class ServiceConfig(BaseModel):
     serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
     device_name: str
-    display: DisplayConfig = Field(default_factory=DisplayConfig)
     readings: list[ReadingConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
@@ -179,25 +262,17 @@ class ServiceConfig(BaseModel):
                     "MAX17043 power monitoring requires read_interval_seconds: 1"
                 )
 
+            if any(reading.setups is not None for reading in self.readings):
+                raise ValueError(
+                    "dedicated power readings must omit setups because power is "
+                    "not grouped as an experimental setup"
+                )
+        elif any(reading.setups is None for reading in self.readings):
+            raise ValueError(
+                "every ordinary reading must declare a non-empty setups list"
+            )
+
         return self
-
-    @property
-    def display_label(self) -> str:
-        """Return the user-facing label for this hardware service."""
-
-        return self.device_name
-
-    @property
-    def dashboard_section(self) -> str:
-        """Return the normalized Home Assistant dashboard section label."""
-
-        return self.display.section or self.display_label
-
-    @property
-    def dashboard_icon(self) -> str:
-        """Return the normalized Home Assistant dashboard section icon."""
-
-        return self.display.icon or "mdi:chip"
 
 class LabPulseConfig(BaseModel):
     """Validated top-level LabPulse configuration object."""
@@ -205,7 +280,29 @@ class LabPulseConfig(BaseModel):
     mqtt: MqttConfig
     sms: SmsConfig = Field(default_factory=SmsConfig)
     service_health: ServiceHealthConfig = Field(default_factory=ServiceHealthConfig)
+    setups: dict[str, SetupConfig]
     services: dict[str, ServiceConfig]
+
+    @model_validator(mode="after")
+    def validate_setup_membership(self) -> "LabPulseConfig":
+        """Validate setup IDs and every reading's logical references."""
+
+        for setup_id in self.setups:
+            validate_setup_id(setup_id)
+
+        available = set(self.setups)
+        for service_name, service in self.services.items():
+            for reading in service.readings:
+                scope = reading.setups
+                if scope is None:
+                    continue
+                missing = sorted(set(scope.setup_ids).difference(available))
+                if missing:
+                    raise ValueError(
+                        f"{service_name}.{reading.name} references unknown setups: "
+                        + ", ".join(missing)
+                    )
+        return self
 
 # ==========================================
 # CONFIGURATION LOADERS

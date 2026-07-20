@@ -1,6 +1,15 @@
 homeassistant:
   packages: !include_dir_named packages
 
+lovelace:
+  dashboards:
+    labpulse-monitor:
+      mode: yaml
+      filename: labpulse-dashboard.yaml
+      title: LabPulse
+      icon: mdi:flask-outline
+      show_in_sidebar: true
+
 automation: !include automations.yaml
 
 script: !include scripts.yaml

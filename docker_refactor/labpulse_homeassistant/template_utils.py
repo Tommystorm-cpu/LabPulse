@@ -7,7 +7,7 @@ import re
 
 
 PLACEHOLDER_PATTERN = re.compile(
-    r"\[\[\s*(service|reading|power|model|sms)\.([a-zA-Z0-9_.]+)\s*\]\]"
+    r"\[\[\s*(service|reading|power|setup|model|sms)\.([a-zA-Z0-9_.]+)\s*\]\]"
 )
 
 

@@ -1,6 +1,9 @@
 """Integration checks for generated deployment files after the package move."""
 
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Callable
@@ -13,6 +16,21 @@ sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 TEST_TMP_DIR = REFACTOR_DIR / "testing" / "tmp"
+sys.path.insert(0, str(REFACTOR_DIR))
+
+from labpulse_homeassistant.cli import main as generate_homeassistant
+
+
+@contextmanager
+def test_directory(prefix: str) -> Iterator[Path]:
+    """Create and remove one accessible, uniquely named test directory."""
+
+    root = TEST_TMP_DIR / f"{prefix}-{uuid4().hex}"
+    root.mkdir()
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root)
 
 
 def embedded_compose_generator() -> str:
@@ -140,9 +158,6 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
-        'if [ ! -e "$LIVE_ALARM_DEFAULTS" ]; then',
-        'Preserving existing alarm defaults',
-        'nano alarm_defaults.json',
         'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
         'serial_port: "/tmp/labpulse-fake-serial/room_environment"',
         'parser: pipe',
@@ -156,31 +171,137 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"',
         '--config "$RUNTIME_CONFIG"',
         'including UPS power',
-        'if [ ! -e "$PROJECT_DIR/homeassistant/config/.storage/lovelace" ]; then',
-        'HOMEASSISTANT_MODE_ARGS+=(--reset-dashboard)',
+        '$PROJECT_DIR/homeassistant/config/labpulse-dashboard.yaml',
     )
     for fragment in required_fragments:
         if fragment not in source:
             raise AssertionError(f"setup contract missing: {fragment}")
-
+    if "alarm_defaults.json" in source:
+        raise AssertionError("setup still deploys the removed alarm defaults file")
     generator_source = (
         REFACTOR_DIR / "generate_homeassistant_config.sh"
     ).read_text(encoding="utf-8")
     required_generator_fragments = (
-        '--reset-dashboard',
-        'RESET_DASHBOARD=0',
-        '--resolve-entities',
-        '--sync-dashboard-entities',
-        'LABPULSE_HA_TOKEN',
-        'LABPULSE_HA_URL',
-        'dashboard_storage_path',
-        'lovelace_dashboards',
-        'check_dashboard_writable',
-        'Cannot create active Home Assistant dashboard',
+        'homeassistant/config/labpulse-dashboard.yaml',
+        'Generation is offline',
     )
     for fragment in required_generator_fragments:
         if fragment not in generator_source:
             raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
+    forbidden_generator_fragments = (
+        "alarm_defaults.json",
+        ".storage",
+        "lovelace_dashboards",
+        "dashboard_storage_path",
+        "--reset-dashboard",
+        "--backup-dashboard",
+        "--load-dashboard",
+        "--sync-dashboard-entities",
+        "homeassistant_backups",
+        "--resolve-entities",
+        "--ha-url",
+        "LABPULSE_HA_TOKEN",
+        "LABPULSE_HA_URL",
+    )
+    for fragment in forbidden_generator_fragments:
+        if fragment in generator_source:
+            raise AssertionError(f"legacy dashboard wrapper code remains: {fragment}")
+
+
+def test_offline_dashboard_generation_is_deterministic() -> None:
+    """Regenerate only owned files offline while preserving UI and helper state."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    with test_directory("ha-offline") as root:
+        config_path = root / "config.yaml"
+        config_path.write_text(
+            (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        ha_dir = root / "homeassistant" / "config"
+        restore_state = ha_dir / ".storage" / "core.restore_state"
+        restore_state.parent.mkdir(parents=True)
+        restore_state.write_text('{"helper_values": "user-owned"}\n', encoding="utf-8")
+
+        result = generate_homeassistant(
+            ["generator", str(config_path), str(ha_dir)]
+        )
+        if result != 0:
+            raise AssertionError("clean offline generation failed")
+
+        generated_names = (
+            "configuration.yaml",
+            "labpulse-dashboard.yaml",
+            "labpulse_entity_map.yaml",
+            "packages/labpulse_generated.yaml",
+        )
+        first = {
+            name: (ha_dir / name).read_bytes()
+            for name in generated_names
+        }
+        dashboard = yaml.safe_load(
+            (ha_dir / "labpulse-dashboard.yaml").read_text(encoding="utf-8")
+        )
+        if [view["title"] for view in dashboard["views"]] != [
+            "Monitor",
+            "Alarm Setup",
+            "Diagnostics",
+        ]:
+            raise AssertionError("offline dashboard view contract changed")
+
+        ui_markers = {
+            "automations.yaml": "- id: user-owned-automation\n",
+            "scripts.yaml": "user_owned_script: {}\n",
+            "scenes.yaml": "- id: user-owned-scene\n",
+        }
+        for name, content in ui_markers.items():
+            (ha_dir / name).write_text(content, encoding="utf-8")
+        (ha_dir / "labpulse-dashboard.yaml").write_text(
+            "user edit that must be regenerated\n", encoding="utf-8"
+        )
+
+        result = generate_homeassistant(
+            ["generator", str(config_path), str(ha_dir)]
+        )
+        if result != 0:
+            raise AssertionError("offline regeneration failed")
+        for name, expected in first.items():
+            if (ha_dir / name).read_bytes() != expected:
+                raise AssertionError(f"generated output is not deterministic: {name}")
+        for name, expected in ui_markers.items():
+            if (ha_dir / name).read_text(encoding="utf-8") != expected:
+                raise AssertionError(f"regeneration replaced UI-owned {name}")
+        if restore_state.read_text(encoding="utf-8") != '{"helper_values": "user-owned"}\n':
+            raise AssertionError("regeneration changed Home Assistant helper state")
+
+
+def test_fake_test_pi_dashboard_generation() -> None:
+    """Generate the fake UPS test-Pi dashboard without hardware or Home Assistant."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    with test_directory("ha-test-pi") as root:
+        config_path = root / "config.yaml"
+        config_path.write_text(
+            (REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        ha_dir = root / "homeassistant" / "config"
+        result = generate_homeassistant(
+            ["generator", str(config_path), str(ha_dir)]
+        )
+        if result != 0:
+            raise AssertionError("fake test-Pi generation failed")
+        rendered = (ha_dir / "labpulse-dashboard.yaml").read_text(encoding="utf-8")
+        for expected in (
+            "UPS Monitor",
+            "Power Monitoring",
+            "Power Lifecycle",
+            "sensor.labpulse_ups_monitor_voltage",
+        ):
+            if expected not in rendered:
+                raise AssertionError(f"fake test-Pi dashboard lacks {expected}")
 
 def test_real_x1200_compose_is_least_privilege() -> None:
     """Expose only configured I2C and GPIO nodes to the X1200 service."""
@@ -293,6 +414,8 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("real X1200 Compose least privilege", test_real_x1200_compose_is_least_privilege),
     ("SMS delivery mode controls modem access", test_sms_delivery_mode_controls_modem_access),
     ("setup refresh and preservation contract", test_setup_refresh_and_preservation_contract),
+    ("deterministic offline HA generation", test_offline_dashboard_generation_is_deterministic),
+    ("fake test-Pi dashboard generation", test_fake_test_pi_dashboard_generation),
 ]
 
 
