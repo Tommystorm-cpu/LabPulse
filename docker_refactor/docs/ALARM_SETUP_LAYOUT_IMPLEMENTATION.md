@@ -272,9 +272,9 @@ Configure navigates to the setup's existing stable subview path:
 The setup mute remains independent from the global mute, every other setup
 mute, and every measurement mute.
 
-If the setup contains a shared measurement, enabling its mute retains the
-current warning and names the affected shared measurements. Unmuting remains a
-direct action without confirmation.
+If the setup contains a shared measurement, enabling its mute names the shared
+measurements and warns that they remain unmuted while another owning setup is
+unmuted. Unmuting remains a direct action without confirmation.
 
 The dedicated power row appears after logical setups. It has no logical setup
 mute and navigates to:
@@ -430,29 +430,30 @@ required presentation state may exist only in a browser.
 ### Native measurement-row composition
 
 Home Assistant does not provide a native multi-entity table row with an
-independent labelled action. To keep the implementation supported, each
-measurement is one full-width grid section with a native section background.
-That section is the visual row.
+independent labelled action. The generator therefore emits desktop and mobile
+projections of each measurement, selected by native screen conditions. Both
+projections reference the same entities and helpers.
 
-Use a 12-column precise grid with two compact lines:
+Use a full-width three-section desktop grid with one compact line:
 
 ```text
-Line 1: measurement/current value (7) | alarm state (2) | Configure (3)
-Line 2: minimum threshold (4) | maximum threshold (4) | deadband (4)
+measurement (6) | alarm state (6) | minimum (6) | maximum (6) |
+deadband (6) | Configure (6)
 ```
 
-The numbers in parentheses are the intended desktop column spans. Home
-Assistant Sections owns responsive placement at narrow widths.
+The mobile projection gives measurement and alarm state full rows, places
+minimum, maximum, and deadband in three four-column cells, and gives
+Configure/Close a full row. Closed measurement sections have no background.
 
 Cards within the section are:
 
 1. a read-only tile for the MQTT measurement entity;
 2. a read-only tile for the persistent alarm-state entity;
-3. a button or state-hidden tile bound to the existing expansion helper, named
+3. a read-only tile for minimum threshold;
+4. a read-only tile for maximum threshold;
+5. a read-only tile for recovery deadband;
+6. a state-hidden tile bound to the existing expansion helper, named
    **Configure** while closed and **Close** while open;
-4. a read-only tile for minimum threshold;
-5. a read-only tile for maximum threshold;
-6. a read-only tile for recovery deadband;
 7. the existing conditional editor, spanning the full section width.
 
 All display-only tiles set tap, hold, double-tap, and icon-tap actions to
@@ -467,23 +468,25 @@ not supported reliably by the selected native card:
   action;
 - when it is on, show Close with a turn-off/toggle action.
 
-The full-width conditional editor uses native entities or tiles and retains all
-editable and read-only fields defined earlier in this document.
+The full-width conditional editor uses side-by-side Alarm behaviour and
+Confirmation timing entities cards on desktop, stacked cards on mobile, and a
+separate Live status card with a Close action.
 
 ### Native group-settings composition
 
 Group Alarm Settings is assembled from native generated cards and helpers:
 
-1. a target tile with the built-in select-options feature;
-2. a read-only template entity or Markdown line showing the unique target
-   count;
-3. one apply-flag tile per common setting;
-4. one conditional numeric-input tile beneath each selected common apply flag;
-5. target-conditional typed-deadband groups;
-6. one apply-flag tile and conditional numeric-input tile per visible deadband
+1. a compact entities card containing the target select and unique target count;
+2. one apply-flag entity row per common setting;
+3. one conditional input-number row beneath each selected common apply flag;
+4. target-conditional typed-deadband groups;
+5. one apply-flag row and conditional input-number row per visible deadband
    group;
-7. a templated Markdown card titled **Changes to apply**;
-8. conditional Apply controls for empty and non-empty selections.
+6. a templated Markdown review;
+7. conditional Apply controls for empty and non-empty selections.
+
+The entire group editor is collapsed behind a native Configure/Close tile by
+default so setup navigation remains visible at the top of Alarm Setup.
 
 Every common-setting block follows this native pattern:
 

@@ -48,22 +48,24 @@ def monitor_sections(
     """
 
     columns: list[Card] = []
+
+    # Create a "setup ID: display label" lookup for shared-measurement labels.
     setup_labels = {
         setup_id: setup.display_label(setup_id)
         for setup_id, setup in config.setups.items()
     }
+
+    # Record power services so their measurements are not shown twice.
     power_service_names = {
         service.name for service in index.services.values() if service.power is not None
     }
 
-    # Power is operational infrastructure, not an experiment membership. Give
-    # every configured power service its own leading Monitor column.
+    # Give every power service its own leading Monitor column.
     for service in index.services.values():
         if service.power is not None:
             columns.append(_power_monitor_column(service))
 
-    # ``catalog.by_setup`` already follows configured setup order. Removing
-    # power measurements here prevents dedicated telemetry from being shown twice.
+    # Build each setup column in the catalogue's configured order.
     for setup_id, items in catalog.by_setup.items():
         setup = config.setups[setup_id]
         ordinary_items = tuple(
@@ -80,6 +82,7 @@ def monitor_sections(
             )
         )
 
+    # Insert Active Problems into the first column without changing masonry order.
     _prepend_problems_card(columns, _monitor_problems_card(catalog, index))
     return columns
 
@@ -87,9 +90,11 @@ def monitor_sections(
 def _prepend_problems_card(columns: list[Card], problems: Card) -> None:
     """Nest Active Problems in the first column without changing column count."""
 
+    # Create a first column when the dashboard has no setup or power columns.
     if not columns:
         columns.append(vertical_stack([problems]))
         return
+    # Insert the problem card into the existing first vertical stack.
     first_column_cards = columns[0].get("cards")
     if not isinstance(first_column_cards, list):
         raise ValueError("Monitor masonry columns must contain cards")
@@ -110,8 +115,7 @@ def _monitor_problems_card(
 
     entities: list[Card] = []
 
-    # Whole-service problems are shown only after the service-health debounce
-    # has latched a confirmed fault.
+    # Add each service's confirmed fault state.
     for service in index.services.values():
         entities.append(
             {
@@ -121,8 +125,7 @@ def _monitor_problems_card(
             }
         )
 
-    # A shared measurement is visited once through the canonical catalog. Its row
-    # requires every owning setup mute to be open, matching notification logic.
+    # Visit each measurement once even when it belongs to several setups.
     for item in catalog.measurements:
         measurement = index.measurements[item.key]
         service = index.services[item.key.service_name]
@@ -130,8 +133,7 @@ def _monitor_problems_card(
             continue
         entities.append(_measurement_problem_row(measurement))
 
-    # Dedicated power measurements have their own lifecycle and must not enter the
-    # ordinary threshold-alarm path above.
+    # Add each dedicated power lifecycle state.
     for service in index.services.values():
         if service.power is None:
             continue
@@ -174,16 +176,28 @@ def _measurement_problem_row(measurement: MeasurementModel) -> Card:
     visible and testable without repeating condition dictionaries in the loop.
     """
 
-    mute_conditions = [
+    # Require the measurement's own mute to be off.
+    mute_conditions: list[Card] = [
         {
             "condition": "state",
             "entity": measurement.entities["alarm_muted"],
             "state": "off",
         }
-    ] + [
+    ]
+    # Create one unmuted-state condition for every owning setup.
+    setup_conditions = [
         {"condition": "state", "entity": entity, "state": "off"}
         for entity in measurement.setup_muted_entities
     ]
+
+    # Keep shared measurements visible while any owning setup remains unmuted.
+    if len(setup_conditions) == 1:
+        mute_conditions.extend(setup_conditions)
+    elif setup_conditions:
+        mute_conditions.append(
+            {"condition": "or", "conditions": setup_conditions}
+        )
+
     return {
         "entity": measurement.entities["alarm_state"],
         "name": f"{measurement.label}: alarm state",
@@ -205,6 +219,7 @@ def _setup_monitor_column(
 ) -> Card:
     """Render one logical setup with invisible subcategory card boundaries."""
 
+    # Start the setup column with its heading.
     cards: list[Card] = [heading_card(title, icon, "title")]
     if not items:
         cards.append(
@@ -215,6 +230,7 @@ def _setup_monitor_column(
         )
         return vertical_stack(cards)
 
+    # Add one entity card for every measurement subcategory.
     for _subcategory, grouped_items in _measurements_by_subcategory(items):
         cards.append(
             _measurements_card(grouped_items, index, setup_id, setup_labels)
@@ -230,6 +246,7 @@ def _measurements_card(
 ) -> Card:
     """Return one entity box for a subcategory without exposing its label."""
 
+    # Resolve each catalogue record to its MQTT entity and display label.
     return entities_card(
         [
             {
@@ -246,6 +263,7 @@ def _measurements_card(
 def _power_monitor_column(service: ServiceModel) -> Card:
     """Return the dedicated operator-facing UPS summary column."""
 
+    # Get the power model before constructing the UPS summary.
     power = require_power(service, "power Monitor column")
     return vertical_stack(
         [
@@ -293,6 +311,7 @@ def _measurements_by_subcategory(
 ) -> list[tuple[str, tuple[ConfiguredMeasurement, ...]]]:
     """Group measurements by subcategory in first-seen configuration order."""
 
+    # Group measurements without changing their first-seen order.
     grouped: dict[str, list[ConfiguredMeasurement]] = {}
     for item in items:
         subcategory = item.measurement.subcategory or DEFAULT_SUBCATEGORY
@@ -308,9 +327,11 @@ def _monitor_measurement_label(
 ) -> str:
     """Add cross-setup context without changing the referenced entity."""
 
+    # Return the normal label when the measurement is not shared.
     label = index.measurements[item.key].label
     if item.measurement.setups is None or len(item.effective_setup_ids) <= 1:
         return label
+    # Append the labels of every other setup using this measurement.
     other_ids = tuple(
         candidate for candidate in item.effective_setup_ids if candidate != setup_id
     )

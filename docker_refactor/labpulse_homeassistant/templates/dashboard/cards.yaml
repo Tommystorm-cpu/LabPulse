@@ -2,13 +2,42 @@
 # Alarm fragments live here; view assembly lives in the dashboard/ package.
 
 alarm_setup_sections:
-  setup_mute_tile:
-    type: tile
-    entity: "[[ setup.muted_entity ]]"
-    name: Mute setup notifications
-    icon: mdi:bell-off-outline
+  setup_mute_off:
+    type: conditional
+    conditions:
+      - entity: "[[ setup.muted_entity ]]"
+        state: "off"
     grid_options:
       columns: full
+    card:
+      type: tile
+      entity: "[[ setup.muted_entity ]]"
+      name: Mute notifications
+      icon: mdi:bell-off-outline
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: input_boolean.turn_on
+        target:
+          entity_id: "[[ setup.muted_entity ]]"
+  setup_mute_on:
+    type: conditional
+    conditions:
+      - entity: "[[ setup.muted_entity ]]"
+        state: "on"
+    grid_options:
+      columns: full
+    card:
+      type: tile
+      entity: "[[ setup.muted_entity ]]"
+      name: Unmute notifications
+      icon: mdi:bell-outline
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: input_boolean.turn_off
+        target:
+          entity_id: "[[ setup.muted_entity ]]"
   shared_setup_mute_off:
     type: conditional
     conditions:
@@ -19,8 +48,9 @@ alarm_setup_sections:
     card:
       type: tile
       entity: "[[ setup.muted_entity ]]"
-      name: Mute setup notifications
+      name: Mute notifications
       icon: mdi:bell-off-outline
+      hide_state: true
       tap_action:
         action: perform-action
         perform_action: input_boolean.turn_on
@@ -38,77 +68,106 @@ alarm_setup_sections:
     card:
       type: tile
       entity: "[[ setup.muted_entity ]]"
-      name: Unmute setup notifications
+      name: Unmute notifications
       icon: mdi:bell-outline
+      hide_state: true
       tap_action:
         action: perform-action
         perform_action: input_boolean.turn_off
         target:
           entity_id: "[[ setup.muted_entity ]]"
-  controls_toggle_tile:
+  measurement_tile:
     type: tile
-    entity: "[[ measurement.entities.alarm_controls_expanded ]]"
+    entity: "[[ measurement.mqtt_entity.entity_id ]]"
     name: "[[ measurement.label ]]"
-    icon: mdi:tune-variant
-    hide_state: true
-    tap_action:
-      action: toggle
-    icon_tap_action:
-      action: toggle
-  measurement_settings_card:
+    grid_options:
+      columns: 7
+    tap_action: {action: none}
+    hold_action: {action: none}
+    double_tap_action: {action: none}
+    icon_tap_action: {action: none}
+  alarm_state_tile:
+    type: tile
+    entity: "[[ measurement.entities.alarm_state ]]"
+    name: Alarm state
+    icon: mdi:alarm-light-outline
+    grid_options:
+      columns: 2
+    tap_action: {action: none}
+    hold_action: {action: none}
+    double_tap_action: {action: none}
+    icon_tap_action: {action: none}
+  configure_closed_tile:
+    type: conditional
+    conditions:
+      - entity: "[[ measurement.entities.alarm_controls_expanded ]]"
+        state: "off"
+    grid_options:
+      columns: 3
+    card:
+      type: tile
+      entity: "[[ measurement.entities.alarm_controls_expanded ]]"
+      name: Configure
+      icon: mdi:tune-variant
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: input_boolean.turn_on
+        target:
+          entity_id: "[[ measurement.entities.alarm_controls_expanded ]]"
+      icon_tap_action: {action: none}
+  configure_open_tile:
     type: conditional
     conditions:
       - entity: "[[ measurement.entities.alarm_controls_expanded ]]"
         state: "on"
     grid_options:
-      columns: full
+      columns: 3
     card:
-      type: entities
-      title: "[[ measurement.label ]]"
-      show_header_toggle: false
-      entities:
-        - entity: "[[ measurement.entities.alarm_mode ]]"
-          name: Alarm mode
-        - entity: "[[ measurement.entities.alarm_muted ]]"
-          name: Muted
-        - entity: "[[ measurement.entities.minimum_threshold ]]"
-          name: Minimum threshold
-        - entity: "[[ measurement.entities.maximum_threshold ]]"
-          name: Maximum threshold
-        - entity: "[[ measurement.entities.recovery_deadband ]]"
-          name: Recovery deadband
-        - type: divider
-        - entity: "[[ measurement.entities.required_danger_percent ]]"
-          name: Required danger
-        - entity: "[[ measurement.entities.observation_window_seconds ]]"
-          name: Observation window
-        - entity: "[[ measurement.entities.required_recovery_seconds ]]"
-          name: Required recovery
-  measurement_status_card:
-    type: conditional
-    conditions:
-      - entity: "[[ measurement.entities.alarm_controls_expanded ]]"
-        state: "on"
+      type: tile
+      entity: "[[ measurement.entities.alarm_controls_expanded ]]"
+      name: Close
+      icon: mdi:close
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: input_boolean.turn_off
+        target:
+          entity_id: "[[ measurement.entities.alarm_controls_expanded ]]"
+      icon_tap_action: {action: none}
+  minimum_tile:
+    type: tile
+    entity: "[[ measurement.entities.minimum_threshold ]]"
+    name: Minimum
+    icon: mdi:arrow-collapse-down
     grid_options:
-      columns: full
-    card:
-      type: entities
-      title: "[[ measurement.label ]]"
-      show_header_toggle: false
-      entities:
-        - entity: "[[ measurement.mqtt_entity.entity_id ]]"
-          name: Current measurement
-        - entity: "[[ measurement.entities.alarm_state ]]"
-          name: Alarm state
-        - entity: "[[ measurement.entities.observed_danger_percent ]]"
-          name: Observed danger
-        - entity: "[[ measurement.entities.danger_zone ]]"
-          name: Danger zone
-        - entity: "[[ measurement.entities.recovery_zone ]]"
-          name: Recovery zone
-        - entity: "[[ measurement.entities.sensor_fault_zone ]]"
-          name: Sensor fault zone
-
+      columns: 4
+    tap_action: {action: none}
+    hold_action: {action: none}
+    double_tap_action: {action: none}
+    icon_tap_action: {action: none}
+  maximum_tile:
+    type: tile
+    entity: "[[ measurement.entities.maximum_threshold ]]"
+    name: Maximum
+    icon: mdi:arrow-collapse-up
+    grid_options:
+      columns: 4
+    tap_action: {action: none}
+    hold_action: {action: none}
+    double_tap_action: {action: none}
+    icon_tap_action: {action: none}
+  deadband_tile:
+    type: tile
+    entity: "[[ measurement.entities.recovery_deadband ]]"
+    name: Deadband
+    icon: mdi:arrow-expand-vertical
+    grid_options:
+      columns: 4
+    tap_action: {action: none}
+    hold_action: {action: none}
+    double_tap_action: {action: none}
+    icon_tap_action: {action: none}
 global_alarm_setup:
   heading_card:
     type: heading
@@ -137,39 +196,6 @@ global_alarm_setup:
       confirmation:
         text: >-
           Send the phone book notification to the active recipient list? Test mode uses only test recipients; live mode uses normal recipients. Nothing is sent while all notifications are muted.
-
-bulk_timing:
-  heading_card:
-    type: heading
-    heading: Bulk Timing
-    heading_style: title
-    icon: mdi:timer-sync-outline
-  settings_card:
-    type: entities
-    show_header_toggle: false
-    entities:
-      - entity: "[[ model.entities.bulk_timing_target ]]"
-        name: Apply to
-      - entity: "[[ model.entities.bulk_required_danger_percent ]]"
-        name: Required danger
-      - entity: "[[ model.entities.bulk_observation_window_seconds ]]"
-        name: Observation window
-      - entity: "[[ model.entities.bulk_required_recovery_seconds ]]"
-        name: Required recovery
-  apply_button:
-    type: tile
-    entity: "[[ model.entities.bulk_apply_timing_script ]]"
-    name: Apply timing to selected measurements
-    icon: mdi:timer-check-outline
-    hide_state: true
-    grid_options:
-      columns: full
-    tap_action:
-      action: perform-action
-      perform_action: "[[ model.entities.bulk_apply_timing_script ]]"
-      confirmation:
-        text: >-
-          Replace all three timing values for every measurement in the selected target?
 
 power_alarm_setup:
   settings_card:

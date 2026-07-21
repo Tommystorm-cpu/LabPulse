@@ -7,6 +7,8 @@ map, and the registered YAML-mode LabPulse dashboard.
 For the full execution path, render models, placeholders, dashboard behavior,
 and alarm state machine, read
 [Code internals](../docs/CODE_INTERNALS.md#home-assistant-generator).
+For a field-by-field map of the dataclasses passed to each writer, read
+[Home Assistant render models](../docs/HOME_ASSISTANT_RENDER_MODELS.md).
 
 ## Public entry point
 
@@ -66,7 +68,6 @@ flowchart LR
     diagnostics --> dashboard
 
     core --> core_files["configuration.yaml<br/>UI YAML files"]
-    core --> entity_map["labpulse_entity_map.yaml<br/>diagnostic reference"]
     alarm --> alarm_file["packages/labpulse_generated.yaml"]
     dashboard --> dashboard_file["labpulse-dashboard.yaml"]
 
@@ -104,7 +105,7 @@ uses the service index to show the same measurement under its physical hub.
 | `cli.py` | Runs the pipeline in order. It does not generate YAML itself. |
 | `measurement_catalog.py` | Catalogues every physical measurement once and indexes it by setup and service. |
 | `render_model.py` | Declares aggregate render types; `from_config()` derives services, setups, and stable entity IDs. |
-| `core_config.py` | Writes core Home Assistant configuration and the diagnostic entity map. |
+| `core_config.py` | Writes core Home Assistant configuration and preserves UI-owned YAML files. |
 | `alarm_package.py` | Writes alarm helpers, scripts, sensors, and automations. |
 | `dashboard_writer.py` | Assembles the three dashboard pages and writes the dashboard YAML. |
 
@@ -124,8 +125,7 @@ Small supporting modules do not create final files:
 `configuration.yaml` connects the resulting resources: it includes the
 generated package directory, registers `labpulse-dashboard.yaml` as the
 `labpulse-monitor` YAML dashboard, and includes the three UI-managed YAML
-files. `labpulse_entity_map.yaml` is deliberately separate and exists only to
-make deterministic entity IDs inspectable.
+files.
 
 ## Package map
 
@@ -146,7 +146,7 @@ paths.py
   GeneratorPaths and all generated output locations
 
 core_config.py
-  configuration.yaml, entity map, and preservation of UI-owned YAML files
+  configuration.yaml and preservation of UI-owned YAML files
 
 alarm_package.py
   expand alarm seed rules into the generated Home Assistant package
@@ -165,7 +165,7 @@ template_utils.py
   shared alert, formatting, and subscription-command SMS wording
 
 templates/core/
-  outer core/entity-map templates
+  outer configuration template
 
 templates/alarm/
   package shell and editable alarm_logic.yaml seed
@@ -194,24 +194,27 @@ the Home Assistant UI. There is no storage-backed dashboard fallback, backup,
 restore, reset, or entity-synchronization mode.
 
 Monitor and Alarm Setup use explicit logical setup projections; Diagnostics
-uses physical service ownership. Alarm Setup packs global tools and configuration
-as masonry cards. Each setup configuration row pairs navigation with its mute,
-and native hidden subviews retain that mute for each non-empty setup. Dedicated
-power monitoring has its own subview. Setup subviews use three native sections: state-hidden
-two-across measurement launchers, conditional editable settings, and conditional
-live alarm status. Physical Diagnostics uses a compact masonry column per
-service for connection, paired health, latest measurements, and optional power
-lifecycle state; it contains no ordinary alarm-engine entities. Alarm timing belongs to each measurement. The
-generated Bulk Timing script can copy its three timing values to
-all ordinary measurements or one setup after dashboard confirmation. Dedicated
+uses physical service ownership. Alarm Setup uses native Sections for global
+notification controls, selective group settings, and setup navigation. Each
+setup row shows notification state, Mute/Unmute, and Configure, while hidden
+subviews repeat the mute and render one compact background grid per measurement.
+Configure reveals a two-column desktop editor or stacked mobile editor and live
+status directly below that row. Dedicated power monitoring has its own subview.
+Physical Diagnostics uses one native section per service for connection, paired
+health, latest measurements, and optional power
+lifecycle state; it contains no ordinary alarm-engine entities. Alarm timing belongs to each measurement. Group
+Alarm Settings can update any selected subset of common values and only combines
+recovery deadbands with the same device class and exact unit. Its exact review,
+confirmation, target reset, and apply flags are persistent native Home Assistant
+state rather than browser-only state. Dedicated
 power telemetry does not participate in setup grouping.
 
 Monitor nests a native **Active Problems** entity filter in its first masonry
 column. It disappears when healthy and surfaces only confirmed service faults,
 persistent measurement alarm states, and persistent power states without duplicating
 shared setup projections or causing top-level masonry repacking. Individually
-muted measurements and measurements under a muted owning setup are filtered out; the
-global mute does not hide problems.
+muted measurements are filtered out; shared measurements remain visible while
+any owning setup is unmuted. The global mute does not hide problems.
 
 ## Primary editing points
 

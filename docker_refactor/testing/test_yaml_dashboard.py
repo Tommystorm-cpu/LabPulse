@@ -38,30 +38,44 @@ def dashboard_config() -> dict[str, object]:
                 "serial_port": "/tmp/hub-a",
                 "device_name": "Hub A",
                 "measurements": [
-                    {"name": "alpha_general", "label": "General", "setups": ["alpha_setup"]},
+                    {
+                        "name": "alpha_general",
+                        "label": "General",
+                        "setups": ["alpha_setup"],
+                        "unit": "bar",
+                        "device_class": "pressure",
+                    },
                     {
                         "name": "alpha_only",
                         "label": "Alpha Only",
                         "subcategory": "Cooling Water",
                         "setups": ["alpha_setup"],
+                        "unit": "°C",
+                        "device_class": "temperature",
                     },
                     {
                         "name": "shared",
                         "label": "Shared Supply",
                         "subcategory": "Cooling Water",
                         "setups": ["beta_setup", "alpha_setup"],
+                        "unit": "°C",
+                        "device_class": "temperature",
                     },
                     {
                         "name": "beta_only",
                         "label": "Beta Only",
                         "subcategory": "Vacuum",
                         "setups": ["beta_setup"],
+                        "unit": "%",
+                        "device_class": "humidity",
                     },
                     {
                         "name": "global_room",
                         "label": "Room Temperature",
                         "subcategory": "Ambient Sensors",
                         "setups": ["room_conditions"],
+                        "unit": "°C",
+                        "device_class": "temperature",
                     },
                 ],
             },
@@ -76,6 +90,8 @@ def dashboard_config() -> dict[str, object]:
                         "label": "Alpha From Hub B",
                         "subcategory": "Cooling Water",
                         "setups": ["alpha_setup"],
+                        "unit": "°F",
+                        "device_class": "temperature",
                     }
                 ],
             },
@@ -236,6 +252,10 @@ def test_plain_yaml_and_registration() -> None:
         "divider",
         "gauge",
         "vertical-stack",
+        "toggle",
+        "numeric-input",
+        "select-options",
+        "section",
     }
     unsupported = card_types(dashboard).difference(allowed)
     if unsupported:
@@ -345,7 +365,7 @@ def test_monitor_setup_and_subcategory_projections() -> None:
         measurement_id = alarm_state_entity.removeprefix(
             "input_select.labpulse_"
         ).removesuffix("_alarm_state")
-        setup_conditions = [
+        setup_state_conditions = [
             {
                 "condition": "state",
                 "entity": f"input_boolean.labpulse_setup_{setup_id}_notifications_muted",
@@ -353,6 +373,12 @@ def test_monitor_setup_and_subcategory_projections() -> None:
             }
             for setup_id in setup_mutes_by_measurement[measurement_id]
         ]
+        if len(setup_state_conditions) == 1:
+            setup_conditions = setup_state_conditions
+        else:
+            setup_conditions = [
+                {"condition": "or", "conditions": setup_state_conditions}
+            ]
         if row.get("conditions") != [
             {
                 "condition": "state",
@@ -374,140 +400,163 @@ def test_monitor_setup_and_subcategory_projections() -> None:
 
 
 def test_alarm_controls_are_grouped_by_setup() -> None:
-    """Render setup-grouped controls with per-measurement and bulk timing."""
+    """Render the native landing sections and one compact row per measurement."""
 
     _, dashboard, _ = generate()
-    alarm_setup = view_by_path(dashboard, "alarm-setup")
+    landing = view_by_path(dashboard, "alarm-setup")
     setup_views = [
         view
         for view in dashboard["views"]
         if str(view.get("path", "")).startswith("alarm-setup-")
     ]
-    if "type" in alarm_setup or "sections" in alarm_setup or "max_columns" in alarm_setup:
-        raise AssertionError("Alarm Setup landing page is not native masonry")
-    if not alarm_setup.get("cards"):
-        raise AssertionError("Alarm Setup masonry cards are missing")
-    if any(
-        card.get("type") != "vertical-stack" for card in alarm_setup["cards"]
-    ):
-        raise AssertionError("an Alarm Setup landing block can split across masonry cells")
-    landing_rendered = yaml.safe_dump(alarm_setup, sort_keys=False)
-    if "_alarm_controls_expanded" in landing_rendered:
-        raise AssertionError("measurement controls leaked onto the Alarm Setup landing page")
-    for setup_id in ("room_conditions", "alpha_setup", "beta_setup"):
-        destination = f"/labpulse-monitor/alarm-setup-{setup_id}"
-        if landing_rendered.count(destination) != 2:
-            raise AssertionError(f"setup navigation tile is incomplete: {setup_id}")
-    if "alarm-setup-empty_setup" in landing_rendered:
-        raise AssertionError("empty setup gained an alarm navigation tile")
-    if any(view.get("max_columns") != 3 for view in setup_views):
-        raise AssertionError("a setup editor does not use the three-column layout")
-    expected_column_headings = ["Measurements", "Alarm Settings", "Live Alarm Status"]
-    for view in setup_views:
-        if headings(view) != expected_column_headings:
-            raise AssertionError(
-                f"setup editor columns are incorrect: {headings(view)!r}"
-            )
-
-    for service, measurement in (
-        ("hub_a", "alpha_general"),
-        ("hub_a", "alpha_only"),
-        ("hub_a", "shared"),
-        ("hub_a", "beta_only"),
-        ("hub_a", "global_room"),
-        ("hub_b", "alpha_other_hub"),
-    ):
-        toggle = f"input_boolean.labpulse_{service}_{measurement}_alarm_controls_expanded"
-        expected = 6 if measurement == "shared" else 3
-        if entity_occurrences(setup_views, toggle) != expected:
-            raise AssertionError(
-                f"{service}.{measurement} is not projected into the correct setup groups"
-            )
-        timing = f"input_number.labpulse_{service}_{measurement}_required_danger_percent"
-        expected_timing = 2 if measurement == "shared" else 1
-        if entity_occurrences(setup_views, timing) != expected_timing:
-            raise AssertionError(f"per-measurement timing projection is wrong for {service}.{measurement}")
-        live_status = f"sensor.labpulse_{service}_{measurement}_observed_danger_percent"
-        if entity_occurrences(setup_views, live_status) != expected_timing:
-            raise AssertionError(
-                f"live alarm status projection is wrong for {service}.{measurement}"
-            )
-    rendered = yaml.safe_dump(setup_views, sort_keys=False)
-    if any(headings(view, "subtitle") for view in setup_views) or "Sensor Hub Timing" in rendered:
-        raise AssertionError("physical sensor-hub grouping leaked into Alarm Setup")
-    if headings(alarm_setup) != [
-        "Notification Controls",
-        "Bulk Timing",
+    if landing.get("type") != "sections" or landing.get("max_columns") != 3:
+        raise AssertionError("Alarm Setup is not a three-column Sections view")
+    if headings(landing) != [
         "Configure Alarms",
+        "Notification Controls",
+        "Group Alarm Settings",
     ]:
-        raise AssertionError(f"unexpected Alarm Setup landing groups: {headings(alarm_setup)!r}")
-    navigation = next(
-        card
-        for card in alarm_setup["cards"]
-        if "Configure Alarms" in headings({"cards": [card]})
-    )
-    setup_rows = [
-        card
-        for card in navigation["cards"]
-        if card.get("type") == "grid" and card.get("columns") == 2
-    ]
-    if len(setup_rows) != 3:
-        raise AssertionError("Configure Alarms does not contain one row per active setup")
-    if any(
-        len(row.get("cards", [])) != 2
-        or row["cards"][1].get("type") != "vertical-stack"
-        for row in setup_rows
-    ):
-        raise AssertionError("setup navigation and mute controls are not paired in two columns")
-    if entity_occurrences(alarm_setup, "input_select.labpulse_bulk_alarm_timing_target") != 1:
-        raise AssertionError("bulk timing target selector is missing")
-    if entity_occurrences(alarm_setup, "script.labpulse_apply_bulk_alarm_timing") != 2:
-        raise AssertionError("bulk timing apply action is missing")
-    measurement_conditionals = [
-        card
-        for view in setup_views
-        for section in view["sections"]
-        for card in section["cards"]
-        if card.get("type") == "conditional"
-        and card.get("conditions", [{}])[0].get("entity", "").endswith(
-            "_alarm_controls_expanded"
-        )
-    ]
-    if len(measurement_conditionals) != 14:
-        raise AssertionError("settings and status projections are incomplete")
-    if any(card["conditions"][0]["state"] != "on" for card in measurement_conditionals):
-        raise AssertionError("native conditional expansion semantics changed")
-    launcher_grids = [
-        card
-        for view in setup_views
-        for section in view["sections"]
-        for card in section["cards"]
-        if card.get("type") == "grid" and card.get("columns") == 2
-    ]
-    if len(launcher_grids) != 3:
-        raise AssertionError("each setup does not have one compact measurement launcher grid")
-    launchers = [card for grid in launcher_grids for card in grid["cards"]]
-    if any(not card.get("hide_state") for card in launchers):
-        raise AssertionError("a collapsed measurement launcher exposes presentation state")
-    if any("Show Controls" in str(card.get("name", "")) for card in launchers):
-        raise AssertionError("awkward Show Controls wording remains")
+        raise AssertionError(f"unexpected Alarm Setup sections: {headings(landing)!r}")
+    if [section.get("column_span") for section in landing["sections"]] != [3, 1, 2]:
+        raise AssertionError("landing section widths do not follow the native layout")
+    landing_rendered = yaml.safe_dump(landing, sort_keys=False)
+    if "_alarm_controls_expanded" in landing_rendered:
+        raise AssertionError("measurement editors leaked onto the landing page")
+    if "alarm-setup-empty_setup" in landing_rendered:
+        raise AssertionError("empty setup gained an alarm navigation row")
+    for setup_id in ("room_conditions", "alpha_setup", "beta_setup"):
+        if f"/labpulse-monitor/alarm-setup-{setup_id}" not in landing_rendered:
+            raise AssertionError(f"setup Configure action is missing: {setup_id}")
+
+    # Every subview has explicit desktop and mobile projections of each row.
+    expected_rows = {
+        "alarm-setup-room_conditions": 1,
+        "alarm-setup-alpha_setup": 4,
+        "alarm-setup-beta_setup": 2,
+    }
     for view in setup_views:
-        settings_rendered = yaml.safe_dump(view["sections"][1], sort_keys=False)
-        status_rendered = yaml.safe_dump(view["sections"][2], sort_keys=False)
-        for derived_suffix in (
-            "_observed_danger_percent",
-            "_danger_zone",
-            "_recovery_zone",
-            "_sensor_fault_zone",
+        if view.get("type") != "sections" or view.get("max_columns") != 3:
+            raise AssertionError("a setup editor does not use the wide Sections grid")
+        if view.get("dense_section_placement") is not False:
+            raise AssertionError("a setup editor can reorder its measurement rows")
+        header_sections = view["sections"][:2]
+        if any(section.get("column_span") != 3 for section in header_sections):
+            raise AssertionError("a responsive setup header does not span the view")
+        header_rendered = yaml.safe_dump(header_sections, sort_keys=False)
+        for label in ("Notifications active", "Notifications muted"):
+            if label not in header_rendered:
+                raise AssertionError(f"setup header is missing {label}")
+        measurement_sections = view["sections"][2:]
+        if len(measurement_sections) != expected_rows[view["path"]] * 2:
+            raise AssertionError(f"wrong measurement-row count: {view['path']}")
+        for desktop, mobile in zip(
+            measurement_sections[::2], measurement_sections[1::2], strict=True
         ):
-            if derived_suffix in settings_rendered:
-                raise AssertionError(
-                    f"derived state leaked into editable settings: {derived_suffix}"
-                )
-            if derived_suffix not in status_rendered:
-                raise AssertionError(
-                    f"derived state is missing from live status: {derived_suffix}"
-                )
+            if desktop.get("type") != "grid" or mobile.get("type") != "grid":
+                raise AssertionError("a measurement row is not a grid section")
+            if "background" in desktop or "background" in mobile:
+                raise AssertionError("a closed measurement row has a grey background")
+            if desktop.get("column_span") != 3 or mobile.get("column_span") != 3:
+                raise AssertionError("a measurement row does not span the wide view")
+            if desktop.get("visibility") != [
+                {"condition": "screen", "media_query": "(min-width: 900px)"}
+            ]:
+                raise AssertionError("desktop measurement visibility is incorrect")
+            if mobile.get("visibility") != [
+                {"condition": "screen", "media_query": "(max-width: 899px)"}
+            ]:
+                raise AssertionError("mobile measurement visibility is incorrect")
+            desktop_spans = [
+                card.get("grid_options", {}).get("columns")
+                for card in desktop["cards"]
+            ]
+            if desktop_spans != [6, 6, 6, 6, 6, 6, 6, "full"]:
+                raise AssertionError(f"desktop row grid is incorrect: {desktop_spans!r}")
+            mobile_spans = [
+                card.get("grid_options", {}).get("columns")
+                for card in mobile["cards"]
+            ]
+            if mobile_spans != ["full", "full", 4, 4, 4, "full", "full", "full"]:
+                raise AssertionError(f"mobile row grid is incorrect: {mobile_spans!r}")
+            names = str(
+                [
+                    item.get("name")
+                    for item in walk_dashboard(desktop)
+                    if isinstance(item, dict)
+                ]
+            )
+            if "Configure" not in names or "Close" not in names:
+                raise AssertionError("measurement row lacks labelled Configure/Close actions")
+            if desktop["cards"][5].get("type") != "conditional":
+                raise AssertionError("Configure is not on the right of the summary row")
+
+    # Display-only values block every native interaction while the editor retains all fields.
+    for view in setup_views:
+        for section in view["sections"][2:]:
+            for tile in section["cards"][:5]:
+                for action in (
+                    "tap_action",
+                    "hold_action",
+                    "double_tap_action",
+                    "icon_tap_action",
+                ):
+                    if tile.get(action) != {"action": "none"}:
+                        raise AssertionError(f"display-only tile permits {action}")
+            editor = yaml.safe_dump(section["cards"][7], sort_keys=False)
+            for suffix in (
+                "_alarm_mode", "_alarm_muted", "_minimum_threshold",
+                "_maximum_threshold", "_recovery_deadband", "_required_danger_percent",
+                "_observation_window_seconds", "_required_recovery_seconds",
+                "_alarm_state", "_observed_danger_percent", "_danger_zone",
+                "_recovery_zone", "_sensor_fault_zone",
+            ):
+                if suffix not in editor:
+                    raise AssertionError(f"inline editor is missing {suffix}")
+
+    if "script.labpulse_apply_bulk_alarm_settings" not in landing_rendered:
+        raise AssertionError("selective group Apply action is missing")
+    if "Nothing will be changed" not in landing_rendered:
+        raise AssertionError("group review lacks its empty-selection message")
+    group_rendered = yaml.safe_dump(landing["sections"][2], sort_keys=False)
+    if "features:" in group_rendered:
+        raise AssertionError("group settings still use oversized tile features")
+    if (
+        "1. Choose target" not in group_rendered
+        or "2. Choose settings and values" not in group_rendered
+    ):
+        raise AssertionError("group settings do not present a clear workflow")
+    if "input_boolean.labpulse_bulk_alarm_editor_expanded" not in group_rendered:
+        raise AssertionError("group settings are not collapsible")
+    for action in ("input_boolean.turn_on", "input_boolean.turn_off"):
+        if action not in group_rendered:
+            raise AssertionError(f"group editor is missing {action}")
+    conditional_values = {
+        item["row"]["entity"]
+        for item in walk_dashboard(landing["sections"][2])
+        if isinstance(item, dict)
+        and item.get("type") == "conditional"
+        and isinstance(item.get("row"), dict)
+        and str(item["row"].get("entity", "")).startswith("input_number.")
+    }
+    expected_conditional_values = {
+        "input_number.labpulse_bulk_required_danger_percent",
+        "input_number.labpulse_bulk_observation_window_seconds",
+        "input_number.labpulse_bulk_required_recovery_seconds",
+        "input_number.labpulse_bulk_deadband_pressure_bar",
+        "input_number.labpulse_bulk_deadband_temperature_c",
+        "input_number.labpulse_bulk_deadband_temperature_f",
+        "input_number.labpulse_bulk_deadband_humidity",
+    }
+    if conditional_values != expected_conditional_values:
+        raise AssertionError(
+            f"bulk values are not individually conditional: {conditional_values!r}"
+        )
+    for section in (view["sections"][1:] for view in setup_views):
+        for row in section:
+            if row["cards"][0].get("icon") == "mdi:gauge":
+                raise AssertionError("measurement tiles still force the pressure icon")
+    if "name: Mute\n" in landing_rendered or "name: Unmute\n" in landing_rendered:
+        raise AssertionError("setup mute actions still use ambiguous labels")
 
 
 def test_setup_mute_controls_warn_only_for_shared_measurements() -> None:
@@ -517,22 +566,22 @@ def test_setup_mute_controls_warn_only_for_shared_measurements() -> None:
     landing = view_by_path(dashboard, "alarm-setup")
     room = view_by_path(dashboard, "alarm-setup-room_conditions")
     room_mute = "input_boolean.labpulse_setup_room_conditions_notifications_muted"
-    if entity_occurrences(landing, room_mute) != 2:
+    if not entity_occurrences(landing, room_mute):
         raise AssertionError("exclusive setup mute is missing from the landing page")
-    if entity_occurrences(room, room_mute) != 1:
-        raise AssertionError("exclusive setup did not get one direct mute tile")
+    if not entity_occurrences(room, room_mute):
+        raise AssertionError("exclusive setup mute is missing from its subview")
     if "confirmation" in yaml.safe_dump(room, sort_keys=False):
         raise AssertionError("exclusive setup gained an unnecessary warning")
 
     for title, setup_id in (("Alpha Setup", "alpha_setup"), ("Beta Setup", "beta_setup")):
         shared = view_by_path(dashboard, f"alarm-setup-{setup_id}")
         setup_mute = f"input_boolean.labpulse_setup_{setup_id}_notifications_muted"
-        if entity_occurrences(landing, setup_mute) != 7:
-            raise AssertionError(f"{title} shared mute is incomplete on the landing page")
+        if not entity_occurrences(landing, setup_mute):
+            raise AssertionError(f"{title} shared mute is missing from the landing page")
         rendered = yaml.safe_dump(shared, sort_keys=False)
-        if entity_occurrences(shared, setup_mute) != 6:
-            raise AssertionError(f"{title} shared mute states are incomplete")
-        if "Shared Supply" not in rendered or "shared with other setups" not in rendered:
+        if not entity_occurrences(shared, setup_mute):
+            raise AssertionError(f"{title} shared mute is missing from its subview")
+        if "Shared Supply" not in rendered or "will remain unmuted" not in rendered:
             raise AssertionError(f"{title} warning does not identify shared impact")
         if "perform_action: input_boolean.turn_on" not in rendered:
             raise AssertionError(f"{title} confirmed mute action is missing")
@@ -543,16 +592,16 @@ def test_setup_mute_controls_warn_only_for_shared_measurements() -> None:
             for value in walk_dashboard(shared)
             if isinstance(value, dict) and "confirmation" in value
         ]
-        if len(confirmations) != 1:
-            raise AssertionError(f"{title} should warn only while enabling mute")
+        if len(confirmations) != 2:
+            raise AssertionError(f"{title} should warn in both responsive headers")
 
     empty_mute = "input_boolean.labpulse_setup_empty_setup_notifications_muted"
     if entity_occurrences(dashboard, empty_mute):
         raise AssertionError("empty setup generated a mute control")
 
 
-def test_bulk_timing_targets_use_logical_setups() -> None:
-    """Apply bulk values to all measurements or one setup without hub grouping."""
+def test_bulk_alarm_targets_use_logical_setups() -> None:
+    """Apply only selected common or compatible deadband values."""
 
     paths, _, _ = generate()
     package = yaml.safe_load(paths.package_path.read_text(encoding="utf-8"))
@@ -565,12 +614,24 @@ def test_bulk_timing_targets_use_logical_setups() -> None:
     ]:
         raise AssertionError(f"unexpected bulk target options: {options!r}")
 
-    script = package["script"]["labpulse_apply_bulk_alarm_timing"]
-    choices = script["sequence"][1]["choose"]
+    for helper_id in (
+        "labpulse_bulk_apply_required_danger_percent",
+        "labpulse_bulk_apply_observation_window_seconds",
+        "labpulse_bulk_apply_required_recovery_seconds",
+        "labpulse_bulk_alarm_editor_expanded",
+        "labpulse_bulk_apply_deadband_pressure_bar",
+        "labpulse_bulk_apply_deadband_temperature_c",
+        "labpulse_bulk_apply_deadband_temperature_f",
+        "labpulse_bulk_apply_deadband_humidity",
+    ):
+        if package["input_boolean"][helper_id].get("initial") is not False:
+            raise AssertionError(f"bulk apply flag does not start off: {helper_id}")
+
+    script = package["script"]["labpulse_apply_bulk_alarm_settings"]
+    choices = script["sequence"][2]["choose"]
     danger_targets = {
-        choice["conditions"][0]["value_template"]: choice["sequence"][0]["target"][
-            "entity_id"
-        ]
+        choice["conditions"][0]["value_template"]:
+        choice["sequence"][0]["then"][0]["target"]["entity_id"]
         for choice in choices
     }
     expected = {
@@ -593,28 +654,63 @@ def test_bulk_timing_targets_use_logical_setups() -> None:
             raise AssertionError(f"wrong bulk targets for {condition}: {danger_targets.get(condition)!r}")
     if len(danger_targets['{{ selected_target == "All measurements" }}']) != 6:
         raise AssertionError("all-measurements bulk target does not cover each physical measurement once")
-    if any(len(choice["sequence"]) != 3 for choice in choices):
-        raise AssertionError("bulk timing does not apply all three timing values")
+    # Every write is guarded by its snapshotted apply flag.
+    for choice in choices:
+        for action in choice["sequence"]:
+            if "if" not in action or "then" not in action:
+                raise AssertionError("a bulk helper write is not independently guarded")
+    alpha = next(
+        choice for choice in choices
+        if "Alpha Setup" in choice["conditions"][0]["value_template"]
+    )
+    deadband_targets = {
+        action["if"][0]["value_template"]: action["then"][0]["target"]["entity_id"]
+        for action in alpha["sequence"][3:]
+    }
+    if deadband_targets.get("{{ apply_deadband_temperature_c }}") != [
+        "input_number.labpulse_hub_a_alpha_only_recovery_deadband",
+        "input_number.labpulse_hub_a_shared_recovery_deadband",
+    ]:
+        raise AssertionError("Celsius deadband target is not type-safe")
+    if deadband_targets.get("{{ apply_deadband_temperature_f }}") != [
+        "input_number.labpulse_hub_b_alpha_other_hub_recovery_deadband"
+    ]:
+        raise AssertionError("different temperature units were combined")
+    rendered_script = yaml.safe_dump(script, sort_keys=False)
+    for forbidden in ("minimum_threshold", "maximum_threshold", "alarm_mode", "alarm_muted"):
+        if forbidden in rendered_script:
+            raise AssertionError(f"unsafe setting entered bulk apply: {forbidden}")
+    if script["sequence"][-1] != {"service": "script.labpulse_clear_bulk_alarm_selection"}:
+        raise AssertionError("successful bulk apply does not clear its selection")
+    reset = next(
+        item for item in package["automation"]
+        if item.get("id") == "labpulse_clear_bulk_alarm_selection_on_target_change"
+    )
+    if reset["action"] != [{"service": "script.labpulse_clear_bulk_alarm_selection"}]:
+        raise AssertionError("target changes do not clear hidden apply flags")
 
 
 def test_diagnostics_use_physical_ownership() -> None:
-    """Render compact physical-service columns with canonical measurements."""
+    """Render responsive physical-service sections with canonical measurements."""
 
     _, dashboard, _ = generate()
     diagnostics = view_by_path(dashboard, "diagnostics")
-    if "type" in diagnostics or "sections" in diagnostics or "max_columns" in diagnostics:
-        raise AssertionError("Diagnostics is not native masonry")
+    if diagnostics.get("type") != "sections" or diagnostics.get("max_columns") != 3:
+        raise AssertionError("Diagnostics is not a native three-column Sections view")
+    if diagnostics.get("dense_section_placement") is not False:
+        raise AssertionError("Diagnostics can reorder physical services")
     if headings(diagnostics) != ["Hub A", "Hub B"]:
         raise AssertionError("Diagnostics did not follow physical service order")
-    service_columns = diagnostics.get("cards", [])
-    if len(service_columns) != 2 or any(
-        card.get("type") != "vertical-stack" for card in service_columns
+    service_sections = diagnostics.get("sections", [])
+    if len(service_sections) != 2 or any(
+        section.get("type") != "grid" or section.get("column_span") != 1
+        for section in service_sections
     ):
-        raise AssertionError("Diagnostics does not have one compact column per service")
+        raise AssertionError("Diagnostics does not have one section per service")
     health_grids = [
         card
-        for column in service_columns
-        for card in column["cards"]
+        for section in service_sections
+        for card in section["cards"]
         if card.get("type") == "grid" and card.get("columns") == 2
     ]
     if len(health_grids) != 2 or any(
@@ -729,7 +825,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("Monitor projections", test_monitor_setup_and_subcategory_projections),
     ("setup-grouped alarm controls", test_alarm_controls_are_grouped_by_setup),
     ("shared setup mute warning", test_setup_mute_controls_warn_only_for_shared_measurements),
-    ("logical bulk timing targets", test_bulk_timing_targets_use_logical_setups),
+    ("selective bulk alarm targets", test_bulk_alarm_targets_use_logical_setups),
     ("physical Diagnostics", test_diagnostics_use_physical_ownership),
     ("power dashboard", test_power_dashboard_remains_represented),
     ("cryogenics setup measurements", test_starter_keeps_cryogenics_setup_measurements),

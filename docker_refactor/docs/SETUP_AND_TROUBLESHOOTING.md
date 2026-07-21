@@ -113,7 +113,6 @@ It is not required for the live config: setup always preserves an existing
     automations.yaml                  UI-owned; created only if absent
     scripts.yaml                      UI-owned; created only if absent
     scenes.yaml                       UI-owned; created only if absent
-    labpulse_entity_map.yaml          generated diagnostic map
     labpulse-dashboard.yaml           generated YAML-mode dashboard
     packages/labpulse_generated.yaml  generated alarm package
   mosquitto/config/
@@ -203,11 +202,14 @@ services:
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
 helpers, not hardware config fields. From the dashboard's Alarm Setup landing
-page, open the required setup, select its compact measurement tile, then set that
+page, open the required setup, press **Configure** on its measurement row, then set that
 measurement's alarm mode, Min, Max, and Deadband. Observation window, required
 danger percentage, and required recovery duration also belong to that measurement.
-Use the subview back button to return to Alarm Setup. Use **Bulk Timing** to
-copy all three timing values to all ordinary measurements or one selected setup.
+Use **Close** to collapse the editor and the subview back button to return to
+Alarm Setup. In **Group Alarm Settings**, first choose a target, then switch on
+only the common values or compatible recovery-deadband families that should change.
+Its value input appears only after the matching **Change** switch is turned on.
+Review the exact list before confirming Apply; unchecked values are never written.
 
 On a fresh installation, ordinary-measurement alarm modes begin Disabled and the
 global notification mute is switched on automatically. Set and test all alarm
@@ -249,19 +251,20 @@ column. Individually muted measurements and measurements owned by a muted setup 
 omitted; the global mute does not hide problems. A shared measurement appears only
 once and is hidden if any owning setup is muted, matching its single alert.
 
-The Alarm Setup landing page uses masonry for global delivery controls, Bulk
-Timing, and alarm configuration. Each non-empty setup has a two-cell row with
-its navigation tile on the left and setup mute on the right; the mute is also
-available inside the setup editor. Each masonry block keeps its heading and
-controls in one vertical stack. Dedicated power monitoring has its own link.
-Setup tiles open native Home Assistant subviews and do not introduce new alarm
-or selection state. Inside a setup, the left column shows measurement tiles two
-across without the internal expansion helper's `On`/`Off` state. Selecting one
-reveals its editable settings in the middle column and its read-only live alarm
-status in the right column. The live card contains the current measurement, alarm
-state, observed danger, and danger/recovery/fault zones. On narrow screens,
-Home Assistant stacks the three sections. Physical Diagnostics uses masonry
-with one compact column per hub: connection, side-by-side health indicators,
+The Alarm Setup landing page puts setup configuration first, followed by global
+delivery controls and a group editor that stays collapsed until opened. Each non-empty setup row
+shows its measurement count, an explicit **Mute notifications** or **Unmute
+notifications** action, and a labelled Configure action. Raw helper states are
+hidden because an `off` muted flag means notifications are active. The mute is
+repeated inside the setup subview.
+Dedicated power monitoring has its own link. Inside a setup, native screen
+conditions choose a single-row desktop summary or deliberately wrapped mobile
+summary for each measurement. The closed rows have no grey section background;
+Configure/Close stays at the right on desktop and becomes full-width on mobile.
+Measurement icons come from each MQTT entity's device class. The inline editor
+uses side-by-side behaviour and timing cards on desktop, stacked cards on mobile,
+and a compact live-status block. Physical Diagnostics uses Sections with one
+compact section per hub: connection, side-by-side health indicators,
 latest raw measurements, and dedicated power lifecycle information where applicable.
 **Service Health** follows the immediate connection-derived problem signal;
 **Confirmed service fault** appears only after the configured fault delay and
@@ -276,11 +279,11 @@ that setup without changing the measurements' individual mute controls. Physical
 sensor-hub health and dedicated power alerts are not controlled by setup mutes.
 
 A measurement shared by several setups still produces one physical alert. That
-alert is delivered only when every owning setup is unmuted. Before enabling a
-mute on a setup containing shared measurements, the dashboard names the affected
-measurements and warns that their alerts will also be suppressed where they appear
-in other setups. The warning requires confirmation only while muting; unmuting
-is immediate.
+alert remains enabled while any owning setup is unmuted and is suppressed only
+when every owning setup is muted. Before enabling a mute on a setup containing
+shared measurements, the dashboard names the affected measurements and warns
+that they will remain unmuted while another setup using them is unmuted. The
+warning requires confirmation only while muting; unmuting is immediate.
 
 **Test mode** prefixes notification titles
 with `[TEST]` and routes SMS requests only to `sms.test_recipients`; alarm state
@@ -402,6 +405,14 @@ restart it so it reloads YAML:
 ```bash
 docker compose restart homeassistant
 ```
+
+After Home Assistant is ready, refresh the LabPulse dashboard in the browser.
+If a card is blank or reports an unknown type or feature after a Home Assistant
+upgrade, check the browser console and Home Assistant logs, then compare the
+generated card's `type` and `features` with the current official dashboard
+documentation. The generated file should contain no `custom:` type or Lovelace
+resource registration; a failure therefore indicates a renamed or unsupported
+native feature rather than a missing HACS package.
 
 Check the stack:
 
@@ -800,16 +811,14 @@ Mosquitto logs and use the MQTT subscription command above.
 ### 5. Home Assistant has no sensor entity
 
 Confirm the MQTT integration uses `127.0.0.1:1883`. Measurement discovery is not
-published until the first valid measurement. Inspect discovery traffic and:
-
-```text
-~/labpulse-ha/homeassistant/config/labpulse_entity_map.yaml
-```
+published until the first valid measurement. Inspect MQTT discovery traffic and
+the Entities page in Home Assistant.
 
 ### 6. A dashboard card has the wrong entity
 
-Compare its ID with `labpulse_entity_map.yaml`. LabPulse entity IDs are
-generated infrastructure and must not be renamed through Home Assistant. If a
+Compare the card ID in `labpulse-dashboard.yaml` with the entity shown in Home
+Assistant Developer Tools. LabPulse entity IDs are generated infrastructure and
+must not be renamed through Home Assistant. If a
 conflicting entity acquired a numeric suffix, remove the stale conflicting
 registry entry and let MQTT discovery recreate the deterministic ID. Permanent
 layout changes belong in `labpulse_homeassistant/dashboard/` or

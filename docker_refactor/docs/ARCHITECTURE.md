@@ -174,7 +174,6 @@ container. It turns typed config into:
 
 - Home Assistant core configuration
 - the generated alarm package
-- a diagnostic entity map
 - the generated `labpulse-dashboard.yaml` dashboard
 
 ### `labpulse_sms`
@@ -215,9 +214,9 @@ canonical physical catalog. It is nested inside the first masonry column,
 absent while healthy, and surfaces only confirmed service faults, persistent
 measurement alarm states, and power lifecycle faults. This avoids threshold-edge
 flicker, page-wide masonry repacking, new aggregate helpers, and duplicate
-shared measurements. Per-entity filter conditions omit individually muted measurements
-and measurements under any muted owning setup. The global notification gate does
-not conceal system health.
+shared measurements. Per-entity filter conditions omit individually muted
+measurements and shared measurements whose owning setups are all muted. The
+global notification gate does not conceal system health.
 
 A MAX17043 service receives only its configured `/dev/i2c-N` device mapping.
 It does not require privileged mode or a broad `/dev` mount.
@@ -240,7 +239,6 @@ without changing operator-tuned helper values or Home Assistant-owned state.
 | `compose.yaml` | Compose generator | replaced |
 | `configuration.yaml` | Home Assistant generator | replaced |
 | `packages/labpulse_generated.yaml` | alarm generator | replaced |
-| `labpulse_entity_map.yaml` | core generator | replaced |
 | `labpulse-dashboard.yaml` | dashboard generator | replaced |
 | `automations.yaml`, `scripts.yaml`, `scenes.yaml` | Home Assistant UI | created only if missing |
 

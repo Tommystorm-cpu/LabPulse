@@ -28,6 +28,8 @@ reconstructable from the repository and documented live configuration.
    development.
 6. Prioritize reliability for the current lab before adding speculative
    integrations.
+7. Keep generated dashboards native-only: no HACS cards, custom frontend
+   resources, LabPulse JavaScript, card-mod, or required custom themes.
 
 ## Security policy
 

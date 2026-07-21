@@ -386,14 +386,9 @@ avoids a second delimiter configuration.
 
 ### Core YAML output
 
-`core_config.render_core()` writes `configuration.yaml` and
-`labpulse_entity_map.yaml`. `ensure_ui_yaml_files()` creates empty
-`automations.yaml`, `scripts.yaml`, and `scenes.yaml` only when absent.
-
-`entity_map()` is a diagnostic projection of the model. For every MQTT entity
-it records its deterministic unique ID and entity ID plus all alarm-related
-entity IDs. It is the first file to consult when a dashboard reference is
-uncertain.
+`core_config.render_core()` writes `configuration.yaml`.
+`ensure_ui_yaml_files()` creates empty `automations.yaml`, `scripts.yaml`, and
+`scenes.yaml` only when absent.
 
 ### YAML dashboard rendering
 
@@ -430,29 +425,40 @@ page from repacking when the card appears. It is built from the canonical
 physical catalog, so shared measurements are not duplicated. It watches only
 persistent lifecycle state: confirmed service-fault latches, ordinary measurement
 `Danger`/`Sensor Fault` alarm states, and power `On Battery`/`Sensor Fault`.
-Each ordinary-measurement row also requires its individual alarm mute and every
-owning setup mute to be off. A shared measurement is therefore hidden if either
-owning setup is muted, matching its single-notification semantics. The global
-mute deliberately does not conceal operational state. Home Assistant removes
-the card when no eligible confirmed state matches.
+Each ordinary-measurement row requires its individual alarm mute to be off. A
+shared measurement remains visible while any owning setup is unmuted and is
+hidden only when every owning setup is muted, matching its single-notification
+semantics. The global mute deliberately does not conceal operational state.
+Home Assistant removes the card when no eligible confirmed state matches.
 
-Alarm Setup is a masonry landing page containing independently packed global
-notification tools, bulk timing, and a configuration card. Each setup row in
-that card pairs its navigation tile with the setup mute control; the same mute
-remains available inside the setup editor. Every landing-page block is a
-self-contained vertical stack so its heading cannot separate from its controls
-at narrower widths. Every non-empty setup has a native
-hidden three-column subview: a two-across measurement launcher grid on the left,
-conditional editable settings in the middle, and matching conditional live
-alarm status on the right. One expansion helper reveals both cards for the
-selected measurement. Dedicated power controls use their own subview. Shared visual
-controls reuse the same physical helper IDs. A setup
+Alarm Setup is a native Sections view with Configure Alarms first, followed by
+Notification Controls and Group Alarm Settings. The group editor is collapsed by
+default; when opened it presents target, settings and values, review, and Apply as
+a numbered workflow. Each value input appears only while its matching Change
+switch is on. It uses independent
+apply flags for every common value and recovery-deadband compatibility family.
+`BulkAlarmTarget` and `BulkDeadbandGroup` carry canonical measurement keys and
+explicit helper IDs, so the dashboard never derives identity or compatibility
+from labels. Target changes clear every apply flag. Apply snapshots the target,
+flags, and values; writes only selected fields; reports success; and clears the
+flags only after every write completes.
+
+Every non-empty setup has a hidden three-column Sections subview. Native screen
+conditions select an explicit desktop or mobile projection of the same entities.
+Desktop measurement rows use six equal cells for current value, alarm state,
+minimum, maximum, deadband, and right-aligned Configure/Close. Mobile rows place
+the current value and alarm state at full width, the three limits side by side,
+and Configure/Close at full width. Closed rows have no section background.
+Measurement tiles inherit the MQTT entity's device-class icon. The existing
+expansion helper reveals a two-column desktop form or stacked mobile form plus
+live alarm state. Dedicated power controls use their own subview. Shared
+visual controls reuse the same physical helper IDs. A setup
 containing shared measurements requires confirmation before its mute is enabled and
 names those measurements in the warning; unmuting does not require confirmation.
-Derived alarm zones and observed danger remain in the read-only live-status
-column rather than the editable form. Diagnostics contains no ordinary alarm
-engine state. It uses native masonry and the physical service projection in
-config order: one compact column per hub with its `device_name`, a connection
+Derived alarm zones and observed danger remain read-only inside the editor.
+Diagnostics contains no ordinary alarm engine state. It uses native Sections
+and the physical service projection in config order: one section per hub with
+its `device_name`, a connection
 tile, paired health tiles, physical measurements once, and power lifecycle
 diagnostics where applicable. **Service Health** is the immediate derived
 problem signal from the current connection status. **Confirmed service fault**
@@ -529,9 +535,9 @@ Sensor Fault
 
 Sensor fault takes priority. Danger entry excludes faulted and Disabled
 measurements. State changes occur whether muted or not; only notifications and SMS
-publishing are inside the combined global/setup/individual mute check. Every
-setup assigned to a shared measurement must be unmuted. No mute helper is used as a
-state writer for another mute helper. Physical service-health and dedicated
+publishing are inside the combined global/setup/individual mute check. At least
+one setup assigned to a shared measurement must be unmuted. No mute helper is
+used as a state writer for another mute helper. Physical service-health and dedicated
 power alarms are not gated by logical setup mutes. Test mode
 adds `[TEST]` to titles and sets the validated request flag consumed by the SMS
 recipient router. Its explicit `initial: true` setting makes every Home

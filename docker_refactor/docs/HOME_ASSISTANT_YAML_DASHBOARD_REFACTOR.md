@@ -294,8 +294,8 @@ compactly across the available screen width. Render columns in this order:
 1. Active Problems: a native entity-filter nested at the top of the first
    available column. It hides when empty and watches confirmed service faults,
    persistent ordinary-measurement alarm state, and persistent power state. Measurement
-   rows require their individual and every owning setup mute to be off; the
-   global mute does not affect this operational summary.
+   rows require their individual mute and at least one owning setup mute to be
+   off; the global mute does not affect this operational summary.
 2. Dedicated Power: one independent column for a service with
    `power_detection`; it is never grouped into a setup.
 3. One ordered column per configured setup.
@@ -327,43 +327,49 @@ Render controls by logical setup, with no physical sensor-hub grouping:
 
 ```text
 Alarm Setup
-  Masonry landing page
-  Notification Controls card
-  Bulk Timing card
+  Native Sections landing page
+  Configure Alarms section first
+  Notification Controls section
+  Collapsible Group Alarm Settings section
     target: all measurements or one configured setup
-  Configure Alarms card
-    each setup: navigation | setup mute
-    one tile per non-empty setup
-    dedicated power tile when configured
+    compact numbered workflow: target, settings and values, review, Apply
+    independently selected timing and danger changes
+    typed deadbands grouped by device class and exact unit
+    exact review and confirmed Apply action
+  Configure Alarms section
+    each setup: status | mute/unmute | Configure
+    dedicated power navigation when configured
 
 Setup subview
   repeated setup notification mute
-  left: two-column measurement launcher grid
-  middle: conditional editable alarm settings
-  right: conditional live alarm status
+  one background grid section per measurement
+  current value | alarm state | read-only minimum | maximum | deadband | Configure/Close
+  full-width conditional editor and live status
 ```
 
 Shared measurements appear in each affected setup, but every appearance references
 the same physical helper entities and alarm state. Observation window, required
-danger percentage, and recovery duration are per-measurement controls. The bulk
-editor copies all three values to all ordinary measurements or one selected setup
-after explicit confirmation.
+danger percentage, and recovery duration are per-measurement controls. Group
+Alarm Settings writes only fields whose apply flags are selected. Recovery
+deadbands are grouped by device class and exact unit, so incompatible
+measurements are never updated together.
 
 Each non-empty setup uses a native Home Assistant subview with a stable path and
 an explicit back path to the Alarm Setup landing page. The internal expansion
-helper state is hidden from the compact measurement tiles. The same helper reveals
-two separate cards: editable alarm settings in the middle column and read-only
-live alarm status in the right column. Live status contains current value,
-alarm state, observed danger, and danger/recovery/fault zones. Physical
+helper state is hidden from the compact row. Configure turns that helper on and
+reveals one full-width editor immediately below the row; Close turns it off.
+The editor contains every alarm setting plus current value, alarm state,
+observed danger, and danger/recovery/fault zones. Physical
 Diagnostics excludes these alarm-engine entities and remains hub-oriented.
 
 Each non-empty setup has an independent notification mute. Ordinary measurement
-delivery requires the global mute, every assigned setup mute, and the individual
-measurement mute to be open; toggling one must never write to another. Because a
-shared measurement has one physical notification, muting any owning setup suppresses
-that notification everywhere. The dashboard warns and requires confirmation
-before enabling a mute for a setup containing shared measurements, while allowing
-unmute without confirmation. Logical setup mutes do not govern physical
+delivery requires the global mute and individual measurement mute to be open;
+at least one assigned setup must also remain unmuted. Toggling one mute must
+never write to another. Because a shared measurement has one physical
+notification, it is suppressed only when every owning setup is muted. The
+dashboard warns that named shared measurements will remain unmuted while another
+setup uses them and requires confirmation before muting, while allowing unmute
+without confirmation. Logical setup mutes do not govern physical
 service-health or dedicated power alarms.
 
 Native tile-card features should be preferred over long generic entity lists:
@@ -380,8 +386,8 @@ automations, helpers, and scripts continue to own alarm decisions and state.
 
 ### 3. Diagnostics
 
-Diagnostics ignores setup membership and uses native masonry with one compact
-vertical card per physical service or sensor hub.
+Diagnostics ignores setup membership and uses native Sections with one compact
+section per physical service or sensor hub.
 
 Each service section should show:
 
@@ -503,7 +509,7 @@ load config
   -> validate and normalize
   -> build canonical catalog
   -> build setup and service projections
-  -> render packages/entity map
+  -> render core configuration and alarm package
   -> render labpulse-dashboard.yaml
 ```
 

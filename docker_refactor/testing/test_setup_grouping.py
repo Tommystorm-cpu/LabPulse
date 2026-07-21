@@ -12,6 +12,7 @@ sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import LabPulseConfig, SetupConfig
 from labpulse_homeassistant.measurement_catalog import MeasurementKey, build_measurement_catalog
+from labpulse_homeassistant.render_model import RenderModel
 
 
 def config_data() -> dict[str, object]:
@@ -38,11 +39,18 @@ def config_data() -> dict[str, object]:
                 "serial_port": "/tmp/pump-room",
                 "device_name": "Pump Room Hub",
                 "measurements": [
-                    {"name": "cryostat_only", "setups": ["cryostat"]},
+                    {
+                        "name": "cryostat_only",
+                        "setups": ["cryostat"],
+                        "unit": "°C",
+                        "device_class": "temperature",
+                    },
                     {"name": "turbo", "setups": ["turbo_pump"]},
                     {
                         "name": "shared",
                         "setups": ["turbo_pump", "cryostat"],
+                        "unit": "°C",
+                        "device_class": "temperature",
                     },
                 ],
             },
@@ -51,7 +59,14 @@ def config_data() -> dict[str, object]:
                 "gpio_sensor": "dht11",
                 "gpio_pin": "D4",
                 "device_name": "Room Hub",
-                "measurements": [{"name": "temperature", "setups": ["cryostat"]}],
+                "measurements": [
+                    {
+                        "name": "temperature",
+                        "setups": ["cryostat"],
+                        "unit": "°F",
+                        "device_class": "temperature",
+                    }
+                ],
             },
             "disabled": {
                 "enabled": False,
@@ -218,11 +233,46 @@ def test_canonical_catalog_and_projections() -> None:
         raise AssertionError("setup membership changed physical stable identity")
 
 
+def test_bulk_deadband_compatibility_groups() -> None:
+    """Group exact device-class/unit pairs and isolate missing device classes."""
+
+    config = LabPulseConfig.model_validate(config_data())
+    catalog = build_measurement_catalog(config)
+    model = RenderModel.from_config(config, catalog)
+    all_target = model.bulk_alarm_targets[0]
+    groups = {
+        (group.key.device_class, group.key.unit): group
+        for group in all_target.deadband_groups
+    }
+    celsius = groups[("temperature", "°C")]
+    if celsius.measurement_keys != (
+        MeasurementKey("pump_room", "cryostat_only"),
+        MeasurementKey("pump_room", "shared"),
+    ):
+        raise AssertionError("same-class Celsius measurements were not grouped")
+    fahrenheit = groups[("temperature", "°F")]
+    if fahrenheit.measurement_keys != (
+        MeasurementKey("room_environment", "temperature"),
+    ):
+        raise AssertionError("different temperature units were combined")
+    fallback_groups = [
+        group for group in all_target.deadband_groups
+        if group.key.device_class.startswith("measurement:")
+    ]
+    if len(fallback_groups) != 1 or fallback_groups[0].measurement_keys != (
+        MeasurementKey("pump_room", "turbo"),
+    ):
+        raise AssertionError("missing device class was not isolated")
+    if len(all_target.measurement_keys) != len(set(all_target.measurement_keys)):
+        raise AssertionError("all-measurements target duplicated a shared measurement")
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("scope normalization and validation", test_scope_normalization_and_validation),
     ("setup metadata validation", test_setup_metadata_validation),
     ("dedicated power membership", test_dedicated_power_omits_setup_membership),
     ("canonical catalog and projections", test_canonical_catalog_and_projections),
+    ("bulk deadband compatibility", test_bulk_deadband_compatibility_groups),
 ]
 
 

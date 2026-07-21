@@ -2,7 +2,7 @@
 
 The Monitor and Alarm Setup views organise measurements by logical setup.  This
 view deliberately answers a different question: *which physical hub should I
-inspect?*  Every service therefore remains a self-contained masonry column
+inspect?*  Every service therefore remains a self-contained native section
 containing connection state, health signals, and its latest raw measurements.
 """
 
@@ -16,19 +16,19 @@ from .primitives import (
     entities_card,
     heading_card,
     require_power,
-    vertical_stack,
 )
 
 
-def diagnostics_cards(
+def diagnostics_sections(
     catalog: MeasurementCatalog,
     model: RenderModel,
     index: DashboardIndex,
 ) -> list[Card]:
-    """Return one compact masonry column per physical sensor service."""
+    """Return one responsive section per physical sensor service."""
 
+    # Construct one diagnostics column for every enabled physical service.
     return [
-        _service_diagnostics_column(
+        _service_diagnostics_section(
             service,
             catalog.by_service[service.name],
             index,
@@ -37,13 +37,14 @@ def diagnostics_cards(
     ]
 
 
-def _service_diagnostics_column(
+def _service_diagnostics_section(
     service: ServiceModel,
     items: tuple[ConfiguredMeasurement, ...],
     index: DashboardIndex,
 ) -> Card:
-    """Render connection, health, and current values for one service."""
+    """Render connection, health, and current values in one native section."""
 
+    # Start with connection, health, and raw measurement cards.
     cards: list[Card] = [
         heading_card(service.label, "mdi:chip", "title"),
         {
@@ -82,14 +83,17 @@ def _service_diagnostics_column(
             title="Latest measurements",
         ),
     ]
+
+    # Add lifecycle diagnostics only for the dedicated power service.
     if service.power is not None:
         cards.append(_power_diagnostics_card(service))
-    return vertical_stack(cards)
+    return {"type": "grid", "column_span": 1, "cards": cards}
 
 
 def _power_diagnostics_card(service: ServiceModel) -> Card:
     """Return derived power lifecycle state without repeating raw measurements."""
 
+    # Get the validated power model before constructing lifecycle rows.
     power = require_power(service, "power diagnostics")
     return entities_card(
         [

@@ -23,7 +23,6 @@ Options:
 Generated files:
   homeassistant/config/configuration.yaml
   homeassistant/config/packages/labpulse_generated.yaml
-  homeassistant/config/labpulse_entity_map.yaml
   homeassistant/config/labpulse-dashboard.yaml
 
 Generation is offline and uses deterministic entity IDs.

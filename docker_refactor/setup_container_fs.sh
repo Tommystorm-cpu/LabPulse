@@ -289,7 +289,6 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/setup_usb_devices.py
   $PROJECT_DIR/labpulse_homeassistant/
   $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml
-  $PROJECT_DIR/homeassistant/config/labpulse_entity_map.yaml
   $PROJECT_DIR/homeassistant/config/labpulse-dashboard.yaml
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/labpulse-python/

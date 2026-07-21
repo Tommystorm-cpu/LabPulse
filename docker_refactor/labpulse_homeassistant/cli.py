@@ -16,6 +16,7 @@ def parse_args(
 ) -> GeneratorPaths:
     """Parse the normalized arguments passed by the shell wrapper."""
 
+    # Require the config path and Home Assistant output directory.
     if len(argv) != 3:
         print(
             "Usage: python3 -m labpulse_homeassistant "
@@ -24,6 +25,7 @@ def parse_args(
         )
         sys.exit(2)
 
+    # Normalize both command-line paths before the generator uses them.
     return GeneratorPaths(
         config_path=Path(argv[1]).expanduser().resolve(),
         ha_config_dir=Path(argv[2]).expanduser().resolve(),
@@ -36,13 +38,18 @@ def main(argv: list[str]) -> int:
     The generation path is read -> normalize model -> render supported YAML.
     """
 
+    # Load and validate the single LabPulse configuration source.
     paths = parse_args(argv)
     config = load_config(paths.config_path)
-    catalog = build_measurement_catalog(config)
-    model = RenderModel.from_config(config, catalog)
-    render_core(paths, model)
-    render_alarm(paths, model)
-    render_yaml_dashboard(paths, config, catalog, model)
+
+    # Build the relationship catalogue and its Home Assistant render model.
+    measurement_catalog = build_measurement_catalog(config)
+    render_model = RenderModel.from_config(config, measurement_catalog)
+
+    # Write core configuration, alarm resources, and the dashboard.
+    render_core(paths)
+    render_alarm(paths, render_model)
+    render_yaml_dashboard(paths, config, measurement_catalog, render_model)
     return 0
 
 

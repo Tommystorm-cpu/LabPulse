@@ -20,9 +20,7 @@ from ..render_model import PowerModel, RenderModel, ServiceModel, SetupAlarmMode
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "dashboard"
 
-# Lovelace cards stay as plain data until the outer writer serializes them.
-# These aliases keep signatures readable without trying to model Home
-# Assistant's large and evolving card schema.
+# Give the dashboard's plain YAML dictionaries short type names.
 Card = dict[str, object]
 CardSeed = dict[str, Any]
 
@@ -46,12 +44,17 @@ class DashboardIndex:
     ) -> DashboardIndex:
         """Build deterministic service, measurement, and setup lookup tables."""
 
+        # Index each service by its configured service name.
         services = {service.name: service for service in model.services}
+
+        # Index each measurement by its stable physical ownership key.
         measurements = {
             MeasurementKey(service.name, measurement.name): measurement
             for service in model.services
             for measurement in service.measurements
         }
+
+        # Index each setup by its stable setup ID.
         setups = {setup.setup_id: setup for setup in model.setups}
         return cls(services=services, measurements=measurements, setups=setups)
 
@@ -59,11 +62,22 @@ class DashboardIndex:
 def load_card_seed() -> CardSeed:
     """Load reusable alarm-card fragments from the dashboard YAML template."""
 
+    # Load the reusable card rules before inserting model-specific values.
     return yaml.safe_load((TEMPLATE_DIR / "cards.yaml").read_text(encoding="utf-8"))
 
 
 def heading_card(title: str, icon: str, style: str) -> Card:
-    """Return a native heading card with the project's consistent key order."""
+    """Return a native heading card with the project's consistent key order.
+
+    Example output::
+
+        {
+            "type": "heading",
+            "heading": "Freezers",
+            "heading_style": "title",
+            "icon": "mdi:snowflake",
+        }
+    """
 
     return {
         "type": "heading",
@@ -74,7 +88,22 @@ def heading_card(title: str, icon: str, style: str) -> Card:
 
 
 def entities_card(entities: list[Card], title: str | None = None) -> Card:
-    """Return a non-toggleable entities card, optionally with a title."""
+    """Return a non-toggleable entities card, optionally with a title.
+
+    Example output::
+
+        {
+            "type": "entities",
+            "title": "Freezer",
+            "show_header_toggle": False,
+            "entities": [
+                {
+                    "entity": "sensor.freezer_temperature",
+                    "name": "Temperature",
+                },
+            ],
+        }
+    """
 
     if title is not None:
         return {
@@ -91,7 +120,28 @@ def entities_card(entities: list[Card], title: str | None = None) -> Card:
 
 
 def vertical_stack(cards: list[Card]) -> Card:
-    """Keep one conceptual dashboard block together in a masonry column."""
+    """Keep one conceptual dashboard block together in a masonry column.
+
+    Example output::
+
+        {
+            "type": "vertical-stack",
+            "cards": [
+                {
+                    "type": "heading",
+                    "heading": "Freezer",
+                },
+                {
+                    "type": "entities",
+                    "entities": [
+                        {
+                            "entity": "sensor.freezer_temperature",
+                        },
+                    ],
+                },
+            ],
+        }
+    """
 
     return {"type": "vertical-stack", "cards": cards}
 
@@ -99,6 +149,7 @@ def vertical_stack(cards: list[Card]) -> Card:
 def require_power(service: ServiceModel, purpose: str) -> PowerModel:
     """Return a service's power model or reject an invalid renderer call."""
 
+    # Fail early when a power-only renderer receives an ordinary service.
     if service.power is None:
         raise ValueError(f"{purpose} requires a power service")
     return service.power

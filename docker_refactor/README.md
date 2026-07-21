@@ -49,7 +49,7 @@ The running Pi is configured through:
 ```
 
 The repository `config.yaml` is only a new-install starter. Generated
-`compose.yaml` and Home Assistant package/entity-map files are outputs, not
+`compose.yaml`, Home Assistant package, and dashboard files are outputs, not
 permanent editing targets.
 
 ## Source layout

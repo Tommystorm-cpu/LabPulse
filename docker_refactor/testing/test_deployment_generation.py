@@ -232,7 +232,6 @@ def test_offline_dashboard_generation_is_deterministic() -> None:
         generated_names = (
             "configuration.yaml",
             "labpulse-dashboard.yaml",
-            "labpulse_entity_map.yaml",
             "packages/labpulse_generated.yaml",
         )
         first = {

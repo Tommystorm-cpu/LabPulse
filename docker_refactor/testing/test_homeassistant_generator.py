@@ -88,13 +88,12 @@ def walk(value: object) -> Iterable[object]:
             yield from walk(child)
 
 
-def test_generated_package_and_entity_map() -> None:
-    """Keep generated helper, alarm, package, and MQTT identities stable."""
+def test_generated_package() -> None:
+    """Keep generated helpers, alarms, and package identities stable."""
 
     temp_root = REFACTOR_DIR / "testing" / "tmp"
     paths = render_into(temp_root / f"generator-{uuid4().hex}")
     package = yaml.safe_load(paths.package_path.read_text(encoding="utf-8"))
-    entity_map = yaml.safe_load(paths.entity_map_path.read_text(encoding="utf-8"))
 
     expected_helpers = (
         ("input_number", "labpulse_pressure_monitor_pressure_minimum_threshold"),
@@ -106,7 +105,15 @@ def test_generated_package_and_entity_map() -> None:
         ("input_boolean", "labpulse_pressure_monitor_pressure_alarm_timing_initialized"),
         ("input_select", "labpulse_bulk_alarm_timing_target"),
         ("input_number", "labpulse_bulk_required_danger_percent"),
-        ("script", "labpulse_apply_bulk_alarm_timing"),
+        ("script", "labpulse_apply_bulk_alarm_settings"),
+        ("script", "labpulse_clear_bulk_alarm_selection"),
+        ("input_boolean", "labpulse_bulk_apply_required_danger_percent"),
+        ("input_boolean", "labpulse_bulk_apply_observation_window_seconds"),
+        ("input_boolean", "labpulse_bulk_apply_required_recovery_seconds"),
+        ("input_boolean", "labpulse_bulk_apply_deadband_pressure_bar"),
+        ("input_boolean", "labpulse_bulk_apply_deadband_temperature_c"),
+        ("input_number", "labpulse_bulk_deadband_pressure_bar"),
+        ("input_number", "labpulse_bulk_deadband_temperature_c"),
         ("input_select", "labpulse_pressure_monitor_pressure_alarm_state"),
         ("input_select", "labpulse_pressure_monitor_pressure_alarm_mode"),
         ("input_boolean", "labpulse_pressure_monitor_pressure_alarm_muted"),
@@ -121,23 +128,6 @@ def test_generated_package_and_entity_map() -> None:
     for domain, helper_id in expected_helpers:
         if helper_id not in package[domain]:
             raise AssertionError(f"generated package lacks {domain}.{helper_id}")
-
-    pressure = entity_map["pressure_monitor"]["pressure"]
-    assert_equal(
-        pressure["mqtt_unique_id"],
-        "labpulse_pressure_monitor_pressure",
-        "measurement unique ID",
-    )
-    assert_equal(
-        pressure["entity_id"],
-        "sensor.labpulse_pressure_monitor_pressure",
-        "measurement entity ID",
-    )
-    assert_equal(
-        pressure["alarm_state"],
-        "input_select.labpulse_pressure_monitor_pressure_alarm_state",
-        "alarm-state identity",
-    )
 
     aliases = [item["alias"] for item in package["automation"]]
     for alias in (
@@ -245,7 +235,7 @@ def test_first_install_starts_globally_muted_once() -> None:
 
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("generated package and entity map", test_generated_package_and_entity_map),
+    ("generated package", test_generated_package),
     ("thresholds need no defaults file", test_thresholds_need_no_defaults_file),
     ("first installation starts globally muted once", test_first_install_starts_globally_muted_once),
 ]

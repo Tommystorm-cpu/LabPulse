@@ -13,16 +13,19 @@ been removed so that an implemented feature has one authoritative explanation.
 2. [CODE_INTERNALS.md](CODE_INTERNALS.md) follows the code itself: models,
    functions, runtime data structures, Home Assistant rendering, the alarm
    state machine, MQTT, SMS, and the simulator.
-3. [SETUP_AND_TROUBLESHOOTING.md](SETUP_AND_TROUBLESHOOTING.md) is the operator
+3. [HOME_ASSISTANT_RENDER_MODELS.md](HOME_ASSISTANT_RENDER_MODELS.md) is the
+   field-by-field reference for the Home Assistant dataclasses, their
+   containment hierarchy, and the values consumed by each writer.
+4. [SETUP_AND_TROUBLESHOOTING.md](SETUP_AND_TROUBLESHOOTING.md) is the operator
    guide: first installation, normal updates, fake hardware, dashboard safety,
    SMS setup, testing, and fault isolation.
-4. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the standardized Arduino
+5. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the standardized Arduino
    JSON contract, the temporary legacy formats, and their migration boundary.
    The buildable sketches and shared library are in
    [`../firmware/`](../firmware/).
-5. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,
+6. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,
    user-facing, engineering-maturity, and open-source work.
-6. [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) is the exact dry-run
+7. [POWER_MONITOR_TEST_PI.md](POWER_MONITOR_TEST_PI.md) is the exact dry-run
    and live GPIO acceptance procedure for the X1200 power lifecycle.
 
 Approved implementation specification:
@@ -37,7 +40,7 @@ Approved implementation specification:
 | --- | --- |
 | Why are there several containers and packages? | `ARCHITECTURE.md` |
 | Where does a measurement travel from USB to Home Assistant? | `ARCHITECTURE.md`, then `CODE_INTERNALS.md` |
-| Which model contains a service, measurement, or entity ID? | `CODE_INTERNALS.md` |
+| Which model contains a service, measurement, or entity ID? | `HOME_ASSISTANT_RENDER_MODELS.md` |
 | Which Python file produces each Home Assistant resource? | [`labpulse_homeassistant/README.md`](../labpulse_homeassistant/README.md#generation-flow) |
 | How are `[[ ... ]]` and `{{ ... }}` different? | `CODE_INTERNALS.md` |
 | How does Normal/Danger/Sensor Fault work? | `CODE_INTERNALS.md` |
@@ -66,6 +69,6 @@ problems.
 | Generated alarm behavior | `labpulse_homeassistant/templates/alarm/alarm_logic.yaml` |
 | Generated UPS power lifecycle | `labpulse_homeassistant/templates/alarm/power_logic.yaml` |
 
-Do not hand-edit `compose.yaml`, `labpulse_generated.yaml`,
-`labpulse_entity_map.yaml`, or `labpulse-dashboard.yaml` as permanent changes.
+Do not hand-edit `compose.yaml`, `labpulse_generated.yaml`, or
+`labpulse-dashboard.yaml` as permanent changes.
 They are generated outputs.

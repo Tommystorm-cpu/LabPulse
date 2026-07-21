@@ -9,9 +9,11 @@ from labpulse_common.config import MeasurementConfig
 from labpulse_common.identity import entity_id, slug, stable_id
 
 
+# Give the repeated dictionary types short names.
 EntityMap = dict[str, str]
 JsonDict = dict[str, Any]
 
+# Define the default limits shown by Home Assistant's threshold editors.
 THRESHOLD_RANGES: dict[str, JsonDict] = {
     "temp": {"unit": "\u00b0C", "range_min": -20, "range_max": 80, "step": 0.1},
     "hum": {"unit": "%", "range_min": 0, "range_max": 100, "step": 1},
@@ -44,11 +46,22 @@ class ThresholdModel:
     ) -> ThresholdModel:
         """Infer editor bounds from the measurement name and configured unit."""
 
+        # Normalize the measurement name before checking its type.
         name = slug(config.name)
-        kind = next(
-            (key for key in ("temp", "hum", "flow") if key in name),
-            "pressure" if "press" in name else "generic",
-        )
+
+        # Select threshold defaults from the name, falling back to generic limits.
+        if "temp" in name:
+            kind = "temp"
+        elif "hum" in name:
+            kind = "hum"
+        elif "flow" in name:
+            kind = "flow"
+        elif "press" in name:
+            kind = "pressure"
+        else:
+            kind = "generic"
+
+        # Construct the threshold model, preferring the configured unit.
         values = THRESHOLD_RANGES[kind]
         return cls(
             unit=config.unit or str(values["unit"]),
@@ -62,6 +75,7 @@ class ThresholdModel:
 class MeasurementModel:
     """Complete template data for one configured Home Assistant measurement."""
 
+    # Map each entity role to its Home Assistant domain and ID suffix.
     ENTITY_SPECS: ClassVar[dict[str, tuple[str, str]]] = {
         "alarm_state": ("input_select", "alarm_state"),
         "alarm_mode": ("input_select", "alarm_mode"),
@@ -79,6 +93,8 @@ class MeasurementModel:
         "alarm_controls_expanded": ("input_boolean", "alarm_controls_expanded"),
         "alarm_timing_initialized": ("input_boolean", "alarm_timing_initialized"),
     }
+
+    # List the template entities that also need stable unique IDs (for weird homeassistant reasons)
     UNIQUE_ID_NAMES: ClassVar[tuple[str, ...]] = (
         "danger_zone",
         "recovery_zone",
@@ -90,6 +106,7 @@ class MeasurementModel:
     name: str
     label: str
     subcategory: str | None
+    device_class: str | None
     notification_context: str
     mqtt_entity: MqttEntity
     entities: EntityMap
@@ -114,32 +131,43 @@ class MeasurementModel:
     ) -> MeasurementModel:
         """Build one complete measurement model from validated configuration."""
 
+        # Normalize the measurement name for every generated ID.
         name = slug(config.name)
+
+        # Create a "role: entity_id" dictionary for this measurement.
         entities = {
-            key: entity_id(domain, service_name, name, suffix)
-            for key, (domain, suffix) in cls.ENTITY_SPECS.items()
+            role: entity_id(domain, service_name, name, suffix)
+            for role, (domain, suffix) in cls.ENTITY_SPECS.items()
         }
+
+        # Create the notification-mute entity ID for every owning setup.
         setup_mutes = tuple(
             entity_id("input_boolean", "setup", setup_id, "notifications_muted")
             for setup_id in setup_ids
         )
-        checks = " and ".join(
+
+        # Allow notifications while any setup using this measurement remains unmuted.
+        checks = " or ".join(
             f"is_state('{mute}', 'off')" for mute in setup_mutes
         )
+
+        # Construct the complete measurement render model.
         return cls(
             service_name=service_name,
             name=name,
             label=config.display_label,
             subcategory=config.subcategory,
+            device_class=config.device_class,
             notification_context=notification_context,
             mqtt_entity=MqttEntity(
                 unique_id=stable_id(service_name, name),
                 entity_id=entity_id("sensor", service_name, name),
             ),
             entities=entities,
+            # Create a "role: unique_id" dictionary for the unique template entities.
             unique_ids={
-                key: stable_id(service_name, name, key)
-                for key in cls.UNIQUE_ID_NAMES
+                role: stable_id(service_name, name, role)
+                for role in cls.UNIQUE_ID_NAMES
             },
             setup_muted_entities=setup_mutes,
             setup_notifications_unmuted_template="{{ " + (checks or "true") + " }}",

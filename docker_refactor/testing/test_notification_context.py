@@ -188,7 +188,7 @@ def test_service_faults_remain_hub_level() -> None:
 
 
 def test_setup_mutes_are_independent_delivery_gates() -> None:
-    """Gate alerts by all memberships without changing another mute helper."""
+    """Keep shared alerts open while any owning setup remains unmuted."""
 
     config = LabPulseConfig.model_validate(config_data())
     catalog = build_measurement_catalog(config)
@@ -202,6 +202,18 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
             raise AssertionError(f"setup mute helper is missing: {helper}")
         if "initial" in helpers[helper_id]:
             raise AssertionError(f"setup mute does not restore state: {helper}")
+
+    measurements = {
+        measurement.label: measurement
+        for service in model.services
+        for measurement in service.measurements
+    }
+    shared_gate = measurements["Shared Measurement"].setup_notifications_unmuted_template
+    if shared_gate != (
+        "{{ is_state('" + alpha_mute + "', 'off') or "
+        "is_state('" + beta_mute + "', 'off') }}"
+    ):
+        raise AssertionError("shared measurement does not allow either open setup")
 
     generated = rendered_automations(config)
     expected_gates = {

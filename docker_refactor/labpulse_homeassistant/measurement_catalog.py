@@ -43,8 +43,9 @@ class MeasurementCatalog:
 
 
 def build_measurement_catalog(config: LabPulseConfig) -> MeasurementCatalog:
-    """Build one measurement object per enabled service and all required projections."""
+    """Build the MeasurementCatalog class and fill it with all measurements organised by key, setup and service"""
 
+    # Create a new tuple of setup_ids sorted by setup order
     setup_ids = tuple(
         setup_id
         for setup_id, _setup in sorted(
@@ -52,43 +53,64 @@ def build_measurement_catalog(config: LabPulseConfig) -> MeasurementCatalog:
             key=lambda item: (item[1].order, item[0]),
         )
     )
+
+    # Create a "setup_id: index" dictionary
     setup_order = {setup_id: index for index, setup_id in enumerate(setup_ids)}
-    by_setup_lists: dict[str, list[ConfiguredMeasurement]] = {
-        setup_id: [] for setup_id in setup_ids
-    }
+
+    # Create an empty dictionary with lists of measurements organised by setup and service
+    by_setup_lists: dict[str, list[ConfiguredMeasurement]] = {setup_id: [] for setup_id in setup_ids}
     by_service_lists: dict[str, list[ConfiguredMeasurement]] = {}
+
     measurements: list[ConfiguredMeasurement] = []
     selected_shared: list[ConfiguredMeasurement] = []
 
+    # Loop through every service and measurement
     for service_name, service in config.services.items():
+
         if not service.enabled:
             continue
+
         service_measurements: list[ConfiguredMeasurement] = []
+
         for measurement in service.measurements:
+
+            # Construct a tuple of the setups this measurement belongs to
             if measurement.setups is None:
                 effective_setup_ids = ()
             else:
                 effective_setup_ids = tuple(
-                    sorted(
+                    sorted( # Sort the setups by order
                         measurement.setups.setup_ids,
-                        key=setup_order.__getitem__,
+                        key=lambda setup_id: setup_order[setup_id],
                     )
                 )
+
+            # Construct the configured measurement class
             item = ConfiguredMeasurement(
                 key=MeasurementKey(service_name, measurement.name),
                 service=service,
                 measurement=measurement,
                 effective_setup_ids=effective_setup_ids,
             )
+
+            # Add it to the list of configured measurements and service measurements
             measurements.append(item)
             service_measurements.append(item)
+
+            # Enter this measurement in each setup in by_setup_lists
             for setup_id in effective_setup_ids:
                 by_setup_lists[setup_id].append(item)
+            
+            # If this measurement is shared between multiple setups
             if len(effective_setup_ids) > 1:
                 selected_shared.append(item)
+        
         by_service_lists[service_name] = service_measurements
 
+    # Make it immutable
     canonical = tuple(measurements)
+
+    # Construct and return the MeasurementCatalog
     return MeasurementCatalog(
         measurements=canonical,
         by_key={item.key: item for item in canonical},

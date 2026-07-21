@@ -132,7 +132,7 @@ input_selects:
     - id: "labpulse_bulk_alarm_timing_target"
       config:
         name: "Bulk Alarm Timing Target"
-        options: "[[ model.bulk_timing_target_options ]]"
+        options: "[[ model.bulk_alarm_target_options ]]"
 
   measurement:
     - id: "labpulse_[[ measurement.measurement_id ]]_alarm_state"

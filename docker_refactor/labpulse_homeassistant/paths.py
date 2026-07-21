@@ -8,6 +8,7 @@ from pathlib import Path
 class GeneratorPaths:
     """Filesystem paths used by the Home Assistant generator."""
 
+    # Keep only the two root paths; derive every generated path from them.
     config_path: Path
     ha_config_dir: Path
 
@@ -22,12 +23,6 @@ class GeneratorPaths:
         """Return the generated package YAML path."""
 
         return self.packages_dir / "labpulse_generated.yaml"
-
-    @property
-    def entity_map_path(self) -> Path:
-        """Return the generated deterministic entity map path."""
-
-        return self.ha_config_dir / "labpulse_entity_map.yaml"
 
     @property
     def configuration_path(self) -> Path:
