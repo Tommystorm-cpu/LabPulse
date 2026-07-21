@@ -325,7 +325,7 @@ not be edited from the row.
 On a narrow phone layout:
 
 - measurement label, current value, and alarm state occupy the first line;
-- minimum, maximum, and deadband wrap into a compact value grid below;
+- minimum, maximum, and notification mute wrap into a compact grid below;
 - Configure remains clearly labelled and reachable without horizontal scroll.
 
 ### Per-measurement editor
@@ -438,11 +438,11 @@ Use a full-width three-section desktop grid with one compact line:
 
 ```text
 measurement (6) | alarm state (6) | minimum (6) | maximum (6) |
-deadband (6) | Configure (6)
+notification mute (6) | Configure (6)
 ```
 
 The mobile projection gives measurement and alarm state full rows, places
-minimum, maximum, and deadband in three four-column cells, and gives
+minimum, maximum, and notification mute in three four-column cells, and gives
 Configure/Close a full row. Closed measurement sections have no background.
 
 Cards within the section are:
@@ -451,14 +451,14 @@ Cards within the section are:
 2. a read-only tile for the persistent alarm-state entity;
 3. a read-only tile for minimum threshold;
 4. a read-only tile for maximum threshold;
-5. a read-only tile for recovery deadband;
+5. a state-aware notification-mute tile;
 6. a state-hidden tile bound to the existing expansion helper, named
    **Configure** while closed and **Close** while open;
 7. the existing conditional editor, spanning the full section width.
 
 All display-only tiles set tap, hold, double-tap, and icon-tap actions to
 `none`. This prevents the more-info dialog from becoming an unintended edit
-path. The Configure/Close tile is the only interactive control in the compact
+path. Only notification mute and Configure/Close are interactive in the compact
 row.
 
 The renderer emits two conditional Configure/Close tiles if a dynamic name is
@@ -816,8 +816,8 @@ The redesign is complete when:
 
 - the landing page shows only notification tools, group settings, logical
   setups, and dedicated power navigation;
-- each measurement appears as a compact row with display-only minimum, maximum,
-  and deadband values;
+- each measurement appears as a compact row with display-only minimum and
+  maximum values plus its notification-mute control;
 - Configure opens the complete editor for that physical measurement;
 - every editable setting and live-status field from the old layout remains
   available;

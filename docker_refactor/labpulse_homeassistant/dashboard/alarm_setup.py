@@ -641,15 +641,16 @@ def _measurement_row_section(
         "alarm_state_tile",
         "minimum_tile",
         "maximum_tile",
-        "deadband_tile",
+        "measurement_mute_off",
+        "measurement_mute_on",
         "configure_closed_tile",
         "configure_open_tile",
     )
     cards = [expand_template(rules[name], context) for name in names]
     columns: tuple[int | str, ...] = (
-        ("full", "full", 4, 4, 4, "full", "full")
+        ("full", "full", 4, 4, 4, 4, "full", "full")
         if mobile
-        else (6, 6, 6, 6, 6, 6, 6)
+        else (6, 6, 6, 6, 6, 6, 6, 6)
     )
     for card, width in zip(cards, columns, strict=True):
         card["grid_options"] = {"columns": width}

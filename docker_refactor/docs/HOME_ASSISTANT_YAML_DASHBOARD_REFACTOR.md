@@ -343,7 +343,7 @@ Alarm Setup
 Setup subview
   repeated setup notification mute
   one background grid section per measurement
-  current value | alarm state | read-only minimum | maximum | deadband | Configure/Close
+  current value | alarm state | read-only minimum | maximum | mute | Configure/Close
   full-width conditional editor and live status
 ```
 

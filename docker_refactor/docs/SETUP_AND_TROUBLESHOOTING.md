@@ -261,7 +261,9 @@ Dedicated power monitoring has its own link. Inside a setup, native screen
 conditions choose a single-row desktop summary or deliberately wrapped mobile
 summary for each measurement. The closed rows have no grey section background;
 Configure/Close stays at the right on desktop and becomes full-width on mobile.
-Measurement icons come from each MQTT entity's device class. The inline editor
+Measurement icons come from each MQTT entity's device class. Each collapsed row
+shows and controls that measurement's notification state; recovery deadband
+remains available inside Configure. The inline editor
 uses side-by-side behaviour and timing cards on desktop, stacked cards on mobile,
 and a compact live-status block. Physical Diagnostics uses Sections with one
 compact section per hub: connection, side-by-side health indicators,

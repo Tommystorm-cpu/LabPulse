@@ -470,13 +470,15 @@ def test_alarm_controls_are_grouped_by_setup() -> None:
                 card.get("grid_options", {}).get("columns")
                 for card in desktop["cards"]
             ]
-            if desktop_spans != [6, 6, 6, 6, 6, 6, 6, "full"]:
+            if desktop_spans != [6, 6, 6, 6, 6, 6, 6, 6, "full"]:
                 raise AssertionError(f"desktop row grid is incorrect: {desktop_spans!r}")
             mobile_spans = [
                 card.get("grid_options", {}).get("columns")
                 for card in mobile["cards"]
             ]
-            if mobile_spans != ["full", "full", 4, 4, 4, "full", "full", "full"]:
+            if mobile_spans != [
+                "full", "full", 4, 4, 4, 4, "full", "full", "full"
+            ]:
                 raise AssertionError(f"mobile row grid is incorrect: {mobile_spans!r}")
             names = str(
                 [
@@ -487,13 +489,13 @@ def test_alarm_controls_are_grouped_by_setup() -> None:
             )
             if "Configure" not in names or "Close" not in names:
                 raise AssertionError("measurement row lacks labelled Configure/Close actions")
-            if desktop["cards"][5].get("type") != "conditional":
+            if desktop["cards"][6].get("type") != "conditional":
                 raise AssertionError("Configure is not on the right of the summary row")
 
-    # Display-only values block every native interaction while the editor retains all fields.
+    # Summary values stay read-only while mute is an explicit state-aware action.
     for view in setup_views:
         for section in view["sections"][2:]:
-            for tile in section["cards"][:5]:
+            for tile in section["cards"][:4]:
                 for action in (
                     "tap_action",
                     "hold_action",
@@ -502,7 +504,17 @@ def test_alarm_controls_are_grouped_by_setup() -> None:
                 ):
                     if tile.get(action) != {"action": "none"}:
                         raise AssertionError(f"display-only tile permits {action}")
-            editor = yaml.safe_dump(section["cards"][7], sort_keys=False)
+            mute_cards = section["cards"][4:6]
+            mute_rendered = yaml.safe_dump(mute_cards, sort_keys=False)
+            for label in ("Notifications active", "Notifications muted"):
+                if label not in mute_rendered:
+                    raise AssertionError(f"measurement row is missing {label}")
+            for action in ("input_boolean.turn_on", "input_boolean.turn_off"):
+                if action not in mute_rendered:
+                    raise AssertionError(f"measurement mute is missing {action}")
+            if "_recovery_deadband" in mute_rendered:
+                raise AssertionError("deadband still occupies the measurement summary row")
+            editor = yaml.safe_dump(section["cards"][-1], sort_keys=False)
             for suffix in (
                 "_alarm_mode", "_alarm_muted", "_minimum_threshold",
                 "_maximum_threshold", "_recovery_deadband", "_required_danger_percent",

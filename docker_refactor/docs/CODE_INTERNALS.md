@@ -446,9 +446,10 @@ flags only after every write completes.
 Every non-empty setup has a hidden three-column Sections subview. Native screen
 conditions select an explicit desktop or mobile projection of the same entities.
 Desktop measurement rows use six equal cells for current value, alarm state,
-minimum, maximum, deadband, and right-aligned Configure/Close. Mobile rows place
-the current value and alarm state at full width, the three limits side by side,
-and Configure/Close at full width. Closed rows have no section background.
+minimum, maximum, notification mute, and right-aligned Configure/Close. Mobile
+rows place the current value and alarm state at full width, the two thresholds
+and notification mute side by side, and Configure/Close at full width. Closed
+rows have no section background.
 Measurement tiles inherit the MQTT entity's device-class icon. The existing
 expansion helper reveals a two-column desktop form or stacked mobile form plus
 live alarm state. Dedicated power controls use their own subview. Shared

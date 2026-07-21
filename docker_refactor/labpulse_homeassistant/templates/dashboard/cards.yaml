@@ -157,17 +157,40 @@ alarm_setup_sections:
     hold_action: {action: none}
     double_tap_action: {action: none}
     icon_tap_action: {action: none}
-  deadband_tile:
-    type: tile
-    entity: "[[ measurement.entities.recovery_deadband ]]"
-    name: Deadband
-    icon: mdi:arrow-expand-vertical
-    grid_options:
-      columns: 4
-    tap_action: {action: none}
-    hold_action: {action: none}
-    double_tap_action: {action: none}
-    icon_tap_action: {action: none}
+  measurement_mute_off:
+    type: conditional
+    conditions:
+      - entity: "[[ measurement.entities.alarm_muted ]]"
+        state: "off"
+    card:
+      type: tile
+      entity: "[[ measurement.entities.alarm_muted ]]"
+      name: Notifications active
+      icon: mdi:bell-ring-outline
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: input_boolean.turn_on
+        target:
+          entity_id: "[[ measurement.entities.alarm_muted ]]"
+      icon_tap_action: {action: none}
+  measurement_mute_on:
+    type: conditional
+    conditions:
+      - entity: "[[ measurement.entities.alarm_muted ]]"
+        state: "on"
+    card:
+      type: tile
+      entity: "[[ measurement.entities.alarm_muted ]]"
+      name: Notifications muted
+      icon: mdi:bell-off-outline
+      hide_state: true
+      tap_action:
+        action: perform-action
+        perform_action: input_boolean.turn_off
+        target:
+          entity_id: "[[ measurement.entities.alarm_muted ]]"
+      icon_tap_action: {action: none}
 global_alarm_setup:
   heading_card:
     type: heading
