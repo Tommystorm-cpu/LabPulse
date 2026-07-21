@@ -5,6 +5,15 @@ import math
 import re
 from typing import Optional
 
+# MIGRATION CLEANUP: after the pressure-monitor, pump-room, and turbo-pump
+# Arduinos have all been flashed with the pipe-delimited firmware and their
+# live config entries use `parser: pipe`, remove:
+#   1. the JSON detection/import and `_parse_json_record()`;
+#   2. the `pressure`, `pump_room`, and `water` dispatch branches;
+#   3. `_parse_pressure()` and the legacy-only label handling/tests.
+# Keep the generic pipe parser. Keep UPS-labelled parsing until that simulator
+# or driver is migrated separately.
+
 
 class SerialParser:
     """
@@ -45,19 +54,29 @@ class SerialParser:
         if not line:
             return None
 
+        # REMOVE AFTER FIRMWARE MIGRATION: no pipe-delimited sketch emits JSON.
         if line.startswith("{"):
             return self._parse_json_record(line)
 
+        # REMOVE AFTER PRESSURE FIRMWARE MIGRATION: the new sketch emits bar
+        # directly and its config must use `parser: pipe`.
         if self.parser_type == "pressure":
             return self._parse_pressure(line)
 
-        if self.parser_type in {"pump_room", "water", "ups_simulator"}:
+        # REMOVE AFTER PUMP/TURBO FIRMWARE MIGRATION: these two named parsers
+        # exist only for the currently flashed multi-line/unit-bearing output.
+        if self.parser_type in {"pump_room", "water"}:
+            return self._parse_labelled_values(line)
+
+        # Do not remove with the Arduino migration; this is a separate UPS
+        # simulator format rather than legacy Arduino firmware.
+        if self.parser_type == "ups_simulator":
             return self._parse_labelled_values(line)
 
         return self._parse_pipe_delimited(line)
 
     def _parse_json_record(self, line: str) -> Optional[dict[str, float]]:
-        """Parse one schema-1 LabPulse firmware JSON record."""
+        """Parse old schema-1 JSON; remove after all Arduino firmware migration."""
 
         try:
             payload = json.loads(line)
@@ -96,7 +115,7 @@ class SerialParser:
 
     def _parse_pressure(self, line: str) -> Optional[dict[str, float]]:
         """
-        Parse the compressed-air Arduino format.
+        Parse legacy compressed-air output; remove after that board is flashed.
 
         The Arduino prints one pressure value in MPa. LabPulse publishes bar,
         so the parsed value is multiplied by 10.
@@ -110,7 +129,11 @@ class SerialParser:
 
     def _parse_labelled_values(self, line: str) -> Optional[dict[str, float]]:
         """
-        Parse labelled Arduino values such as Flow1, Temp0, and RoomHum.
+        Parse legacy Arduino values and the separate labelled UPS simulator.
+
+        After the pump-room and turbo-pump boards are flashed, remove their
+        dispatch branches and legacy labels/examples. Retain only the UPS
+        labels while `parser: ups_simulator` remains in use.
 
         This handles both clean lines:
             Flow1: 2.45 L/min | Flow2: 3.10 L/min

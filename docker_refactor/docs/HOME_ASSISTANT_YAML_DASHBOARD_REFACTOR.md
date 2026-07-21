@@ -144,7 +144,7 @@ services:
   pump_room:
     enabled: true
     driver: serial
-    parser: pump_room
+    parser: pipe
     serial_port: "/dev/serial/by-id/..."
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"

@@ -59,7 +59,7 @@ labpulse_common/          typed config, identity, MQTT contracts, logging
 labpulse_hardware/        drivers, parsing, hardware loop, MQTT publishing
 labpulse_homeassistant/   dashboard/alarm/core configuration generator
 labpulse_sms/             MQTT alert subscriber and SMS delivery
-firmware/                 standardized Arduino sketches and shared protocol
+firmware/                 simple pipe-delimited Arduino sketches
 testing/                  script-based contract tests
 docs/                     the four maintained guides
 ```

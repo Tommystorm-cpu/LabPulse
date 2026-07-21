@@ -20,7 +20,7 @@ been removed so that an implemented feature has one authoritative explanation.
    guide: first installation, normal updates, fake hardware, dashboard safety,
    SMS setup, testing, and fault isolation.
 5. [ARDUINO_AND_CPP.md](ARDUINO_AND_CPP.md) records the standardized Arduino
-   JSON contract, the temporary legacy formats, and their migration boundary.
+   pipe-delimited contract, temporary legacy formats, and migration boundary.
    The buildable sketches and shared library are in
    [`../firmware/`](../firmware/).
 6. [SOFTWARE_TODO.md](SOFTWARE_TODO.md) tracks remaining reliability,

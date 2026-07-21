@@ -1,106 +1,91 @@
 # LabPulse Arduino firmware
 
-This directory contains the standardized firmware for serial Arduinos used by
-the Docker refactor. These sketches supersede the human-readable sketches in
-the repository-root `Arduino/` directory once each physical board has been
-identified, backed up, flashed, and checked.
-
-## Sketch map
-
-| Sketch | Device identity | Measurements |
-| --- | --- | --- |
-| `pressure_monitor/pressure_monitor.ino` | `pressure_monitor` | compressed-air pressure in bar |
-| `pump_room/pump_room.ino` | `pump_room` | two flows, four water temperatures, DHT11 room environment, two pressures |
-| `turbo_pump/turbo_pump.ino` | `turbo_pump` | two flows and four water temperatures |
-
-All sketches use 9600 baud and emit one compact JSON object per line. They use
-the shared `libraries/LabPulseProtocol` Arduino library and avoid dynamic
-`String` allocation.
+These are the standard serial sketches for the Docker refactor. Each sketch is
+self-contained so a lab can copy the nearest example, change its pins and
+calibration constants, and add or remove labelled values without learning a
+custom protocol library.
 
 ## Serial contract
 
-Startup emits a non-telemetry identity record:
+All sketches use 9600 baud and emit one complete sample per line:
 
-```json
-{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"hello"}
+```text
+key: value | key: value | key: value
 ```
 
-Each sample has one envelope:
+For example:
 
-```json
-{"device":"turbo_pump","schema":1,"firmware":"turbo-pump-1.0.0","type":"sample","uptime_ms":5000,"measurements":{"flow1":0.267,"flow2":0.000,"temp0":18.87,"temp1":18.28,"temp2":null,"temp3":null},"diagnostics":{"sample_ms":5000,"flow1_pulses":10,"flow2_pulses":0,"temp0_adc":512,"temp1_adc":508,"temp2_adc":1023,"temp3_adc":1023}}
+```text
+pressure: 1.03
+flow1: 2.45 | flow2: 3.10 | temp0: 20.11 | temp1: 20.22
 ```
 
-- `device` must exactly match the service key in `config.yaml`.
-- `schema` is the serial contract version, currently `1`.
-- `firmware` identifies the flashed sketch revision.
-- `measurements` contains only values that may be published to Home Assistant.
-- An invalid sensor measurement is JSON `null`; the Python parser omits it so its
-  MQTT entity expires instead of displaying a plausible sentinel value.
-- `diagnostics` contains raw pulse/ADC evidence. It is deliberately not
-  returned as measurements or published as normal Home Assistant telemetry.
+Rules:
 
-The parser rejects a JSON record with a different device or schema. This makes
-an incorrect USB-to-service assignment fail visibly instead of silently
-publishing one Arduino's values under another device.
+- keys are lower-case and exactly match `measurements[].name` in `config.yaml`;
+- each value is already in the unit declared by config;
+- units are not written into the serial line;
+- invalid sensor channels are written as `null` and ignored by Python;
+- sketches do not emit JSON, startup records, or diagnostics records;
+- serial services use the generic `parser: pipe` parser.
 
-## Pin map retained from the existing sketches
+The contract deliberately has no device identity field. Stable
+`/dev/serial/by-id/...` assignments identify boards, so operators must verify
+the physical board-to-service mapping before flashing.
 
-| Device | Function | Arduino pin |
+## Sketch map
+
+| Sketch | Measurements | Interval |
 | --- | --- | --- |
-| pressure monitor | pressure analog input | A0 |
-| pump room | flow 1 / flow 2 | D3 / D2 |
-| pump room | DHT11 | D4 |
-| pump room | water temperatures 0-3 | A0-A3 |
-| pump room | pressure 1 / pressure 2 | A5 / A4 |
-| turbo pump | flow 1 / flow 2 | D2 / D3 |
-| turbo pump | water temperatures 0-3 | A0-A3 |
+| `pressure_monitor/pressure_monitor.ino` | compressed-air pressure in bar | 1 s |
+| `pump_room/pump_room.ino` | two flows, four water temperatures, room DHT11, two pressures | 5 s |
+| `turbo_pump/turbo_pump.ino` | two flows and four water temperatures | 5 s |
 
-The pump-room and turbo-pump flow order is intentionally different because
-that is what their existing sketches declare. Verify the PCB and cable wiring
-before flashing rather than assuming those labels are physically correct.
+## Legacy-equivalent pins and calculations
 
-## Reliability changes
+The refactor sketches retain the installed sketches' pins, calibration values,
+equations, and displayed precision.
 
-The flow sketches:
+| Device | Function | Pins / calibration |
+| --- | --- | --- |
+| pressure monitor | pressure | A0; 0.48-4.5 V = 0-1.6 MPa; ADC divisor 1023 |
+| pump room | flow 1 / flow 2 | D3 / D2; 450 pulses per litre |
+| pump room | temperatures | A0-A3; 4.7 kOhm divider and original Steinhart-Hart coefficients |
+| pump room | room / pressure | DHT11 on D4; pressure 1 / 2 on A5 / A4 |
+| turbo pump | flow 1 / flow 2 | D2 / D3; 450 pulses per litre |
+| turbo pump | temperatures | A0-A3; 4.7 kOhm divider and original Steinhart-Hart coefficients |
 
-- increment `volatile unsigned long` counters in minimal interrupt handlers;
-- copy and reset both counters atomically;
-- leave the flow interrupts attached while sensor reads and serial output run;
-- calculate litres/minute outside the interrupt;
-- include raw pulse counts and the measured sample interval in diagnostics.
+The pump-room pressure calculation intentionally retains its legacy
+`5.0 / 1024.0` ADC scaling and zero clamp. The standalone pressure sketch now
+performs the MPa-to-bar conversion itself, but first preserves the old sketch's
+four-decimal MPa quantisation. The published value therefore remains a
+two-decimal bar reading without a Python-side conversion.
 
-Thermistor inputs reject ADC endpoint values before divider and logarithm
-calculations. Calculated values must also be finite and within a broad physical
-sanity range. The pressure and DHT inputs apply equivalent finite/range checks.
+## Retained safety improvements
 
-Zero pulses still cannot distinguish a stationary connected flow sensor from a
-missing or disconnected one. Physical flow or an injected test pulse remains
-necessary to prove that channel.
+- flow interrupts update `volatile unsigned long` pulse counters;
+- the main loop snapshots and resets counters atomically;
+- interrupts stay active while sensor reads and serial output run;
+- thermistor and pressure ADC endpoints are rejected;
+- non-finite and broadly impossible readings become `null`;
+- one invalid channel does not suppress the other channels on that line.
+
+Zero flow remains a valid measurement. Firmware cannot distinguish a connected
+stationary flow meter from a disconnected meter that produces no pulses; that
+requires a physical-flow or injected-pulse test.
 
 ## Build prerequisites
 
-The target used by the existing installation is expected to be an Arduino Uno.
-Install:
-
-- the Arduino AVR Boards core;
-- this directory's `LabPulseProtocol` library;
-- the Arduino `DHT sensor library` for the pump-room sketch only.
-
-Example Arduino CLI commands from `docker_refactor/firmware`:
+The expected board is an Arduino Uno. Install the Arduino AVR Boards core and,
+for the pump-room sketch only, the Arduino DHT sensor library. No LabPulse
+Arduino library is required.
 
 ```bash
-arduino-cli compile --fqbn arduino:avr:uno \
-  --libraries ./libraries pressure_monitor
-
-arduino-cli compile --fqbn arduino:avr:uno \
-  --libraries ./libraries turbo_pump
-
-arduino-cli compile --fqbn arduino:avr:uno \
-  --libraries ./libraries pump_room
+arduino-cli compile --fqbn arduino:avr:uno pressure_monitor
+arduino-cli compile --fqbn arduino:avr:uno turbo_pump
+arduino-cli compile --fqbn arduino:avr:uno pump_room
 ```
 
-Do not flash a live board until its stable `/dev/serial/by-id/...` identity,
-physical role, current sketch, and pin wiring have been recorded. Flash one
-board at a time, read its `hello` line, verify every configured measurement, and
-then run its LabPulse container.
+Do not flash a live board until its stable USB identity, physical role, current
+sketch, and pin wiring have been recorded. Flash one board at a time and verify
+every configured key in Serial Monitor before restarting its LabPulse service.

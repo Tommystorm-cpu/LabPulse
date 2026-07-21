@@ -256,19 +256,14 @@ class MeasurementGenerator:
         return self.scenarios.get(target) == "stale"
 
     @staticmethod
-    def _firmware_payload(device: str, measurements: dict[str, float]) -> str:
-        """Return one compact schema-1 firmware JSON line."""
+    def _firmware_payload(measurements: dict[str, float]) -> str:
+        """Return one standardized pipe-delimited firmware sample."""
 
-        return json.dumps(
-            {
-                "device": device,
-                "schema": 1,
-                "firmware": "simulator",
-                "type": "sample",
-                "measurements": measurements,
-            },
-            separators=(",", ":"),
-        ) + "\n"
+        parts = []
+        for name, value in measurements.items():
+            digits = 1 if name in {"roomtemp", "roomhum"} else 2
+            parts.append(f"{name}: {value:.{digits}f}")
+        return " | ".join(parts) + "\n"
 
     def payloads(self) -> dict[str, str]:
         """Build one complete emission for every simulated serial device."""
@@ -325,17 +320,12 @@ class MeasurementGenerator:
         payloads: dict[str, str] = {}
         if not self._is_stale("pressure_monitor.pressure"):
             payloads["pressure"] = self._firmware_payload(
-                "pressure_monitor",
-                {"pressure": round(float(self._pressure_mpa()) * 10.0, 4)},
+                {"pressure": round(float(self._pressure_mpa()) * 10.0, 2)}
             )
         if pump_measurements:
-            payloads["pump_room"] = self._firmware_payload(
-                "pump_room", pump_measurements
-            )
+            payloads["pump_room"] = self._firmware_payload(pump_measurements)
         if turbo_measurements:
-            payloads["turbo_pump"] = self._firmware_payload(
-                "turbo_pump", turbo_measurements
-            )
+            payloads["turbo_pump"] = self._firmware_payload(turbo_measurements)
         if room_parts:
             payloads["room_environment"] = "|".join(room_parts) + "\n"
         ups_payload = self._ups_payload()

@@ -58,7 +58,7 @@ services:
   pressure_monitor:
     enabled: true
     driver: serial
-    parser: pressure
+    parser: pressure # Change to "pipe" after flashing the refactor firmware.
     serial_port: "FAKE_PRESSURE_PORT"
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
@@ -73,7 +73,7 @@ services:
   pump_room:
     enabled: true
     driver: serial
-    parser: pump_room
+    parser: pump_room # Change to "pipe" after flashing the refactor firmware.
     serial_port: "FAKE_PUMP_ROOM_PORT"
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
@@ -143,7 +143,7 @@ services:
   turbo_pump:
     enabled: true
     driver: serial
-    parser: water
+    parser: water # Change to "pipe" after flashing the refactor firmware.
     serial_port: "FAKE_TURBO_PUMP_PORT"
     baud_rate: 9600
     device_name: "Turbo Pump Hub"

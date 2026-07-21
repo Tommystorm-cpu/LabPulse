@@ -157,7 +157,7 @@ services:
   pressure_monitor:
     enabled: true
     driver: serial
-    parser: pressure
+    parser: pipe
     serial_port: "/dev/serial/by-id/usb-Arduino_..."
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"

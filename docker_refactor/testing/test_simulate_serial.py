@@ -19,13 +19,13 @@ def test_generated_payloads_match_parsers() -> None:
 
     payloads = MeasurementGenerator(seed=4).payloads()
 
-    pressure = SerialParser("pressure_monitor", "pressure").parse(
+    pressure = SerialParser("pressure_monitor", "pipe").parse(
         payloads["pressure"].strip()
     )
-    pump = SerialParser("pump_room", "pump_room").parse(
+    pump = SerialParser("pump_room", "pipe").parse(
         payloads["pump_room"].strip()
     )
-    turbo = SerialParser("turbo_pump", "water").parse(payloads["turbo_pump"].strip())
+    turbo = SerialParser("turbo_pump", "pipe").parse(payloads["turbo_pump"].strip())
     room = SerialParser("room_environment", "pipe").parse(
         payloads["room_environment"].strip()
     )
@@ -104,10 +104,10 @@ def test_scenarios_change_generated_values() -> None:
     first = generator.payloads()
     room_parser = SerialParser("room_environment", "pipe")
     first_room = room_parser.parse(first["room_environment"].strip())
-    pressure = SerialParser("pressure_monitor", "pressure").parse(
+    pressure = SerialParser("pressure_monitor", "pipe").parse(
         first["pressure"].strip()
     )
-    pump = SerialParser("pump_room", "pump_room").parse(first["pump_room"])
+    pump = SerialParser("pump_room", "pipe").parse(first["pump_room"])
 
     if first_room is None or pressure is None or pump is None:
         raise AssertionError("scenario payload failed to parse")

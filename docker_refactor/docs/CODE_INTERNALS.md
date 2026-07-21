@@ -223,20 +223,26 @@ returns exactly:
 {"temperature": float, "humidity": float}
 ```
 
-### Unified and legacy serial parser
+### Standard and legacy serial parser
 
-`legacy_parsing/serial_parser.py::SerialParser` first detects the standardized
-schema-1 JSON envelope emitted by `docker_refactor/firmware`. It requires the
-record's `device` to match the configured service name and returns only finite
-numeric members of its `measurements` object. Startup records, JSON `null`, booleans,
-metadata, and `diagnostics` are not returned as telemetry.
+`legacy_parsing/serial_parser.py::SerialParser` uses `parser: pipe` for the
+standard Arduino contract:
 
-If the line is not JSON, `parser_type` selects the temporary compatibility
-path for boards that have not yet been reflashed:
+```text
+flow1: 2.45 | flow2: 3.10 | temp0: 20.11
+```
+
+Keys are lower-cased and values must be finite numbers. Firmware emits values
+in their final configured units; invalid channels are written as `null` and
+omitted by the parser. There is no JSON serial envelope or Python-side unit
+conversion in the standard path.
+
+Other `parser_type` values select temporary compatibility paths for boards
+that have not yet been reflashed:
 
 - `pressure`: parse one MPa number and multiply by 10 to publish bar.
 - `pump_room` or `water`: locate recognized labels anywhere in a line.
-- anything else: generic pipe-delimited `Label: value | Label: value` parsing.
+- `pipe`: generic pipe-delimited `Label: value | Label: value` parsing.
 
 The labelled parser uses a compiled pattern for `FlowRate`, `TotalLitres`,
 `RoomTemp`, `RoomHum`, numbered `Flow`, `Temp`, and `Press` labels. Values run
@@ -244,7 +250,7 @@ from one recognized label to the next, allowing it to recover the malformed
 `L/minTemp0` boundary printed by the full-water sketch.
 
 `_clean_float()` extracts the first signed decimal and rejects non-finite
-values. `_key()` lowercases labels. Both paths produce the same normalized
+values. `_key()` lowercases labels. All paths produce the same normalized
 `dict[str, float]`, such as:
 
 ```python
