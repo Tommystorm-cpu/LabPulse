@@ -534,6 +534,14 @@ Sensor Fault
   -- neither condition is true                 --> remains Sensor Fault
 ```
 
+Sensor-fault reconciliation is condition-driven rather than relying only on the
+instantaneous `on` to `off` fault-zone edge. If fresh data returns in the danger
+zone before the observation window contains enough evidence, the state remains
+`Sensor Fault` temporarily and moves to `Danger` when the configured percentage
+is reached. The same reconciliation repairs a persisted `Sensor Fault` after a
+Home Assistant restart, and moves directly to `Normal` when the recovered value
+is already inside the recovery zone.
+
 Sensor fault takes priority. Danger entry excludes faulted and Disabled
 measurements. State changes occur whether muted or not; only notifications and SMS
 publishing are inside the combined global/setup/individual mute check. At least

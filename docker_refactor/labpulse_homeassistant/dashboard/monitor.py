@@ -120,7 +120,7 @@ def _global_mute_banner() -> Card:
         "card": {
             "type": "markdown",
             "content": (
-                "## 🔕 Global Mute Applied\n\n"
+                "## Global Mute Applied\n\n"
                 "Alarm states remain visible, but LabPulse notifications are disabled.\n\n"
                 "[Review notification controls](/labpulse-monitor/alarm-setup)"
             ),
@@ -140,7 +140,7 @@ def _test_mode_banner() -> Card:
         "card": {
             "type": "markdown",
             "content": (
-                "## 🧪 Test Mode Applied\n\n"
+                "## Test Mode Applied\n\n"
                 "Notifications are routed only to the configured test recipients.\n\n"
                 "[Review notification controls](/labpulse-monitor/alarm-setup)"
             ),

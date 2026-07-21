@@ -287,6 +287,8 @@ def test_monitor_setup_and_subcategory_projections() -> None:
     banner_text = mute_banner.get("card", {}).get("content", "")
     if "Global Mute Applied" not in banner_text:
         raise AssertionError("Monitor global-mute banner lacks its warning")
+    if "🔕" in banner_text:
+        raise AssertionError("Monitor global-mute banner relies on an emoji glyph")
     if "/labpulse-monitor/alarm-setup" not in banner_text:
         raise AssertionError("Monitor global-mute banner lacks an Alarm Setup link")
     test_banner = monitor["cards"][0]["cards"][1]
@@ -301,6 +303,8 @@ def test_monitor_setup_and_subcategory_projections() -> None:
     test_banner_text = test_banner.get("card", {}).get("content", "")
     if "Test Mode Applied" not in test_banner_text:
         raise AssertionError("Monitor test-mode banner lacks its warning")
+    if "🧪" in test_banner_text:
+        raise AssertionError("Monitor test-mode banner relies on an emoji glyph")
     if "/labpulse-monitor/alarm-setup" not in test_banner_text:
         raise AssertionError("Monitor test-mode banner lacks an Alarm Setup link")
     problems = monitor["cards"][0]["cards"][2]

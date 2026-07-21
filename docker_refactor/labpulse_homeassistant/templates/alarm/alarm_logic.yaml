@@ -691,16 +691,23 @@ automations:
                         "current_measurement": raw
                       } | to_json }}
 
-    # When hardware becomes healthy again, choose the correct current state:
-    # Danger if observed danger still exceeds the requirement, otherwise Normal
-    # only when the measurement is already inside its recovery zone.
+    # Reconcile a persisted Sensor Fault whenever fresh data is healthy enough to
+    # classify. This must remain eligible after the fault-zone edge has passed:
+    # danger evidence may need time to accumulate, and Home Assistant may restart
+    # with the persistent alarm state already set to Sensor Fault.
     - alias: "LabPulse [[ measurement.label ]] Sensor Recovery"
       mode: single
       trigger:
-        - platform: state
-          entity_id: "[[ measurement.entities.sensor_fault_zone ]]"
-          from: "on"
-          to: "off"
+        - platform: template
+          value_template: >
+            {{ is_state('[[ measurement.entities.alarm_state ]]', 'Sensor Fault')
+               and is_state('[[ measurement.entities.sensor_fault_zone ]]', 'off')
+               and is_state('[[ service.entities.health_unhealthy ]]', 'off')
+               and is_state('[[ service.entities.health_fault_active ]]', 'off')
+               and (is_state('[[ measurement.entities.recovery_zone ]]', 'on')
+                    or (not is_state('[[ measurement.entities.alarm_mode ]]', 'Disabled')
+                        and states('[[ measurement.entities.observed_danger_percent ]]') | float(0)
+                        >= states('[[ measurement.entities.required_danger_percent ]]') | float(70))) }}
       condition:
         - condition: state
           entity_id: "[[ measurement.entities.alarm_state ]]"

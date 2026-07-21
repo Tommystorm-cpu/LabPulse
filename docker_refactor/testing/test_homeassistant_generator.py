@@ -159,6 +159,43 @@ def test_generated_package() -> None:
     if "Affected setup: Air Pressure." not in payload:
         raise AssertionError("danger SMS lacks logical setup context")
 
+    sensor_recovery = next(
+        item
+        for item in package["automation"]
+        if item["alias"] == "LabPulse Pressure Sensor Recovery"
+    )
+    recovery_trigger = sensor_recovery["trigger"][0]
+    assert_equal(
+        recovery_trigger["platform"],
+        "template",
+        "sensor recovery reconciliation trigger",
+    )
+    recovery_template = str(recovery_trigger["value_template"])
+    for required_fragment in (
+        "input_select.labpulse_pressure_monitor_pressure_alarm_state",
+        "binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone",
+        "binary_sensor.labpulse_pressure_monitor_pressure_recovery_zone",
+        "sensor.labpulse_pressure_monitor_pressure_observed_danger_percent",
+        "input_number.labpulse_pressure_monitor_pressure_required_danger_percent",
+    ):
+        if required_fragment not in recovery_template:
+            raise AssertionError(
+                "sensor recovery reconciliation lacks " + required_fragment
+            )
+    if "'Sensor Fault'" not in recovery_template or "'off'" not in recovery_template:
+        raise AssertionError("sensor recovery does not require a cleared fault")
+    recovery_options = {
+        item["data"]["option"]
+        for item in walk(sensor_recovery["action"])
+        if isinstance(item, dict)
+        and item.get("service") == "input_select.select_option"
+    }
+    assert_equal(
+        recovery_options,
+        {"Danger", "Normal"},
+        "sensor recovery classifications",
+    )
+
     configuration = paths.configuration_path.read_text(encoding="utf-8")
     if "labpulse-monitor:" not in configuration:
         raise AssertionError("configuration does not register LabPulse dashboard")
