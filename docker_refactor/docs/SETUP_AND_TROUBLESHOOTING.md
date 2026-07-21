@@ -465,6 +465,9 @@ failures cannot replace the source of truth. Set `VISUAL` or `EDITOR` to choose
 an editor; otherwise it uses `nano`. After a valid change it keeps one rolling
 `config.yaml.edit-backup`, exercises both generators, runs Home Assistant's own
 configuration check, and recreates the Compose services with `sudo docker`.
+Its final message reminds the operator to review the conditional **Global Mute
+Applied** and **Test Mode Applied** banners on Monitor before changing either
+notification safeguard.
 
 ### Repository Python/template/script source changed
 

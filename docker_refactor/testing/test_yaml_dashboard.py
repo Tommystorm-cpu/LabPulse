@@ -273,7 +273,37 @@ def test_monitor_setup_and_subcategory_projections() -> None:
         raise AssertionError("Monitor did not retain the compact masonry layout")
     if any(card.get("type") != "vertical-stack" for card in monitor["cards"]):
         raise AssertionError("one Monitor column is not a vertical stack")
-    problems = monitor["cards"][0]["cards"][0]
+    mute_banner = monitor["cards"][0]["cards"][0]
+    if mute_banner.get("type") != "conditional":
+        raise AssertionError("Monitor global-mute banner is not conditional")
+    if mute_banner.get("conditions") != [
+        {
+            "condition": "state",
+            "entity": "input_boolean.labpulse_global_notifications_muted",
+            "state": "on",
+        }
+    ]:
+        raise AssertionError("Monitor global-mute banner uses the wrong condition")
+    banner_text = mute_banner.get("card", {}).get("content", "")
+    if "Global Mute Applied" not in banner_text:
+        raise AssertionError("Monitor global-mute banner lacks its warning")
+    if "/labpulse-monitor/alarm-setup" not in banner_text:
+        raise AssertionError("Monitor global-mute banner lacks an Alarm Setup link")
+    test_banner = monitor["cards"][0]["cards"][1]
+    if test_banner.get("conditions") != [
+        {
+            "condition": "state",
+            "entity": "input_boolean.labpulse_notification_test_mode",
+            "state": "on",
+        }
+    ]:
+        raise AssertionError("Monitor test-mode banner uses the wrong condition")
+    test_banner_text = test_banner.get("card", {}).get("content", "")
+    if "Test Mode Applied" not in test_banner_text:
+        raise AssertionError("Monitor test-mode banner lacks its warning")
+    if "/labpulse-monitor/alarm-setup" not in test_banner_text:
+        raise AssertionError("Monitor test-mode banner lacks an Alarm Setup link")
+    problems = monitor["cards"][0]["cards"][2]
     if problems.get("type") != "entity-filter" or problems.get("show_empty") is not False:
         raise AssertionError("Monitor problems card does not hide itself when healthy")
     if problems.get("card", {}).get("title") != "Active Problems":
@@ -788,7 +818,11 @@ def test_power_dashboard_remains_represented() -> None:
     ):
         if entity_occurrences(monitor, entity_id) != 1:
             raise AssertionError(f"power entity is not canonical in Monitor: {entity_id}")
-    problems = monitor["cards"][0]["cards"][0]
+    problems = next(
+        card
+        for card in monitor["cards"][0]["cards"]
+        if card.get("type") == "entity-filter"
+    )
     if entity_occurrences(
         problems, "input_select.labpulse_ups_monitor_power_state"
     ) != 1:

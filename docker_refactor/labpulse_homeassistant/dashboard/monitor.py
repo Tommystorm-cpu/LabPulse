@@ -21,7 +21,7 @@ from labpulse_common.config import LabPulseConfig
 
 from ..measurement_catalog import ConfiguredMeasurement, MeasurementCatalog
 from ..measurement_model import MeasurementModel
-from ..render_model import ServiceModel
+from ..render_model import DEFAULT_RENDER_ENTITIES, ServiceModel
 from .primitives import (
     Card,
     DashboardIndex,
@@ -82,23 +82,70 @@ def monitor_sections(
             )
         )
 
-    # Insert Active Problems into the first column without changing masonry order.
-    _prepend_problems_card(columns, _monitor_problems_card(catalog, index))
+    # Keep global mute and active problems visible without changing masonry order.
+    _prepend_monitor_cards(
+        columns,
+        [
+            _global_mute_banner(),
+            _test_mode_banner(),
+            _monitor_problems_card(catalog, index),
+        ],
+    )
     return columns
 
 
-def _prepend_problems_card(columns: list[Card], problems: Card) -> None:
-    """Nest Active Problems in the first column without changing column count."""
+def _prepend_monitor_cards(columns: list[Card], cards: list[Card]) -> None:
+    """Nest important status cards without changing the Monitor column count."""
 
     # Create a first column when the dashboard has no setup or power columns.
     if not columns:
-        columns.append(vertical_stack([problems]))
+        columns.append(vertical_stack(cards))
         return
-    # Insert the problem card into the existing first vertical stack.
+    # Insert status cards into the existing first vertical stack.
     first_column_cards = columns[0].get("cards")
     if not isinstance(first_column_cards, list):
         raise ValueError("Monitor masonry columns must contain cards")
-    first_column_cards.insert(0, problems)
+    first_column_cards[0:0] = cards
+
+
+def _global_mute_banner() -> Card:
+    """Warn prominently while the global notification mute is active."""
+
+    global_muted = DEFAULT_RENDER_ENTITIES["global_muted"]
+    return {
+        "type": "conditional",
+        "conditions": [
+            {"condition": "state", "entity": global_muted, "state": "on"}
+        ],
+        "card": {
+            "type": "markdown",
+            "content": (
+                "## 🔕 Global Mute Applied\n\n"
+                "Alarm states remain visible, but LabPulse notifications are disabled.\n\n"
+                "[Review notification controls](/labpulse-monitor/alarm-setup)"
+            ),
+        },
+    }
+
+
+def _test_mode_banner() -> Card:
+    """Warn prominently while notifications use the test recipient list."""
+
+    test_mode = DEFAULT_RENDER_ENTITIES["test_mode"]
+    return {
+        "type": "conditional",
+        "conditions": [
+            {"condition": "state", "entity": test_mode, "state": "on"}
+        ],
+        "card": {
+            "type": "markdown",
+            "content": (
+                "## 🧪 Test Mode Applied\n\n"
+                "Notifications are routed only to the configured test recipients.\n\n"
+                "[Review notification controls](/labpulse-monitor/alarm-setup)"
+            ),
+        },
+    }
 
 
 def _monitor_problems_card(

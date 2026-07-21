@@ -141,4 +141,9 @@ cat <<EOF
 Configuration applied successfully.
 Live config: $CONFIG_PATH
 Rollback copy: $CONFIG_BACKUP
+
+SAFETY REMINDER
+Home Assistant has been refreshed. Check Monitor for "Global Mute Applied" and
+"Test Mode Applied", review the new configuration, and only disable either
+safeguard when its notification behaviour is ready to resume.
 EOF

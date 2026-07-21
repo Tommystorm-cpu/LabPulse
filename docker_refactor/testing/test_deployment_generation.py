@@ -218,6 +218,8 @@ def test_setup_refresh_and_preservation_contract() -> None:
         "sudo docker compose config --quiet",
         "python -m homeassistant --script check_config --config /config",
         "sudo docker compose up -d --remove-orphans --force-recreate",
+        'Check Monitor for "Global Mute Applied"',
+        '"Test Mode Applied"',
     )
     for fragment in required_editor_fragments:
         if fragment not in editor_source:
