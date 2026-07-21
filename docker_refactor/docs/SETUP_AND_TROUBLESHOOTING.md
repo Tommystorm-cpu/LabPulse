@@ -95,6 +95,7 @@ It is not required for the live config: setup always preserves an existing
 ~/labpulse-ha/
   config.yaml                         edit this
   compose.yaml                        generated
+  edit_config.sh                      guarded edit, validate, and refresh workflow
   generate_compose.sh
   generate_homeassistant_config.sh
   simulate_serial.py
@@ -456,11 +457,14 @@ for discovery.
 
 ```bash
 cd ~/labpulse-ha
-./generate_compose.sh
-./generate_homeassistant_config.sh
-docker compose up -d --build
-docker compose restart homeassistant
+./edit_config.sh
 ```
+
+The editor works on a temporary copy beside the live config so validation
+failures cannot replace the source of truth. Set `VISUAL` or `EDITOR` to choose
+an editor; otherwise it uses `nano`. After a valid change it keeps one rolling
+`config.yaml.edit-backup`, exercises both generators, runs Home Assistant's own
+configuration check, and recreates the Compose services with `sudo docker`.
 
 ### Repository Python/template/script source changed
 

@@ -171,6 +171,8 @@ copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
+copy_file "$SCRIPT_DIR/edit_config.sh" "$PROJECT_DIR/edit_config.sh"
+chmod +x "$PROJECT_DIR/edit_config.sh"
 copy_file "$SCRIPT_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
 copy_file "$SCRIPT_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
@@ -285,6 +287,7 @@ Created/updated:
 $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
+  $PROJECT_DIR/edit_config.sh
   $PROJECT_DIR/simulate_serial.py
   $PROJECT_DIR/setup_usb_devices.py
   $PROJECT_DIR/labpulse_homeassistant/

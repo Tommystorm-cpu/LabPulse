@@ -24,11 +24,7 @@ cd ~/LabPulse/docker_refactor
 ./setup_container_fs.sh
 
 cd ~/labpulse-ha
-nano config.yaml
-./generate_compose.sh
-./generate_homeassistant_config.sh
-docker compose config
-docker compose up -d --build
+./edit_config.sh
 ```
 
 Fake hardware:
@@ -51,6 +47,10 @@ The running Pi is configured through:
 The repository `config.yaml` is only a new-install starter. Generated
 `compose.yaml`, Home Assistant package, and dashboard files are outputs, not
 permanent editing targets.
+
+`edit_config.sh` opens a temporary copy of the live config, validates it, keeps
+one rollback copy, regenerates Compose and Home Assistant YAML, runs Home
+Assistant's config check, and refreshes the stack through `sudo docker`.
 
 ## Source layout
 

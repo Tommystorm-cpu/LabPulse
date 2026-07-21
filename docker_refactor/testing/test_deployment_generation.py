@@ -156,6 +156,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'replace_dir "$SCRIPT_DIR/labpulse_sms"',
         'copy_file "$SCRIPT_DIR/simulate_serial.py"',
         'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
+        'copy_file "$SCRIPT_DIR/edit_config.sh"',
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
         'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
@@ -206,6 +207,21 @@ def test_setup_refresh_and_preservation_contract() -> None:
     for fragment in forbidden_generator_fragments:
         if fragment in generator_source:
             raise AssertionError(f"legacy dashboard wrapper code remains: {fragment}")
+
+    editor_source = (REFACTOR_DIR / "edit_config.sh").read_text(encoding="utf-8")
+    required_editor_fragments = (
+        'mktemp "$PROJECT_DIR/.config.yaml.editing.XXXXXX"',
+        "from labpulse_common.config import load_config",
+        'bash "$COMPOSE_SCRIPT"',
+        'bash "$HOMEASSISTANT_SCRIPT"',
+        'CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"',
+        "sudo docker compose config --quiet",
+        "python -m homeassistant --script check_config --config /config",
+        "sudo docker compose up -d --remove-orphans --force-recreate",
+    )
+    for fragment in required_editor_fragments:
+        if fragment not in editor_source:
+            raise AssertionError(f"config editor contract missing: {fragment}")
 
 
 def test_offline_dashboard_generation_is_deterministic() -> None:
