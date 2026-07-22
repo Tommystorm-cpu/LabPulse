@@ -15,7 +15,7 @@ Read the source in this order if you want to reconstruct the complete system:
 2. `labpulse_common/config.py`, `identity.py`, and `mqtt_contracts.py`
 3. `labpulse_hardware/cli.py`
 4. `labpulse_hardware/drivers/`
-5. `labpulse_hardware/legacy_parsing/serial_parser.py`
+5. `labpulse_hardware/serial_parser.py`
 6. `labpulse_hardware/homeassistant_publisher.py`
 7. `labpulse_homeassistant/cli.py`, `measurement_model.py`, and `render_model.py`
 8. `labpulse_homeassistant/core_config.py`, `alarm_package.py`,
@@ -41,7 +41,7 @@ LabPulseConfig
 ServiceConfig
   enabled: bool
   driver: "serial" | "gpio" | "i2c"
-  parser, serial_port, baud_rate
+  serial_port, baud_rate
   gpio_sensor, gpio_pin
   device_name
   measurements: list[MeasurementConfig]
@@ -154,22 +154,22 @@ Implementations must provide `setup()`, `read()`, and `disconnect()`.
 
 `drivers/factory.py::build_driver()` maps validated config to implementations:
 
-- `driver: serial` requires `serial_port` and `parser`, then constructs
-  `SerialDriver`.
+- `driver: serial` requires `serial_port`, then constructs `SerialDriver`.
 - `driver: gpio` plus `gpio_sensor: dht11` requires `gpio_pin`, then constructs
   the DHT11 driver.
-- `driver: i2c` plus `i2c_sensor: max17043_ups` requires an explicit bus and
-  the verified address `0x36`, then constructs the MAX17043 UPS driver.
+- `driver: i2c` plus `i2c_sensor: x1200_ups` requires an explicit bus, the
+  verified address `0x36`, and direct mains GPIO configuration, then constructs
+  the X1200 UPS driver.
 
 Driver modules are imported only inside their selected branch. In particular,
 serial and I2C workers do not import Blinka, `board`, or `adafruit_dht`; eager
 imports can open `/dev/gpiochip0` in unrelated containers and prevent the DHT
 worker from acquiring GPIO4.
 
-The MAX17043 driver performs read-only VCELL and SOC transactions, publishes
-voltage and gauge-calculated battery level at one-second intervals, and
-reconnects after explicit I2C faults. It does not publish current or charging
-status because the installed hardware does not measure them.
+The X1200 driver performs read-only MAX17043 VCELL and SOC transactions,
+publishes voltage and gauge-calculated battery level, reads the direct mains
+GPIO, and reconnects after explicit I2C faults. It does not publish current or
+charging status because the installed hardware does not measure them.
 
 ### Serial driver
 
@@ -178,7 +178,6 @@ status because the installed hardware does not measure them.
 ```python
 port, baud_rate
 ser                         # pyserial handle or None
-parser_type
 parser: SerialParser
 reconnect_interval_seconds
 last_reconnect_attempt      # monotonic time
@@ -223,34 +222,19 @@ returns exactly:
 {"temperature": float, "humidity": float}
 ```
 
-### Standard and legacy serial parser
+### Serial parser
 
-`legacy_parsing/serial_parser.py::SerialParser` uses `parser: pipe` for the
-standard Arduino contract:
+`serial_parser.py::SerialParser` accepts the one supported Arduino contract:
 
 ```text
 flow1: 2.45 | flow2: 3.10 | temp0: 20.11
 ```
 
-Keys are lower-cased and values must be finite numbers. Firmware emits values
-in their final configured units; invalid channels are written as `null` and
-omitted by the parser. There is no JSON serial envelope or Python-side unit
-conversion in the standard path.
-
-Other `parser_type` values select temporary compatibility paths for boards
-that have not yet been reflashed:
-
-- `pressure`: parse one MPa number and multiply by 10 to publish bar.
-- `pump_room` or `water`: locate recognized labels anywhere in a line.
-- `pipe`: generic pipe-delimited `Label: value | Label: value` parsing.
-
-The labelled parser uses a compiled pattern for `FlowRate`, `TotalLitres`,
-`RoomTemp`, `RoomHum`, numbered `Flow`, `Temp`, and `Press` labels. Values run
-from one recognized label to the next, allowing it to recover the malformed
-`L/minTemp0` boundary printed by the full-water sketch.
-
-`_clean_float()` extracts the first signed decimal and rejects non-finite
-values. `_key()` lowercases labels. All paths produce the same normalized
+Keys are lower-cased. Values must be unit-free finite numbers. Firmware emits
+values in their final configured units; invalid channels are written as
+`null` and omitted by the parser. Bare values, unit-bearing legacy text, JSON,
+and non-finite numbers are rejected. There is no parser selector, device-specific
+conversion, or compatibility branch. Valid lines produce a normalized
 `dict[str, float]`, such as:
 
 ```python
@@ -764,7 +748,7 @@ The scripts under `testing/` are grouped by contract:
 | Area | Tests |
 | --- | --- |
 | Config/shared IDs/topics | `test_common_contracts.py`, `test_hardware_factory.py` |
-| Drivers and parsing | `test_serial_driver.py`, `test_dht11_driver.py`, `test_max17043_driver.py`, `test_legacy_serial_parser.py` |
+| Drivers and parsing | `test_serial_driver.py`, `test_serial_parser.py`, `test_dht11_driver.py`, `test_x1200_ups_driver.py` |
 | Simulator and USB assignment | `test_simulate_serial.py`, `test_usb_setup.py` |
 | MQTT discovery | `test_homeassistant_publisher.py` |
 | HA model/generation/registry | `test_setup_grouping.py`, `test_homeassistant_entities.py`, `test_homeassistant_generator.py`, `test_yaml_dashboard.py`, `test_notification_context.py`, `test_power_monitor.py` |

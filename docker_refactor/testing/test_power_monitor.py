@@ -47,11 +47,11 @@ def test_config_validation_and_stable_identity() -> None:
     live_service = live_data["services"]["ups_monitor"]
     live_service.update(
         driver="i2c",
-        i2c_sensor="max17043_ups",
+        i2c_sensor="x1200_ups",
         i2c_bus=1,
         i2c_address=0x36,
     )
-    for key in ("parser", "serial_port", "baud_rate"):
+    for key in ("serial_port", "baud_rate"):
         live_service.pop(key, None)
     live = LabPulseConfig.model_validate(live_data)
     sim_model = RenderModel.from_config(simulated).services[0]
@@ -103,20 +103,19 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
     service = live_data["services"]["ups_monitor"]
     service.update(
         driver="i2c",
-        i2c_sensor="max17043_ups",
+        i2c_sensor="x1200_ups",
         i2c_bus=1,
         i2c_address=0x36,
     )
-    for key in ("parser", "serial_port", "baud_rate"):
+    for key in ("serial_port", "baud_rate"):
         service.pop(key, None)
     source = yaml.safe_dump(live_data, sort_keys=False)
     before = RenderModel.from_config(LabPulseConfig.model_validate(yaml.safe_load(source)))
     converted_text = convert_power_service_to_fake_serial(source)
     converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
     fake = converted.services["ups_monitor"]
-    if (fake.driver, fake.parser, fake.serial_port) != (
+    if (fake.driver, fake.serial_port) != (
         "serial",
-        "ups_simulator",
         "/tmp/labpulse-fake-serial/ups_monitor",
     ):
         raise AssertionError("fake conversion selected the wrong UPS transport")

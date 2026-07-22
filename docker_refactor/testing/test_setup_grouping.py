@@ -35,7 +35,6 @@ def config_data() -> dict[str, object]:
         "services": {
             "pump_room": {
                 "driver": "serial",
-                "parser": "pump_room",
                 "serial_port": "/tmp/pump-room",
                 "device_name": "Pump Room Hub",
                 "measurements": [
@@ -71,7 +70,6 @@ def config_data() -> dict[str, object]:
             "disabled": {
                 "enabled": False,
                 "driver": "serial",
-                "parser": "pressure",
                 "serial_port": "/tmp/disabled",
                 "device_name": "Disabled Hub",
                 "measurements": [{"name": "ignored", "setups": ["cryostat"]}],
@@ -176,7 +174,6 @@ def test_dedicated_power_omits_setup_membership() -> None:
         "services": {
             "ups": {
                 "driver": "serial",
-                "parser": "ups_simulator",
                 "serial_port": "/tmp/ups",
                 "device_name": "UPS",
                 "measurements": [

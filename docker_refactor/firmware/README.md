@@ -1,18 +1,46 @@
 # LabPulse Arduino firmware
 
-This guide explains how to install, configure, and flash the Arduino firmware
-used by LabPulse. The supplied examples match the current LabPulse hardware and
-send readings to the Raspberry Pi in the required pipe-delimited format.
+This guide takes a first-time Arduino user from the downloaded LabPulse files
+to a working Arduino. The supplied examples match the current LabPulse
+hardware and send readings to the Raspberry Pi in the required pipe-delimited
+format.
+
+> **Important:** this `firmware` folder is an Arduino **library**, not a single
+> standalone sketch. Install the complete folder before opening an example.
+> Opening an `.ino` file directly from the repository causes errors such as
+> `LinearPressureSensor.h: No such file or directory`.
 
 ## Before you begin
 
 You need:
 
-- Arduino IDE;
+- a Raspberry Pi with Arduino IDE 1.8.19 for Linux ARM installed;
 - an Arduino Uno and USB cable;
-- the Arduino AVR Boards package;
-- the Arduino **DHT sensor library**;
 - a copy of this `firmware` directory.
+
+Arduino does not provide an official Raspberry Pi/ARM build of Arduino IDE 2.
+On a Pi, use the Linux ARM 32-bit or ARM 64-bit release of Arduino IDE 1.8.19.
+The older IDE supplied by Raspberry Pi OS may not find current libraries.
+
+### Install or update Arduino IDE on the Raspberry Pi
+
+1. Open **Terminal** from the Raspberry Pi menu.
+2. Enter `uname -m` and press Enter.
+3. Download Arduino IDE 1.8.19 from the
+   [official Arduino software page](https://www.arduino.cc/en/software):
+   - choose **Linux ARM 64 bits** if the command printed `aarch64`;
+   - choose **Linux ARM 32 bits** if it printed `armv7l`.
+4. In File Manager, open `Downloads`, right-click the downloaded archive, and
+   extract it. This creates a directory named `arduino-1.8.19`.
+5. Return to Terminal and run:
+
+   ```bash
+   cd ~/Downloads/arduino-1.8.19
+   sudo ./install.sh
+   ```
+
+6. Start Arduino and select **Help > About Arduino**. Confirm it reports
+   version 1.8.19 before removing an older installation.
 
 Before flashing a connected board, record:
 
@@ -23,37 +51,59 @@ Before flashing a connected board, record:
 
 Flash only one identified Arduino at a time.
 
-## Install in Arduino IDE
+## Step 1: install LabPulseFirmware
 
-Install this directory as the Arduino library `LabPulseFirmware` using either
-method below.
+Arduino must see the complete folder as an installed library. Follow these
+steps even if the example `.ino` files are already visible in the repository.
 
-### Install from a ZIP
+1. Open Arduino IDE and select **File > Preferences**.
+2. Read the path beside **Sketchbook location**. On a Raspberry Pi it is
+   normally `/home/your-username/Arduino`.
+3. Do **not** set the sketchbook location to the LabPulse repository. The
+   repository is where the source files are stored; the sketchbook is where
+   Arduino looks for installed libraries. If it currently points to the
+   repository, change it back to `/home/your-username/Arduino`.
+4. Close Arduino IDE.
+5. Open the Pi's File Manager and browse to that sketchbook directory.
+6. Create a folder named `libraries` inside it if one is not already present.
+7. Copy the **complete** LabPulse `firmware` folder into `libraries`.
+8. Rename the copied folder to `LabPulseFirmware`.
 
-1. Create or download a ZIP whose top-level folder contains
-   `library.properties`, `src`, and `examples`.
-2. In Arduino IDE, select **Sketch > Include Library > Add .ZIP Library**.
-3. Select the ZIP.
-4. Allow Arduino IDE to install the declared DHT library dependency if asked.
+The result must have this structure:
 
-### Install from the repository
+```text
+Arduino/
+  libraries/
+    LabPulseFirmware/
+      library.properties
+      src/
+      examples/
+```
 
-1. Open the Arduino sketchbook directory shown under
-   **File > Preferences > Sketchbook location**.
-2. Create its `libraries` directory if it does not exist.
-3. Copy this complete `firmware` directory to:
+Do not copy only `examples`, and do not put `LabPulseFirmware` inside a second
+`firmware` folder.
 
-   ```text
-   <sketchbook>/libraries/LabPulseFirmware
-   ```
+9. Start Arduino IDE again.
+10. Select **File > Examples**. A section named **LabPulseFirmware** should now
+   appear. If it does not, recheck the folder structure above.
 
-4. Restart Arduino IDE.
-5. Install **DHT sensor library** through **Tools > Manage Libraries** if it is
-   not already installed.
+## Step 2: install the required Arduino libraries
 
-## Choose the correct firmware
+1. In Arduino IDE 1.8.19, select
+   **Sketch > Include Library > Manage Libraries...**
+2. Wait for the library list to finish downloading.
+3. Search for exactly `DHT sensor library`.
+4. Select **DHT sensor library by Adafruit**. Do not select `TinyDHT`.
+5. Click **Install** and accept the **Adafruit Unified Sensor** dependency if
+   prompted.
+6. Select **Tools > Board > Boards Manager...**, search for
+   `Arduino AVR Boards`, and install it if it is not already installed.
+
+## Step 3: choose the correct firmware
 
 Open the required example through **File > Examples > LabPulseFirmware**.
+Always open it from this menu; do not open the repository's `.ino` file
+directly.
 
 | Example | Current measurements | Interval |
 | --- | --- | --- |
@@ -78,36 +128,46 @@ examples/pump_room/pump_room.h
 examples/turbo_pump/turbo_pump.h
 ```
 
+Near the top of each `.h` file is an authoritative **pin-to-measurement map**.
+Each entry contains the Arduino pin followed by the emitted name, for example:
+
+```cpp
+constexpr LabPulse::PinMeasurement FLOW1 = {3, "flow1"};
+```
+
+Edit `3` to change the input pin, or edit `"flow1"` to change the serial name.
+The sensor configuration and `.cpp` output both use this record, so neither
+value is duplicated elsewhere.
+
 Do not change measurement names unless the same names are also used in the
 live Pi configuration at `~/labpulse-ha/config.yaml`.
 
-## Verify and upload
+## Step 4: verify and upload
 
 1. Connect the identified Arduino.
 2. In Arduino IDE, select **Tools > Board > Arduino AVR Boards > Arduino Uno**.
-3. Select the exact board under **Tools > Port**.
-4. Click **Verify** and resolve any compilation error before continuing.
+3. Select the connected Arduino under **Tools > Port**. On a Raspberry Pi it
+   normally looks like `/dev/ttyACM0` or `/dev/ttyACM1`.
+4. Click the tick-mark **Verify** button. Successful verification ends with a
+   message about sketch and memory usage, without an orange error banner.
 5. Recheck that the selected example belongs to the connected physical board.
-6. Click **Upload**.
+6. Click the right-arrow **Upload** button. Wait for `Done uploading` before
+   disconnecting anything.
 
 No Python build script is required. Arduino IDE compiles the example and its
 sensor files into the flashable firmware automatically.
 
-## Check the serial output
+## Step 5: check the serial output
 
 After uploading:
 
-1. Open **Tools > Serial Monitor**.
-2. Set the baud rate to **9600**.
-3. Confirm that one complete sample appears on each line.
+1. Stop the LabPulse service that normally reads this Arduino. Serial Monitor
+   and LabPulse must not read the same serial port at the same time.
+2. Open **Tools > Serial Monitor**.
+3. Set the baud rate to **9600**.
+4. Confirm that one complete sample appears on each line.
 
-Pressure example:
-
-```text
-pressure: 1.03
-```
-
-Pump-room example:
+A pump-room sample should look like this single line:
 
 ```text
 flow1: 2.45 | flow2: 3.10 | temp0: 20.11 | temp1: 20.22 | temp2: 20.33 | temp3: 20.44 | roomtemp: 21.2 | roomhum: 45.0 | press1: 1.23 | press2: 1.45
@@ -123,7 +183,6 @@ On the Pi, the corresponding service in `~/labpulse-ha/config.yaml` must use:
 
 ```yaml
 driver: serial
-parser: pipe
 baud_rate: 9600
 serial_port: "/dev/serial/by-id/usb-Arduino_..."
 ```
@@ -133,12 +192,42 @@ Use the stable `/dev/serial/by-id/...` path rather than `/dev/ttyUSB0` or
 LabPulse through its normal setup workflow and confirm every measurement in
 Home Assistant.
 
+## Adapt an example for another lab
+
+When a lab needs a different mixture of sensors:
+
+1. Copy the closest directory under `examples/` and give the directory, `.ino`,
+   `.h`, and `.cpp` files the same new base name.
+2. Put pins, calibration values, intervals, and output precision in the `.h`.
+3. In the `.cpp`, construct the required sensor objects from those settings.
+4. Read each sensor and pass every result to `PipeSampleWriter` in the required
+   output order.
+5. Add exactly the same measurement names to the service in the Pi's live
+   `~/labpulse-ha/config.yaml`.
+
+Do not write another serial format or add units to the Arduino output. Reuse
+the supplied sensor classes and `PipeSampleWriter` so the normal LabPulse
+serial path continues to work.
+
+The complete file templates, sensor configuration fields, setup/loop pattern,
+flow-interrupt example, and output rules are documented in
+[`../docs/ARDUINO_AND_CPP.md`](../docs/ARDUINO_AND_CPP.md#writing-a-new-device-firmware).
+
 ## Troubleshooting
+
+### `LinearPressureSensor.h: No such file or directory`
+
+The example was opened directly, or the LabPulse library is in the wrong
+directory. Repeat **Step 1**, restart Arduino IDE, and open the example only
+through **File > Examples > LabPulseFirmware**. In particular, make sure
+**File > Preferences > Sketchbook location** is the same sketchbook directory
+that contains `libraries/LabPulseFirmware`.
 
 ### `DHT.h: No such file or directory`
 
-Install **DHT sensor library** from Arduino IDE's Library Manager. Accept its
-Adafruit Unified Sensor dependency when prompted.
+Install **DHT sensor library** by Adafruit from Arduino IDE's Library Manager.
+Accept its **Adafruit Unified Sensor** dependency when prompted. This is the
+library that provides the `DHT.h` header used by the firmware.
 
 ### The board or port is missing
 
@@ -162,6 +251,13 @@ disconnected meter that produces no pulses.
 Stop the affected service and repeat the Pi USB-identification process. Confirm
 the board's physical role and `/dev/serial/by-id/...` mapping before restarting
 monitoring.
+
+### Serial Monitor shows incomplete or mixed-up text
+
+Another program is probably reading the Arduino at the same time. Close Serial
+Monitor and run `sudo fuser -v /dev/ttyACM1`, replacing the port if necessary.
+Stop the listed LabPulse service before reopening Serial Monitor. Only one
+program can reliably consume the serial stream.
 
 For protocol, calculation, and implementation details, see
 [`../docs/ARDUINO_AND_CPP.md`](../docs/ARDUINO_AND_CPP.md).

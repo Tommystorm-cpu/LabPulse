@@ -29,13 +29,11 @@ services:
   pressure_monitor:
     enabled: true
     driver: serial
-    parser: pressure
     serial_port: /dev/ttyACM0  # replace only this line
     device_name: Air Pressure Sensor Hub
     measurements: []
   pump_room:
     driver: serial
-    parser: pump_room
     serial_port: FAKE_PUMP_ROOM_PORT
     device_name: Pump Room Sensor Hub
     measurements: []

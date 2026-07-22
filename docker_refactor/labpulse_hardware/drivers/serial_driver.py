@@ -4,14 +4,13 @@ import time
 import serial
 
 from labpulse_hardware.drivers.base import BaseSensorDriver
-from labpulse_hardware.legacy_parsing.serial_parser import SerialParser
+from labpulse_hardware.serial_parser import SerialParser
 
 class Driver(BaseSensorDriver):
     """
     USB serial driver for Arduino-backed LabPulse services.
 
-    The driver reads raw serial lines and delegates format-specific parsing to
-    SerialParser.
+    The driver reads standard pipe-delimited serial lines through SerialParser.
     """
 
     def __init__(
@@ -19,7 +18,6 @@ class Driver(BaseSensorDriver):
         name: str,
         port: str,
         baud_rate: int,
-        parser_type: str,
         reconnect_interval_seconds: float,
     ) -> None:
         """Store serial settings and create the parser for this service."""
@@ -28,8 +26,7 @@ class Driver(BaseSensorDriver):
         self.port = port
         self.baud_rate = baud_rate
         self.ser = None
-        self.parser_type = parser_type
-        self.parser = SerialParser(name, self.parser_type)
+        self.parser = SerialParser()
         self.reconnect_interval_seconds = reconnect_interval_seconds
         self.last_reconnect_attempt = 0.0
 

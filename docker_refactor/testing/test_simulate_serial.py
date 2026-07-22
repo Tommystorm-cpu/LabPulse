@@ -10,7 +10,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse_common.config import load_config
-from labpulse_hardware.legacy_parsing.serial_parser import SerialParser
+from labpulse_hardware.serial_parser import SerialParser
 from simulate_serial import MeasurementGenerator, SimulatorService, build_parser
 
 
@@ -19,17 +19,17 @@ def test_generated_payloads_match_parsers() -> None:
 
     payloads = MeasurementGenerator(seed=4).payloads()
 
-    pressure = SerialParser("pressure_monitor", "pipe").parse(
+    pressure = SerialParser().parse(
         payloads["pressure"].strip()
     )
-    pump = SerialParser("pump_room", "pipe").parse(
+    pump = SerialParser().parse(
         payloads["pump_room"].strip()
     )
-    turbo = SerialParser("turbo_pump", "pipe").parse(payloads["turbo_pump"].strip())
-    room = SerialParser("room_environment", "pipe").parse(
+    turbo = SerialParser().parse(payloads["turbo_pump"].strip())
+    room = SerialParser().parse(
         payloads["room_environment"].strip()
     )
-    ups = SerialParser("ups_monitor", "ups_simulator").parse(
+    ups = SerialParser().parse(
         payloads["ups_monitor"].strip()
     )
 
@@ -68,7 +68,7 @@ def test_ups_power_scenarios_and_stale_suppression() -> None:
     """Check UPS scenarios use real gauge fields and stale stops publication."""
 
     generator = MeasurementGenerator(seed=2)
-    parser = SerialParser("ups_monitor", "ups_simulator")
+    parser = SerialParser()
     expected_voltage = {"mains": 4.13, "battery": 3.95}
     for state, voltage in expected_voltage.items():
         generator.set_scenario("ups_monitor.power", state)
@@ -102,12 +102,12 @@ def test_scenarios_change_generated_values() -> None:
     generator.set_scenario("pump_room.roomhum", "danger-high")
 
     first = generator.payloads()
-    room_parser = SerialParser("room_environment", "pipe")
+    room_parser = SerialParser()
     first_room = room_parser.parse(first["room_environment"].strip())
-    pressure = SerialParser("pressure_monitor", "pipe").parse(
+    pressure = SerialParser().parse(
         first["pressure"].strip()
     )
-    pump = SerialParser("pump_room", "pipe").parse(first["pump_room"])
+    pump = SerialParser().parse(first["pump_room"])
 
     if first_room is None or pressure is None or pump is None:
         raise AssertionError("scenario payload failed to parse")

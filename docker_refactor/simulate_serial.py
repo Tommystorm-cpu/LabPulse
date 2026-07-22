@@ -245,9 +245,12 @@ class MeasurementGenerator:
             voltage, battery_level, mains_present = 3.95, 79.2, 0
         else:
             voltage, battery_level, mains_present = 4.13, 94.2, 1
-        return (
-            f"Voltage: {voltage:.3f} V | BatteryLevel: {battery_level:.1f} % "
-            f"| mains_present: {mains_present}\n"
+        return self._firmware_payload(
+            {
+                "voltage": voltage,
+                "battery_level": battery_level,
+                "mains_present": float(mains_present),
+            }
         )
 
     def _is_stale(self, target: str) -> bool:

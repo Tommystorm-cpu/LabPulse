@@ -96,7 +96,6 @@ class FakeMqttClient:
 
 def make_publisher(
     service_name: str = "pressure_monitor",
-    parser: str = "pressure",
     device_name: str = "Air Pressure Sensor Hub",
     measurements: list[dict[str, str]] | None = None,
     power_detection: dict[str, object] | None = None,
@@ -107,7 +106,6 @@ def make_publisher(
     service_config = ServiceConfig(
         enabled=True,
         driver="serial",
-        parser=parser,
         serial_port="/tmp/labpulse-fake-serial/pressure",
         baud_rate=9600,
         device_name=device_name,
@@ -248,7 +246,6 @@ def test_publish_discovery_for_new_measurements() -> None:
 
     publisher = make_publisher(
         service_name="pump_room",
-        parser="pump_room",
         device_name="Pump Room Sensor Hub",
         measurements=[
             {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
@@ -317,7 +314,6 @@ def test_ignore_unconfigured_measurements() -> None:
 
     publisher = make_publisher(
         service_name="pump_room",
-        parser="pump_room",
         device_name="Pump Room Sensor Hub",
         measurements=[
             {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
@@ -352,7 +348,6 @@ def test_power_discovery_uses_power_message_expiry() -> None:
 
     publisher = make_publisher(
         service_name="ups_monitor",
-        parser="ups_simulator",
         device_name="UPS Monitor",
         measurements=[
             {"name": "voltage", "unit": "V"},

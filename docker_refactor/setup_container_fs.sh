@@ -201,8 +201,9 @@ if [ "$FAKE_USB" -eq 1 ]; then
   RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"
 fi
 
-# Apply setup-time defaults to the selected runtime config. Fake mode writes a
-# derived config.fake.yaml, keeping the live user-edited config.yaml intact.
+# Derive config.fake.yaml only in fake mode. Real setup never rewrites the
+# live user-edited config.yaml.
+if [ "$FAKE_USB" -eq 1 ]; then
 python3 - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" "$PROJECT_DIR/labpulse-python" <<'PY'
 from pathlib import Path
 import sys
@@ -213,8 +214,6 @@ fake_usb = sys.argv[3] == "1"
 python_package_dir = Path(sys.argv[4])
 
 text = source_path.read_text()
-text = text.replace('broker: "localhost"', 'broker: "mosquitto"')
-text = text.replace("broker: localhost", "broker: mosquitto")
 
 if fake_usb:
     replacements = {
@@ -230,7 +229,6 @@ if fake_usb:
     gpio_sensor: dht11
     gpio_pin: "D4"'''
     simulated_room_environment = '''    driver: serial
-    parser: pipe
     serial_port: "/tmp/labpulse-fake-serial/room_environment"
     baud_rate: 9600'''
     text = text.replace(real_room_environment, simulated_room_environment, 1)
@@ -245,6 +243,7 @@ if fake_usb:
 
 destination_path.write_text(text)
 PY
+fi
 
 # Pass fake USB mode through to Compose generation so the right device mounts
 # are written into compose.yaml.

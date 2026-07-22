@@ -33,7 +33,6 @@ def sample_config() -> dict[str, object]:
         "services": {
             "pressure_monitor": {
                 "driver": "serial",
-                "parser": "pressure",
                 "serial_port": "/tmp/labpulse-fake-serial/pressure",
                 "device_name": "Air Pressure Sensor Hub",
                 "measurements": [

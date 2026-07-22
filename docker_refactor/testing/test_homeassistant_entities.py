@@ -28,7 +28,6 @@ def sample_config() -> LabPulseConfig:
             "pump_room": {
                 "enabled": True,
                 "driver": "serial",
-                "parser": "pump_room",
                 "serial_port": "/tmp/labpulse-fake-serial/pump_room",
                 "device_name": "Pump Room Sensor Hub",
                 "measurements": [
@@ -39,7 +38,6 @@ def sample_config() -> LabPulseConfig:
             "disabled_service": {
                 "enabled": False,
                 "driver": "serial",
-                "parser": "pressure",
                 "serial_port": "/tmp/labpulse-fake-serial/disabled",
                 "device_name": "Disabled",
                 "measurements": [{"name": "ignored", "setups": ["pump_room"]}],

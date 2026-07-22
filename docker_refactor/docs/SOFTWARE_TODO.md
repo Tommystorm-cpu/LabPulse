@@ -103,7 +103,7 @@ dashboard displaying a plausible but incorrect healthy state.
 - [ ] Confirm status progresses through disconnected/reconnecting/online.
 - [ ] Confirm measurements resume without recreating the container.
 - [ ] Confirm a prolonged disconnect becomes Sensor Fault in Home Assistant.
-- [ ] Test malformed, partial, and silent serial output for each parser format.
+- [ ] Test malformed, partial, and silent standard pipe serial output.
 - [ ] Test DHT11 startup failure and sustained read failure on the real Pi.
 
 The serial reconnect implementation and automated tests already exist. The
@@ -246,7 +246,7 @@ Current state: the code is organized into importable packages with
 - [ ] Add meaningful health checks where they improve automatic diagnosis.
 - [ ] Decide whether Compose should distinguish process-running from
   sensor-connected health.
-- [ ] Ensure logs clearly identify the service, device path, parser, MQTT state,
+- [ ] Ensure logs clearly identify the service, device path, MQTT state,
   and last successful measurement.
 - [ ] Avoid restart loops that hide a persistent configuration fault.
 
@@ -300,12 +300,12 @@ request to finish one lab installation.
 ### Reusable extension path
 
 - [ ] Turn “add a new sensor” into a complete documented contribution path:
-  config model, driver/parser, fake input, MQTT discovery, Home Assistant
+  config model, driver/standard serial contract, fake input, MQTT discovery, Home Assistant
   entities, tests, and documentation.
 - [ ] Provide a minimal example sensor/service that is not tied to the original
   lab.
 - [ ] Clearly separate stable public contracts from internal implementation.
-- [ ] Decide which driver/parser interfaces are supported extension points.
+- [ ] Decide which driver and serial-contract interfaces are supported extension points.
 - [ ] Test an external contribution using only the public documentation.
 
 ### Adoption evidence
@@ -330,7 +330,7 @@ Do not start these until required by a real deployment or after the P0/P1 work
 is under control:
 
 - additional deployment modes such as grouping services into fewer containers;
-- additional I2C sensor types beyond the implemented MAX17043 UPS driver;
+- additional I2C sensor types beyond the implemented X1200 UPS driver;
 - per-user notification preferences beyond the agreed mute requirement;
 - a plugin system beyond the existing driver/factory boundary;
 - advanced dashboard customization that depends on non-standard Home Assistant

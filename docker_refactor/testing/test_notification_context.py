@@ -33,7 +33,6 @@ def config_data() -> dict[str, object]:
         "services": {
             "shared_hub": {
                 "driver": "serial",
-                "parser": "pump_room",
                 "serial_port": "/tmp/shared-hub",
                 "device_name": "Shared Sensor Hub",
                 "measurements": [

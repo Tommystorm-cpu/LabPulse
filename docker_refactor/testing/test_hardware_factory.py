@@ -23,7 +23,6 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
 
     config = {
         "driver": "serial",
-        "parser": "pump_room",
         "serial_port": "/tmp/labpulse-fake-serial/pump_room",
         "baud_rate": 9600,
         "reconnect_interval_seconds": 5.0,
@@ -73,7 +72,6 @@ def test_serial_driver_builds() -> None:
     assert_equal(driver.name, "pump_room", "driver name")
     assert_equal(driver.port, "/tmp/labpulse-fake-serial/pump_room", "port")
     assert_equal(driver.baud_rate, 9600, "baud rate")
-    assert_equal(driver.parser_type, "pump_room", "parser")
     assert_equal(driver.reconnect_interval_seconds, 5.0, "reconnect interval")
 
 
@@ -95,7 +93,6 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
 
         config = ServiceConfig(
             driver="serial",
-            parser="pump_room",
             serial_port="/tmp/labpulse-fake-serial/pump_room",
             baud_rate=9600,
             reconnect_interval_seconds=5.0,
@@ -135,15 +132,13 @@ def test_serial_config_requires_port() -> None:
     )
 
 
-def test_serial_config_requires_parser() -> None:
-    """Check that serial services fail clearly without parser."""
-
-    service_config = make_service_config(parser=None)
+def test_parser_config_is_rejected() -> None:
+    """Check that the removed parser selector cannot return to config."""
 
     assert_raises(
         ValueError,
-        "missing parser",
-        lambda: build_driver("pump_room", service_config),
+        "Extra inputs are not permitted",
+        lambda: make_service_config(parser="pressure"),
     )
 
 
@@ -154,7 +149,6 @@ def test_gpio_dht11_driver_builds() -> None:
         driver="gpio",
         gpio_sensor="dht11",
         gpio_pin="D4",
-        parser=None,
         serial_port=None,
         read_interval_seconds=3.0,
         measurements=[
@@ -180,7 +174,6 @@ def test_gpio_dht11_requires_pin() -> None:
         driver="gpio",
         gpio_sensor="dht11",
         gpio_pin=None,
-        parser=None,
         serial_port=None,
     )
 
@@ -196,9 +189,8 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
 
     service_config = make_service_config(
         driver="i2c",
-        parser=None,
         serial_port=None,
-        i2c_sensor="max17043_ups",
+        i2c_sensor="x1200_ups",
         i2c_bus=1,
         i2c_address=0x36,
         power_detection={},
@@ -211,8 +203,8 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
 
     driver = build_driver("ups_monitor", service_config)
     assert_equal(isinstance(driver, X1200UpsDriver), True, "driver type")
-    assert_equal(driver.fuel_gauge.bus_number, 1, "I2C bus")
-    assert_equal(driver.fuel_gauge.address, 0x36, "I2C address")
+    assert_equal(driver.bus_number, 1, "I2C bus")
+    assert_equal(driver.address, 0x36, "I2C address")
     assert_equal(driver.gpio_reader.chip, "/dev/gpiochip0", "GPIO chip")
     assert_equal(driver.gpio_reader.line, 6, "GPIO line")
 
@@ -224,7 +216,7 @@ TESTS = [
         test_serial_factory_keeps_gpio_dependencies_unloaded,
     ),
     ("serial config requires port", test_serial_config_requires_port),
-    ("serial config requires parser", test_serial_config_requires_parser),
+    ("parser config is rejected", test_parser_config_is_rejected),
     ("gpio DHT11 driver builds", test_gpio_dht11_driver_builds),
     ("gpio DHT11 requires pin", test_gpio_dht11_requires_pin),
     ("X1200 I2C/GPIO driver builds", test_x1200_i2c_gpio_driver_builds),

@@ -14,7 +14,11 @@ from labpulse_hardware.drivers.serial_driver import Driver
 class FakeSerialPort:
     """In-memory serial port used to test Driver without USB hardware."""
 
-    def __init__(self, line: bytes = b"0.123\n", read_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        line: bytes = b"pressure: 1.23\n",
+        read_error: Exception | None = None,
+    ) -> None:
         """Create a fake serial port that either returns a line or raises."""
 
         self.line = line
@@ -42,12 +46,11 @@ class FakeSerialException(Exception):
 
 
 def make_driver(**overrides: Any) -> Driver:
-    """Build a pressure parser serial driver with optional setting overrides."""
+    """Build a pipe-delimited serial driver with optional setting overrides."""
 
     settings = {
         "port": "/tmp/labpulse-fake-serial/pressure",
         "baud_rate": 9600,
-        "parser_type": "pressure",
         "reconnect_interval_seconds": 5.0,
     }
     settings.update(overrides)

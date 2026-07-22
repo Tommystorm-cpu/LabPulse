@@ -13,7 +13,7 @@
 
 # --- Global Settings ---
 mqtt:
-  broker: "localhost" # change to mosquitto later and remove from the setup shell script
+  broker: "mosquitto"
   port: 1883
 
 sms:
@@ -58,7 +58,6 @@ services:
   pressure_monitor:
     enabled: true
     driver: serial
-    parser: pressure # Change to "pipe" after flashing the refactor firmware.
     serial_port: "FAKE_PRESSURE_PORT"
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
@@ -73,7 +72,6 @@ services:
   pump_room:
     enabled: true
     driver: serial
-    parser: pump_room # Change to "pipe" after flashing the refactor firmware.
     serial_port: "FAKE_PUMP_ROOM_PORT"
     baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
@@ -143,7 +141,6 @@ services:
   turbo_pump:
     enabled: true
     driver: serial
-    parser: water # Change to "pipe" after flashing the refactor firmware.
     serial_port: "FAKE_TURBO_PUMP_PORT"
     baud_rate: 9600
     device_name: "Turbo Pump Hub"
@@ -210,7 +207,7 @@ services:
   ups_monitor:
     enabled: true
     driver: i2c
-    i2c_sensor: max17043_ups
+    i2c_sensor: x1200_ups
     i2c_bus: 1
     i2c_address: 0x36
     device_name: "UPS Monitor"

@@ -58,8 +58,8 @@ chmod +x setup_container_fs.sh
 Fake mode derives `~/labpulse-ha/config.fake.yaml` without altering the
 real-hardware settings in `config.yaml`. It changes configured serial paths to
 pseudo-terminal links, moves the room-environment DHT11 to simulated serial,
-and converts the enabled `power_detection` service from MAX17043/I2C to the
-`ups_monitor` pseudo-serial parser. Service names, measurements, display metadata,
+and converts the enabled `power_detection` service from X1200/I2C to the
+`ups_monitor` pseudo-serial endpoint. Service names, measurements, display metadata,
 power timings, and Home Assistant identities remain unchanged.
 
 If `config.yaml` has no active power service—as with the commented starter
@@ -157,7 +157,6 @@ services:
   pressure_monitor:
     enabled: true
     driver: serial
-    parser: pipe
     serial_port: "/dev/serial/by-id/usb-Arduino_..."
     baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
@@ -182,14 +181,13 @@ services:
 | `service_health.recovery_confirm_seconds` | Continuous absence of a whole-service failure required before one recovery; default 15 |
 | service key | Stable machine ID used in containers, MQTT, and HA entities |
 | `enabled` | Whether Compose and HA generation include the service |
-| `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with MAX17043-compatible UPS gauge |
-| `parser` | Serial format selector: `pressure`, `pump_room`, `water`, `ups_simulator`, or generic pipe fallback |
+| `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with the X1200 UPS |
 | `serial_port` | Real stable path or fake path |
 | `gpio_sensor` | Currently only `dht11` |
 | `gpio_pin` | Blinka board name such as `D4` |
 | `device_name` | User-facing HA device label |
 | `setups` | Logical experimental setups and their presentation metadata |
-| `measurements[].name` | Stable key; must match driver/parser output |
+| `measurements[].name` | Stable key; must match the serial or hardware-driver output |
 | `measurements[].label` | User-facing label |
 | `measurements[].setups` | Required non-empty setup-ID list for ordinary measurements; omit it for dedicated `power_detection` telemetry |
 | `measurements[].subcategory` | Optional presentation subgroup within a setup section |
@@ -197,7 +195,7 @@ services:
 | `reconnect_interval_seconds` | Delay between serial, GPIO, or I2C reinitialization attempts |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
 | `maximum_measurement_age_seconds` | Seconds without an MQTT sample before an ordinary measurement becomes unavailable; default 300 |
-| `i2c_sensor`, `i2c_bus`, `i2c_address` | `max17043_ups`, bus 1, and the verified address `0x36` |
+| `i2c_sensor`, `i2c_bus`, `i2c_address` | `x1200_ups`, bus 1, and the verified address `0x36` |
 | `power_detection` | Direct X1200 GPIO chip/line, polarity, and outage/recovery confirmation timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
@@ -901,7 +899,7 @@ Run normal setup as the intended user rather than with `sudo`.
 From the repository root on a development machine:
 
 ```powershell
-python .\docker_refactor\testing\test_legacy_serial_parser.py
+python .\docker_refactor\testing\test_serial_parser.py
 python .\docker_refactor\testing\test_hardware_factory.py
 python .\docker_refactor\testing\test_dht11_driver.py
 python .\docker_refactor\testing\test_simulate_serial.py

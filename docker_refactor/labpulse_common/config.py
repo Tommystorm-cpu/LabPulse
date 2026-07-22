@@ -16,7 +16,7 @@ DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
 logger = logging.getLogger("Config")
 
 # ==========================================
-# PYDANTIC SCHEMAS 
+# PYDANTIC SCHEMAS
 # ==========================================
 
 class MqttConfig(BaseModel):
@@ -205,10 +205,9 @@ class ServiceConfig(BaseModel):
     driver: Literal["serial", "gpio", "i2c"]
     gpio_sensor: Literal["dht11"] | None = None
     gpio_pin: str | None = None
-    i2c_sensor: Literal["max17043_ups"] | None = None
+    i2c_sensor: Literal["x1200_ups"] | None = None
     i2c_bus: int | None = Field(default=None, ge=0, le=255)
     i2c_address: int | None = Field(default=None, ge=0x03, le=0x77)
-    parser: str | None = None
     serial_port: str | None = None
     baud_rate: int = Field(default=9600, gt=0)
     device_name: str
@@ -227,14 +226,16 @@ class ServiceConfig(BaseModel):
             raise ValueError("measurements[].name values must be unique within a service")
 
         if self.driver == "i2c":
-            if self.i2c_sensor != "max17043_ups":
-                raise ValueError("I2C services currently require i2c_sensor: max17043_ups")
+            if self.i2c_sensor != "x1200_ups":
+                raise ValueError("I2C services currently require i2c_sensor: x1200_ups")
             if self.i2c_bus is None:
-                raise ValueError("MAX17043 services require i2c_bus")
+                raise ValueError("X1200 services require i2c_bus")
             if self.i2c_address is None:
-                raise ValueError("MAX17043 services require i2c_address")
+                raise ValueError("X1200 services require i2c_address")
             if self.i2c_address != 0x36:
-                raise ValueError("MAX17043 services require i2c_address: 0x36")
+                raise ValueError("X1200 services require i2c_address: 0x36")
+            if self.power_detection is None:
+                raise ValueError("X1200 services require power_detection")
         elif any(
             value is not None
             for value in (
@@ -243,7 +244,7 @@ class ServiceConfig(BaseModel):
                 self.i2c_address,
             )
         ):
-            raise ValueError("MAX17043/I2C settings require driver: i2c")
+            raise ValueError("X1200/I2C settings require driver: i2c")
 
         if self.power_detection is not None:
             required = {"voltage", "battery_level", "mains_present"}
@@ -254,12 +255,12 @@ class ServiceConfig(BaseModel):
                 )
             if self.driver not in {"i2c", "serial"}:
                 raise ValueError(
-                    "x1200_gpio power_detection requires the live I2C UPS driver "
+                    "x1200_gpio power_detection requires the live X1200 driver "
                     "or the fake serial UPS driver"
                 )
             if self.driver == "i2c" and self.read_interval_seconds not in (None, 1.0):
                 raise ValueError(
-                    "MAX17043 power monitoring requires read_interval_seconds: 1"
+                    "X1200 power monitoring requires read_interval_seconds: 1"
                 )
 
             if any(measurement.setups is not None for measurement in self.measurements):

@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <LinearPressureSensor.h>
+#include <PinMeasurement.h>
 
 namespace PressureMonitorFirmware {
 
@@ -11,8 +12,12 @@ constexpr unsigned long SAMPLE_INTERVAL_MS = 1000UL;
 constexpr uint16_t SERIAL_BAUD_RATE = 9600;
 constexpr uint8_t PRESSURE_DECIMAL_PLACES = 2;
 
+// Authoritative pin-to-name mapping. Edit this one record to change either the
+// Arduino input or the serial measurement name.
+constexpr LabPulse::PinMeasurement PRESSURE = {A0, "pressure"};
+
 constexpr LabPulse::LinearPressureConfig PRESSURE_CONFIG = {
-    A0,      // pin
+    PRESSURE.pin,
     5.0F,    // ADC reference volts
     1023,    // ADC divisor
     2,       // minimum valid ADC

@@ -34,7 +34,6 @@ def dashboard_config() -> dict[str, object]:
         "services": {
             "hub_a": {
                 "driver": "serial",
-                "parser": "water",
                 "serial_port": "/tmp/hub-a",
                 "device_name": "Hub A",
                 "measurements": [
@@ -98,7 +97,6 @@ def dashboard_config() -> dict[str, object]:
             "disabled_hub": {
                 "enabled": False,
                 "driver": "serial",
-                "parser": "pressure",
                 "serial_port": "/tmp/disabled",
                 "device_name": "Disabled Hub",
                 "measurements": [{"name": "ignored", "setups": ["alpha_setup"]}],

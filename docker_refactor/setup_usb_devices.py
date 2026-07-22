@@ -171,7 +171,7 @@ def replace_serial_ports(config_text: str, assignments: dict[str, str]) -> str:
             (
                 index
                 for index in range(start + 1, end)
-                if re.match(r"^    (?:parser|driver):\s*", lines[index])
+                if re.match(r"^    driver:\s*", lines[index])
             ),
             start,
         )

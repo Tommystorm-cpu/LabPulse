@@ -20,7 +20,6 @@ services:
   ups_monitor:
     enabled: true
     driver: serial
-    parser: ups_simulator
     serial_port: "/tmp/labpulse-fake-serial/ups_monitor"
     baud_rate: 9600
     device_name: "UPS Monitor"

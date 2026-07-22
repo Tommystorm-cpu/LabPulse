@@ -127,8 +127,8 @@ All use the same entry point:
 python -m labpulse_hardware --service <service-key>
 ```
 
-The service key selects configuration and therefore its driver, parser,
-measurements, labels, and hardware path. One container per service isolates device
+The service key selects configuration and therefore its driver, measurements,
+labels, and hardware path. One container per service isolates device
 disconnects and restarts.
 
 ### `labpulse-sms`
@@ -161,8 +161,8 @@ Owns the live acquisition process:
 
 - service-loop orchestration
 - driver selection
-- serial, DHT11, and read-only MAX17043 UPS drivers
-- compatibility parsing of current Arduino text
+- serial, DHT11, and X1200 UPS drivers
+- strict parsing of the standard pipe-delimited serial format
 - MQTT discovery, state, and service-health publishing
 
 Its output boundary is a normalized `dict[str, float]` plus a health string.
@@ -190,7 +190,7 @@ The live config describes deployment facts:
 ~/labpulse-ha/config.yaml
 ```
 
-It owns enabled services, hardware access, parser choice, measurements, display
+It owns enabled services, hardware access, measurements, display
 metadata, MQTT connection settings, SMS mode, and recipients.
 
 Thresholds, alarm modes, and per-measurement timing are configured through the
@@ -218,7 +218,7 @@ shared measurements. Per-entity filter conditions omit individually muted
 measurements and shared measurements whose owning setups are all muted. The
 global notification gate does not conceal system health.
 
-A MAX17043 service receives only its configured `/dev/i2c-N` device mapping.
+An X1200 service receives only its configured `/dev/i2c-N` device mapping.
 It does not require privileged mode or a broad `/dev` mount.
 
 Home Assistant owns operator state:
@@ -330,7 +330,7 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 | Change topics or SMS request fields | `labpulse_common/mqtt_contracts.py` |
 | Change any user-facing SMS wording | `labpulse_common/sms_templates.yaml` |
 | Change acquisition or reconnect behavior | `labpulse_hardware/drivers/` |
-| Adapt current Arduino text | `labpulse_hardware/legacy_parsing/serial_parser.py` |
+| Change the standard serial contract | `labpulse_hardware/serial_parser.py` and Arduino firmware |
 | Change discovery/state publishing | `labpulse_hardware/homeassistant_publisher.py` |
 | Change measurement render types/IDs | `labpulse_homeassistant/measurement_model.py` |
 | Change aggregate Home Assistant models/construction | `labpulse_homeassistant/render_model.py` |

@@ -13,7 +13,6 @@ FAKE_UPS_PORT = "/tmp/labpulse-fake-serial/ups_monitor"
 POWER_HARDWARE_KEYS = frozenset(
     {
         "driver",
-        "parser",
         "serial_port",
         "baud_rate",
         "i2c_sensor",
@@ -27,7 +26,6 @@ POWER_HARDWARE_KEYS = frozenset(
 DEFAULT_FAKE_POWER_SERVICE = {
     "enabled": True,
     "driver": "serial",
-    "parser": "ups_simulator",
     "serial_port": FAKE_UPS_PORT,
     "baud_rate": 9600,
     "device_name": "UPS Monitor",
@@ -118,7 +116,6 @@ def convert_power_service_to_fake_serial(text: str) -> str:
     prefix = " " * indent
     fake_transport = [
         f"{prefix}driver: serial{newline}",
-        f"{prefix}parser: ups_simulator{newline}",
         f'{prefix}serial_port: "{FAKE_UPS_PORT}"{newline}',
         f"{prefix}baud_rate: 9600{newline}",
     ]

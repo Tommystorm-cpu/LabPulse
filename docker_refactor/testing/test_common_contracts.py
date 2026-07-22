@@ -138,7 +138,6 @@ def test_service_health_config_contract() -> None:
         "services": {
             "hub": {
                 "driver": "serial",
-                "parser": "pressure",
                 "serial_port": "/tmp/hub",
                 "device_name": "Hub",
                 "measurements": [{"name": "pressure", "setups": ["test_setup"]}],

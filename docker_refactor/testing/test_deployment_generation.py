@@ -150,6 +150,13 @@ def test_setup_refresh_and_preservation_contract() -> None:
     """Check bootstrap copies all packages and guards user-owned live files."""
 
     source = (REFACTOR_DIR / "setup_container_fs.sh").read_text(encoding="utf-8")
+    starter = yaml.safe_load(
+        (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8")
+    )
+    if starter["mqtt"]["broker"] != "mosquitto":
+        raise AssertionError("starter config must use the Compose MQTT service name")
+    if "text.replace('broker:" in source or 'text.replace("broker:' in source:
+        raise AssertionError("setup must not rewrite the user-owned MQTT broker")
     required_fragments = (
         'replace_dir "$SCRIPT_DIR/labpulse_common"',
         'replace_dir "$SCRIPT_DIR/labpulse_hardware"',
@@ -159,9 +166,9 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'copy_file "$SCRIPT_DIR/edit_config.sh"',
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
+        'Real setup never rewrites the',
         'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
         'serial_port: "/tmp/labpulse-fake-serial/room_environment"',
-        'parser: pipe',
         'adafruit-circuitpython-dht',
         'adafruit-blinka',
         'lgpio',

@@ -15,10 +15,12 @@ class PipeSampleWriter {
       const __FlashStringHelper *name,
       const Reading &reading,
       uint8_t digits);
+  void value(const char *name, const Reading &reading, uint8_t digits);
   void end();
 
  private:
   void prefix(const __FlashStringHelper *name);
+  void prefix(const char *name);
 
   Print &output_;
   bool firstValue_;

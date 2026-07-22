@@ -17,11 +17,16 @@ def assert_contains(path: Path, values: tuple[str, ...]) -> None:
             raise AssertionError(f"Missing {value!r} in {path}")
 
 
-def measurement_names(path: Path) -> list[str]:
-    """Return pipe-writer measurement names in source order."""
+def measurement_references(path: Path) -> list[str]:
+    """Return header-owned name fields passed to the writer in source order."""
 
     text = path.read_text(encoding="utf-8")
-    return re.findall(r'sample\.value\(F\("([a-z0-9_]+)"\)', text)
+    return re.findall(
+        r"sample\.value\(\s*"
+        r"([A-Z][A-Z0-9_]*(?:\[\d+\])?\."
+        r"(?:name|temperatureName|humidityName))\s*,",
+        text,
+    )
 
 
 def test_reusable_sensor_modules() -> None:
@@ -39,6 +44,23 @@ def test_reusable_sensor_modules() -> None:
             raise AssertionError(f"Missing reusable header: {stem}.h")
         if not (source_dir / f"{stem}.cpp").is_file():
             raise AssertionError(f"Missing reusable implementation: {stem}.cpp")
+    if not (source_dir / "PinMeasurement.h").is_file():
+        raise AssertionError("Missing reusable header: PinMeasurement.h")
+
+
+def test_arduino_library_metadata() -> None:
+    """Require metadata needed for discovery by Arduino IDE 1.8.19."""
+
+    assert_contains(
+        FIRMWARE_DIR / "library.properties",
+        (
+            "name=LabPulseFirmware",
+            "version=0.1.0",
+            "url=https://github.com/lairdgrouplancaster/LabPulse",
+            "architectures=*",
+            "depends=DHT sensor library",
+        ),
+    )
 
 
 def test_device_composition_files() -> None:
@@ -59,7 +81,8 @@ def test_current_configuration_is_retained() -> None:
         FIRMWARE_DIR / "examples" / "pressure_monitor" / "pressure_monitor.h",
         (
             "SAMPLE_INTERVAL_MS = 1000UL",
-            "A0,",
+            'PRESSURE = {A0, "pressure"}',
+            "PRESSURE.pin,",
             "0.48F",
             "4.5F",
             "1.6F",
@@ -72,66 +95,80 @@ def test_current_configuration_is_retained() -> None:
         FIRMWARE_DIR / "examples" / "pump_room" / "pump_room.h",
         (
             "SAMPLE_INTERVAL_MS = 5000UL",
-            "3, 450.0F, INPUT_PULLUP, FALLING",
-            "2, 450.0F, INPUT_PULLUP, FALLING",
-            "A0, 5.0F, 1023",
-            "A3, 5.0F, 1023",
+            'FLOW1 = {3, "flow1"}',
+            'FLOW2 = {2, "flow2"}',
+            "FLOW1.pin, 450.0F, INPUT_PULLUP, FALLING",
+            "FLOW2.pin, 450.0F, INPUT_PULLUP, FALLING",
+            '{A0, "temp0"}',
+            '{A3, "temp3"}',
+            "TEMPERATURES[0].pin, 5.0F, 1023",
+            "TEMPERATURES[3].pin, 5.0F, 1023",
             "DHT11_CONFIG",
-            "4, DHT11, -40.0F, 80.0F, 0.0F, 100.0F",
-            "A5, 5.0F, 1024",
-            "A4, 5.0F, 1024",
+            'ROOM_DHT11 = {4, "roomtemp", "roomhum"}',
+            "ROOM_DHT11.pin, DHT11, -40.0F, 80.0F, 0.0F, 100.0F",
+            '{A5, "press1"}',
+            '{A4, "press2"}',
+            "PRESSURES[0].pin, 5.0F, 1024",
+            "PRESSURES[1].pin, 5.0F, 1024",
         ),
     )
     assert_contains(
         FIRMWARE_DIR / "examples" / "turbo_pump" / "turbo_pump.h",
         (
             "SAMPLE_INTERVAL_MS = 5000UL",
-            "2, 450.0F, INPUT_PULLUP, FALLING",
-            "3, 450.0F, INPUT_PULLUP, FALLING",
-            "A0, 5.0F, 1023",
-            "A3, 5.0F, 1023",
+            'FLOW1 = {2, "flow1"}',
+            'FLOW2 = {3, "flow2"}',
+            "FLOW1.pin, 450.0F, INPUT_PULLUP, FALLING",
+            "FLOW2.pin, 450.0F, INPUT_PULLUP, FALLING",
+            '{A0, "temp0"}',
+            '{A3, "temp3"}',
+            "TEMPERATURES[0].pin, 5.0F, 1023",
+            "TEMPERATURES[3].pin, 5.0F, 1023",
         ),
     )
 
 
 def test_pipe_measurement_order() -> None:
-    """Keep emitted measurement names and order aligned with current config."""
+    """Require output names to come from header mappings in the current order."""
 
     expected = {
-        "pressure_monitor": ["pressure"],
+        "pressure_monitor": ["PRESSURE.name"],
         "pump_room": [
-            "flow1",
-            "flow2",
-            "temp0",
-            "temp1",
-            "temp2",
-            "temp3",
-            "roomtemp",
-            "roomhum",
-            "press1",
-            "press2",
+            "FLOW1.name",
+            "FLOW2.name",
+            "TEMPERATURES[0].name",
+            "TEMPERATURES[1].name",
+            "TEMPERATURES[2].name",
+            "TEMPERATURES[3].name",
+            "ROOM_DHT11.temperatureName",
+            "ROOM_DHT11.humidityName",
+            "PRESSURES[0].name",
+            "PRESSURES[1].name",
         ],
         "turbo_pump": [
-            "flow1",
-            "flow2",
-            "temp0",
-            "temp1",
-            "temp2",
-            "temp3",
+            "FLOW1.name",
+            "FLOW2.name",
+            "TEMPERATURES[0].name",
+            "TEMPERATURES[1].name",
+            "TEMPERATURES[2].name",
+            "TEMPERATURES[3].name",
         ],
     }
     for target, names in expected.items():
-        actual = measurement_names(
+        actual = measurement_references(
             FIRMWARE_DIR / "examples" / target / f"{target}.cpp"
         )
         if actual != names:
-            raise AssertionError(f"{target} emits {actual}, expected {names}")
+            raise AssertionError(
+                f"{target} uses name fields {actual}, expected {names}"
+            )
 
 
 def run() -> None:
     """Run all firmware layout checks without external test dependencies."""
 
     tests = (
+        test_arduino_library_metadata,
         test_reusable_sensor_modules,
         test_device_composition_files,
         test_current_configuration_is_retained,

@@ -21,15 +21,11 @@ def build_driver(
         if not service_config.serial_port:
             raise ValueError(f"Serial service '{service_name}' is missing serial_port")
 
-        if not service_config.parser:
-            raise ValueError(f"Serial service '{service_name}' is missing parser")
-
         logger.info("Loaded serial driver for %s", service_name)
         return SerialDriver(
             name=service_name,
             port=service_config.serial_port,
             baud_rate=service_config.baud_rate,
-            parser_type=service_config.parser,
             reconnect_interval_seconds=service_config.reconnect_interval_seconds,
         )
 
@@ -57,44 +53,28 @@ def build_driver(
         )
 
     if service_config.driver == "i2c":
-        if service_config.i2c_sensor == "max17043_ups":
-            if service_config.power_detection is not None:
-                from labpulse_hardware.drivers.x1200_ups_driver import (
-                    Driver as X1200UpsDriver,
-                )
-
-                if service_config.i2c_bus is None or service_config.i2c_address is None:
-                    raise ValueError(f"X1200 service '{service_name}' is missing I2C settings")
-                power = service_config.power_detection
-                logger.info("Loaded X1200 UPS driver for %s", service_name)
-                return X1200UpsDriver(
-                    name=service_name,
-                    bus_number=service_config.i2c_bus,
-                    address=service_config.i2c_address,
-                    gpio_chip=power.gpio_chip,
-                    gpio_line=power.gpio_line,
-                    mains_present_active_high=power.mains_present_active_high,
-                    read_interval_seconds=service_config.read_interval_seconds or 1.0,
-                    reconnect_interval_seconds=service_config.reconnect_interval_seconds,
-                )
-
-            from labpulse_hardware.drivers.max17043_ups_driver import (
-                Driver as Max17043UpsDriver,
-            )
-
+        if service_config.i2c_sensor == "x1200_ups":
             if service_config.i2c_bus is None or service_config.i2c_address is None:
-                raise ValueError(f"MAX17043 service '{service_name}' is missing I2C settings")
-            logger.info("Loaded MAX17043 UPS driver for %s", service_name)
-            return Max17043UpsDriver(
+                raise ValueError(f"X1200 service '{service_name}' is missing I2C settings")
+            if service_config.power_detection is None:
+                raise ValueError(f"X1200 service '{service_name}' is missing power_detection")
+            from labpulse_hardware.drivers.x1200_ups_driver import Driver as X1200UpsDriver
+
+            power = service_config.power_detection
+            logger.info("Loaded X1200 UPS driver for %s", service_name)
+            return X1200UpsDriver(
                 name=service_name,
                 bus_number=service_config.i2c_bus,
                 address=service_config.i2c_address,
+                gpio_chip=power.gpio_chip,
+                gpio_line=power.gpio_line,
+                mains_present_active_high=power.mains_present_active_high,
                 read_interval_seconds=service_config.read_interval_seconds or 1.0,
                 reconnect_interval_seconds=service_config.reconnect_interval_seconds,
             )
         raise ValueError(
             f"I2C service '{service_name}' must set i2c_sensor to a supported value: "
-            "max17043_ups"
+            "x1200_ups"
         )
 
     raise ValueError(

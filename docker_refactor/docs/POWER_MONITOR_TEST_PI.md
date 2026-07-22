@@ -12,7 +12,7 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
   ups_monitor:
     enabled: true
     driver: i2c
-    i2c_sensor: max17043_ups
+    i2c_sensor: x1200_ups
     i2c_bus: 1
     i2c_address: 0x36
     device_name: "UPS Monitor"
