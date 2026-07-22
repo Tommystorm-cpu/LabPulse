@@ -32,19 +32,35 @@ parser: pipe
 baud_rate: 9600
 ```
 
-There is no JSON envelope or LabPulse Arduino library. This keeps lab-specific
-sketches self-contained: expose another sensor by calculating its final value
-and appending ` | newkey: value` to the line.
+There is no JSON envelope. The dependency-free `LabPulseFirmware` Arduino
+library provides the standard pipe writer plus reusable pulse-flow,
+thermistor, linear-pressure, and DHT11 components. Lab-specific device headers
+retain pins and calibration values, and device composition sources choose
+which sensors to publish. The combined library declares the external Arduino
+DHT dependency; unused DHT code is removed from firmware that does not create
+that sensor.
+
+Each target contains:
+
+```text
+device.h      pins, calibration, intervals, precision
+device.cpp    sensor construction, sampling, output order
+device.ino    minimal Arduino setup()/loop() wrapper
+```
+
+Arduino CLI compiles those files and the imported sensor modules into one
+flashable `.hex`. See [the firmware README](../firmware/README.md) for the
+layout and one-command build workflow.
 
 ## Standard sketches
 
 | Sketch | Measurements |
 | --- | --- |
-| `firmware/pressure_monitor/pressure_monitor.ino` | `pressure` in bar |
-| `firmware/pump_room/pump_room.ino` | `flow1`, `flow2`, `temp0`-`temp3`, `roomtemp`, `roomhum`, `press1`, `press2` |
-| `firmware/turbo_pump/turbo_pump.ino` | `flow1`, `flow2`, `temp0`-`temp3` |
+| `firmware/examples/pressure_monitor/pressure_monitor.ino` | `pressure` in bar |
+| `firmware/examples/pump_room/pump_room.ino` | `flow1`, `flow2`, `temp0`-`temp3`, `roomtemp`, `roomhum`, `press1`, `press2` |
+| `firmware/examples/turbo_pump/turbo_pump.ino` | `flow1`, `flow2`, `temp0`-`temp3` |
 
-Pins, calibration constants, equations, intervals, and output precision are
+Pins, calibration constants, equations, intervals, and output precision remain
 copied from the corresponding old sketches. The only unit conversion moved
 from Python is standalone pressure: the Arduino now emits bar. It preserves the
 old four-decimal MPa serial quantisation before converting, so the downstream
