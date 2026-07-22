@@ -46,6 +46,19 @@ def test_reusable_sensor_modules() -> None:
             raise AssertionError(f"Missing reusable implementation: {stem}.cpp")
     if not (source_dir / "PinMeasurement.h").is_file():
         raise AssertionError("Missing reusable header: PinMeasurement.h")
+    assert_contains(
+        source_dir / "README.md",
+        (
+            "450.0",
+            "0.0014948",
+            "0.00021902",
+            "0.0000016239",
+            "0.000000034445",
+            "0.48 to 4.5 V",
+            "0.5 to 4.5 V",
+            "Zero and `null` are not interchangeable",
+        ),
+    )
 
 
 def test_arduino_library_metadata() -> None:

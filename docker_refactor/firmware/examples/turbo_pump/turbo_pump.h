@@ -18,10 +18,10 @@ constexpr uint8_t TEMPERATURE_DECIMAL_PLACES = 2;
 constexpr LabPulse::PinMeasurement FLOW1 = {2, "flow1"};
 constexpr LabPulse::PinMeasurement FLOW2 = {3, "flow2"};
 constexpr LabPulse::PinMeasurement TEMPERATURES[] = {
-    {A0, "temp0"},
-    {A1, "temp1"},
-    {A2, "temp2"},
-    {A3, "temp3"},
+    {A0, "triton1#temp1"},
+    {A1, "triton1#temp2"},
+    {A2, "triton2#temp1"},
+    {A3, "triton2#temp2"},
 };
 
 // Flow configuration retained from the current turbo-pump firmware.

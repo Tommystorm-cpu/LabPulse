@@ -119,6 +119,10 @@ The supplied configurations match the current LabPulse installation:
 | Pump room | flow on D3/D2 at 450 pulses per litre; thermistors on A0-A3 with 4.7 kOhm fixed resistors; DHT11 on D4; pressure on A5/A4 |
 | Turbo pump | flow on D2/D3 at 450 pulses per litre; thermistors on A0-A3 with 4.7 kOhm fixed resistors |
 
+For the conversion equations, coefficients, validation ranges, and the exact
+difference between numeric zero and `null`, see
+[`src/README.md`](src/README.md).
+
 If your wiring or calibration differs, edit the `.h` file beside the selected
 example before uploading:
 
