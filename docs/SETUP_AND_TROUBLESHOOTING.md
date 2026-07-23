@@ -10,7 +10,7 @@ Install the LabPulse command with pipx, then run its bootstrap. After bootstrap,
 operate the system from the generated live directory:
 
 ```text
-Setup command:      labpulse-setup
+Setup command:      labpulse setup
 Control command:    labpulse
 Live installation:  ~/labpulse-live/
 Live config:         ~/labpulse-live/config.yaml
@@ -40,11 +40,11 @@ From a repository checkout, until LabPulse is published:
 ```bash
 cd ~/LabPulse
 pipx install .
-labpulse-setup
+labpulse setup
 ```
 
 After publication, install with `pipx install labpulse` instead. The
-`labpulse-setup` command creates or refreshes `~/labpulse-live`, copies the
+`labpulse setup` command creates or refreshes `~/labpulse-live`, copies the
 installed Python package and generators, preserves existing live config,
 generates Compose and Home Assistant files, and seeds the dashboard. It also creates the private
 `~/labpulse-live/.venv` environment and installs the bounded dependencies in
@@ -58,6 +58,8 @@ The package installs a single control command for normal operation:
 labpulse up                       # start all containers
 labpulse up --build               # rebuild local images and start
 labpulse down                     # stop without deleting persistent data
+labpulse restart                  # restart all stack containers
+labpulse restart homeassistant    # restart one service
 labpulse ps                       # show container status
 labpulse ps --all                 # include stopped containers
 labpulse logs                     # show logs from all services
@@ -66,17 +68,19 @@ labpulse edit                     # edit, validate, regenerate, and apply config
 labpulse open                     # open http://localhost:8123 in a browser
 ```
 
-The equivalent standalone aliases are `labpulse-up`, `labpulse-down`,
+The equivalent standalone aliases are `labpulse-up`, `labpulse-down`, `labpulse-restart`,
 `labpulse-ps`, `labpulse-logs`, `labpulse-edit`, and `labpulse-open`. Commands target
 `~/labpulse-live` from any working directory. Set `LABPULSE_LIVE_DIR` or pass
-`--live-dir DIR` for an alternate installation.
+`--live-dir DIR` for an alternate installation. The older `labpulse-setup`
+entry point remains available temporarily, but new workflows use
+`labpulse setup`.
 
 ### Simulated hardware
 
 ```bash
 cd ~/LabPulse
 pipx install .
-labpulse-setup -fake_usb
+labpulse setup --fake-usb
 ```
 
 Fake mode derives `~/labpulse-live/config.fake.yaml` without altering the
@@ -92,13 +96,13 @@ example—fake mode adds a complete enabled `ups_monitor` block to
 
 The generated fake Compose file mounts `config.fake.yaml` as
 `/app/config.yaml`. After editing the real source config, rerun
-`labpulse-setup -fake_usb` to refresh the derived file. See
+`labpulse setup --fake-usb` to refresh the derived file. See
 [Simulator workflow](#simulator-workflow).
 
 ### Alternate live directory
 
 ```bash
-LABPULSE_LIVE_DIR=/path/to/labpulse-live labpulse-setup
+labpulse --live-dir /path/to/labpulse-live setup
 ```
 
 ### Setup backups
@@ -107,7 +111,7 @@ LABPULSE_LIVE_DIR=/path/to/labpulse-live labpulse-setup
 files:
 
 ```bash
-labpulse-setup --backup
+labpulse setup --backup
 ```
 
 It is not required for the live config: setup always preserves an existing
@@ -505,7 +509,7 @@ state into the live directory, then rebuild:
 ```bash
 cd ~/LabPulse
 pipx install --editable . --force
-labpulse-setup
+labpulse setup
 labpulse up --build
 ```
 
@@ -598,7 +602,7 @@ PTY at the same stable public path. Use `status` at any point to see connected
 and disconnected endpoints.
 
 Remove `--dry-run` to exercise the confirmation and surgical config write.
-Because `config.fake.yaml` is derived, rerunning `labpulse-setup -fake_usb`
+Because `config.fake.yaml` is derived, rerunning `labpulse setup --fake-usb`
 will recreate its deterministic fake paths later.
 
 Change one measurement without recreating its pseudo-terminal:
@@ -793,7 +797,7 @@ docker run --rm -it --network host eclipse-mosquitto:2 \
 
 ### The managed Python environment is missing or invalid
 
-Rerun `labpulse-setup`. It safely preserves the live config and recreates or
+Rerun `labpulse setup`. It safely preserves the live config and recreates or
 refreshes `~/labpulse-live/.venv`. If environment creation itself fails,
 install `python3-full` through `apt` and rerun setup.
 Do not work around the error with a global `pip` installation.

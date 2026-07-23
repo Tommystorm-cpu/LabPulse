@@ -104,6 +104,27 @@ def main() -> None:
                 check=False,
             )
 
+        with patch.dict(
+            os.environ, {"LABPULSE_DOCKER_COMMAND": "sudo docker"}, clear=False
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["sudo", "docker"])
+            result = control.main(
+                ["--live-dir", str(live_dir), "restart", "homeassistant"]
+            )
+            if result != 0:
+                raise AssertionError("restart command failed")
+            run.assert_called_once_with(
+                [
+                    "sudo",
+                    "docker",
+                    "compose",
+                    "restart",
+                    "homeassistant",
+                ],
+                cwd=live_dir.resolve(),
+                check=False,
+            )
+
         with patch.object(control.shutil, "which", return_value="/bin/bash"), patch.object(
             control, "find_install_assets", return_value=REPOSITORY
         ), patch.object(control.subprocess, "run") as run:
@@ -138,15 +159,31 @@ def main() -> None:
                 new=2,
             )
 
+        with patch.object(control, "installer_main", return_value=0) as installer:
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "setup",
+                    "--fake-usb",
+                    "--backup",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("setup command failed")
+            installer.assert_called_once_with(["--fake-usb", "--backup"])
+
     missing = REPOSITORY / "testing" / "definitely-not-a-live-install"
     if control.main(["--live-dir", str(missing), "ps"]) != 2:
         raise AssertionError("missing live deployment should fail clearly")
 
     print("[PASS] Docker Compose command routing")
+    print("[PASS] Docker Compose restart routing")
     print("[PASS] configurable Docker command prefix")
     print("[PASS] guarded config editor routing")
     print("[PASS] standalone command alias routing")
     print("[PASS] Home Assistant browser routing")
+    print("[PASS] unified setup command routing")
     print("[PASS] missing installation handling")
 
 

@@ -29,7 +29,7 @@ Default target:
   ~/labpulse-live
 
 Override target:
-  LABPULSE_LIVE_DIR=/path/to/labpulse-live labpulse-setup
+  labpulse --live-dir /path/to/labpulse-live setup
 
 Options:
   -fake_usb  Derive config.fake.yaml and mount pseudo-serial sensors,
@@ -353,6 +353,7 @@ Next commands:
   $NEXT_USB_COMMAND
   labpulse edit
   labpulse up --build
+  labpulse restart
   labpulse ps
   labpulse open
 

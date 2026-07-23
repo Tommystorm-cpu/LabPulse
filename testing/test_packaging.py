@@ -27,6 +27,7 @@ def main() -> None:
         "labpulse": "labpulse.control:main",
         "labpulse-up": "labpulse.control:up_main",
         "labpulse-down": "labpulse.control:down_main",
+        "labpulse-restart": "labpulse.control:restart_main",
         "labpulse-ps": "labpulse.control:ps_main",
         "labpulse-logs": "labpulse.control:logs_main",
         "labpulse-edit": "labpulse.control:edit_main",

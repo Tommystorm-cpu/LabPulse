@@ -44,7 +44,7 @@ sensor service and the SMS worker run the project’s Python code.
 
 ```text
 pipx-installed LabPulse package
-  -> labpulse-setup
+  -> labpulse setup
   -> ~/labpulse-live/
        config.yaml                  live user configuration
        .venv/                       managed host Python environment
@@ -55,7 +55,7 @@ pipx-installed LabPulse package
   -> docker compose up
 ```
 
-`labpulse-setup` invokes the packaged bootstrap and code-copy step. After it has
+`labpulse setup` invokes the packaged bootstrap and code-copy step. After it has
 run, normal operator work happens from `~/labpulse-live`, not from the checkout
 or pipx environment.
 Host-side commands always use `.venv/bin/python`; Pydantic and PyYAML are

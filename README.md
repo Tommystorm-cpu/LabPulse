@@ -22,14 +22,14 @@ Install from a repository checkout with pipx:
 ```bash
 cd ~/LabPulse
 pipx install .
-labpulse-setup
+labpulse setup
 
 labpulse edit
 labpulse up --build
 ```
 
 Once LabPulse is published, `pipx install labpulse` replaces `pipx install .`.
-Pipx owns the command environment; `labpulse-setup` creates or refreshes the
+Pipx owns the command environment; `labpulse setup` creates or refreshes the
 live deployment without replacing an existing live `config.yaml`.
 
 Fake hardware installation:
@@ -37,7 +37,7 @@ Fake hardware installation:
 ```bash
 cd ~/LabPulse
 pipx install .
-labpulse-setup -fake_usb
+labpulse setup --fake-usb
 
 cd ~/labpulse-live
 ./simulate_serial.py start
@@ -63,6 +63,8 @@ The packaged operator commands are:
 labpulse up                       # start the complete stack
 labpulse up --build               # rebuild local images, then start
 labpulse down                     # stop without deleting persistent data
+labpulse restart                  # restart the complete stack
+labpulse restart homeassistant    # restart one service
 labpulse ps                       # show container status
 labpulse logs                     # show all logs
 labpulse logs -f homeassistant    # follow one service
@@ -70,9 +72,11 @@ labpulse edit                     # safely edit, validate, and apply config
 labpulse open                     # open Home Assistant in the default browser
 ```
 
-Standalone aliases (`labpulse-up`, `labpulse-down`, `labpulse-ps`,
+Standalone aliases (`labpulse-up`, `labpulse-down`, `labpulse-restart`, `labpulse-ps`,
 `labpulse-logs`, `labpulse-edit`, and `labpulse-open`) are also installed for
-shell users who prefer them. `labpulse edit` opens a temporary copy of the live config,
+shell users who prefer them. The older `labpulse-setup` entry point remains a
+temporary alias; new instructions use `labpulse setup`. `labpulse edit` opens
+a temporary copy of the live config,
 validates it, keeps one rollback copy, regenerates Compose and Home Assistant
 YAML, runs Home Assistant's config check, and refreshes the stack through
 Docker.
