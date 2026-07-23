@@ -70,6 +70,9 @@ labpulse logs                     # show all logs
 labpulse logs -f homeassistant    # follow one service
 labpulse edit                     # safely edit, validate, and apply config
 labpulse open                     # open Home Assistant in the default browser
+labpulse firmware                 # show where to download Arduino firmware
+labpulse help                     # show all available commands
+labpulse help logs                # show help for one command
 ```
 
 Standalone aliases (`labpulse-up`, `labpulse-down`, `labpulse-restart`, `labpulse-ps`,
@@ -83,6 +86,10 @@ Docker.
 Setup also creates `~/labpulse-live/.venv` and installs the bounded host tooling
 dependencies there. LabPulse commands select that interpreter automatically;
 users should not install Pydantic globally or activate the environment.
+
+`labpulse firmware` does not download anything yet. It prints links to the
+current firmware source and repository ZIP, then explains where the reusable
+Arduino library, examples, and firmware documentation are located.
 
 ## Source layout
 

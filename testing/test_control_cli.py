@@ -1,6 +1,8 @@
 """Contract tests for the pipx-installed LabPulse operator commands."""
 
 from contextlib import contextmanager
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 import os
@@ -173,6 +175,28 @@ def main() -> None:
                 raise AssertionError("setup command failed")
             installer.assert_called_once_with(["--fake-usb", "--backup"])
 
+        firmware_output = StringIO()
+        with redirect_stdout(firmware_output):
+            result = control.main(["firmware"])
+        if result != 0:
+            raise AssertionError("firmware help command failed")
+        firmware_text = firmware_output.getvalue()
+        for expected in ("tree/main/firmware", "archive/refs/heads/main.zip"):
+            if expected not in firmware_text:
+                raise AssertionError(f"firmware help is missing: {expected}")
+
+        general_help = StringIO()
+        with redirect_stdout(general_help):
+            result = control.main(["help"])
+        if result != 0 or "firmware" not in general_help.getvalue():
+            raise AssertionError("general help command is incomplete")
+
+        firmware_help = StringIO()
+        with redirect_stdout(firmware_help):
+            result = control.main(["help", "firmware"])
+        if result != 0 or "tree/main/firmware" not in firmware_help.getvalue():
+            raise AssertionError("command-specific help is incomplete")
+
     missing = REPOSITORY / "testing" / "definitely-not-a-live-install"
     if control.main(["--live-dir", str(missing), "ps"]) != 2:
         raise AssertionError("missing live deployment should fail clearly")
@@ -184,6 +208,8 @@ def main() -> None:
     print("[PASS] standalone command alias routing")
     print("[PASS] Home Assistant browser routing")
     print("[PASS] unified setup command routing")
+    print("[PASS] firmware download guidance")
+    print("[PASS] general and command-specific help")
     print("[PASS] missing installation handling")
 
 

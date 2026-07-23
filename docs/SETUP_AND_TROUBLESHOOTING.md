@@ -66,6 +66,9 @@ labpulse logs                     # show logs from all services
 labpulse logs -f homeassistant    # follow one service
 labpulse edit                     # edit, validate, regenerate, and apply config
 labpulse open                     # open http://localhost:8123 in a browser
+labpulse firmware                 # show firmware source and download links
+labpulse help                     # show general command help
+labpulse help restart             # explain one command
 ```
 
 The equivalent standalone aliases are `labpulse-up`, `labpulse-down`, `labpulse-restart`,

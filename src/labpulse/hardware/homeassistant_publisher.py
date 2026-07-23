@@ -25,7 +25,7 @@ DEFAULT_MEASUREMENT_ICONS = {
     "signal_strength": "mdi:wifi",
     "temperature": "mdi:thermometer",
     "voltage": "mdi:flash",
-    "volume_flow_rate": "mdi:waves",
+    "volume_flow_rate": "mdi:pipe-valve",
 }
 DEFAULT_MEASUREMENT_ICON = "mdi:chart-line"
 

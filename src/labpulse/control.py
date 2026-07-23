@@ -17,6 +17,26 @@ from labpulse.installer import find_install_assets, main as installer_main
 
 DEFAULT_LIVE_DIR = Path("~/labpulse-live")
 HOME_ASSISTANT_URL = "http://localhost:8123"
+FIRMWARE_SOURCE_URL = (
+    "https://github.com/Tommystorm-cpu/LabPulse/tree/main/firmware"
+)
+FIRMWARE_ARCHIVE_URL = (
+    "https://github.com/Tommystorm-cpu/LabPulse/archive/refs/heads/main.zip"
+)
+FIRMWARE_HELP = f"""\
+LabPulse firmware is currently distributed through the project repository.
+
+Browse the firmware:
+  {FIRMWARE_SOURCE_URL}
+
+Download the complete repository ZIP:
+  {FIRMWARE_ARCHIVE_URL}
+
+After extracting the ZIP, open the firmware/ directory. It contains the
+reusable Arduino library, example sketches, and firmware documentation.
+
+Automatic version-matched firmware downloads are planned for a future release.
+"""
 
 
 def live_directory(override: str | None = None) -> Path:
@@ -133,6 +153,13 @@ def open_homeassistant() -> int:
     return 1
 
 
+def show_firmware_help() -> int:
+    """Explain where the current LabPulse firmware can be downloaded."""
+
+    print(FIRMWARE_HELP)
+    return 0
+
+
 def run_setup(
     live_dir_override: str | None,
     *,
@@ -243,14 +270,48 @@ def build_parser() -> argparse.ArgumentParser:
         "open",
         help="open Home Assistant at http://localhost:8123",
     )
+
+    commands.add_parser(
+        "firmware",
+        help="show where to download LabPulse firmware",
+        description=FIRMWARE_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    help_topics = tuple(commands.choices)
+    help_parser = commands.add_parser(
+        "help",
+        help="show general help or help for one command",
+    )
+    help_parser.add_argument(
+        "topic",
+        nargs="?",
+        choices=help_topics,
+        help="command to explain",
+    )
+    help_parser.set_defaults(
+        help_root_parser=parser,
+        help_command_parsers=commands.choices,
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the LabPulse operator command."""
 
-    arguments = build_parser().parse_args(argv)
+    parser = build_parser()
+    arguments = parser.parse_args(argv)
 
+    if arguments.action == "help":
+        help_parser = (
+            arguments.help_command_parsers.get(arguments.topic)
+            if arguments.topic
+            else arguments.help_root_parser
+        )
+        help_parser.print_help()
+        return 0
+    if arguments.action == "firmware":
+        return show_firmware_help()
     if arguments.action == "setup":
         return run_setup(
             arguments.live_dir,
