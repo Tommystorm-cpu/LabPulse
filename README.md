@@ -69,6 +69,7 @@ labpulse ps                       # show container status
 labpulse logs                     # show all logs
 labpulse logs -f homeassistant    # follow one service
 labpulse edit                     # safely edit, validate, and apply config
+labpulse doctor                   # diagnose config, hardware, Docker, and endpoints
 labpulse open                     # open Home Assistant in the default browser
 labpulse firmware                 # show where to download Arduino firmware
 labpulse help                     # show all available commands
@@ -90,6 +91,13 @@ users should not install Pydantic globally or activate the environment.
 `labpulse firmware` does not download anything yet. It prints links to the
 current firmware source and repository ZIP, then explains where the reusable
 Arduino library, examples, and firmware documentation are located.
+
+`labpulse doctor` is read-only. It validates the source and active runtime
+configuration, checks generated Home Assistant files and enabled driver
+resources, validates Compose, compares defined with running services, and
+probes the local MQTT and Home Assistant ports. It returns a non-zero exit
+status when a required check fails, making it suitable for support reports and
+simple monitoring.
 
 ## Source layout
 

@@ -13,6 +13,7 @@ from typing import Sequence
 import webbrowser
 
 from labpulse.installer import find_install_assets, main as installer_main
+from labpulse.doctor import run_doctor
 
 
 DEFAULT_LIVE_DIR = Path("~/labpulse-live")
@@ -270,6 +271,17 @@ def build_parser() -> argparse.ArgumentParser:
         "open",
         help="open Home Assistant at http://localhost:8123",
     )
+    doctor_parser = commands.add_parser(
+        "doctor",
+        help="diagnose the installation, hardware access, and running services",
+    )
+    doctor_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="timeout for local MQTT and Home Assistant probes (default: 1)",
+    )
 
     commands.add_parser(
         "firmware",
@@ -324,6 +336,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     live_dir = live_directory(arguments.live_dir)
     if arguments.action == "edit":
         return run_editor(live_dir)
+    if arguments.action == "doctor":
+        if arguments.timeout <= 0:
+            parser.error("doctor --timeout must be greater than zero")
+        try:
+            docker_prefix = docker_command()
+        except ValueError as error:
+            print(f"WARNING: {error}", file=sys.stderr)
+            docker_prefix = None
+        return run_doctor(live_dir, docker_prefix, timeout=arguments.timeout)
 
     compose_arguments: list[str]
     if arguments.action == "up":

@@ -307,7 +307,7 @@ def test_publish_discovery_for_new_measurements() -> None:
                             "name": "Pump Room Sensor Hub",
                         },
                         "unit_of_measurement": "L/min",
-                        "icon": "mdi:waves",
+                        "icon": "mdi:pipe-valve",
                         "state_class": "measurement",
                     }
                 ),

@@ -65,6 +65,7 @@ labpulse ps --all                 # include stopped containers
 labpulse logs                     # show logs from all services
 labpulse logs -f homeassistant    # follow one service
 labpulse edit                     # edit, validate, regenerate, and apply config
+labpulse doctor                   # diagnose installation and running services
 labpulse open                     # open http://localhost:8123 in a browser
 labpulse firmware                 # show firmware source and download links
 labpulse help                     # show general command help
@@ -101,6 +102,10 @@ The generated fake Compose file mounts `config.fake.yaml` as
 `/app/config.yaml`. After editing the real source config, rerun
 `labpulse setup --fake-usb` to refresh the derived file. See
 [Simulator workflow](#simulator-workflow).
+
+`labpulse doctor` follows that Compose mount automatically. In fake mode it
+therefore validates `config.fake.yaml` and the pseudo-terminal paths rather
+than reporting the real hardware paths from `config.yaml` as missing.
 
 ### Alternate live directory
 
@@ -786,6 +791,7 @@ alert floods.
 ## Logs and inspection commands
 
 ```bash
+labpulse doctor
 labpulse ps
 labpulse logs -f
 labpulse logs -f homeassistant
@@ -793,6 +799,23 @@ labpulse logs -f mosquitto
 labpulse logs -f labpulse-sms
 labpulse logs -f labpulse-pressure-monitor
 ```
+
+Run `labpulse doctor` first when the cause is unclear. It is a read-only check
+of:
+
+- the live directory, source config, and config mounted by Compose;
+- generated Home Assistant configuration, alarm, and dashboard files;
+- host paths required by every enabled hardware driver;
+- Docker Compose availability and configuration validity;
+- whether every defined Compose service is running;
+- local MQTT (`127.0.0.1:1883`) and Home Assistant
+  (`127.0.0.1:8123`) TCP reachability.
+
+Every result is labelled `PASS`, `WARN`, `FAIL`, or `SKIP`. A failed required
+check makes the command exit with status 1. Use
+`labpulse doctor --timeout 3` on a particularly slow Pi or
+`labpulse --live-dir DIR doctor` for an alternate installation. The command
+does not regenerate files, restart containers, or alter configuration.
 
 Python services also write persistent logs under `~/labpulse-live/logs/`, for
 example `pressure_monitor.log`, `pump_room.log`, and `sms.log`.

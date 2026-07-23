@@ -197,6 +197,20 @@ def main() -> None:
         if result != 0 or "tree/main/firmware" not in firmware_help.getvalue():
             raise AssertionError("command-specific help is incomplete")
 
+        with patch.object(control, "docker_command", return_value=["docker"]), patch.object(
+            control, "run_doctor", return_value=0
+        ) as doctor:
+            result = control.main(
+                ["--live-dir", str(live_dir), "doctor", "--timeout", "2.5"]
+            )
+            if result != 0:
+                raise AssertionError("doctor command failed")
+            doctor.assert_called_once_with(
+                live_dir.resolve(),
+                ["docker"],
+                timeout=2.5,
+            )
+
     missing = REPOSITORY / "testing" / "definitely-not-a-live-install"
     if control.main(["--live-dir", str(missing), "ps"]) != 2:
         raise AssertionError("missing live deployment should fail clearly")
@@ -210,6 +224,7 @@ def main() -> None:
     print("[PASS] unified setup command routing")
     print("[PASS] firmware download guidance")
     print("[PASS] general and command-specific help")
+    print("[PASS] doctor command routing")
     print("[PASS] missing installation handling")
 
 

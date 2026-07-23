@@ -44,19 +44,23 @@ architecture is not required for this work.
 
 The lifecycle and configuration seams are now centralized. Drivers implement
 `connect/read/close`, return `ReadingBatch`, classify expected failures for
-`HardwareRunner`, and register a typed `DriverSpec`. Driver-specific options and
-Compose resource requirements no longer expand the shared `ServiceConfig` or
-the driver factory.
+`HardwareRunner`, and export a typed `DriverDefinition`. Driver-specific options
+and Compose resource requirements no longer expand the shared `ServiceConfig`
+or the driver factory.
 
 The remaining extension friction is packaging optional hardware dependencies,
 declaring fixed output metadata, first-class simulation hooks, contributor
 scaffolding, and eventually loading separately distributed registrations.
 
-Basic distribution is now in place: `pyproject.toml` builds the `labpulse`
-wheel, pipx exposes `labpulse-setup`, and that command installs the packaged
-source and deployment assets into `~/labpulse-live`. The remaining distribution
-work is publishing releases and versioned container images, locking container
-dependencies, and defining tested upgrade and rollback boundaries.
+Basic distribution and operator tooling are now in place: `pyproject.toml`
+defines the `labpulse` package, pipx exposes a unified `labpulse` command, and
+`labpulse setup` installs the packaged source and deployment assets into
+`~/labpulse-live`. The command also provides setup, lifecycle, logs, guarded
+configuration editing, browser, firmware-help, and read-only diagnostic
+subcommands. The remaining distribution work is validating wheel and source
+artifacts in clean environments, publishing releases and versioned container
+images, locking container dependencies, and defining tested upgrade and
+rollback boundaries.
 
 ## Target driver architecture
 
@@ -99,10 +103,11 @@ Assistant files are generated.
 
 ### Introduce a driver specification
 
-**Status: the dependency-light deployment definitions, internal runtime registry,
-typed option models, lazy builders, default poll intervals, and declarative
-device/mount/privilege requirements are implemented. Host-side Compose
-generation does not import Pydantic or hardware libraries. API versioning,
+**Status: driver definitions, the internal runtime registry, typed option
+models, lazy builders, default poll intervals, and declarative
+device/mount/privilege requirements are implemented. The setup-managed host
+environment supplies Pydantic for config and Compose generation, while
+hardware-vendor libraries remain lazy and container-specific. API versioning,
 fixed output metadata, and public plugin discovery remain future work.**
 
 Each registered driver should provide a `DriverSpec` containing:
@@ -198,17 +203,25 @@ Because the current Docker refactor is not yet in live use, the namespace and
 configuration changes should be made cleanly before the first stable release.
 Legacy import paths and configuration compatibility layers should not be added.
 
-The package should install a single `labpulse` command with subcommands such as:
+The package installs a single `labpulse` command. The current operator surface
+is:
 
 ```text
-labpulse init
-labpulse validate
-labpulse generate
+labpulse setup
+labpulse up | down | restart | ps | logs
+labpulse edit
 labpulse doctor
-labpulse drivers list
-labpulse run --service NAME
-labpulse simulate
+labpulse open
+labpulse firmware
+labpulse help
 ```
+
+Future development should add narrower `validate`, `generate`,
+`drivers list`, and `simulate` commands only where they make contributor and
+automation workflows materially clearer. `labpulse doctor` is implemented as a
+read-only report covering config validation, generated assets, declared driver
+resources, Compose validity and running services, plus local MQTT and Home
+Assistant reachability.
 
 Starter configuration, Home Assistant fragments, SMS templates, and other
 runtime templates should be installed as package data and loaded through
@@ -406,19 +419,21 @@ command.
 
 ### Phase 2: Installable application
 
-- Add `pyproject.toml`.
-- Move active Python code under the `labpulse` namespace.
-- Package all required YAML and template resources.
-- Add the `labpulse` CLI and explicit configuration lookup.
+- [x] Add `pyproject.toml`.
+- [x] Move active Python code under the `labpulse` namespace.
+- [x] Package required code, YAML, templates, and setup assets.
+- [x] Add the `labpulse` CLI and explicit live-directory lookup.
 - Build and test wheel and source distributions.
 
-Acceptance: LabPulse installs into a clean environment with no `sys.path`
-manipulation or dependency on the repository layout.
+Current state: editable pipx installation and packaged setup are working. The
+phase remains open until wheel and source artifacts are built and exercised in
+clean CI environments without repository-layout assumptions.
 
 ### Phase 3: Unified generation and diagnostics
 
 - Move Compose and Home Assistant generation behind `labpulse generate`.
-- Add `labpulse validate`, `labpulse doctor`, and `labpulse drivers list`.
+- Add `labpulse validate` and `labpulse drivers list`.
+- [x] Add the read-only `labpulse doctor` installation and runtime report.
 - Remove duplicated raw YAML parsing from shell-embedded Python.
 - Ensure generators and runtimes use the same typed configuration.
 

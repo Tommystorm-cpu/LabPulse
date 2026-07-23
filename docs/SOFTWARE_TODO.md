@@ -237,17 +237,21 @@ specific enough to implement safely.
 
 ### Installable and versioned Python project
 
-- [ ] Add a `pyproject.toml` for the active Python packages.
-- [ ] Define a project version and command-line entry points.
+- [x] Add a `pyproject.toml` for the active Python packages.
+- [x] Define a project version and command-line entry points.
 - [ ] Build and test an installable wheel or an equally explicit distributable
   artifact.
 - [ ] Stop relying solely on copying unversioned source directories into the
   live build context.
-- [ ] Define the boundary between host-side generator dependencies and container
+- [x] Define the boundary between host-side generator dependencies and container
   runtime dependencies.
 
-Current state: the code is organized into importable packages with
-`__main__.py`, but it is not a versioned installable distribution.
+Current state: LabPulse is a versioned `src/`-layout package with bounded core
+and hardware extras, pipx entry points, packaged deployment assets, a unified
+`labpulse` command, and a setup-managed host virtual environment. Editable pipx
+installation is working for development. Clean wheel/source build and install
+validation remains outstanding, and live containers still build from copied
+package source rather than a released image.
 
 ### Dependency and image reproducibility
 
@@ -268,6 +272,8 @@ Current state: the code is organized into importable packages with
 
 ### Container and service health
 
+- [x] Add a read-only `labpulse doctor` report for config, generated assets,
+  driver resource paths, Compose validity/running services, and local endpoints.
 - [ ] Add meaningful health checks where they improve automatic diagnosis.
 - [ ] Decide whether Compose should distinguish process-running from
   sensor-connected health.
@@ -396,6 +402,8 @@ listed as new feature work:
   without physical hardware.
 - [x] The code is separated into `labpulse.common`, `labpulse.hardware`,
   `labpulse.homeassistant`, and `labpulse.sms` packages under `src/`.
+- [x] The pipx-installed `labpulse` command provides setup, control, guarded
+  config editing, help, and read-only installation diagnostics.
 
 “Implemented” does not automatically mean “proven on the installed Pi.” Items
 with corresponding P0 verification tasks remain part of release acceptance.
