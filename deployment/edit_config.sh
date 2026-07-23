@@ -30,7 +30,7 @@ for required_path in "$CONFIG_PATH" "$COMPOSE_SCRIPT" "$HOMEASSISTANT_SCRIPT"; d
 done
 if [ ! -x "$HOST_PYTHON" ]; then
   echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
-  echo "Run setup_container_fs.sh from the LabPulse repository." >&2
+  echo "Run 'labpulse setup' to restore the managed environment." >&2
   exit 1
 fi
 

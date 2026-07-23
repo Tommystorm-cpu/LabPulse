@@ -30,7 +30,7 @@ def main() -> None:
         "labpulse-restart": "labpulse.control:restart_main",
         "labpulse-ps": "labpulse.control:ps_main",
         "labpulse-logs": "labpulse.control:logs_main",
-        "labpulse-edit": "labpulse.control:edit_main",
+        "labpulse-config": "labpulse.control:config_main",
         "labpulse-open": "labpulse.control:open_main",
         "labpulse-setup": "labpulse.installer:main",
     }
@@ -43,7 +43,7 @@ def main() -> None:
     if missing:
         raise AssertionError(f"installer assets are missing: {missing}")
 
-    setup_source = (REPOSITORY / "setup_container_fs.sh").read_text(
+    setup_source = (REPOSITORY / "deployment" / "setup_container_fs.sh").read_text(
         encoding="utf-8"
     )
     for fragment in (

@@ -100,7 +100,7 @@ def run_compose(live_dir: Path, arguments: Sequence[str]) -> int:
         return 127
 
 
-def run_editor(live_dir: Path) -> int:
+def run_config_editor(live_dir: Path) -> int:
     """Run the packaged guarded config editor against the live deployment."""
 
     if not (live_dir / "config.yaml").is_file():
@@ -114,14 +114,14 @@ def run_editor(live_dir: Path) -> int:
     bash = shutil.which("bash")
     if bash is None:
         print(
-            "ERROR: labpulse edit requires Bash and is supported on "
+            "ERROR: labpulse config requires Bash and is supported on "
             "Raspberry Pi OS/Linux.",
             file=sys.stderr,
         )
         return 127
 
     try:
-        edit_script = find_install_assets() / "edit_config.sh"
+        edit_script = find_install_assets() / "deployment" / "edit_config.sh"
     except FileNotFoundError as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
@@ -264,7 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument("services", nargs="*", help="optional service names")
 
     commands.add_parser(
-        "edit",
+        "config",
         help="edit, validate, regenerate, and safely apply config.yaml",
     )
     commands.add_parser(
@@ -334,8 +334,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return open_homeassistant()
 
     live_dir = live_directory(arguments.live_dir)
-    if arguments.action == "edit":
-        return run_editor(live_dir)
+    if arguments.action == "config":
+        return run_config_editor(live_dir)
     if arguments.action == "doctor":
         if arguments.timeout <= 0:
             parser.error("doctor --timeout must be greater than zero")
@@ -416,10 +416,10 @@ def logs_main() -> int:
     return main(alias_arguments("logs", sys.argv[1:]))
 
 
-def edit_main() -> int:
-    """Run the standalone ``labpulse-edit`` alias."""
+def config_main() -> int:
+    """Run the standalone ``labpulse-config`` alias."""
 
-    return main(alias_arguments("edit", sys.argv[1:]))
+    return main(alias_arguments("config", sys.argv[1:]))
 
 
 def open_main() -> int:

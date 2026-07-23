@@ -131,14 +131,15 @@ def main() -> None:
             control, "find_install_assets", return_value=REPOSITORY
         ), patch.object(control.subprocess, "run") as run:
             run.return_value = completed(["bash"])
-            result = control.main(["--live-dir", str(live_dir), "edit"])
+            result = control.main(["--live-dir", str(live_dir), "config"])
             if result != 0:
-                raise AssertionError("edit command failed")
+                raise AssertionError("config command failed")
             call = run.call_args
-            if call.args[0] != ["/bin/bash", str(REPOSITORY / "edit_config.sh")]:
-                raise AssertionError(f"unexpected edit command: {call.args[0]}")
+            expected_script = REPOSITORY / "deployment" / "edit_config.sh"
+            if call.args[0] != ["/bin/bash", str(expected_script)]:
+                raise AssertionError(f"unexpected config command: {call.args[0]}")
             if call.kwargs["env"]["LABPULSE_LIVE_DIR"] != str(live_dir.resolve()):
-                raise AssertionError("edit command did not target the live directory")
+                raise AssertionError("config command did not target the live directory")
 
         alias = control.alias_arguments(
             "logs", ["--live-dir", str(live_dir), "-f", "mosquitto"]

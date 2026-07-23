@@ -1,117 +1,124 @@
-# LabPulse Docker Runtime
+# LabPulse
 
-This is the active Docker-based LabPulse implementation for Raspberry Pi. It
-runs Home Assistant, Mosquitto, one SMS worker, and one Python container per
-enabled sensor service.
+LabPulse is a Raspberry Pi monitoring platform for laboratory infrastructure.
+It reads Arduino, GPIO, I2C, and simulated sensors; publishes measurements and
+device health over MQTT; presents them in Home Assistant; and can deliver alarm
+notifications through an SMS modem.
 
-The complete documentation has four reference guides and one roadmap:
+LabPulse is currently pre-release software. Installation is supported from a
+repository checkout; it is not yet published on PyPI and released container
+images are not yet available.
 
-1. [Architecture](docs/ARCHITECTURE.md)
-2. [Code internals](docs/CODE_INTERNALS.md)
-3. [Setup and troubleshooting](docs/SETUP_AND_TROUBLESHOOTING.md)
-4. [Arduino and C++ notes](docs/ARDUINO_AND_CPP.md)
-5. [Software roadmap](docs/SOFTWARE_TODO.md)
+## How it works
 
-The [documentation index](docs/README.md) explains which guide answers each
-type of question.
+Each enabled sensor service runs in its own container. A shared hardware runner
+connects to the configured driver, normalizes numeric readings, and publishes
+Home Assistant MQTT discovery and state. Home Assistant owns thresholds,
+alarm timing, dashboards, notification muting, and alarm transitions. A
+separate SMS container validates and delivers notification requests.
 
-## Quick start
+The live Raspberry Pi installation is generated at:
 
-Install from a repository checkout with pipx:
-
-```bash
-cd ~/LabPulse
-pipx install .
-labpulse setup
-
-labpulse edit
-labpulse up --build
+```text
+~/labpulse-live/
 ```
 
-Once LabPulse is published, `pipx install labpulse` replaces `pipx install .`.
-Pipx owns the command environment; `labpulse setup` creates or refreshes the
-live deployment without replacing an existing live `config.yaml`.
-
-Fake hardware installation:
-
-```bash
-cd ~/LabPulse
-pipx install .
-labpulse setup --fake-usb
-
-cd ~/labpulse-live
-./simulate_serial.py start
-labpulse up --build
-```
-
-For active development, use `pipx install --editable . --force` so the
-installed setup command follows the checkout.
-
-The running Pi is configured through:
+The only sensor configuration that operators edit is:
 
 ```text
 ~/labpulse-live/config.yaml
 ```
 
-The repository `config.yaml` is only a new-install starter. Generated
-`compose.yaml`, Home Assistant package, and dashboard files are outputs, not
-permanent editing targets.
+The repository `config.yaml` is a starter template, not the configuration used
+by an installed system.
 
-The packaged operator commands are:
+## Quick start
+
+Install Docker Engine with the Compose plugin, Python with virtual-environment
+support, Git, and pipx. Then clone this repository and install LabPulse:
 
 ```bash
-labpulse up                       # start the complete stack
-labpulse up --build               # rebuild local images, then start
-labpulse down                     # stop without deleting persistent data
-labpulse restart                  # restart the complete stack
-labpulse restart homeassistant    # restart one service
-labpulse ps                       # show container status
-labpulse logs                     # show all logs
-labpulse logs -f homeassistant    # follow one service
-labpulse edit                     # safely edit, validate, and apply config
-labpulse doctor                   # diagnose config, hardware, Docker, and endpoints
-labpulse open                     # open Home Assistant in the default browser
-labpulse firmware                 # show where to download Arduino firmware
-labpulse help                     # show all available commands
-labpulse help logs                # show help for one command
+git clone https://github.com/Tommystorm-cpu/LabPulse.git
+cd LabPulse
+pipx install .
+labpulse setup
+labpulse config
+labpulse up --build
+labpulse doctor
+labpulse open
 ```
 
-Standalone aliases (`labpulse-up`, `labpulse-down`, `labpulse-restart`, `labpulse-ps`,
-`labpulse-logs`, `labpulse-edit`, and `labpulse-open`) are also installed for
-shell users who prefer them. The older `labpulse-setup` entry point remains a
-temporary alias; new instructions use `labpulse setup`. `labpulse edit` opens
-a temporary copy of the live config,
-validates it, keeps one rollback copy, regenerates Compose and Home Assistant
-YAML, runs Home Assistant's config check, and refreshes the stack through
-Docker.
-Setup also creates `~/labpulse-live/.venv` and installs the bounded host tooling
-dependencies there. LabPulse commands select that interpreter automatically;
-users should not install Pydantic globally or activate the environment.
+For a hardware-free installation:
 
-`labpulse firmware` does not download anything yet. It prints links to the
-current firmware source and repository ZIP, then explains where the reusable
-Arduino library, examples, and firmware documentation are located.
+```bash
+labpulse setup --fake-usb
+cd ~/labpulse-live
+./simulate_serial.py start
+labpulse up --build
+```
 
-`labpulse doctor` is read-only. It validates the source and active runtime
-configuration, checks generated Home Assistant files and enabled driver
-resources, validates Compose, compares defined with running services, and
-probes the local MQTT and Home Assistant ports. It returns a non-zero exit
-status when a required check fails, making it suitable for support reports and
-simple monitoring.
+See [Installation](docs/INSTALLATION.md) for prerequisites, real-hardware
+setup, development installs, and updates.
 
-## Source layout
+## Main commands
 
 ```text
-src/labpulse/common/          typed config, identity, MQTT contracts, logging
-src/labpulse/hardware/        driver contracts, central lifecycle, parsing, MQTT publishing
-src/labpulse/homeassistant/   dashboard/alarm/core configuration generator
-src/labpulse/sms/             MQTT alert subscriber and SMS delivery
-firmware/                     simple pipe-delimited Arduino sketches
-hardware/                     PCB and 3D-printing assets
-testing/                      script-based contract tests
-docs/                         maintained reference guides
-legacy/                       superseded implementations and documentation
+labpulse setup       create or refresh ~/labpulse-live
+labpulse config      safely edit, validate, generate, and apply config
+labpulse up          start the stack
+labpulse down        stop the stack without deleting persistent data
+labpulse restart     restart all or selected services
+labpulse ps          show container status
+labpulse logs        inspect container logs
+labpulse doctor      run read-only installation and runtime diagnostics
+labpulse open        open Home Assistant
+labpulse firmware    show firmware download information
+labpulse help        show command help
 ```
 
-Home Assistant owns alarm decisions and operator settings. Hardware services
-publish measurements and health; the SMS worker delivers validated requests.
+The complete command reference is in [Operations](docs/OPERATIONS.md).
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Installation](docs/INSTALLATION.md)
+- [Configuration reference](docs/CONFIGURATION.md)
+- [Operations](docs/OPERATIONS.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Home Assistant and alarms](docs/HOME_ASSISTANT.md)
+- [SMS notifications](docs/SMS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development](docs/DEVELOPMENT.md)
+- [Adding hardware drivers](docs/DRIVER_DEVELOPMENT.md)
+- [Serial protocol](docs/SERIAL_PROTOCOL.md)
+- [Firmware](firmware/README.md)
+- [Roadmap](ROADMAP.md)
+
+## Repository layout
+
+```text
+config.yaml          new-install configuration template
+deployment/          packaged Linux setup and generation scripts
+docs/                operator and contributor documentation
+firmware/            Arduino library and example device firmware
+hardware/            PCB and 3D design files
+src/labpulse/        Python application package
+testing/             hardware-free contract and integration tests
+legacy/              superseded implementations retained for reference
+```
+
+## Contributing
+
+LabPulse welcomes fixes, documentation improvements, simulator scenarios, and
+new hardware support. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting.
+For sensors that can emit the standard serial protocol, new Python code is
+usually unnecessary.
+
+## Project status and licensing
+
+The project is pre-1.0 and its public compatibility policy is still being
+defined. See [ROADMAP.md](ROADMAP.md).
+
+An explicit open-source licence has not yet been selected. Until a licence is
+added, copyright law applies and the repository should not be assumed to grant
+permission to redistribute or create derivative works.

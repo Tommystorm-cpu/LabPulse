@@ -184,8 +184,12 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
 def test_setup_and_compose_contract() -> None:
     """Check deployment copies SMS code and limits host MQTT exposure."""
 
-    setup = (REFACTOR_DIR / "setup_container_fs.sh").read_text(encoding="utf-8")
-    compose = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
+    setup = (REFACTOR_DIR / "deployment" / "setup_container_fs.sh").read_text(
+        encoding="utf-8"
+    )
+    compose = (REFACTOR_DIR / "deployment" / "generate_compose.sh").read_text(
+        encoding="utf-8"
+    )
     assert_contains(setup, "COPY labpulse ./labpulse", "Dockerfile package copy")
     assert_contains(
         setup,

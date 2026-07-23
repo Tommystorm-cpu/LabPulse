@@ -28,7 +28,7 @@ def _use_managed_python_when_deployed() -> None:
     if not python_path.is_file():
         raise SystemExit(
             f"ERROR: LabPulse's managed Python environment is missing: {python_path}\n"
-            "Run setup_container_fs.sh from the LabPulse repository."
+            "Run 'labpulse setup' to restore the managed environment."
         )
     if Path(sys.executable).resolve() != python_path.resolve():
         os.execv(str(python_path), [str(python_path), *sys.argv])

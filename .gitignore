@@ -15,4 +15,3 @@ tmp_ha_*-check.py
 # Codex local workspace/artifact files
 .codex/
 .agents/
-LABPULSE_SKILL.md

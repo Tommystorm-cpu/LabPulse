@@ -1,347 +1,303 @@
-# LabPulse Architecture
+# Architecture
 
-LabPulse is a Raspberry Pi monitoring system. Sensor services acquire facts,
-MQTT transports them, Home Assistant decides whether they are dangerous, and a
-separate SMS worker delivers alerts. The split keeps hardware failures,
-operator settings, presentation, and modem behavior independently testable.
+LabPulse separates hardware acquisition, transport, alarm decisions,
+presentation, and notification delivery so each can fail and be tested
+independently.
 
-This document describes the implemented repository-root architecture. Code
-and function details are in [CODE_INTERNALS.md](CODE_INTERNALS.md).
+## System overview
 
-## System at a glance
+```text
+physical or simulated sensors
+            │
+            ▼
+labpulse-<service> containers
+  driver → runner → MQTT publisher
+            │
+            ▼
+        Mosquitto
+         │      │
+         ▼      ▼
+Home Assistant  labpulse-sms
+  dashboard       │
+  alarm logic     ▼
+  MQTT requests  modem or dry-run log
+```
 
-The repository is used to generate a live Compose project at:
+The generated Compose project contains:
+
+- `homeassistant`;
+- `mosquitto`;
+- `labpulse-sms`;
+- one `labpulse-<service-slug>` container per enabled hardware service.
+
+One-service-per-container isolates device failures and makes Docker restart
+behavior simple.
+
+## Installation and live state
+
+The pipx environment provides the operator CLI and packaged deployment assets.
+`labpulse setup` generates:
 
 ```text
 ~/labpulse-live/
+  config.yaml
+  compose.yaml
+  .venv/
+  generate_compose.sh
+  generate_homeassistant_config.sh
+  edit_config.sh
+  simulate_serial.py
+  setup_usb_devices.py
+  labpulse-python/
+  homeassistant/config/
+  mosquitto/
+  logs/
 ```
 
-The running system is:
+The host `.venv` contains only generation/configuration dependencies. Operators
+do not activate it; live wrappers select it automatically.
+
+Current sensor and SMS containers build from Python source copied into
+`labpulse-python/`. Released versioned images are future work.
+
+## Sources of truth and generated output
+
+User-owned state:
+
+- `~/labpulse-live/config.yaml`;
+- Home Assistant accounts, integrations, recorder, and private state;
+- persisted SMS subscription choices;
+- local secrets and modem provisioning.
+
+Generated or package-managed state:
+
+- `compose.yaml`;
+- the live Python build context;
+- Mosquitto's generated config;
+- `configuration.yaml`;
+- `packages/labpulse_generated.yaml`;
+- `labpulse-dashboard.yaml`;
+- copied live helper scripts.
+
+Generators must preserve user-owned state and deterministically replace only
+their outputs.
+
+## Configuration flow
 
 ```text
-Physical or simulated sensors
-        |
-        v
-labpulse-<service> containers       one per enabled service
-        |
-        | MQTT discovery, values, and health
-        v
-Mosquitto
-   |                         |
-   v                         v
-Home Assistant          labpulse-sms
-   |                         |
-   | alarm transition        | dry-run log or mmcli
-   +---- labpulse/sms/send -->+----> cellular modem
+config.yaml
+  │
+  ├── Pydantic validation
+  │     ├── common service envelope
+  │     └── selected driver's options model
+  │
+  ├── Compose generation
+  │     └── driver container requirements
+  │
+  ├── Home Assistant generation
+  │     └── canonical measurement/render model
+  │
+  ├── hardware services
+  │     └── driver selection and measurement allow-list
+  │
+  └── SMS service
+        └── recipients and delivery mode
 ```
 
-Home Assistant and Mosquitto are infrastructure containers. Each configured
-sensor service and the SMS worker run the project’s Python code.
+`src/labpulse/common/config.py` is the shared typed configuration model.
+Drivers own the schema beneath `driver.options`.
 
-## The two main flows
+Fake setup derives `config.fake.yaml` from the live source config and mounts it
+as `/app/config.yaml`. The real source remains unchanged.
 
-### Deployment and generation
+## Hardware service flow
 
 ```text
-pipx-installed LabPulse package
-  -> labpulse setup
-  -> ~/labpulse-live/
-       config.yaml                  live user configuration
-       .venv/                       managed host Python environment
-       generate_compose.sh
-       generate_homeassistant_config.sh
-  -> compose.yaml                   generated deployment
-  -> Home Assistant YAML/dashboard generated from config.yaml
-  -> docker compose up
+python -m labpulse.hardware --service NAME
+  → load and validate config
+  → select service
+  → discover DriverDefinition
+  → validate driver options
+  → construct driver and MQTT publisher
+  → HardwareRunner.connect/read/retry
+  → publish discovery, readings, and service status
 ```
 
-`labpulse setup` invokes the packaged bootstrap and code-copy step. After it has
-run, normal operator work happens from `~/labpulse-live`, not from the checkout
-or pipx environment.
-Host-side commands always use `.venv/bin/python`; Pydantic and PyYAML are
-installed there from `requirements-host.txt`, independently of system Python.
+Ownership:
 
-### Runtime measurements and alerts
+| Concern | Owner |
+|---|---|
+| Open hardware and convert raw values | Driver |
+| Classify expected hardware failures | Driver |
+| Retry, reconnect, polling, and freshness | Hardware runner |
+| Service status transitions | Hardware runner |
+| MQTT discovery and state | Publisher |
+| Driver devices, mounts, and privilege | Driver definition |
+| Thresholds and alarm decisions | Home Assistant |
+
+Drivers never publish MQTT or implement retry sleeps. The runner never imports
+vendor hardware libraries or understands device protocols.
+
+## Driver contract
+
+Every driver implements:
 
 ```text
-sensor
-  -> driver
-  -> normalized dict[str, float]
-  -> configured-measurement filter
-  -> MQTT discovery and state topics
-  -> Home Assistant sensor entities
-  -> zone sensors and history statistics
-  -> alarm-state automations
-  -> persistent notification and MQTT SMS request
-  -> validated SMS queue
-  -> dry-run log or ModemManager
+connect() -> None
+read() -> ReadingBatch | None
+close() -> None
 ```
 
-UPS power is the deliberate exception to the generic zone/history path. Its
-X1200 driver publishes MAX17043 battery telemetry plus a normalized
-`mains_present` value read directly from GPIO6. Home Assistant uses a dedicated
-`Normal` / `On Battery` / `Sensor Fault` lifecycle. Brief GPIO changes are
-confirmed for configured periods, and one persistent outage latch prevents
-duplicate warning or recovery messages. Voltage and percentage do not decide
-whether an outage occurred.
+`ReadingBatch.measurements` maps stable configured names to numeric values.
+`None` means no complete sample is currently ready.
 
-The key boundary is between facts and decisions:
+Expected failure classes are:
 
-- Python hardware services publish values and connection health.
-- Home Assistant owns thresholds, timing, mute controls, alarm state, and
-  operator-facing notifications.
-- The SMS worker validates and delivers an already-decided alert. It does not
-  decide whether a measurement is dangerous.
+- `DriverUnavailable`: connection or initialization failed;
+- `ConnectionLost`: an established handle must be recreated;
+- `TransientReadError`: one sample failed but the connection remains usable.
 
-Each hardware publisher also owns an MQTT Last Will on its existing retained
-status topic. A lost process or MQTT connection therefore publishes `offline`.
-Home Assistant classifies `disconnected`, `reconnecting`, `error`, `offline`,
-`unknown`, and `unavailable` as whole-service failures. After confirmation it
-sends one hub-level alert and suppresses new per-measurement stale faults until the
-service-wide condition has recovered. Component degradation such as the X1200
-`gpio_fault` remains outside that classification and keeps its dedicated alert.
+`ComponentIssue` accompanies valid readings when only one part of a device is
+degraded, such as an X1200 GPIO fault while battery telemetry remains readable.
 
-## Runtime containers
-
-### `labpulse-homeassistant`
-
-Home Assistant provides the UI, entity registry, recorder/history, editable
-helpers, template sensors, alarm transition automations, and dashboard. It uses
-host networking so its MQTT integration connects to `127.0.0.1:1883`.
-
-### `labpulse-mqtt`
-
-Mosquitto is the message boundary between components. Compose exposes it only
-on the Pi loopback address. LabPulse Python containers connect through the
-Compose hostname `mosquitto`; Home Assistant connects through the host address
-`127.0.0.1`.
-
-### `labpulse-<service>`
-
-Every enabled key under `services:` becomes one container, for example:
+The runner owns states:
 
 ```text
-pressure_monitor -> labpulse-pressure-monitor
-pump_room        -> labpulse-pump-room
+disconnected
+reconnecting
+online
+error
 ```
 
-All use the same entry point:
+If valid readings remain absent beyond
+`maximum_measurement_age_seconds`, the runner publishes `error` while continuing
+to read. A later valid batch restores `online`.
 
-```bash
-python -m labpulse.hardware --service <service-key>
+## Driver discovery and deployment
+
+Each public module under `src/labpulse/hardware/drivers/` exports one:
+
+```python
+DRIVER = DriverDefinition(...)
 ```
 
-The service key selects configuration and therefore its driver, measurements,
-labels, and hardware path. One container per service isolates device
-disconnects and restarts.
+The registry imports and validates modules automatically. `driver_template.py`
+is deliberately excluded. Helper modules inside that directory must begin with
+an underscore or they will be treated as drivers.
 
-### `labpulse-sms`
+A definition contains:
 
-The SMS worker has a persistent MQTT session and a bounded background delivery
-queue. Validated requests carry a strict `test_mode` flag: normal requests fan
-out to `sms.recipients`, while test requests fan out only to
-`sms.test_recipients`. In safe `dry_run` mode it only logs masked recipients.
-In real mode it uses `mmcli`, so Compose additionally exposes D-Bus and devices
-to this one container. It also accepts `SUBSCRIBE` and `UNSUBSCRIBE` only from
-numbers in either configured list. One persistent subscription choice filters
-both normal and test delivery.
+- stable driver ID;
+- Pydantic options model;
+- driver builder;
+- declarative resource resolver;
+- default read interval.
 
-## Python package boundaries
+Compose generation asks the selected definition for `ContainerRequirements`
+containing devices, mounts, and privileged status. Drivers cannot emit arbitrary
+Compose YAML.
 
-### `labpulse.common`
+## MQTT boundary
 
-Shared contracts only:
-
-- Pydantic configuration models and the one config loader
-- stable slug/entity identity rules
-- MQTT topic and SMS payload contracts
-- common logging setup
-
-It must not acquire hardware, render dashboards, or send messages.
-
-### `labpulse.hardware`
-
-Owns the live acquisition process:
-
-- service-loop orchestration
-- driver selection
-- serial, DHT11, and X1200 UPS drivers
-- strict parsing of the standard pipe-delimited serial format
-- MQTT discovery, state, and service-health publishing
-
-Its output boundary is a normalized `dict[str, float]` plus a health string.
-
-### `labpulse.homeassistant`
-
-Runs as an offline generator on the Pi host, not as a long-running sensor
-container. It turns typed config into:
-
-- Home Assistant core configuration
-- the generated alarm package
-- the generated `labpulse-dashboard.yaml` dashboard
-
-### `labpulse.sms`
-
-Owns alert-request validation, duplicate/flood protection, recipient fan-out,
-the bounded delivery queue, persistent allow-listed subscription commands,
-dry-run logging, `mmcli` retries, and result/status publishing.
-
-## Configuration and state ownership
-
-The live config describes deployment facts:
+Measurement state:
 
 ```text
-~/labpulse-live/config.yaml
+home/sensor/<service>/<measurement>/state
 ```
 
-It owns enabled services, hardware access, measurements, display
-metadata, MQTT connection settings, SMS mode, and recipients.
-
-Thresholds, alarm modes, and per-measurement timing are configured through the
-generated masonry Alarm Setup landing page and its native setup subviews. The
-landing page pairs each setup navigation tile with its setup mute control while
-retaining the same control in the corresponding subview. A confirmed
-bulk editor copies timing to all ordinary measurements or one logical setup. These
-values are Home Assistant state rather than deployment configuration. A fresh
-installation starts with every ordinary-measurement alarm mode disabled and the
-global notification mute enabled. After that first initialization, Home
-Assistant restores the operator's choices across restarts.
-
-Each setup subview separates measurement selection, editable alarm settings, and
-read-only live alarm status into three columns. The live column owns alarm state,
-observed danger, and danger/recovery/fault zones. The Diagnostics view remains
-physical and uses one compact masonry column per service: connectivity, paired
-health indicators, latest raw measurements, and dedicated power state.
-
-The Monitor view also has a native filtered problem summary derived from the
-canonical physical catalog. It is nested inside the first masonry column,
-absent while healthy, and surfaces only confirmed service faults, persistent
-measurement alarm states, and power lifecycle faults. This avoids threshold-edge
-flicker, page-wide masonry repacking, new aggregate helpers, and duplicate
-shared measurements. Per-entity filter conditions omit individually muted
-measurements and shared measurements whose owning setups are all muted. The
-global notification gate does not conceal system health.
-
-An X1200 service receives only its configured `/dev/i2c-N` device mapping.
-It does not require privileged mode or a broad `/dev` mount.
-
-Home Assistant owns operator state:
-
-- minimum/maximum thresholds
-- alarm mode and mute state
-- per-measurement observation, danger-percentage, and recovery timing
-- accounts and integrations
-
-The LabPulse dashboard layout is generated from `config.yaml` and the
-canonical measurement catalog. Normal regeneration replaces that one YAML file
-without changing operator-tuned helper values or Home Assistant-owned state.
-
-## Generated versus user-owned files
-
-| File | Owner | Normal regeneration |
-| --- | --- | --- |
-| `compose.yaml` | Compose generator | replaced |
-| `configuration.yaml` | Home Assistant generator | replaced |
-| `packages/labpulse_generated.yaml` | alarm generator | replaced |
-| `labpulse-dashboard.yaml` | dashboard generator | replaced |
-| `automations.yaml`, `scripts.yaml`, `scenes.yaml` | Home Assistant UI | created only if missing |
-
-`configuration.yaml` registers the generated file as the YAML-mode
-`labpulse-monitor` dashboard. LabPulse has no private-dashboard mutation,
-backup, restore, or synchronization path.
-
-## Identity contract
-
-Machine identifiers are derived from the service key and measurement name. For:
-
-```yaml
-services:
-  pressure_monitor:
-    measurements:
-      - name: pressure
-```
-
-the shared identity functions produce:
+Service status:
 
 ```text
-stable unique ID: labpulse_pressure_monitor_pressure
-entity ID:       sensor.labpulse_pressure_monitor_pressure
-state topic:     home/sensor/pressure_monitor/pressure/state
+home/sensor/<service>/status
 ```
 
-Labels such as `Pressure` are presentation and can change safely. Renaming the
-service key or measurement name changes MQTT topics, unique IDs, generated helper
-IDs, and history continuity.
-
-LabPulse entity IDs are generated infrastructure referenced by static alarm and
-dashboard YAML. Change friendly labels in `config.yaml`; do not manually rename
-LabPulse entity IDs through Home Assistant.
-
-## Home Assistant alarm ownership
-
-Each measurement has a persistent state:
+Home Assistant discovery uses:
 
 ```text
-Normal
-Danger
-Sensor Fault
+homeassistant/sensor/<service>_<measurement>/config
+homeassistant/sensor/<service>_status/config
 ```
 
-Instantaneous binary sensors describe whether the measurement is in the danger,
-recovery, or fault zone. A `history_stats` sensor measures the percentage of
-the observation window spent in danger. Automations write the persistent state
-only when the timing and zone conditions are met.
+Discovery and service status are retained. Numeric measurement state is not
+retained. Measurements expire when valid publication stops, not when their
+numeric value remains unchanged.
 
-Per-measurement and power mutes suppress their own persistent notifications and SMS
-requests. Each logical setup also has a restored-state mute that gates the
-ordinary measurements assigned to it. The independent global mute gates every
-delivery path without writing setup, measurement, or power mute helpers, so every
-choice survives other mute cycles. A shared measurement has one physical alert; all
-of its setup gates must be open for that alert to be delivered. Setup mutes do
-not apply to physical service-health alarms or dedicated power alarms. Test mode
-does not alter alarm evaluation; it marks notifications `[TEST]` and sends SMS
-only to the configured test list. Zone calculation and state transitions
-continue under either mode.
+Hardware publishers ignore reading names not declared in the service config.
 
-The Alarm Setup phone-book action publishes a validated `notification` request
-through the same path. It therefore inherits test/live recipient selection,
-persistent unsubscribe filtering, deduplication, and delivery-result reporting.
+## Stable identity
 
-## Failure behavior
+Service keys and measurement names form the cross-component identity used by:
 
-- A missing serial device does not terminate the service loop. `HardwareRunner`
-  reports disconnected/reconnecting and periodically retries. Home Assistant
-  trusts the last valid sample until the MQTT measurement's configured
-  `expire_after` elapses, so a brief reconnect does not immediately notify.
-- Individual DHT11 timing failures are classified as transient. The central
-  runner keeps the connection, rate-limits warnings, changes service health to
-  `error` at the configured maximum age, and restores `online` after a valid
-  batch.
-- Unexpected DHT11 GPIO/library failures release the device and retry setup at
-  the runner's configured reconnect interval without requiring a container
-  restart.
-- Parser output not declared in config is ignored instead of creating surprise
-  MQTT entities.
-- A missing/invalid SMS field is rejected before it reaches the delivery queue.
-- Duplicate SMS request IDs and rapid repeated events are suppressed.
-- Normal Home Assistant generation replaces only generated LabPulse files.
+- MQTT topics;
+- Home Assistant unique IDs and entity IDs;
+- alarm helpers and automations;
+- dashboard references;
+- notification identities.
 
-## Where changes belong
+Labels, setup projection, and subcategories are presentation metadata. Renaming
+them does not create new sensor identities.
 
-| Change | Owning source |
-| --- | --- |
-| Enable hardware or change a live USB path | `~/labpulse-live/config.yaml` |
-| Add/validate a config field | `src/labpulse/common/config.py` |
-| Change stable IDs | `src/labpulse/common/identity.py` |
-| Change topics or SMS request fields | `src/labpulse/common/mqtt_contracts.py` |
-| Change any user-facing SMS wording | `src/labpulse/common/sms_templates.yaml` |
-| Change shared retry, freshness, or status behavior | `src/labpulse/hardware/runner.py` |
-| Change one hardware protocol or error classification | `src/labpulse/hardware/drivers/` |
-| Change the standard serial contract | `src/labpulse/hardware/serial_parser.py` and Arduino firmware |
-| Change discovery/state publishing | `src/labpulse/hardware/homeassistant_publisher.py` |
-| Change measurement render types/IDs | `src/labpulse/homeassistant/measurement_model.py` |
-| Change aggregate Home Assistant models/construction | `src/labpulse/homeassistant/render_model.py` |
-| Change generated alarm behavior | `templates/alarm/alarm_logic.yaml` |
-| Change generated dashboard layout | `src/labpulse/homeassistant/dashboard/` and `templates/dashboard/` |
-| Change alert transport/delivery | `src/labpulse/sms/` |
-| Change containers or mounts | `generate_compose.sh` |
+Logical setups are separate from physical services. A measurement can appear
+in several setup views while retaining one MQTT entity and alarm state.
+
+## Home Assistant ownership
+
+The Home Assistant generator constructs one canonical catalogue and render
+model, then writes:
+
+- core configuration and dashboard registration;
+- alarm helpers and transition automations;
+- native YAML dashboard views.
+
+Home Assistant owns:
+
+- threshold modes and values;
+- observation percentage and duration;
+- recovery duration and deadband;
+- Normal, Danger, and Sensor Fault state;
+- global, setup, measurement, and power delivery mutes;
+- Test mode;
+- confirmed service fault/recovery;
+- confirmed power outage/recovery;
+- notification and SMS request creation.
+
+Python publishes facts and health. It does not decide whether a measurement is
+dangerous.
+
+## SMS boundary
+
+Home Assistant publishes strict JSON requests to:
+
+```text
+labpulse/sms/send
+```
+
+The independent SMS worker validates, deduplicates, rate-limits, routes,
+queues, retries, sends or logs, and publishes delivery results. This keeps
+modem access outside Home Assistant and hardware services.
+
+## Package boundaries
+
+```text
+src/labpulse/
+  common/          config, identity, MQTT contracts, shared logging
+  hardware/        driver API, registry, runner, parsing, MQTT publishing
+  homeassistant/   render models, alarm package, dashboard generation
+  sms/             request subscription, routing, modem delivery
+  control.py       operator CLI
+  doctor.py        read-only deployment diagnostics
+  installer.py     packaged setup launcher
+```
+
+Cross-component identity, topics, and raw configuration must not be redefined
+inside service packages.
+
+## Security boundary
+
+The current deployment assumes a trusted lab network. Mosquitto allows
+anonymous access inside the deployment and binds its host port only to
+`127.0.0.1`. Home Assistant is the user-facing network service.
+
+Some drivers require privileged or device access. Driver code and container
+images must therefore be trusted. Do not expose Mosquitto outside the host
+without first adding authentication, authorization, and transport security.

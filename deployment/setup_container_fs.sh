@@ -4,9 +4,9 @@ set -euo pipefail
 # One-time bootstrapper: copy the refactor files into the live Raspberry Pi
 # working directory, then run the generators that users call directly later.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ASSET_DIR="${LABPULSE_SETUP_ASSET_DIR:-$SCRIPT_DIR}"
-PACKAGE_SOURCE="${LABPULSE_PACKAGE_SOURCE:-$SCRIPT_DIR/src/labpulse}"
-SETUP_COMMAND="${LABPULSE_SETUP_COMMAND:-./setup_container_fs.sh}"
+ASSET_DIR="${LABPULSE_SETUP_ASSET_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+PACKAGE_SOURCE="${LABPULSE_PACKAGE_SOURCE:-$ASSET_DIR/src/labpulse}"
+SETUP_COMMAND="${LABPULSE_SETUP_COMMAND:-./deployment/setup_container_fs.sh}"
 PROJECT_DIR="${LABPULSE_LIVE_DIR:-$HOME/labpulse-live}"
 LIVE_CONFIG="$PROJECT_DIR/config.yaml"
 TEMPLATE_CONFIG="$ASSET_DIR/config.yaml"
@@ -216,11 +216,11 @@ lgpio
 EOF
 
 # Copy the scripts and Python service code that the live Compose project uses.
-copy_file "$ASSET_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
+copy_file "$ASSET_DIR/deployment/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
-copy_file "$ASSET_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
+copy_file "$ASSET_DIR/deployment/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
-copy_file "$ASSET_DIR/edit_config.sh" "$PROJECT_DIR/edit_config.sh"
+copy_file "$ASSET_DIR/deployment/edit_config.sh" "$PROJECT_DIR/edit_config.sh"
 chmod +x "$PROJECT_DIR/edit_config.sh"
 copy_file "$ASSET_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
@@ -351,7 +351,7 @@ Preserved:
 Next commands:
   cd "$PROJECT_DIR"
   $NEXT_USB_COMMAND
-  labpulse edit
+  labpulse config
   labpulse up --build
   labpulse restart
   labpulse ps

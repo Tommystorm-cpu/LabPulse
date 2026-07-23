@@ -47,16 +47,16 @@ def test_reusable_sensor_modules() -> None:
     if not (source_dir / "PinMeasurement.h").is_file():
         raise AssertionError("Missing reusable header: PinMeasurement.h")
     assert_contains(
-        source_dir / "README.md",
+        FIRMWARE_DIR / "README.md",
         (
-            "450.0",
+            "450 pulses per litre",
             "0.0014948",
             "0.00021902",
             "0.0000016239",
             "0.000000034445",
             "0.48 to 4.5 V",
             "0.5 to 4.5 V",
-            "Zero and `null` are not interchangeable",
+            "Numeric zero and invalid are different",
         ),
     )
 
@@ -69,7 +69,7 @@ def test_arduino_library_metadata() -> None:
         (
             "name=LabPulseFirmware",
             "version=0.1.0",
-            "url=https://github.com/lairdgrouplancaster/LabPulse",
+            "url=https://github.com/Tommystorm-cpu/LabPulse",
             "architectures=*",
             "depends=DHT sensor library",
         ),

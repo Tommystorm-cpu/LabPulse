@@ -12,11 +12,11 @@ from typing import Sequence
 
 ASSET_NAMES = (
     "config.yaml",
-    "edit_config.sh",
-    "generate_compose.sh",
-    "generate_homeassistant_config.sh",
+    "deployment/edit_config.sh",
+    "deployment/generate_compose.sh",
+    "deployment/generate_homeassistant_config.sh",
     "requirements-host.txt",
-    "setup_container_fs.sh",
+    "deployment/setup_container_fs.sh",
     "setup_usb_devices.py",
     "simulate_serial.py",
 )
@@ -40,7 +40,7 @@ def find_install_assets() -> Path:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run setup_container_fs.sh with assets and package source from this wheel."""
+    """Run the packaged filesystem setup with assets and package source."""
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     bash = shutil.which("bash")
@@ -64,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     environment.setdefault("LABPULSE_SETUP_COMMAND", "labpulse-setup")
 
     result = subprocess.run(
-        [bash, str(assets / "setup_container_fs.sh"), *arguments],
+        [bash, str(assets / "deployment" / "setup_container_fs.sh"), *arguments],
         env=environment,
         check=False,
     )

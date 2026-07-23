@@ -46,7 +46,7 @@ labpulse-down = "labpulse.control:down_main"
 labpulse-restart = "labpulse.control:restart_main"
 labpulse-ps = "labpulse.control:ps_main"
 labpulse-logs = "labpulse.control:logs_main"
-labpulse-edit = "labpulse.control:edit_main"
+labpulse-config = "labpulse.control:config_main"
 labpulse-open = "labpulse.control:open_main"
 labpulse-setup = "labpulse.installer:main"
 
@@ -62,9 +62,7 @@ include = ["labpulse*"]
 
 [tool.setuptools.package-data]
 "labpulse.common" = ["*.yaml"]
-"labpulse.hardware" = ["README.md"]
 "labpulse.homeassistant" = [
-  "README.md",
   "templates/*/*.yaml",
   "templates/*/*.j2",
 ]
@@ -72,11 +70,13 @@ include = ["labpulse*"]
 [tool.setuptools.data-files]
 "share/labpulse" = [
   "config.yaml",
-  "edit_config.sh",
-  "generate_compose.sh",
-  "generate_homeassistant_config.sh",
   "requirements-host.txt",
-  "setup_container_fs.sh",
   "setup_usb_devices.py",
   "simulate_serial.py",
+]
+"share/labpulse/deployment" = [
+  "deployment/edit_config.sh",
+  "deployment/generate_compose.sh",
+  "deployment/generate_homeassistant_config.sh",
+  "deployment/setup_container_fs.sh",
 ]

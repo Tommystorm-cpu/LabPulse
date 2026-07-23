@@ -1,78 +1,47 @@
 # LabPulse Arduino firmware
 
-This guide takes a first-time Arduino user from the downloaded LabPulse files
-to a working Arduino. The supplied examples match the current LabPulse
-hardware and send readings to the Raspberry Pi in the required pipe-delimited
-format.
+This directory is an Arduino library containing reusable sensor components and
+three example device firmwares. The examples publish LabPulse's standard
+unit-free pipe-delimited serial protocol.
 
-> **Important:** this `firmware` folder is an Arduino **library**, not a single
-> standalone sketch. Install the complete folder before opening an example.
-> Opening an `.ino` file directly from the repository causes errors such as
-> `LinearPressureSensor.h: No such file or directory`.
-
-## Before you begin
-
-You need:
-
-- a Raspberry Pi with Arduino IDE 1.8.19 for Linux ARM installed;
-- an Arduino Uno and USB cable;
-- a copy of this `firmware` directory.
-
-Arduino does not provide an official Raspberry Pi/ARM build of Arduino IDE 2.
-On a Pi, use the Linux ARM 32-bit or ARM 64-bit release of Arduino IDE 1.8.19.
-The older IDE supplied by Raspberry Pi OS may not find current libraries.
-
-### Install or update Arduino IDE on the Raspberry Pi
-
-1. Open **Terminal** from the Raspberry Pi menu.
-2. Enter `uname -m` and press Enter.
-3. Download Arduino IDE 1.8.19 from the
-   [official Arduino software page](https://www.arduino.cc/en/software):
-   - choose **Linux ARM 64 bits** if the command printed `aarch64`;
-   - choose **Linux ARM 32 bits** if it printed `armv7l`.
-4. In File Manager, open `Downloads`, right-click the downloaded archive, and
-   extract it. This creates a directory named `arduino-1.8.19`.
-5. Return to Terminal and run:
-
-   ```bash
-   cd ~/Downloads/arduino-1.8.19
-   sudo ./install.sh
-   ```
-
-6. Start Arduino and select **Help > About Arduino**. Confirm it reports
-   version 1.8.19 before removing an older installation.
-
-Before flashing a connected board, record:
-
-- which LabPulse device it belongs to;
-- its current USB port and stable `/dev/serial/by-id/...` path on the Pi;
-- its current sketch and wiring;
-- any calibration values that differ from the supplied examples.
-
-Flash only one identified Arduino at a time.
-
-## Step 1: install LabPulseFirmware
-
-Arduino must see the complete folder as an installed library. Follow these
-steps even if the example `.ino` files are already visible in the repository.
-
-1. Open Arduino IDE and select **File > Preferences**.
-2. Read the path beside **Sketchbook location**. On a Raspberry Pi it is
-   normally `/home/your-username/Arduino`.
-3. Do **not** set the sketchbook location to the LabPulse repository. The
-   repository is where the source files are stored; the sketchbook is where
-   Arduino looks for installed libraries. If it currently points to the
-   repository, change it back to `/home/your-username/Arduino`.
-4. Close Arduino IDE.
-5. Open the Pi's File Manager and browse to that sketchbook directory.
-6. Create a folder named `libraries` inside it if one is not already present.
-7. Copy the **complete** LabPulse `firmware` folder into `libraries`.
-8. Rename the copied folder to `LabPulseFirmware`.
-
-The result must have this structure:
+## Contents
 
 ```text
-Arduino/
+firmware/
+  library.properties
+  src/
+    Reading.h
+    PinMeasurement.h
+    PipeSampleWriter.*
+    PulseFlowSensor.*
+    ThermistorSensor.*
+    Dht11Sensor.*
+    LinearPressureSensor.*
+  examples/
+    pressure_monitor/
+    pump_room/
+    turbo_pump/
+```
+
+The complete `firmware` folder is the `LabPulseFirmware` Arduino library. Do not
+copy or open only an example `.ino`; the example depends on headers under
+`src/`.
+
+## Install the library
+
+Use an Arduino IDE or Arduino CLI installation that supports the target board.
+For Arduino IDE:
+
+1. Find the sketchbook directory in Preferences.
+2. Create its `libraries` directory if necessary.
+3. Copy the complete repository `firmware` directory into it.
+4. Rename the copied directory `LabPulseFirmware`.
+5. Restart the IDE.
+
+The installed structure must be:
+
+```text
+<sketchbook>/
   libraries/
     LabPulseFirmware/
       library.properties
@@ -80,51 +49,28 @@ Arduino/
       examples/
 ```
 
-Do not copy only `examples`, and do not put `LabPulseFirmware` inside a second
-`firmware` folder.
+Install `DHT sensor library` by Adafruit and its prompted dependencies. The
+library dependency is also declared in `library.properties`.
 
-9. Start Arduino IDE again.
-10. Select **File > Examples**. A section named **LabPulseFirmware** should now
-   appear. If it does not, recheck the folder structure above.
+## Choose an example
 
-## Step 2: install the required Arduino libraries
+| Example | Measurements | Interval |
+|---|---|---:|
+| `pressure_monitor` | `pressure` | 1 second |
+| `pump_room` | `flow1`, `flow2`, `temp0`–`temp3`, `roomtemp`, `roomhum`, `press1`, `press2` | 5 seconds |
+| `turbo_pump` | `flow1`, `flow2`, `temp0`–`temp3` | 5 seconds |
 
-1. In Arduino IDE 1.8.19, select
-   **Sketch > Include Library > Manage Libraries...**
-2. Wait for the library list to finish downloading.
-3. Search for exactly `DHT sensor library`.
-4. Select **DHT sensor library by Adafruit**. Do not select `TinyDHT`.
-5. Click **Install** and accept the **Adafruit Unified Sensor** dependency if
-   prompted.
-6. Select **Tools > Board > Boards Manager...**, search for
-   `Arduino AVR Boards`, and install it if it is not already installed.
+Open the example through the installed library's Examples menu so the toolchain
+can resolve the library headers.
 
-## Step 3: choose the correct firmware
+Before uploading, identify the physical Arduino, existing firmware, wiring,
+calibration, USB port, and stable Raspberry Pi `/dev/serial/by-id/...` path.
+Flash one identified board at a time.
 
-Open the required example through **File > Examples > LabPulseFirmware**.
-Always open it from this menu; do not open the repository's `.ino` file
-directly.
+## Device configuration
 
-| Example | Current measurements | Interval |
-| --- | --- | --- |
-| `pressure_monitor` | compressed-air `pressure` | 1 second |
-| `pump_room` | `flow1`, `flow2`, `temp0`-`temp3`, `roomtemp`, `roomhum`, `press1`, `press2` | 5 seconds |
-| `turbo_pump` | `flow1`, `flow2`, `temp0`-`temp3` | 5 seconds |
-
-The supplied configurations match the current LabPulse installation:
-
-| Device | Current wiring and calibration |
-| --- | --- |
-| Pressure monitor | pressure on A0; 0.48-4.5 V represents 0-1.6 MPa |
-| Pump room | flow on D3/D2 at 450 pulses per litre; thermistors on A0-A3 with 4.7 kOhm fixed resistors; DHT11 on D4; pressure on A5/A4 |
-| Turbo pump | flow on D2/D3 at 450 pulses per litre; thermistors on A0-A3 with 4.7 kOhm fixed resistors |
-
-For the conversion equations, coefficients, validation ranges, and the exact
-difference between numeric zero and `null`, see
-[`src/README.md`](src/README.md).
-
-If your wiring or calibration differs, edit the `.h` file beside the selected
-example before uploading:
+Pins, measurement names, calibration, sample intervals, and baud rate live in
+the header beside each example:
 
 ```text
 examples/pressure_monitor/pressure_monitor.h
@@ -132,138 +78,179 @@ examples/pump_room/pump_room.h
 examples/turbo_pump/turbo_pump.h
 ```
 
-Near the top of each `.h` file is an authoritative **pin-to-measurement map**.
-Each entry contains the Arduino pin followed by the emitted name, for example:
+A pin/name record is:
 
 ```cpp
 constexpr LabPulse::PinMeasurement FLOW1 = {3, "flow1"};
 ```
 
-Edit `3` to change the input pin, or edit `"flow1"` to change the serial name.
-The sensor configuration and `.cpp` output both use this record, so neither
-value is duplicated elsewhere.
+The sensor object uses `FLOW1.pin` and serial output uses `FLOW1.name`.
+Changing the record therefore changes the physical input or emitted identity in
+one place.
 
-Do not change measurement names unless the same names are also used in the
-live Pi configuration at `~/labpulse-live/config.yaml`.
+Measurement names must exactly match the live Pi service configuration. A name
+change creates a new MQTT and Home Assistant identity.
 
-## Step 4: verify and upload
+## Retained example calibration
 
-1. Connect the identified Arduino.
-2. In Arduino IDE, select **Tools > Board > Arduino AVR Boards > Arduino Uno**.
-3. Select the connected Arduino under **Tools > Port**. On a Raspberry Pi it
-   normally looks like `/dev/ttyACM0` or `/dev/ttyACM1`.
-4. Click the tick-mark **Verify** button. Successful verification ends with a
-   message about sketch and memory usage, without an orange error banner.
-5. Recheck that the selected example belongs to the connected physical board.
-6. Click the right-arrow **Upload** button. Wait for `Done uploading` before
-   disconnecting anything.
+The repository does not currently identify every sensor manufacturer and model.
+These values preserve existing LabPulse behavior and are not universal
+specifications. Record part numbers and datasheets before reusing or replacing
+hardware.
 
-No Python build script is required. Arduino IDE compiles the example and its
-sensor files into the flashable firmware automatically.
+### Pressure monitor
 
-## Step 5: check the serial output
+- analog input A0;
+- 5 V ADC reference and divisor 1023;
+- valid ADC range 2 to 1021;
+- 0.48 to 4.5 V calibration span;
+- 0 to 1.6 MPa full scale;
+- output multiplied by 10 to bar;
+- one-second sampling.
 
-After uploading:
+### Pump room
 
-1. Stop the LabPulse service that normally reads this Arduino. Serial Monitor
-   and LabPulse must not read the same serial port at the same time.
-2. Open **Tools > Serial Monitor**.
-3. Set the baud rate to **9600**.
-4. Confirm that one complete sample appears on each line.
+- flow inputs D3 and D2;
+- 450 pulses per litre;
+- thermistors on A0 through A3;
+- DHT11 on D4;
+- pressure inputs A5 and A4;
+- pressure calibration span 0.5 to 4.5 V;
+- five-second sampling.
 
-A pump-room sample should look like this single line:
+### Turbo pump
+
+- flow inputs D2 and D3;
+- 450 pulses per litre;
+- thermistors on A0 through A3;
+- five-second sampling.
+
+### Thermistors
+
+The retained examples use:
 
 ```text
-flow1: 2.45 | flow2: 3.10 | temp0: 20.11 | temp1: 20.22 | temp2: 20.33 | temp3: 20.44 | roomtemp: 21.2 | roomhum: 45.0 | press1: 1.23 | press2: 1.45
+ADC reference:       5.0 V
+ADC divisor:         1023
+valid ADC:           2 to 1021
+fixed resistor:      4700 Ω
+Steinhart-Hart A:    0.0014948
+Steinhart-Hart B:    0.00021902
+Steinhart-Hart C:    0.0000016239
+Steinhart-Hart D:    0.000000034445
+accepted output:     -100 to 200 °C
 ```
 
-Every key must match a measurement configured for that service on the Pi.
-Values contain no unit text because units are defined in LabPulse configuration.
-An unavailable or invalid sensor channel appears as `null`.
+These coefficients require verification against the actual thermistor and
+divider circuit before another lab uses them.
 
-## Reconnect it to LabPulse
+## Reusable sensor components
 
-On the Pi, the corresponding service in `~/labpulse-live/config.yaml` must use:
+### `Reading`
 
-```yaml
-driver:
-  type: labpulse.serial_pipe
-  options:
-    port: "/dev/serial/by-id/usb-Arduino_..."
-    baud_rate: 9600
+Every sensor returns:
+
+```cpp
+struct Reading {
+  float value;
+  bool valid;
+};
 ```
 
-Use the stable `/dev/serial/by-id/...` path rather than `/dev/ttyUSB0` or
-`/dev/ttyACM0`. After updating the live configuration, regenerate/restart
-LabPulse through its normal setup workflow and confirm every measurement in
-Home Assistant.
+Numeric zero and invalid are different. Zero can be a valid stopped-flow,
+zero-pressure, zero-temperature, or zero-humidity result. Invalid becomes
+`null` in the serial stream.
 
-## Adapt an example for another lab
+### `PipeSampleWriter`
 
-When a lab needs a different mixture of sensors:
+```cpp
+LabPulse::PipeSampleWriter sample(Serial);
+sample.value(F("temperature"), reading, 2);
+sample.end();
+```
 
-1. Copy the closest directory under `examples/` and give the directory, `.ino`,
-   `.h`, and `.cpp` files the same new base name.
-2. Put pins, calibration values, intervals, and output precision in the `.h`.
-3. In the `.cpp`, construct the required sensor objects from those settings.
-4. Read each sensor and pass every result to `PipeSampleWriter` in the required
-   output order.
-5. Add exactly the same measurement names to the service in the Pi's live
-   `~/labpulse-live/config.yaml`.
+The writer emits finite valid values and writes `null` otherwise:
 
-Do not write another serial format or add units to the Arduino output. Reuse
-the supplied sensor classes and `PipeSampleWriter` so the normal LabPulse
-serial path continues to work.
+```text
+temperature: 18.42 | pressure: null
+```
 
-The complete file templates, sensor configuration fields, setup/loop pattern,
-flow-interrupt example, and output rules are documented in
-[`../docs/ARDUINO_AND_CPP.md`](../docs/ARDUINO_AND_CPP.md#writing-a-new-device-firmware).
+See [Serial protocol](../docs/SERIAL_PROTOCOL.md).
 
-## Troubleshooting
+### `PulseFlowSensor`
 
-### `LinearPressureSensor.h: No such file or directory`
+An interrupt handler calls `recordPulse()`. Sampling atomically copies and
+resets the counter:
 
-The example was opened directly, or the LabPulse library is in the wrong
-directory. Repeat **Step 1**, restart Arduino IDE, and open the example only
-through **File > Examples > LabPulseFirmware**. In particular, make sure
-**File > Preferences > Sketchbook location** is the same sketchbook directory
-that contains `libraries/LabPulseFirmware`.
+```text
+litres/minute =
+  pulses × 60000 / (pulses-per-litre × elapsed-milliseconds)
+```
 
-### `DHT.h: No such file or directory`
+Zero pulses over a valid interval produces numeric zero. It cannot by itself
+distinguish no flow from a failed/disconnected pulse source.
 
-Install **DHT sensor library** by Adafruit from Arduino IDE's Library Manager.
-Accept its **Adafruit Unified Sensor** dependency when prompted. This is the
-library that provides the `DHT.h` header used by the firmware.
+### `ThermistorSensor`
 
-### The board or port is missing
+The component converts the ADC divider voltage to resistance and applies a
+four-coefficient Steinhart-Hart equation. ADC rail values, invalid resistance,
+invalid equation results, and out-of-range temperatures produce an invalid
+reading.
 
-Reconnect the USB cable, try a known data-capable cable, and reopen the
-**Tools > Port** menu. Do not select a port until the physical board has been
-identified.
+### `Dht11Sensor`
 
-### A channel prints `null`
+The wrapper reads temperature and humidity together through Adafruit's DHT
+library and validates the channels independently. One may be numeric while the
+other is `null`.
 
-Check that sensor's wiring, supply, connector, pin assignment, and calibration.
-One invalid channel does not stop the remaining channels from being reported.
+### `LinearPressureSensor`
 
-### Flow remains zero
+The component applies a two-point voltage calibration, full-scale pressure, and
+output multiplier. It can optionally preserve pre-conversion quantization and
+clamp negative outputs.
 
-Zero flow is a valid reading. Confirm operation with real flow or a controlled
-pulse test; firmware cannot distinguish a stationary flow meter from a
-disconnected meter that produces no pulses.
+## Build, upload, and verify
 
-### Values appear under the wrong LabPulse device
+1. Select the correct board and connected port.
+2. Verify/compile the selected example.
+3. Reconfirm the physical board identity.
+4. Upload and wait for completion.
+5. Stop the LabPulse container that normally owns the serial port.
+6. Open a serial monitor at the configured baud rate, normally 9600.
+7. Confirm one complete protocol sample per line.
+8. Close the serial monitor before restarting LabPulse.
 
-Stop the affected service and repeat the Pi USB-identification process. Confirm
-the board's physical role and `/dev/serial/by-id/...` mapping before restarting
-monitoring.
+Example:
 
-### Serial Monitor shows incomplete or mixed-up text
+```text
+flow1: 2.45 | flow2: 3.10 | temp0: 20.11 | temp1: 20.22
+```
 
-Another program is probably reading the Arduino at the same time. Close Serial
-Monitor and run `sudo fuser -v /dev/ttyACM1`, replacing the port if necessary.
-Stop the listed LabPulse service before reopening Serial Monitor. Only one
-program can reliably consume the serial stream.
+Then assign or confirm the stable Pi path:
 
-For protocol, calculation, and implementation details, see
-[`../docs/ARDUINO_AND_CPP.md`](../docs/ARDUINO_AND_CPP.md).
+```bash
+cd ~/labpulse-live
+./setup_usb_devices.py --config config.yaml
+labpulse config
+```
+
+## Adapt firmware for another sensor
+
+1. Copy the closest example to a new example directory.
+2. Define stable pin/name mappings and calibration in its header.
+3. Reuse an existing sensor class or add a focused class under `src/`.
+4. Return `Reading` rather than sentinel numbers.
+5. Emit one standard sample with `PipeSampleWriter`.
+6. Match all names and units in live `config.yaml`.
+7. Add parser/simulator or firmware-layout tests.
+8. Record part number, wiring, calibration source, and real-board verification.
+
+If a controller can emit the standard protocol, a new Python driver is normally
+unnecessary.
+
+## Limitations and safety
+
+Software range checks catch obvious faults, not every electrical failure. A
+disconnected flow sensor can look like valid zero flow, and a wiring fault can
+leave an analog input at a plausible voltage. Safety-critical monitoring needs
+appropriate physical fault detection and independent safeguards.

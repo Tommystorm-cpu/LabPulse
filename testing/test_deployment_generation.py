@@ -36,7 +36,9 @@ def test_directory(prefix: str) -> Iterator[Path]:
 def embedded_compose_generator() -> str:
     """Return the Python program embedded in the Compose wrapper."""
 
-    shell_source = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
+    shell_source = (REFACTOR_DIR / "deployment" / "generate_compose.sh").read_text(
+        encoding="utf-8"
+    )
     marker = "<<'PY'\n"
     if marker not in shell_source:
         marker = "<<'PY'\r\n"
@@ -152,7 +154,9 @@ services:
 def test_setup_refresh_and_preservation_contract() -> None:
     """Check bootstrap copies all packages and guards user-owned live files."""
 
-    source = (REFACTOR_DIR / "setup_container_fs.sh").read_text(encoding="utf-8")
+    source = (REFACTOR_DIR / "deployment" / "setup_container_fs.sh").read_text(
+        encoding="utf-8"
+    )
     starter = yaml.safe_load(
         (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8")
     )
@@ -164,7 +168,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"',
         'copy_file "$ASSET_DIR/simulate_serial.py"',
         'copy_file "$ASSET_DIR/setup_usb_devices.py"',
-        'copy_file "$ASSET_DIR/edit_config.sh"',
+        'copy_file "$ASSET_DIR/deployment/edit_config.sh"',
         'copy_file "$HOST_REQUIREMENTS_SOURCE" "$HOST_REQUIREMENTS"',
         'python3 -m venv "$HOST_VENV"',
         '"$HOST_PYTHON" -m pip install',
@@ -193,9 +197,11 @@ def test_setup_refresh_and_preservation_contract() -> None:
     if "alarm_defaults.json" in source:
         raise AssertionError("setup still deploys the removed alarm defaults file")
     generator_source = (
-        REFACTOR_DIR / "generate_homeassistant_config.sh"
+        REFACTOR_DIR / "deployment" / "generate_homeassistant_config.sh"
     ).read_text(encoding="utf-8")
-    compose_source = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
+    compose_source = (
+        REFACTOR_DIR / "deployment" / "generate_compose.sh"
+    ).read_text(encoding="utf-8")
     for fragment in (
         'HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"',
         '"$HOST_PYTHON" - "$CONFIG_PATH"',
@@ -231,7 +237,9 @@ def test_setup_refresh_and_preservation_contract() -> None:
         if fragment in generator_source:
             raise AssertionError(f"legacy dashboard wrapper code remains: {fragment}")
 
-    editor_source = (REFACTOR_DIR / "edit_config.sh").read_text(encoding="utf-8")
+    editor_source = (REFACTOR_DIR / "deployment" / "edit_config.sh").read_text(
+        encoding="utf-8"
+    )
     required_editor_fragments = (
         'mktemp "$PROJECT_DIR/.config.yaml.editing.XXXXXX"',
         "from labpulse.common.config import load_config",
