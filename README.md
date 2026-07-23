@@ -1,59 +1,70 @@
-# LabPulse
+# LabPulse Docker Runtime
 
-LabPulse is a small-scale monitoring system for lab infrastructure. We built it for our research group to monitor the building services on which [our experiments](https://wp.lancs.ac.uk/laird-group/) rely - power, chilled water, compressed air, etc. We can monitor their status online, and if any of them is interrupted the users receive a text alert. We think of it as a small-scale building management system.
+This is the active Docker-based LabPulse implementation for Raspberry Pi. It
+runs Home Assistant, Mosquitto, one SMS worker, and one Python container per
+enabled sensor service.
 
-LabPulse runs on a Raspberry Pi and uses the [Home Assistant](https://www.home-assistant.io/) web interface. The Pi is connected to various sensors controlled by Arduinos.
+The complete documentation has four reference guides and one roadmap:
 
-This Github contains a shopping list, code, and CAD files for our system, which was built by two interns at Lancaster University in the course of one summer. LabPulse is still very much a prototype, but it has already helped us respond quickly to what would otherwise have been an experimental interruption. We welcome attempts to replicate and improve it, and are happy to answer questions as time allows.
+1. [Architecture](docs/ARCHITECTURE.md)
+2. [Code internals](docs/CODE_INTERNALS.md)
+3. [Setup and troubleshooting](docs/SETUP_AND_TROUBLESHOOTING.md)
+4. [Arduino and C++ notes](docs/ARDUINO_AND_CPP.md)
+5. [Software roadmap](docs/SOFTWARE_TODO.md)
 
-<center>
-<img src="./Documentation/LabPulse%20cartoon-03.png" alt="What LabPulse does" width="800"/>
-</center>
+The [documentation index](docs/README.md) explains which guide answers each
+type of question.
 
-## Contents of this repository
+## Quick start
 
-This repository consists of the code, instructions, 3D printable schematics and some introductory PCB designs for a lab monitoring set up.
+Real hardware:
 
-This set up aims to automate some aspects of lab management, mainly that of monitoring some different systems and sending alerts to lab workers when emergency thresholds are breached. For example, using a Gravity Analog Water Pressure Sensor, we successfully, remotely, monitor the compressed air pressure. Or likewise, using several GE-1337 temperature sensors and Gravity water flow meters we also monitor the water temperature and flow rate in the cooling pipes of the ULT lab.
+```bash
+cd ~/LabPulse
+./setup_container_fs.sh
 
-There is still massive potential to extend this repository to include other sensors and monitoring systems, and likely the existing code could be improved to be more efficient or accurate. For example, we have not yet produced a framework for monitoring oxygen or CO2 levels (although our lab and most labs with liquid nitrogen already have O2 sensors for safety reasons), useful data to monitor could also be air quality; especially with regards to labs where chemistry or semiconductor manufacture takes place.
+cd ~/labpulse-ha
+./edit_config.sh
+```
 
-The current set up in the ULT lab is depicted in the Set_up_flowchart.pdf and described below.
-[Diagram flowchart](Set_up_flowchart.pdf)
+Fake hardware:
 
-The Raspberry Pi:
-Our Pi, set up with a UPS hat and SIM hat, is the powerhouse of the set up. It powers and receives sensor data from the Arduino Uno's, is powered via barrel jack and connected to two batteries through the UPS hat. If a power outage occurs, or say the coolant water temperature raises beyond threshold, the Pi uses the SIM hat to send a text to anyone on the phone number list in Raspberry Pi code/Config files and scripts/phone_number_config.json - note these phone numbers are not real for obvious reasons. Additionally, outside of errors, the Pi uploads to Home Assistant, allowing for remote check-ins.
+```bash
+cd ~/LabPulse
+./setup_container_fs.sh -fake_usb
 
-Arduino's:
-Each arduino is powered by the Pi through a USB hub, and prints the values to Serial, which the Pi monitors in their own virtual environment. There are PCBs in the PCB_files file, in which can be used with 4 temperature sensors and 2 water flow sensors as a hat, allowing for relatively clean wiring. These PCBs definitely can be improved, but should work and will be worked on in future. 
+cd ~/labpulse-ha
+python3 simulate_serial.py start
+docker compose up -d --build
+```
 
-Set up of Arduino's is rather simple, upload the code to the arduino through the Pi or via a personal computer with USB, connect the required sensors to the corresponding pins and then connect to the Pi. Note that one common issue we have ran into is when disconnecting and reconnecting an Arduino, sometimes the USB ports change, e.g. from dev/tty/ACM0 to dev/tty/ACM1. In the Pi's code, change the USB port in the corresponding script from the Python publishing scripts file to the correct one. To check the correct one you can type ls /dev/ttyACM*, and this will list all connected ports of this type.
+The running Pi is configured through:
 
-Below is a summary of each file and its contents and uses.
+```text
+~/labpulse-ha/config.yaml
+```
 
-3D printable parts:
-In this file are any 3D models we used to place the raspberry pi with the UPS and SIM hats on.
+The repository `config.yaml` is only a new-install starter. Generated
+`compose.yaml`, Home Assistant package, and dashboard files are outputs, not
+permanent editing targets.
 
-Arduino:
-Here is all the code used to publish onto the arduino's using the Arduino IDE through the raspberry Pi. The one caveat here is for two of our arduino's we used full_water_sensor_code.cpp to monitor our sensors, which include 4 temperature sensors and 2 water flow sensors. If you wish to monitor only temperature, then you would have to use code from the corresponding file.
+`edit_config.sh` opens a temporary copy of the live config, validates it, keeps
+one rollback copy, regenerates Compose and Home Assistant YAML, runs Home
+Assistant's config check, and refreshes the stack through `sudo docker`.
 
-General error detection code:
-These files of code are to monitor the data output of the sensors and create an alert if and when there are issues. The only one currently used as of the 22nd December 2025 is the Upper_lower_limits.py, however, you can adapt the other code to monitor for any spikes in data such as the mean temperature or flow rate, and you can use the code to raise an error if one sensor reports differently to the others.
+## Source layout
 
-PCB_files:
-These files contain the prototypes used for an arduino hat. The first works but is messy and uses male and female header pins - therefore isn't great. There are prototypes of an arduino hat, showing the progress made. If you were to use this PCB design for 4 temperature sensors and 2 water flow sensors, use the final prototype file for your gerber file, or use it as inspiration to design your own.
+```text
+src/labpulse/common/          typed config, identity, MQTT contracts, logging
+src/labpulse/hardware/        drivers, parsing, hardware loop, MQTT publishing
+src/labpulse/homeassistant/   dashboard/alarm/core configuration generator
+src/labpulse/sms/             MQTT alert subscriber and SMS delivery
+firmware/                     simple pipe-delimited Arduino sketches
+hardware/                     PCB and 3D-printing assets
+testing/                      script-based contract tests
+docs/                         maintained reference guides
+legacy/                       superseded implementations and documentation
+```
 
-archive_v1_pi_code:
-Contains an archive of the pi code before the alterations were made in accordance with the project review found in the documentation folder.
-
-Installation: 
-Contains the installation guide, compatability checks and installation script to install the LabPulse infrastructure through a USB thumb-drive.
-For the newer Docker Compose based prototype, see [docker_refactor/README.md](docker_refactor/README.md).
-
-pi_scripts:
-This directory contains the core Python architecture for LabPulse. These scripts run continuously as background`systemd services to process hardware data, evaluate it against thresholds, and trigger alerts. 
-* config.yaml: The master configuration file. All hardware limits, calibration offsets, and SMS contact numbers are set here.
-* pumproompub.py, pressurepub.py, etc.: The main service scripts that read the Arduino serial inputs, validate them, and route them to Home Assistant via MQTT.
-* labpulse_common/: The shared library folder containing the sms.py 4G cellular engine and the mqtt_health.py heartbeat tracker.
-
-For general enquiries, feel free to open an issue.
+Home Assistant owns alarm decisions and operator settings. Hardware services
+publish measurements and health; the SMS worker delivers validated requests.

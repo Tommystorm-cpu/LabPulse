@@ -1,0 +1,235 @@
+# ==========================================
+# LabPulse Starter Configuration Template
+# ==========================================
+#
+# On the Raspberry Pi, edit the live config here:
+#
+#   ~/labpulse-ha/config.yaml
+#
+# This repo file is only copied as a starter template when the live config
+# does not already exist.
+# Alarm thresholds are configured through the generated Home Assistant
+# dashboard. A fresh installation starts with all notifications muted.
+
+# --- Global Settings ---
+mqtt:
+  broker: "mosquitto"
+  port: 1883
+
+sms:
+  # Keep true for safe testing; set false on the real Pi to send through mmcli.
+  dry_run: true
+  # Emergency contact numbers for system alerts
+  recipients:
+    - "+447700900000"
+  # Test-mode alerts are routed only to these numbers.
+  test_recipients:
+    - "+447700900001"
+
+# Whole sensor-service failures produce one hub-level warning instead of one
+# stale-measurement warning per sensor. These timers also reject brief USB glitches.
+service_health:
+  fault_confirm_seconds: 10
+  recovery_confirm_seconds: 15
+
+# Logical experimental setups are independent of the physical sensor hubs
+# under services. Every ordinary measurement explicitly selects one or more setups.
+setups:
+  compressed_air:
+    label: "Compressed Air"
+    icon: "mdi:gauge"
+    order: 10
+  pump_room_system:
+    label: "Pump Room Experiment"
+    icon: "mdi:water-pump"
+    order: 20
+  turbo_pump_experiment:
+    label: "Turbo Pump Experiment"
+    icon: "mdi:snowflake-thermometer"
+    order: 30
+  cryogenics_room:
+    label: "Cryogenics Room"
+    icon: "mdi:home-thermometer-outline"
+    order: 40
+
+services:
+  # Ordinary measurements expire in Home Assistant after 300 seconds without an
+  # MQTT sample. Override maximum_measurement_age_seconds per service if needed.
+  pressure_monitor:
+    enabled: true
+    driver: serial
+    serial_port: "FAKE_PRESSURE_PORT"
+    baud_rate: 9600
+    device_name: "Air Pressure Sensor Hub"
+    measurements:
+      - name: "pressure"
+        label: "Pressure"
+        setups: [compressed_air]
+        unit: "bar"
+        device_class: "pressure"
+    reconnect_interval_seconds: 5
+
+  pump_room:
+    enabled: true
+    driver: serial
+    serial_port: "FAKE_PUMP_ROOM_PORT"
+    baud_rate: 9600
+    device_name: "Pump Room Sensor Hub"
+    measurements:
+      - name: "flow1"
+        label: "Flow 1"
+        subcategory: "Flow"
+        setups: [pump_room_system]
+        unit: "L/min"
+        device_class: "volume_flow_rate"
+      - name: "flow2"
+        label: "Flow 2"
+        subcategory: "Flow"
+        setups: [pump_room_system]
+        unit: "L/min"
+        device_class: "volume_flow_rate"
+      - name: "temp0"
+        label: "Triton 1 Temperature 1"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "temp1"
+        label: "Triton 1 Temperature 2"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "temp2"
+        label: "Triton 2 Temperature 1"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "temp3"
+        label: "Triton 2 Temperature 2"
+        subcategory: "Water Temperatures"
+        setups: [pump_room_system]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "press1"
+        label: "Pressure 1"
+        subcategory: "Pressure"
+        setups: [pump_room_system]
+        unit: "bar"
+        device_class: "pressure"
+      - name: "press2"
+        label: "Pressure 2"
+        subcategory: "Pressure"
+        setups: [pump_room_system]
+        unit: "bar"
+        device_class: "pressure"
+      - name: "roomtemp"
+        label: "Room Temperature"
+        subcategory: "Pump Room Environment Sensor"
+        setups: [pump_room_system]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "roomhum"
+        label: "Room Humidity"
+        subcategory: "Pump Room Environment Sensor"
+        setups: [pump_room_system]
+        unit: "%"
+        device_class: "humidity"
+    reconnect_interval_seconds: 5
+
+  turbo_pump:
+    enabled: true
+    driver: serial
+    serial_port: "FAKE_TURBO_PUMP_PORT"
+    baud_rate: 9600
+    device_name: "Turbo Pump Hub"
+    measurements:
+      - name: "flow1"
+        label: "Flow 1"
+        subcategory: "Flow"
+        setups: [turbo_pump_experiment]
+        unit: "L/min"
+        device_class: "volume_flow_rate"
+      - name: "flow2"
+        label: "Flow 2"
+        subcategory: "Flow"
+        setups: [turbo_pump_experiment]
+        unit: "L/min"
+        device_class: "volume_flow_rate"
+      - name: "temp0"
+        label: "Temperature 0"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "temp1"
+        label: "Temperature 1"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "temp2"
+        label: "Temperature 2"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "temp3"
+        label: "Temperature 3"
+        subcategory: "Water Temperatures"
+        setups: [turbo_pump_experiment]
+        unit: "\u00b0C"
+        device_class: "temperature"
+    reconnect_interval_seconds: 5
+
+  room_environment:
+    enabled: true
+    driver: gpio
+    gpio_sensor: dht11
+    gpio_pin: "D4"
+    device_name: "Cryogenics Room Environment Sensor"
+    measurements:
+      - name: "temperature"
+        label: "Room Temperature"
+        setups: [cryogenics_room]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "humidity"
+        label: "Room Humidity"
+        setups: [cryogenics_room]
+        unit: "%"
+        device_class: "humidity"
+    read_interval_seconds: 2
+
+# Verified X1200 UPS hardware. Fake-USB setup changes only this service's
+# transport to the UPS simulator while preserving these measurements and IDs.
+  ups_monitor:
+    enabled: true
+    driver: i2c
+    i2c_sensor: x1200_ups
+    i2c_bus: 1
+    i2c_address: 0x36
+    device_name: "UPS Monitor"
+    measurements:
+      - name: voltage
+        label: "UPS Battery Voltage"
+        unit: V
+        device_class: voltage
+      - name: battery_level
+        label: "UPS Battery Level"
+        unit: "%"
+        device_class: battery
+      - name: mains_present
+        label: "External Power Present"
+        state_class: null
+    read_interval_seconds: 1
+    reconnect_interval_seconds: 5
+    maximum_measurement_age_seconds: 15
+    power_detection:
+      source: x1200_gpio
+      gpio_chip: "/dev/gpiochip0"
+      gpio_line: 6
+      mains_present_active_high: true
+      outage_confirm_seconds: 3
+      restore_confirm_seconds: 5
