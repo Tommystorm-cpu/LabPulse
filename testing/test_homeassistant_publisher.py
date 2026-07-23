@@ -114,7 +114,13 @@ def make_publisher(
         },
         device_name=device_name,
         measurements=measurements or [
-            {"name": "pressure", "label": "Pressure", "setups": ["test_setup"], "unit": "bar"}
+            {
+                "name": "pressure",
+                "label": "Pressure",
+                "setups": ["test_setup"],
+                "unit": "bar",
+                "device_class": "pressure",
+            }
         ],
         maximum_measurement_age_seconds=maximum_measurement_age_seconds,
         power_detection=power_detection,
@@ -198,6 +204,9 @@ def test_publish_discovery_once_then_measurements() -> None:
     assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_pressure", "default entity id")
     assert_equal(payload["unit_of_measurement"], "bar", "unit")
     assert_equal(payload["state_class"], "measurement", "state class")
+    assert_equal(payload["icon"], "mdi:gauge", "derived measurement icon")
+    if "device_class" in payload:
+        raise AssertionError("discovery enables unwanted Home Assistant conversion")
     assert_equal(payload["device"]["name"], "Air Pressure Sensor Hub", "device name")
 
     assert_equal(
@@ -252,8 +261,21 @@ def test_publish_discovery_for_new_measurements() -> None:
         service_name="pump_room",
         device_name="Pump Room Sensor Hub",
         measurements=[
-            {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
-            {"name": "temp0", "label": "Temperature 0", "setups": ["test_setup"], "unit": "\u00b0C"},
+            {
+                "name": "flow1",
+                "label": "Flow 1",
+                "setups": ["test_setup"],
+                "unit": "L/min",
+                "device_class": "volume_flow_rate",
+            },
+            {
+                "name": "temp0",
+                "label": "Temperature 0",
+                "setups": ["test_setup"],
+                "unit": "\u00b0C",
+                "device_class": "temperature",
+                "icon": "mdi:snowflake-thermometer",
+            },
         ],
     )
 
@@ -285,6 +307,7 @@ def test_publish_discovery_for_new_measurements() -> None:
                             "name": "Pump Room Sensor Hub",
                         },
                         "unit_of_measurement": "L/min",
+                        "icon": "mdi:waves",
                         "state_class": "measurement",
                     }
                 ),
@@ -304,6 +327,7 @@ def test_publish_discovery_for_new_measurements() -> None:
                             "name": "Pump Room Sensor Hub",
                         },
                         "unit_of_measurement": "\u00b0C",
+                        "icon": "mdi:snowflake-thermometer",
                         "state_class": "measurement",
                     }
                 ),

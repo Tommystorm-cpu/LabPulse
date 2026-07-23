@@ -15,6 +15,34 @@ from labpulse.common.mqtt_contracts import (
 )
 
 
+DEFAULT_MEASUREMENT_ICONS = {
+    "battery": "mdi:battery",
+    "current": "mdi:current-dc",
+    "energy": "mdi:lightning-bolt-circle",
+    "humidity": "mdi:water-percent",
+    "power": "mdi:lightning-bolt",
+    "pressure": "mdi:gauge",
+    "signal_strength": "mdi:wifi",
+    "temperature": "mdi:thermometer",
+    "voltage": "mdi:flash",
+    "volume_flow_rate": "mdi:waves",
+}
+DEFAULT_MEASUREMENT_ICON = "mdi:chart-line"
+
+
+def measurement_icon(device_class: str | None, override: str | None) -> str:
+    """Return an explicit icon without enabling Home Assistant unit conversion."""
+
+    if override:
+        return override
+    if device_class:
+        return DEFAULT_MEASUREMENT_ICONS.get(
+            device_class,
+            DEFAULT_MEASUREMENT_ICON,
+        )
+    return DEFAULT_MEASUREMENT_ICON
+
+
 class HomeAssistantMqttPublisher:
     """
     Publishes LabPulse measurements to MQTT using Home Assistant discovery.
@@ -153,8 +181,14 @@ class HomeAssistantMqttPublisher:
             if measurement_config and measurement_config.unit:
                 payload["unit_of_measurement"] = measurement_config.unit
 
-            if measurement_config and measurement_config.device_class:
-                payload["device_class"] = measurement_config.device_class
+            # Home Assistant converts values when a convertible device class is
+            # published. LabPulse instead treats the configured unit as part of
+            # the measurement contract, so publish an explicit icon and keep
+            # device_class internal for alarm grouping and config semantics.
+            payload["icon"] = measurement_icon(
+                measurement_config.device_class if measurement_config else None,
+                measurement_config.icon if measurement_config else None,
+            )
 
             if measurement_config and measurement_config.state_class:
                 payload["state_class"] = measurement_config.state_class

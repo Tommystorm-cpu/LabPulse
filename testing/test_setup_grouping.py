@@ -153,6 +153,12 @@ def test_setup_metadata_validation() -> None:
     invalid_icon["setups"]["turbo_pump"]["icon"] = "vacuum"
     assert_rejected(invalid_icon, "mdi: icon identifier")
 
+    invalid_measurement_icon = config_data()
+    invalid_measurement_icon["services"]["pump_room"]["measurements"][0][
+        "icon"
+    ] = "thermometer"
+    assert_rejected(invalid_measurement_icon, "measurement icon")
+
     invalid_order = config_data()
     invalid_order["setups"]["turbo_pump"]["order"] = -1
     assert_rejected(invalid_order, "greater than or equal to 0")

@@ -224,14 +224,21 @@ services:
 | `measurements[].label` | User-facing label |
 | `measurements[].setups` | Required non-empty setup-ID list for ordinary measurements; omit it for dedicated `power_detection` telemetry |
 | `measurements[].subcategory` | Optional presentation subgroup within a setup section |
-| `unit`, `device_class`, `state_class` | MQTT discovery metadata |
+| `measurements[].unit` | Exact unit published to Home Assistant; LabPulse does not convert it |
+| `measurements[].device_class` | Internal measurement meaning and default-icon selection; not sent to Home Assistant |
+| `measurements[].icon` | Optional validated `mdi:` override for the derived Home Assistant entity icon |
+| `measurements[].state_class` | MQTT statistics metadata; defaults to `measurement` |
 | `reconnect_interval_seconds` | Delay between serial, GPIO, or I2C reinitialization attempts |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
 | `maximum_measurement_age_seconds` | Seconds without an MQTT sample before an ordinary measurement becomes unavailable; default 300 |
 | X1200 `driver.options` | I2C `bus`, verified `address: 0x36`, `gpio_chip`, `gpio_line`, and mains polarity |
 | `power_detection` | Home Assistant outage and recovery confirmation timings |
 
-`state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
+Default icons are derived from common device classes such as `temperature`,
+`pressure`, `humidity`, `volume_flow_rate`, `voltage`, and `battery`. Unknown
+classes use `mdi:chart-line`. Set `icon: "mdi:..."` on a measurement when a
+different visual is clearer. `state_class` defaults to `measurement`; set it
+to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
 helpers, not hardware config fields. From the dashboard's Alarm Setup landing
 page, open the required setup, press **Configure** on its measurement row, then set that
@@ -478,6 +485,14 @@ Port: 1883
 Home Assistant uses host networking. LabPulse Python containers use
 `mosquitto:1883` on the Compose network; those addresses are intentionally
 different.
+
+LabPulse treats each measurement's configured `unit` as part of its data
+contract. MQTT discovery publishes that exact unit and an explicit icon, but
+does not publish Home Assistant's convertible sensor `device_class`; values
+such as Celsius, Fahrenheit, bar, and psi therefore remain exactly as the
+hardware service reports them. The configured `device_class` remains available
+inside LabPulse for alarm grouping and supplies the default icon. Add an
+optional measurement-level `icon: "mdi:..."` to override that default.
 
 Hardware services publish discovery for service health immediately and for a
 measurement after its first valid sample. On a fresh startup there is no registry

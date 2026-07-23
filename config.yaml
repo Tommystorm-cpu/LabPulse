@@ -68,6 +68,9 @@ services:
         label: "Pressure"
         setups: [compressed_air]
         unit: "bar"
+        # device_class selects LabPulse semantics and the default mdi:gauge
+        # icon without allowing Home Assistant to convert the configured unit.
+        # Add icon: "mdi:..." here only when overriding that default.
         device_class: "pressure"
     reconnect_interval_seconds: 5
 

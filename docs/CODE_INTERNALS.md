@@ -52,13 +52,19 @@ MeasurementConfig
   name, label
   subcategory: str | None
   setups: SetupScope
-  unit, device_class, state_class
+  unit, device_class, icon, state_class
 ```
 
 The `services` dictionary key is the stable service identity. A
 `MeasurementConfig.name` is the stable measurement identity. `device_name`, `label`,
 setup metadata, and `subcategory` are presentation. Services follow their
 order in `config.yaml`; there is no separate service `display` block.
+
+The MQTT publisher treats `unit` as an exact measurement contract. It retains
+`device_class` inside LabPulse, derives or accepts an explicit `mdi:` `icon`,
+and publishes that icon without publishing the convertible Home Assistant
+device class. This prevents regional unit conversion while keeping readings
+visually distinct.
 
 Important computed properties are:
 

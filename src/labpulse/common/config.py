@@ -152,6 +152,7 @@ class MeasurementConfig(BaseModel):
     setups: SetupScope | None = None
     unit: str | None = None
     device_class: str | None = None
+    icon: str | None = None
     state_class: str | None = "measurement"
 
     @field_validator("setups", mode="before")
@@ -175,6 +176,18 @@ class MeasurementConfig(BaseModel):
                 raise ValueError("selected setup IDs must be unique")
             return SetupScope(setup_ids=tuple(normalized_ids))
         raise ValueError("setups must be a non-empty list of setup IDs")
+
+    @field_validator("icon")
+    @classmethod
+    def validate_icon(cls, icon: str | None) -> str | None:
+        """Normalize an optional Material Design entity icon."""
+
+        if icon is None:
+            return None
+        normalized = icon.strip()
+        if re.fullmatch(r"mdi:[a-z0-9]+(?:-[a-z0-9]+)*", normalized) is None:
+            raise ValueError("measurement icon must use an mdi: icon identifier")
+        return normalized
 
     @property
     def display_label(self) -> str:
