@@ -23,8 +23,19 @@ def main() -> None:
         raise AssertionError("distribution name must be labpulse")
     if project["version"] != labpulse.__version__:
         raise AssertionError("package metadata and module versions differ")
-    if project["scripts"].get("labpulse-setup") != "labpulse.installer:main":
-        raise AssertionError("pipx setup command is not declared")
+    expected_commands = {
+        "labpulse": "labpulse.control:main",
+        "labpulse-up": "labpulse.control:up_main",
+        "labpulse-down": "labpulse.control:down_main",
+        "labpulse-ps": "labpulse.control:ps_main",
+        "labpulse-logs": "labpulse.control:logs_main",
+        "labpulse-edit": "labpulse.control:edit_main",
+        "labpulse-open": "labpulse.control:open_main",
+        "labpulse-setup": "labpulse.installer:main",
+    }
+    for command, target in expected_commands.items():
+        if project["scripts"].get(command) != target:
+            raise AssertionError(f"pipx command is not declared: {command}")
 
     assets = find_install_assets()
     missing = [name for name in ASSET_NAMES if not (assets / name).is_file()]
@@ -46,7 +57,7 @@ def main() -> None:
         raise AssertionError("old live-directory name remains in setup")
 
     print("[PASS] package metadata and version")
-    print("[PASS] pipx console entry point")
+    print("[PASS] pipx console entry points")
     print("[PASS] packaged setup assets")
     print("[PASS] labpulse-live deployment contract")
 

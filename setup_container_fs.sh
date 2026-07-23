@@ -313,13 +313,9 @@ bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
   --project-dir "$PROJECT_DIR"
 
 FAKE_CONFIG_OUTPUT=""
-NEXT_COMPOSE_COMMAND="./generate_compose.sh"
-NEXT_HOMEASSISTANT_COMMAND="./generate_homeassistant_config.sh"
 NEXT_USB_COMMAND="./setup_usb_devices.py --config config.yaml"
 if [ "$FAKE_USB" -eq 1 ]; then
   FAKE_CONFIG_OUTPUT="  $PROJECT_DIR/config.fake.yaml"
-  NEXT_COMPOSE_COMMAND="./generate_compose.sh --config config.fake.yaml -fake_usb"
-  NEXT_HOMEASSISTANT_COMMAND="./generate_homeassistant_config.sh --config config.fake.yaml"
   NEXT_USB_COMMAND="./setup_usb_devices.py --config config.fake.yaml --fake-usb"
 fi
 
@@ -355,11 +351,10 @@ Preserved:
 Next commands:
   cd "$PROJECT_DIR"
   $NEXT_USB_COMMAND
-  nano config.yaml
-  $NEXT_COMPOSE_COMMAND
-  $NEXT_HOMEASSISTANT_COMMAND
-  docker compose config
-  docker compose up -d --build
+  labpulse edit
+  labpulse up --build
+  labpulse ps
+  labpulse open
 
 Important:
   EDIT THIS FILE for sensors and enabled flags:

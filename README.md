@@ -24,8 +24,8 @@ cd ~/LabPulse
 pipx install .
 labpulse-setup
 
-cd ~/labpulse-live
-./edit_config.sh
+labpulse edit
+labpulse up --build
 ```
 
 Once LabPulse is published, `pipx install labpulse` replaces `pipx install .`.
@@ -41,7 +41,7 @@ labpulse-setup -fake_usb
 
 cd ~/labpulse-live
 ./simulate_serial.py start
-docker compose up -d --build
+labpulse up --build
 ```
 
 For active development, use `pipx install --editable . --force` so the
@@ -57,9 +57,25 @@ The repository `config.yaml` is only a new-install starter. Generated
 `compose.yaml`, Home Assistant package, and dashboard files are outputs, not
 permanent editing targets.
 
-`edit_config.sh` opens a temporary copy of the live config, validates it, keeps
-one rollback copy, regenerates Compose and Home Assistant YAML, runs Home
-Assistant's config check, and refreshes the stack through `sudo docker`.
+The packaged operator commands are:
+
+```bash
+labpulse up                       # start the complete stack
+labpulse up --build               # rebuild local images, then start
+labpulse down                     # stop without deleting persistent data
+labpulse ps                       # show container status
+labpulse logs                     # show all logs
+labpulse logs -f homeassistant    # follow one service
+labpulse edit                     # safely edit, validate, and apply config
+labpulse open                     # open Home Assistant in the default browser
+```
+
+Standalone aliases (`labpulse-up`, `labpulse-down`, `labpulse-ps`,
+`labpulse-logs`, `labpulse-edit`, and `labpulse-open`) are also installed for
+shell users who prefer them. `labpulse edit` opens a temporary copy of the live config,
+validates it, keeps one rollback copy, regenerates Compose and Home Assistant
+YAML, runs Home Assistant's config check, and refreshes the stack through
+Docker.
 Setup also creates `~/labpulse-live/.venv` and installs the bounded host tooling
 dependencies there. LabPulse commands select that interpreter automatically;
 users should not install Pydantic globally or activate the environment.

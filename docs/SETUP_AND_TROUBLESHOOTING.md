@@ -10,7 +10,8 @@ Install the LabPulse command with pipx, then run its bootstrap. After bootstrap,
 operate the system from the generated live directory:
 
 ```text
-Installed command:  labpulse-setup
+Setup command:      labpulse-setup
+Control command:    labpulse
 Live installation:  ~/labpulse-live/
 Live config:         ~/labpulse-live/config.yaml
 ```
@@ -50,6 +51,25 @@ generates Compose and Home Assistant files, and seeds the dashboard. It also cre
 `requirements-host.txt`. The generator, editor, USB setup, and simulator
 commands select that interpreter automatically. Do not use `sudo pip`,
 `--break-system-packages`, or manually install Pydantic into system Python.
+
+The package installs a single control command for normal operation:
+
+```bash
+labpulse up                       # start all containers
+labpulse up --build               # rebuild local images and start
+labpulse down                     # stop without deleting persistent data
+labpulse ps                       # show container status
+labpulse ps --all                 # include stopped containers
+labpulse logs                     # show logs from all services
+labpulse logs -f homeassistant    # follow one service
+labpulse edit                     # edit, validate, regenerate, and apply config
+labpulse open                     # open http://localhost:8123 in a browser
+```
+
+The equivalent standalone aliases are `labpulse-up`, `labpulse-down`,
+`labpulse-ps`, `labpulse-logs`, `labpulse-edit`, and `labpulse-open`. Commands target
+`~/labpulse-live` from any working directory. Set `LABPULSE_LIVE_DIR` or pass
+`--live-dir DIR` for an alternate installation.
 
 ### Simulated hardware
 
@@ -429,7 +449,7 @@ native feature rather than a missing HACS package.
 Check the stack:
 
 ```bash
-docker compose ps
+labpulse ps
 ```
 
 Expected fixed containers are `labpulse-homeassistant`, `labpulse-mqtt`, and
@@ -465,8 +485,7 @@ for discovery.
 ### Live config changed
 
 ```bash
-cd ~/labpulse-live
-./edit_config.sh
+labpulse edit
 ```
 
 The editor works on a temporary copy beside the live config so validation
@@ -487,8 +506,7 @@ state into the live directory, then rebuild:
 cd ~/LabPulse
 pipx install --editable . --force
 labpulse-setup
-cd ~/labpulse-live
-docker compose up -d --build
+labpulse up --build
 ```
 
 Existing live config and the Home Assistant config directory are preserved.
@@ -497,8 +515,7 @@ Setup regenerates and registers `labpulse-dashboard.yaml`.
 ### Stop without deleting persistent data
 
 ```bash
-cd ~/labpulse-live
-docker compose down
+labpulse down
 ```
 
 Mounted config, Mosquitto data, and logs remain.
@@ -747,13 +764,12 @@ alert floods.
 ## Logs and inspection commands
 
 ```bash
-cd ~/labpulse-live
-docker compose ps
-docker compose logs -f
-docker compose logs -f homeassistant
-docker compose logs -f mosquitto
-docker compose logs -f labpulse-sms
-docker compose logs -f labpulse-pressure-monitor
+labpulse ps
+labpulse logs -f
+labpulse logs -f homeassistant
+labpulse logs -f mosquitto
+labpulse logs -f labpulse-sms
+labpulse logs -f labpulse-pressure-monitor
 ```
 
 Python services also write persistent logs under `~/labpulse-live/logs/`, for

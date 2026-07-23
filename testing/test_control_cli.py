@@ -1,0 +1,154 @@
+"""Contract tests for the pipx-installed LabPulse operator commands."""
+
+from contextlib import contextmanager
+from pathlib import Path
+from unittest.mock import patch
+import os
+import shutil
+import subprocess
+import sys
+from typing import Iterator
+from uuid import uuid4
+
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY / "src"))
+
+from labpulse import control
+
+
+@contextmanager
+def writable_test_directory() -> Iterator[Path]:
+    """Create a disposable directory without Windows tempfile ACL surprises."""
+
+    temporary_root = REPOSITORY / "testing" / "tmp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    path = temporary_root / f"labpulse-control-{uuid4().hex}"
+    path.mkdir()
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path)
+
+
+def completed(command: list[str], returncode: int = 0) -> subprocess.CompletedProcess:
+    """Return a minimal completed process for a mocked command."""
+
+    return subprocess.CompletedProcess(command, returncode)
+
+
+def main() -> None:
+    """Validate command construction, live-directory handling, and edit routing."""
+
+    with writable_test_directory() as live_dir:
+        (live_dir / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+        (live_dir / "config.yaml").write_text("version: 1\n", encoding="utf-8")
+
+        with patch.dict(
+            os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["docker"])
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "up",
+                    "--build",
+                    "homeassistant",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("up command failed")
+            run.assert_called_once_with(
+                [
+                    "docker",
+                    "compose",
+                    "up",
+                    "-d",
+                    "--build",
+                    "homeassistant",
+                ],
+                cwd=live_dir.resolve(),
+                check=False,
+            )
+
+        with patch.dict(
+            os.environ, {"LABPULSE_DOCKER_COMMAND": "sudo docker"}, clear=False
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["sudo", "docker"])
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "logs",
+                    "--follow",
+                    "--tail",
+                    "50",
+                    "mosquitto",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("logs command failed")
+            run.assert_called_once_with(
+                [
+                    "sudo",
+                    "docker",
+                    "compose",
+                    "logs",
+                    "--follow",
+                    "--tail",
+                    "50",
+                    "mosquitto",
+                ],
+                cwd=live_dir.resolve(),
+                check=False,
+            )
+
+        with patch.object(control.shutil, "which", return_value="/bin/bash"), patch.object(
+            control, "find_install_assets", return_value=REPOSITORY
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["bash"])
+            result = control.main(["--live-dir", str(live_dir), "edit"])
+            if result != 0:
+                raise AssertionError("edit command failed")
+            call = run.call_args
+            if call.args[0] != ["/bin/bash", str(REPOSITORY / "edit_config.sh")]:
+                raise AssertionError(f"unexpected edit command: {call.args[0]}")
+            if call.kwargs["env"]["LABPULSE_LIVE_DIR"] != str(live_dir.resolve()):
+                raise AssertionError("edit command did not target the live directory")
+
+        alias = control.alias_arguments(
+            "logs", ["--live-dir", str(live_dir), "-f", "mosquitto"]
+        )
+        if alias != [
+            "--live-dir",
+            str(live_dir),
+            "logs",
+            "-f",
+            "mosquitto",
+        ]:
+            raise AssertionError(f"unexpected alias arguments: {alias}")
+
+        with patch.object(control.webbrowser, "open", return_value=True) as browser:
+            result = control.main(["open"])
+            if result != 0:
+                raise AssertionError("open command failed")
+            browser.assert_called_once_with(
+                "http://localhost:8123",
+                new=2,
+            )
+
+    missing = REPOSITORY / "testing" / "definitely-not-a-live-install"
+    if control.main(["--live-dir", str(missing), "ps"]) != 2:
+        raise AssertionError("missing live deployment should fail clearly")
+
+    print("[PASS] Docker Compose command routing")
+    print("[PASS] configurable Docker command prefix")
+    print("[PASS] guarded config editor routing")
+    print("[PASS] standalone command alias routing")
+    print("[PASS] Home Assistant browser routing")
+    print("[PASS] missing installation handling")
+
+
+if __name__ == "__main__":
+    main()
