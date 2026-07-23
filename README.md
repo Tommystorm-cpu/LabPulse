@@ -34,7 +34,7 @@ cd ~/LabPulse
 ./setup_container_fs.sh -fake_usb
 
 cd ~/labpulse-ha
-python3 simulate_serial.py start
+./simulate_serial.py start
 docker compose up -d --build
 ```
 
@@ -51,12 +51,15 @@ permanent editing targets.
 `edit_config.sh` opens a temporary copy of the live config, validates it, keeps
 one rollback copy, regenerates Compose and Home Assistant YAML, runs Home
 Assistant's config check, and refreshes the stack through `sudo docker`.
+Setup also creates `~/labpulse-ha/.venv` and installs the bounded host tooling
+dependencies there. LabPulse commands select that interpreter automatically;
+users should not install Pydantic globally or activate the environment.
 
 ## Source layout
 
 ```text
 src/labpulse/common/          typed config, identity, MQTT contracts, logging
-src/labpulse/hardware/        drivers, parsing, hardware loop, MQTT publishing
+src/labpulse/hardware/        driver contracts, central lifecycle, parsing, MQTT publishing
 src/labpulse/homeassistant/   dashboard/alarm/core configuration generator
 src/labpulse/sms/             MQTT alert subscriber and SMS delivery
 firmware/                     simple pipe-delimited Arduino sketches

@@ -14,6 +14,27 @@ import sys
 import tempfile
 from typing import Callable, Sequence
 
+
+def _use_managed_python_when_deployed() -> None:
+    """Re-execute deployed commands with LabPulse's managed interpreter."""
+
+    project_dir = Path(__file__).resolve().parent
+    if not (project_dir / "labpulse-python").is_dir():
+        return
+    configured = os.environ.get("LABPULSE_PYTHON")
+    python_path = Path(configured) if configured else project_dir / ".venv/bin/python"
+    if not python_path.is_file():
+        raise SystemExit(
+            f"ERROR: LabPulse's managed Python environment is missing: {python_path}\n"
+            "Run setup_container_fs.sh from the LabPulse repository."
+        )
+    if Path(sys.executable).resolve() != python_path.resolve():
+        os.execv(str(python_path), [str(python_path), *sys.argv])
+
+
+if __name__ == "__main__":
+    _use_managed_python_when_deployed()
+
 import yaml
 
 
@@ -41,14 +62,23 @@ def load_serial_services(config_path: Path) -> list[SerialService]:
     for name, config in raw["services"].items():
         if not isinstance(config, dict):
             continue
-        if config.get("enabled", True) and config.get("driver") == "serial":
+        driver = config.get("driver")
+        if not isinstance(driver, dict):
+            continue
+        options = driver.get("options")
+        if not isinstance(options, dict):
+            continue
+        if (
+            config.get("enabled", True)
+            and driver.get("type") == "labpulse.serial_pipe"
+        ):
             services.append(
                 SerialService(
                     name=str(name),
                     label=str(config.get("device_name") or name),
                     current_port=(
-                        str(config["serial_port"])
-                        if config.get("serial_port") is not None
+                        str(options["port"])
+                        if options.get("port") is not None
                         else None
                     ),
                 )
@@ -120,7 +150,7 @@ def identify_devices(
 
 
 def replace_serial_ports(config_text: str, assignments: dict[str, str]) -> str:
-    """Replace only assigned service serial_port lines, preserving other text."""
+    """Replace only assigned nested driver port lines, preserving other text."""
 
     lines = config_text.splitlines(keepends=True)
     newline = "\r\n" if "\r\n" in config_text else "\n"
@@ -154,12 +184,12 @@ def replace_serial_ports(config_text: str, assignments: dict[str, str]) -> str:
                 end = index
                 break
 
-        replacement = f"    serial_port: {json.dumps(port)}{newline}"
+        replacement = f"        port: {json.dumps(port)}{newline}"
         port_index = next(
             (
                 index
                 for index in range(start + 1, end)
-                if re.match(r"^    serial_port:\s*", lines[index])
+                if re.match(r"^        port:\s*", lines[index])
             ),
             None,
         )
@@ -171,18 +201,22 @@ def replace_serial_ports(config_text: str, assignments: dict[str, str]) -> str:
             (
                 index
                 for index in range(start + 1, end)
-                if re.match(r"^    driver:\s*", lines[index])
+                if re.match(r"^      options:\s*", lines[index])
             ),
-            start,
+            None,
         )
+        if insert_after is None:
+            raise ValueError(
+                f"Serial driver options block not found: {service_name}"
+            )
         lines.insert(insert_after + 1, replacement)
 
     updated = "".join(lines)
     parsed = yaml.safe_load(updated)
     for service_name, port in assignments.items():
-        actual = parsed["services"][service_name].get("serial_port")
+        actual = parsed["services"][service_name]["driver"]["options"].get("port")
         if actual != port:
-            raise ValueError(f"Failed to update serial_port for {service_name}")
+            raise ValueError(f"Failed to update driver port for {service_name}")
     return updated
 
 
@@ -260,7 +294,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("\nDry run complete; config was not changed.")
             return 0
         if not args.yes:
-            answer = input("\nApply these serial_port assignments? [y/N] ").strip().lower()
+            answer = input("\nApply these serial driver port assignments? [y/N] ").strip().lower()
             if answer not in {"y", "yes"}:
                 print("Config was not changed.")
                 return 0

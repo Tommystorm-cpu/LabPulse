@@ -7,6 +7,10 @@ PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIVE_CONFIG="$PROJECT_DIR/config.yaml"
 TEMPLATE_CONFIG="$SCRIPT_DIR/config.yaml"
+HOST_REQUIREMENTS_SOURCE="$SCRIPT_DIR/requirements-host.txt"
+HOST_REQUIREMENTS="$PROJECT_DIR/requirements-host.txt"
+HOST_VENV="$PROJECT_DIR/.venv"
+HOST_PYTHON="$HOST_VENV/bin/python"
 
 BACKUP=0
 FAKE_USB=0
@@ -33,6 +37,48 @@ After this script has run once, work from ~/labpulse-ha:
   ./generate_compose.sh
   ./generate_homeassistant_config.sh
 EOF
+}
+
+# Create the isolated interpreter used by every command that runs on the Pi.
+# Raspberry Pi OS protects its system Python, so LabPulse never installs host
+# packages globally or asks users to activate an environment manually.
+install_host_python_environment() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "ERROR: python3 is required to install LabPulse." >&2
+    echo "Install Raspberry Pi OS's python3-full package, then rerun setup." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOST_REQUIREMENTS_SOURCE" ]; then
+    echo "ERROR: Host dependency file is missing: $HOST_REQUIREMENTS_SOURCE" >&2
+    exit 1
+  fi
+
+  copy_file "$HOST_REQUIREMENTS_SOURCE" "$HOST_REQUIREMENTS"
+  if [ ! -x "$HOST_PYTHON" ]; then
+    echo "Creating LabPulse host Python environment..."
+    if ! python3 -m venv "$HOST_VENV"; then
+      echo "ERROR: Could not create $HOST_VENV." >&2
+      echo "Install Raspberry Pi OS's python3-full package, then rerun setup." >&2
+      exit 1
+    fi
+  fi
+
+  echo "Installing LabPulse host Python dependencies..."
+  "$HOST_PYTHON" -m pip install \
+    --disable-pip-version-check \
+    --requirement "$HOST_REQUIREMENTS"
+
+  "$HOST_PYTHON" - <<'PY'
+import pydantic
+import yaml
+
+major = int(pydantic.__version__.split(".", 1)[0])
+if major != 2:
+    raise SystemExit(
+        f"ERROR: LabPulse requires Pydantic 2, found {pydantic.__version__}"
+    )
+print(f"Host Python ready: Pydantic {pydantic.__version__}, PyYAML {yaml.__version__}")
+PY
 }
 
 while [ "$#" -gt 0 ]; do
@@ -114,6 +160,8 @@ mkdir -p "$PROJECT_DIR/mosquitto/log"
 mkdir -p "$PROJECT_DIR/labpulse-python"
 mkdir -p "$PROJECT_DIR/logs"
 
+install_host_python_environment
+
 if [ "$FAKE_USB" -eq 1 ]; then
   mkdir -p /tmp/labpulse-fake-serial
 fi
@@ -155,8 +203,8 @@ EOF
 # Keep the runtime dependency list small for Raspberry Pi builds.
 write_file "$PROJECT_DIR/labpulse-python/requirements.txt" <<'EOF'
 paho-mqtt
-pydantic
-pyyaml
+pydantic>=2,<3
+PyYAML>=6,<7
 pyserial
 smbus2
 adafruit-blinka
@@ -198,9 +246,10 @@ fi
 # Derive config.fake.yaml only in fake mode. Real setup never rewrites the
 # live user-edited config.yaml.
 if [ "$FAKE_USB" -eq 1 ]; then
-python3 - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" "$PROJECT_DIR/labpulse-python" <<'PY'
+"$HOST_PYTHON" - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" "$PROJECT_DIR/labpulse-python" <<'PY'
 from pathlib import Path
 import sys
+import yaml
 
 source_path = Path(sys.argv[1])
 destination_path = Path(sys.argv[2])
@@ -219,20 +268,22 @@ if fake_usb:
     for source, replacement in replacements.items():
         text = text.replace(source, replacement, 1)
 
-    real_room_environment = '''    driver: gpio
-    gpio_sensor: dht11
-    gpio_pin: "D4"'''
-    simulated_room_environment = '''    driver: serial
-    serial_port: "/tmp/labpulse-fake-serial/room_environment"
-    baud_rate: 9600'''
-    text = text.replace(real_room_environment, simulated_room_environment, 1)
-
     # Convert the configured power service to the same normalized measurements and
     # stable identities through the ups_monitor pseudo-serial endpoint. The
     # converter changes only transport-specific keys in that service block.
     sys.path.insert(0, str(python_package_dir))
-    from labpulse.common.fake_config import convert_power_service_to_fake_serial
+    from labpulse.common.fake_config import (
+        convert_power_service_to_fake_serial,
+        convert_service_to_fake_serial,
+    )
 
+    services = (yaml.safe_load(text) or {}).get("services", {})
+    if "room_environment" in services:
+        text = convert_service_to_fake_serial(
+            text,
+            "room_environment",
+            "/tmp/labpulse-fake-serial/room_environment",
+        )
     text = convert_power_service_to_fake_serial(text)
 
 destination_path.write_text(text)
@@ -283,6 +334,8 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/edit_config.sh
   $PROJECT_DIR/simulate_serial.py
   $PROJECT_DIR/setup_usb_devices.py
+  $PROJECT_DIR/requirements-host.txt
+  $PROJECT_DIR/.venv/
   $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml
   $PROJECT_DIR/homeassistant/config/labpulse-dashboard.yaml
   $PROJECT_DIR/mosquitto/config/mosquitto.conf

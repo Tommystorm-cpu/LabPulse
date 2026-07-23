@@ -34,8 +34,10 @@ def config_data() -> dict[str, object]:
         },
         "services": {
             "pump_room": {
-                "driver": "serial",
-                "serial_port": "/tmp/pump-room",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/pump-room"},
+                },
                 "device_name": "Pump Room Hub",
                 "measurements": [
                     {
@@ -54,9 +56,10 @@ def config_data() -> dict[str, object]:
                 ],
             },
             "room_environment": {
-                "driver": "gpio",
-                "gpio_sensor": "dht11",
-                "gpio_pin": "D4",
+                "driver": {
+                    "type": "labpulse.dht11",
+                    "options": {"pin": "D4"},
+                },
                 "device_name": "Room Hub",
                 "measurements": [
                     {
@@ -69,8 +72,10 @@ def config_data() -> dict[str, object]:
             },
             "disabled": {
                 "enabled": False,
-                "driver": "serial",
-                "serial_port": "/tmp/disabled",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/disabled"},
+                },
                 "device_name": "Disabled Hub",
                 "measurements": [{"name": "ignored", "setups": ["cryostat"]}],
             },
@@ -173,8 +178,10 @@ def test_dedicated_power_omits_setup_membership() -> None:
         "setups": {},
         "services": {
             "ups": {
-                "driver": "serial",
-                "serial_port": "/tmp/ups",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/ups"},
+                },
                 "device_name": "UPS",
                 "measurements": [
                     {"name": "voltage"},

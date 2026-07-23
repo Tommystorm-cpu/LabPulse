@@ -40,9 +40,9 @@ LabPulseConfig
 
 ServiceConfig
   enabled: bool
-  driver: "serial" | "gpio" | "i2c"
-  serial_port, baud_rate
-  gpio_sensor, gpio_pin
+  driver: DriverConfig
+    type: stable registered driver ID
+    options: driver-owned validated mapping
   device_name
   measurements: list[MeasurementConfig]
   reconnect_interval_seconds
@@ -123,100 +123,113 @@ load config
 get selected ServiceConfig
 build_driver(service_name, service_cfg)
 create HomeAssistantMqttPublisher unless --no-mqtt
-driver.setup()
-publish initial driver status
-loop:
-  measurements = driver.read()
-  publish changed driver status
-  skip empty/invalid samples
-  publish measurements
-  stop after one sample when --once
-finally disconnect driver and MQTT
+build RunnerPolicy from service timing
+create HardwareRunner
+runner.run_forever(once=...)
 ```
 
-`last_status` avoids publishing the same health transition on every loop.
-Blank serial reads sleep for 0.1 seconds so a disconnected or quiet device does
-not cause a busy loop.
+`HardwareRunner` owns connection state, status transitions, reconnect
+throttling, read scheduling, freshness, expected failure handling, and
+idempotent driver/publisher cleanup. Its `step()` method performs one
+connection or read action, which makes the complete lifecycle deterministic in
+hardware-free tests. Blank serial reads sleep for 0.1 seconds so a quiet device
+does not cause a busy loop.
 
-### Driver interface and factory
+### Driver lifecycle API and registry
 
-`BaseSensorDriver` defines the shared state:
+`BaseSensorDriver` provides only stable identity and logging:
 
 ```python
 self.name: str
-self.connected: bool
-self.status: str
 self.logger: logging.Logger
 ```
 
-Implementations must provide `setup()`, `read()`, and `disconnect()`.
-`read()` returns either `dict[str, float]` or `None`.
+Implementations provide `connect()`, `read()`, and `close()`. `read()` returns
+`ReadingBatch` or `None`. A batch contains normalized numeric measurements and
+optional `ComponentIssue` records for partial faults such as an unavailable
+X1200 mains GPIO.
 
-`drivers/factory.py::build_driver()` maps validated config to implementations:
+Expected failures cross the boundary through explicit exceptions:
 
-- `driver: serial` requires `serial_port`, then constructs `SerialDriver`.
-- `driver: gpio` plus `gpio_sensor: dht11` requires `gpio_pin`, then constructs
-  the DHT11 driver.
-- `driver: i2c` plus `i2c_sensor: x1200_ups` requires an explicit bus, the
-  verified address `0x36`, and direct mains GPIO configuration, then constructs
-  the X1200 UPS driver.
+- `DriverUnavailable`: connection could not be established;
+- `ConnectionLost`: an established handle is no longer usable;
+- `TransientReadError`: one sample failed but the connection remains usable.
 
-Driver modules are imported only inside their selected branch. In particular,
-serial and I2C workers do not import Blinka, `board`, or `adafruit_dht`; eager
-imports can open `/dev/gpiochip0` in unrelated containers and prevent the DHT
-worker from acquiring GPIO4.
+Drivers do not retry, publish status, track freshness, or schedule reads.
+`HardwareRunner` converts the contract outcomes into `online`, `reconnecting`,
+`disconnected`, and `error`, suppresses duplicate status publications, and
+continues the service process through recoverable failures.
+
+Each hardware module contains its implementation, Pydantic options, builder,
+container-resource resolver, default interval, and one exported
+`DriverDefinition`. `hardware/registry.py` discovers those modules and exposes
+`build_driver()` without device-specific selection branches. Compose uses the
+same definition and validation model as the runtime.
+
+The built-in IDs are `labpulse.serial_pipe`, `labpulse.dht11`, and
+`labpulse.x1200`. All driver modules are inspected during discovery, so their
+Pydantic models and standard-library code must be safe to import. Hardware
+vendor libraries remain lazy imports inside `connect()` or a helper it calls.
+In particular, serial and I2C workers do not import Blinka, `board`, or
+`adafruit_dht`; eager imports can open `/dev/gpiochip0` in unrelated containers
+and prevent the DHT worker from acquiring GPIO4.
+
+To add another built-in driver:
+
+1. Copy `src/labpulse/hardware/drivers/driver_template.py` to a new module.
+2. Keep its strict options model, `Driver`, builder, structured resource
+   resolver, and exported `DRIVER` definition together in that module.
+3. Add registry and Compose-resource tests using fake dependencies; do not add
+   device-specific fields to `ServiceConfig`, branches to `build_driver()`, or
+   raw Compose YAML.
+4. Add the service with only `driver.type` and `driver.options` in config.
+
+The registry is deliberately internal for now. It provides one well-tested
+extension seam for repository contributors without yet promising that arbitrary
+third-party Python packages are safe to load.
 
 The X1200 driver performs read-only MAX17043 VCELL and SOC transactions,
-publishes voltage and gauge-calculated battery level, reads the direct mains
-GPIO, and reconnects after explicit I2C faults. It does not publish current or
-charging status because the installed hardware does not measure them.
+publishes voltage and gauge-calculated battery level, and reads the direct
+mains GPIO. I2C faults raise `ConnectionLost` for runner-managed recovery. A
+GPIO-only fault returns the valid battery values with a `gpio_fault` component
+issue. It does not publish current or charging status because the installed
+hardware does not measure them.
 
 ### Serial driver
 
-`drivers/serial_driver.py::Driver` holds:
+`drivers/serial_pipe.py::Driver` holds:
 
 ```python
 port, baud_rate
 ser                         # pyserial handle or None
 parser: SerialParser
-reconnect_interval_seconds
-last_reconnect_attempt      # monotonic time
 ```
 
-`setup()` opens `serial.Serial(..., timeout=2)` and changes status to `online`.
-On failure it closes/clears state and returns false.
-
-`read()` has two paths:
-
-1. If disconnected, `_try_reconnect()` is rate-limited by
-   `reconnect_interval_seconds` and returns no measurement.
-2. If connected, one line is read, decoded as UTF-8, stripped, and sent to the
-   parser. Serial/OSError failures mark the driver disconnected.
+`connect()` opens `serial.Serial(..., timeout=2)` and raises
+`DriverUnavailable` when the path cannot be opened. `read()` decodes one line
+and sends it to the standard parser; a disappearing device raises
+`ConnectionLost`. `close()` releases the serial handle and is safe to repeat.
 
 The container stays alive when a USB device disappears. This is why reconnect
-logic belongs in the driver rather than Compose restart behavior.
+logic belongs in `HardwareRunner` rather than every driver or Compose restart
+behavior.
 
 ### DHT11 driver
 
-`drivers/dht11_driver.py::Driver` stores a Blinka pin name, read/reconnect and
-maximum-age timings, the Adafruit device object, monotonic freshness state, and
-the most recent reconnect attempt.
+`drivers/dht11.py::Driver` stores only the Blinka pin name and Adafruit
+device object.
 
-`setup()` resolves the named attribute from `board` and constructs
+`connect()` resolves the named attribute from `board` and constructs
 `adafruit_dht.DHT11` with `use_pulseio=True`. This is the mode verified against
 the installed DHT11 and Raspberry Pi; GPIO4 must remain exclusive to the DHT
 worker.
 
-`read()` throttles requests with monotonic time. A normal DHT `RuntimeError`
-means one sample was missed and does not immediately mark the service offline.
-If valid samples remain absent for `maximum_measurement_age_seconds`, status becomes
-`error`; warnings are rate-limited to one per minute. A valid sample restores
-`online`.
-
-Unexpected errors release the GPIO device and enter a rate-limited reconnect
-loop using `reconnect_interval_seconds`. This also lets a service whose initial
-GPIO setup failed recover without restarting its container. A valid sample
-returns exactly:
+`read()` translates an ordinary DHT `RuntimeError` or incomplete sample into
+`TransientReadError`. Unexpected GPIO/library failures become
+`ConnectionLost`. `HardwareRunner` applies `read_interval_seconds`, limits
+failure logging, changes status to `error` after
+`maximum_measurement_age_seconds`, closes failed devices, and retries using
+`reconnect_interval_seconds`. A valid sample is returned in `ReadingBatch` as:
 
 ```python
 {"temperature": float, "humidity": float}
@@ -272,7 +285,7 @@ The public command is `generate_homeassistant_config.sh`. The shell wrapper
 owns paths and generated-file permission checks. It then calls:
 
 ```bash
-python3 -m labpulse.homeassistant \
+.venv/bin/python -m labpulse.homeassistant \
   CONFIG_PATH HA_CONFIG_DIR
 ```
 
@@ -737,7 +750,7 @@ and each replug step must restore the same public name. Ambiguous changes abort
 the whole run before any config write.
 
 After operator confirmation, `replace_serial_ports()` changes only the relevant
-`serial_port` lines and validates the resulting YAML. `write_config()` keeps one
+`driver.options.port` lines and validates the resulting YAML. `write_config()` keeps one
 `.usb-setup-backup` and atomically replaces the config, avoiding partial writes
 and repeated timestamped backups.
 
@@ -748,6 +761,7 @@ The scripts under `testing/` are grouped by contract:
 | Area | Tests |
 | --- | --- |
 | Config/shared IDs/topics | `test_common_contracts.py`, `test_hardware_factory.py` |
+| Driver lifecycle | `test_hardware_runner.py` |
 | Drivers and parsing | `test_serial_driver.py`, `test_serial_parser.py`, `test_dht11_driver.py`, `test_x1200_ups_driver.py` |
 | Simulator and USB assignment | `test_simulate_serial.py`, `test_usb_setup.py` |
 | MQTT discovery | `test_homeassistant_publisher.py` |

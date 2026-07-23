@@ -29,18 +29,24 @@ setups: {}
 services:
   pressure_monitor:
     enabled: true
-    driver: serial
-    serial_port: /dev/ttyACM0  # replace only this line
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /dev/ttyACM0  # replace only this line
     device_name: Air Pressure Sensor Hub
     measurements: []
   pump_room:
-    driver: serial
-    serial_port: FAKE_PUMP_ROOM_PORT
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: FAKE_PUMP_ROOM_PORT
     device_name: Pump Room Sensor Hub
     measurements: []
   room_environment:
-    driver: gpio
-    gpio_sensor: dht11
+    driver:
+      type: labpulse.dht11
+      options:
+        pin: D4
     device_name: Room Sensor
     measurements: []
 """
@@ -120,17 +126,17 @@ def test_rejects_ambiguous_unplug() -> None:
 
 
 def test_surgical_config_update_and_backup() -> None:
-    """Check only serial_port assignments change and writes keep one backup."""
+    """Check only nested serial driver ports change and writes keep one backup."""
 
     assignments = {
         "pressure_monitor": "/dev/serial/by-id/usb-pressure",
         "pump_room": "/dev/serial/by-id/usb-pump",
     }
     updated = replace_serial_ports(CONFIG, assignments)
-    if "# preserve this manual comment" not in updated or "driver: gpio" not in updated:
+    if "# preserve this manual comment" not in updated or "type: labpulse.dht11" not in updated:
         raise AssertionError("manual or unrelated config content was lost")
     for port in assignments.values():
-        if f'serial_port: "{port}"' not in updated:
+        if f'port: "{port}"' not in updated:
             raise AssertionError(f"assignment missing from updated config: {port}")
     if "/dev/ttyACM0" in updated or "FAKE_PUMP_ROOM_PORT" in updated:
         raise AssertionError("old unstable paths remain after replacement")

@@ -47,6 +47,7 @@ repository root/
   -> setup_container_fs.sh
   -> ~/labpulse-ha/
        config.yaml                  live user configuration
+       .venv/                       managed host Python environment
        generate_compose.sh
        generate_homeassistant_config.sh
   -> compose.yaml                   generated deployment
@@ -56,6 +57,8 @@ repository root/
 
 `setup_container_fs.sh` is the bootstrap and code-copy step. After it has run,
 normal operator work happens from `~/labpulse-ha`, not from the checkout.
+Host-side commands always use `.venv/bin/python`; Pydantic and PyYAML are
+installed there from `requirements-host.txt`, independently of system Python.
 
 ### Runtime measurements and alerts
 
@@ -305,15 +308,17 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 
 ## Failure behavior
 
-- A missing serial device does not terminate the service loop. The driver
+- A missing serial device does not terminate the service loop. `HardwareRunner`
   reports disconnected/reconnecting and periodically retries. Home Assistant
   trusts the last valid sample until the MQTT measurement's configured
   `expire_after` elapses, so a brief reconnect does not immediately notify.
-- Individual DHT11 timing failures are tolerated. Sustained missing samples
-  change service health to `error` at the configured maximum age while MQTT
-  expiry makes measurements unavailable; valid samples restore `online`.
+- Individual DHT11 timing failures are classified as transient. The central
+  runner keeps the connection, rate-limits warnings, changes service health to
+  `error` at the configured maximum age, and restores `online` after a valid
+  batch.
 - Unexpected DHT11 GPIO/library failures release the device and retry setup at
-  the configured reconnect interval without requiring a container restart.
+  the runner's configured reconnect interval without requiring a container
+  restart.
 - Parser output not declared in config is ignored instead of creating surprise
   MQTT entities.
 - A missing/invalid SMS field is rejected before it reaches the delivery queue.
@@ -329,7 +334,8 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 | Change stable IDs | `src/labpulse/common/identity.py` |
 | Change topics or SMS request fields | `src/labpulse/common/mqtt_contracts.py` |
 | Change any user-facing SMS wording | `src/labpulse/common/sms_templates.yaml` |
-| Change acquisition or reconnect behavior | `src/labpulse/hardware/drivers/` |
+| Change shared retry, freshness, or status behavior | `src/labpulse/hardware/runner.py` |
+| Change one hardware protocol or error classification | `src/labpulse/hardware/drivers/` |
 | Change the standard serial contract | `src/labpulse/hardware/serial_parser.py` and Arduino firmware |
 | Change discovery/state publishing | `src/labpulse/hardware/homeassistant_publisher.py` |
 | Change measurement render types/IDs | `src/labpulse/homeassistant/measurement_model.py` |

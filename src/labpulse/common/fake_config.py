@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import json
 from textwrap import indent
 
 import yaml
@@ -10,24 +10,15 @@ from yaml.nodes import MappingNode, ScalarNode
 
 
 FAKE_UPS_PORT = "/tmp/labpulse-fake-serial/ups_monitor"
-POWER_HARDWARE_KEYS = frozenset(
-    {
-        "driver",
-        "serial_port",
-        "baud_rate",
-        "i2c_sensor",
-        "i2c_bus",
-        "i2c_address",
-        "ina219_calibration",
-        "ina219_config_register",
-        "ina219_current_lsb_ma",
-    }
-)
 DEFAULT_FAKE_POWER_SERVICE = {
     "enabled": True,
-    "driver": "serial",
-    "serial_port": FAKE_UPS_PORT,
-    "baud_rate": 9600,
+    "driver": {
+        "type": "labpulse.serial_pipe",
+        "options": {
+            "port": FAKE_UPS_PORT,
+            "baud_rate": 9600,
+        },
+    },
     "device_name": "UPS Monitor",
     "measurements": [
         {
@@ -52,10 +43,6 @@ DEFAULT_FAKE_POWER_SERVICE = {
     "read_interval_seconds": 1,
     "maximum_measurement_age_seconds": 15,
     "power_detection": {
-        "source": "x1200_gpio",
-        "gpio_chip": "/dev/gpiochip0",
-        "gpio_line": 6,
-        "mains_present_active_high": True,
         "outage_confirm_seconds": 3,
         "restore_confirm_seconds": 5,
     },
@@ -93,33 +80,33 @@ def convert_power_service_to_fake_serial(text: str) -> str:
             "there is one ups_monitor pseudo-serial endpoint"
         )
 
-    service_name = str(targets[0])
+    return convert_service_to_fake_serial(text, str(targets[0]), FAKE_UPS_PORT)
+
+
+def convert_service_to_fake_serial(
+    text: str,
+    service_name: str,
+    port: str,
+) -> str:
+    """Replace one service's driver block while preserving surrounding YAML."""
+
     root = yaml.compose(text)
     service_node = _mapping_value(_mapping_value(root, "services"), service_name)
     if not isinstance(service_node, MappingNode):
-        raise ValueError(f"Power service '{service_name}' must be a YAML mapping")
+        raise ValueError(f"Service '{service_name}' must be a YAML mapping")
 
+    driver_key, driver_node = _mapping_entry(service_node, "driver")
     lines = text.splitlines(keepends=True)
-    start = service_node.start_mark.line
-    end = service_node.end_mark.line
-    indent = service_node.start_mark.column
-    key_pattern = re.compile(rf"^\s{{{indent}}}([A-Za-z0-9_]+)\s*:")
-    retained: list[str] = []
-
-    for line in lines[start:end]:
-        match = key_pattern.match(line)
-        if match and match.group(1) in POWER_HARDWARE_KEYS:
-            continue
-        retained.append(line)
-
     newline = "\r\n" if "\r\n" in text else "\n"
-    prefix = " " * indent
-    fake_transport = [
-        f"{prefix}driver: serial{newline}",
-        f'{prefix}serial_port: "{FAKE_UPS_PORT}"{newline}',
-        f"{prefix}baud_rate: 9600{newline}",
+    prefix = " " * driver_key.start_mark.column
+    replacement = [
+        f"{prefix}driver:{newline}",
+        f"{prefix}  type: labpulse.serial_pipe{newline}",
+        f"{prefix}  options:{newline}",
+        f"{prefix}    port: {json.dumps(port)}{newline}",
+        f"{prefix}    baud_rate: 9600{newline}",
     ]
-    lines[start:end] = fake_transport + retained
+    lines[driver_key.start_mark.line : driver_node.end_mark.line] = replacement
     return "".join(lines)
 
 
@@ -157,4 +144,18 @@ def _mapping_value(node: object, key: str) -> object:
     for key_node, value_node in node.value:
         if isinstance(key_node, ScalarNode) and key_node.value == key:
             return value_node
+    raise ValueError(f"Missing YAML mapping key: {key}")
+
+
+def _mapping_entry(
+    node: object,
+    key: str,
+) -> tuple[ScalarNode, object]:
+    """Return one key/value node pair from a composed YAML mapping."""
+
+    if not isinstance(node, MappingNode):
+        raise ValueError(f"Expected YAML mapping while locating '{key}'")
+    for key_node, value_node in node.value:
+        if isinstance(key_node, ScalarNode) and key_node.value == key:
+            return key_node, value_node
     raise ValueError(f"Missing YAML mapping key: {key}")

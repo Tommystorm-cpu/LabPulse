@@ -32,8 +32,10 @@ def config_data() -> dict[str, object]:
         },
         "services": {
             "shared_hub": {
-                "driver": "serial",
-                "serial_port": "/tmp/shared-hub",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/shared-hub"},
+                },
                 "device_name": "Shared Sensor Hub",
                 "measurements": [
                     {"name": "alpha", "label": "Alpha Measurement", "setups": ["alpha"]},

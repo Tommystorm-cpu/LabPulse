@@ -1,4 +1,5 @@
 waterenv/
+.venv/
 __pycache__/
 /logs/
 **/__pycache__/

@@ -30,8 +30,10 @@ Service config:
   services:
     pump_room:
       enabled: true   # optional, defaults to true
-      driver: serial
-      ...
+      driver:
+        type: labpulse.serial_pipe
+        options:
+          port: /dev/serial/by-id/...
 EOF
 }
 
@@ -78,29 +80,44 @@ fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
+HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
+if [ ! -x "$HOST_PYTHON" ]; then
+  echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
+  echo "Run setup_container_fs.sh from the LabPulse repository." >&2
+  exit 1
+fi
+
 # Use Python for the YAML/config logic. Bash is kept for CLI plumbing; Python is
 # safer for parsing config.yaml and emitting predictable Compose YAML.
-python3 - "$CONFIG_PATH" "$OUTPUT_PATH" "$PROJECT_DIR" "$FAKE_USB" <<'PY'
+"$HOST_PYTHON" - "$CONFIG_PATH" "$OUTPUT_PATH" "$PROJECT_DIR" "$FAKE_USB" <<'PY'
 from pathlib import Path
 import json
 import re
 import sys
 
-try:
-    import yaml
-except ImportError:
-    print(
-        "ERROR: generate_compose.sh needs PyYAML on the host.\n"
-        "Install it with: sudo apt install python3-yaml",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+import yaml
 
 
 config_path = Path(sys.argv[1]).expanduser().resolve()
 output_path = Path(sys.argv[2]).expanduser().resolve()
 project_dir = Path(sys.argv[3]).expanduser().resolve()
 fake_usb = sys.argv[4] == "1"
+
+package_candidates = (
+    project_dir / "src",
+    project_dir / "labpulse-python",
+    Path.cwd() / "src",
+    Path.cwd() / "labpulse-python",
+)
+for package_dir in package_candidates:
+    if (package_dir / "labpulse").is_dir():
+        sys.path.insert(0, str(package_dir))
+        break
+else:
+    print("ERROR: LabPulse Python package not found for driver manifests", file=sys.stderr)
+    sys.exit(1)
+
+from labpulse.hardware.registry import get_driver_spec
 
 
 def service_slug(service_name: str) -> str:
@@ -122,6 +139,22 @@ def sms_command() -> str:
 
     command = ["python", "-m", "labpulse.sms", "--config", "/app/config.yaml"]
     return json.dumps(command)
+
+
+def validated_driver(service_name: str, service_config: dict):
+    """Resolve and validate one self-contained driver definition."""
+
+    driver = service_config.get("driver")
+    if not isinstance(driver, dict):
+        raise ValueError(
+            f"service '{service_name}' requires driver.type and driver.options"
+        )
+    driver_id = driver.get("type")
+    options = driver.get("options", {})
+    if not isinstance(driver_id, str) or not isinstance(options, dict):
+        raise ValueError(f"service '{service_name}' has an invalid driver declaration")
+    definition = get_driver_spec(driver_id)
+    return definition, definition.validate_options(options)
 
 
 if not config_path.exists():
@@ -150,12 +183,15 @@ if not enabled_services:
 # Fake USB mode can be requested explicitly, or inferred from config.yaml when
 # any enabled service points at /tmp/labpulse-fake-serial.
 if not fake_usb:
-    fake_usb = any(
-        str((services.get(service_name) or {}).get("serial_port", "")).startswith(
-            "/tmp/labpulse-fake-serial"
-        )
-        for service_name in enabled_services
-    )
+    for service_name in enabled_services:
+        service_config = services.get(service_name) or {}
+        definition, options = validated_driver(service_name, service_config)
+        if (
+            definition.driver_id == "labpulse.serial_pipe"
+            and str(options.port).startswith("/tmp/labpulse-fake-serial")
+        ):
+            fake_usb = True
+            break
 
 project_dir.mkdir(parents=True, exist_ok=True)
 (project_dir / "logs").mkdir(parents=True, exist_ok=True)
@@ -275,9 +311,8 @@ for service_name in enabled_services:
 
     used_container_names.add(container_name)
 
-    driver = service_config.get("driver")
-    if driver is None and service_config.get("serial_port"):
-        driver = "serial"
+    definition, driver_options = validated_driver(service_name, service_config)
+    requirements = definition.resolve_resources(driver_options, fake_usb)
     service_lines = [
         f"  {container_name}:",
         "    <<: *labpulse-python-base",
@@ -286,42 +321,14 @@ for service_name in enabled_services:
         f"      - {config_mount_source}:/app/config.yaml:ro",
     ]
 
-    if driver == "i2c":
-        i2c_bus = service_config.get("i2c_bus")
-        if not isinstance(i2c_bus, int) or i2c_bus < 0:
-            print(
-                f"ERROR: I2C service '{service_name}' requires a non-negative i2c_bus",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        device = f"/dev/i2c-{i2c_bus}"
-        devices = [device]
-        power_detection = service_config.get("power_detection") or {}
-        if power_detection.get("source") == "x1200_gpio":
-            gpio_chip = power_detection.get("gpio_chip", "/dev/gpiochip0")
-            if not isinstance(gpio_chip, str) or re.fullmatch(r"/dev/gpiochip\d+", gpio_chip) is None:
-                print(
-                    f"ERROR: X1200 service '{service_name}' requires gpio_chip under /dev/gpiochip*",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            devices.append(gpio_chip)
+    if requirements.devices:
         service_lines.append("    devices:")
-        service_lines.extend(f"      - {device}:{device}" for device in devices)
-    elif driver == "serial":
-        serial_port = str(service_config.get("serial_port", ""))
-        simulated = fake_usb or serial_port.startswith("/tmp/labpulse-fake-serial")
-        if simulated:
-            service_lines.extend(
-                [
-                    "      - /tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
-                    "      - /dev/pts:/dev/pts",
-                ]
-            )
-        else:
-            service_lines.extend(["      - /dev:/dev", "    privileged: true"])
-    elif driver == "gpio":
-        service_lines.extend(["      - /dev:/dev", "    privileged: true"])
+        service_lines.extend(
+            f"      - {device}:{device}" for device in requirements.devices
+        )
+    service_lines.extend(f"      - {mount}" for mount in requirements.mounts)
+    if requirements.privileged:
+        service_lines.append("    privileged: true")
 
     service_lines.extend(
         [

@@ -17,6 +17,27 @@ import time
 from typing import Any, Sequence
 
 
+def _use_managed_python_when_deployed() -> None:
+    """Re-execute deployed commands with LabPulse's managed interpreter."""
+
+    project_dir = Path(__file__).resolve().parent
+    if not (project_dir / "labpulse-python").is_dir():
+        return
+    configured = os.environ.get("LABPULSE_PYTHON")
+    python_path = Path(configured) if configured else project_dir / ".venv/bin/python"
+    if not python_path.is_file():
+        raise SystemExit(
+            f"ERROR: LabPulse's managed Python environment is missing: {python_path}\n"
+            "Run setup_container_fs.sh from the LabPulse repository."
+        )
+    if Path(sys.executable).resolve() != python_path.resolve():
+        os.execv(str(python_path), [str(python_path), *sys.argv])
+
+
+if __name__ == "__main__":
+    _use_managed_python_when_deployed()
+
+
 DEFAULT_SIM_DIR = Path(
     os.environ.get("LABPULSE_FAKE_SERIAL_DIR", "/tmp/labpulse-fake-serial")
 )

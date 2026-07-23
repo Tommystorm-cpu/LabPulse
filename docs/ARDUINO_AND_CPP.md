@@ -26,8 +26,11 @@ validation is `null`; the serial parser omits it. All serial Arduino services
 therefore use:
 
 ```yaml
-driver: serial
-baud_rate: 9600
+driver:
+  type: labpulse.serial_pipe
+  options:
+    port: "/dev/serial/by-id/..."
+    baud_rate: 9600
 ```
 
 There is no JSON envelope. The `LabPulseFirmware` Arduino library provides the
@@ -313,8 +316,11 @@ temperature: 21.4 | humidity: 45.0 | pressure: 1.03
 The corresponding Pi service continues to use the generic configuration:
 
 ```yaml
-driver: serial
-baud_rate: 9600
+driver:
+  type: labpulse.serial_pipe
+  options:
+    port: "/dev/serial/by-id/..."
+    baud_rate: 9600
 ```
 
 ### 7. Add a genuinely new sensor type

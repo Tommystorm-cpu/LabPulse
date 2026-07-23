@@ -9,7 +9,7 @@ from typing import Any, Callable
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
-from labpulse.hardware.drivers.x1200_ups_driver import (
+from labpulse.hardware.drivers.x1200 import (
     Driver,
     GpiodLineReader,
     REG_SOC,
@@ -18,6 +18,7 @@ from labpulse.hardware.drivers.x1200_ups_driver import (
     decode_voltage,
     register_word,
 )
+from labpulse.hardware.api import ConnectionLost
 
 
 class FakeBus:
@@ -99,7 +100,6 @@ def healthy_registers() -> dict[int, int]:
 def make_driver(
     reader: GpiodLineReader | None = None,
     bus_factory: Callable[[int], Any] | None = None,
-    monotonic: Callable[[], float] = lambda: 0.0,
     address: int = 0x36,
 ) -> Driver:
     """Build a deterministic X1200 driver around fake hardware."""
@@ -112,11 +112,7 @@ def make_driver(
         gpio_chip="/dev/gpiochip0",
         gpio_line=6,
         mains_present_active_high=True,
-        read_interval_seconds=1,
-        reconnect_interval_seconds=5,
         bus_factory=bus_factory or (lambda _: default_bus),
-        monotonic=monotonic,
-        sleep=lambda _: None,
         gpio_reader=reader
         or GpiodLineReader(
             "/dev/gpiochip0",
@@ -190,9 +186,9 @@ def test_register_conversion_is_read_only() -> None:
 
     bus = FakeBus(healthy_registers())
     driver = make_driver(bus_factory=lambda _: bus)
-    if not driver.setup():
-        raise AssertionError("driver failed to open fake X1200")
-    measurements = driver.read()
+    driver.connect()
+    batch = driver.read()
+    measurements = dict(batch.measurements)
     expected = {
         "voltage": 4.13,
         "battery_level": 94.2,
@@ -216,8 +212,8 @@ def test_full_charge_soc_is_capped() -> None:
     registers = healthy_registers()
     registers[REG_SOC] = round(100.98046875 * 256)
     driver = make_driver(bus_factory=lambda _: FakeBus(registers))
-    driver.setup()
-    measurements = driver.read()
+    driver.connect()
+    measurements = dict(driver.read().measurements)
     if measurements != {
         "voltage": 4.13,
         "battery_level": 100.0,
@@ -245,36 +241,31 @@ def test_rejects_invalid_gauge_configuration() -> None:
         raise AssertionError("short register response was accepted")
 
     driver = make_driver(bus_factory=lambda _: FakeBus({REG_VCELL: 0, REG_SOC: 0}))
-    driver.setup()
-    if driver.read() is not None or driver.get_status() != "disconnected":
-        raise AssertionError("impossible voltage did not become a hardware fault")
+    driver.connect()
+    try:
+        driver.read()
+    except ConnectionLost:
+        pass
+    else:
+        raise AssertionError("impossible voltage was not classified as connection loss")
 
 
-def test_i2c_fault_disconnect_and_reconnect() -> None:
-    """Close a failed bus and resume the complete X1200 measurement set."""
+def test_i2c_fault_is_classified_for_runner_cleanup() -> None:
+    """Classify a failed bus so the central runner can close and reconnect it."""
 
-    clock = [0.0]
     failed_bus = FakeBus(healthy_registers())
-    healthy_bus = FakeBus(healthy_registers())
-    buses = iter((failed_bus, healthy_bus))
-    driver = make_driver(
-        bus_factory=lambda _: next(buses),
-        monotonic=lambda: clock[0],
-    )
-    driver.setup()
+    driver = make_driver(bus_factory=lambda _: failed_bus)
+    driver.connect()
     failed_bus.fail_reads = True
-    if driver.read() is not None or driver.get_status() != "disconnected":
-        raise AssertionError("I2C read fault was not exposed")
+    try:
+        driver.read()
+    except ConnectionLost:
+        pass
+    else:
+        raise AssertionError("I2C read fault was not classified as connection loss")
+    driver.close()
     if not failed_bus.closed:
-        raise AssertionError("faulted I2C handle was not closed")
-    if driver.read() is not None or driver.get_status() != "online":
-        raise AssertionError("first reconnect attempt did not restore the bus")
-    if driver.read() != {
-        "voltage": 4.13,
-        "battery_level": 94.2,
-        "mains_present": 1.0,
-    }:
-        raise AssertionError("reconnected X1200 did not resume telemetry")
+        raise AssertionError("central cleanup could not close the failed bus")
 
 
 def test_gpio_fault_omits_only_mains_measurement() -> None:
@@ -287,12 +278,13 @@ def test_gpio_fault_omits_only_mains_measurement() -> None:
         runner_for(command_result("", 1, "line unavailable")),
     )
     driver = make_driver(reader=reader)
-    driver.setup()
-    measurements = driver.read()
+    driver.connect()
+    batch = driver.read()
+    measurements = dict(batch.measurements)
     if measurements != {"voltage": 4.13, "battery_level": 94.2}:
         raise AssertionError(f"GPIO fault discarded battery telemetry: {measurements!r}")
-    if driver.status != "gpio_fault":
-        raise AssertionError("GPIO failure did not publish a distinct service status")
+    if not batch.issues or batch.issues[0].code != "gpio_fault":
+        raise AssertionError("GPIO failure did not return a distinct component issue")
 
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
@@ -302,7 +294,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("read-only register conversion", test_register_conversion_is_read_only),
     ("full-charge SOC cap", test_full_charge_soc_is_capped),
     ("invalid gauge configuration", test_rejects_invalid_gauge_configuration),
-    ("I2C fault and reconnect", test_i2c_fault_disconnect_and_reconnect),
+    ("I2C fault classification", test_i2c_fault_is_classified_for_runner_cleanup),
     ("GPIO fault", test_gpio_fault_omits_only_mains_measurement),
 ]
 

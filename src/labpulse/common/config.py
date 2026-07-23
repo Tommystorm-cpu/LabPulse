@@ -4,7 +4,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -182,28 +182,44 @@ class MeasurementConfig(BaseModel):
 
         return self.label or title(self.name)
 
-class PowerDetectionConfig(BaseModel):
-    """Direct Geekworm X1200 external-power detection settings."""
+class DriverConfig(BaseModel):
+    """One stable driver identity and its driver-owned option mapping."""
 
     model_config = ConfigDict(extra="forbid")
 
-    source: Literal["x1200_gpio"] = "x1200_gpio"
-    gpio_chip: str = "/dev/gpiochip0"
-    gpio_line: int = Field(default=6, ge=0, le=53)
-    mains_present_active_high: bool = True
+    type: str
+    options: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_registered_driver(self) -> "DriverConfig":
+        """Require a known driver and normalize its validated options."""
+
+        from labpulse.hardware.registry import get_driver_spec
+
+        driver_type = self.type.strip()
+        if not driver_type:
+            raise ValueError("driver type must not be blank")
+        spec = get_driver_spec(driver_type)
+        validated = spec.validate_options(self.options)
+        self.type = driver_type
+        self.options = validated.model_dump()
+        return self
+
+    def validated_options(self) -> BaseModel:
+        """Return this driver's typed options model."""
+
+        from labpulse.hardware.registry import get_driver_spec
+
+        return get_driver_spec(self.type).validate_options(self.options)
+
+
+class PowerDetectionConfig(BaseModel):
+    """Home Assistant timing for direct external-power detection."""
+
+    model_config = ConfigDict(extra="forbid")
+
     outage_confirm_seconds: int = Field(default=3, ge=1, le=3600)
     restore_confirm_seconds: int = Field(default=5, ge=1, le=3600)
-
-    @field_validator("gpio_chip")
-    @classmethod
-    def validate_gpio_chip(cls, gpio_chip: str) -> str:
-        """Require an explicit gpiochip device path for safe container mapping."""
-
-        normalized = gpio_chip.strip()
-        chip_number = normalized.removeprefix("/dev/gpiochip")
-        if not chip_number.isdigit():
-            raise ValueError("gpio_chip must be a /dev/gpiochip device path")
-        return normalized
 
 class ServiceConfig(BaseModel):
     """Configuration for one independently running LabPulse sensor service."""
@@ -211,14 +227,7 @@ class ServiceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    driver: Literal["serial", "gpio", "i2c"]
-    gpio_sensor: Literal["dht11"] | None = None
-    gpio_pin: str | None = None
-    i2c_sensor: Literal["x1200_ups"] | None = None
-    i2c_bus: int | None = Field(default=None, ge=0, le=255)
-    i2c_address: int | None = Field(default=None, ge=0x03, le=0x77)
-    serial_port: str | None = None
-    baud_rate: int = Field(default=9600, gt=0)
+    driver: DriverConfig
     device_name: str
     measurements: list[MeasurementConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
@@ -234,26 +243,14 @@ class ServiceConfig(BaseModel):
         if len(set(measurement_names)) != len(measurement_names):
             raise ValueError("measurements[].name values must be unique within a service")
 
-        if self.driver == "i2c":
-            if self.i2c_sensor != "x1200_ups":
-                raise ValueError("I2C services currently require i2c_sensor: x1200_ups")
-            if self.i2c_bus is None:
-                raise ValueError("X1200 services require i2c_bus")
-            if self.i2c_address is None:
-                raise ValueError("X1200 services require i2c_address")
-            if self.i2c_address != 0x36:
-                raise ValueError("X1200 services require i2c_address: 0x36")
-            if self.power_detection is None:
-                raise ValueError("X1200 services require power_detection")
-        elif any(
-            value is not None
-            for value in (
-                self.i2c_sensor,
-                self.i2c_bus,
-                self.i2c_address,
-            )
+        serial_pipe_driver_id = "labpulse.serial_pipe"
+        x1200_driver_id = "labpulse.x1200"
+
+        if (
+            self.driver.type == x1200_driver_id
+            and self.power_detection is None
         ):
-            raise ValueError("X1200/I2C settings require driver: i2c")
+            raise ValueError("labpulse.x1200 services require power_detection")
 
         if self.power_detection is not None:
             required = {"voltage", "battery_level", "mains_present"}
@@ -262,12 +259,18 @@ class ServiceConfig(BaseModel):
                 raise ValueError(
                     "power_detection requires measurements named: " + ", ".join(missing)
                 )
-            if self.driver not in {"i2c", "serial"}:
+            if self.driver.type not in {
+                x1200_driver_id,
+                serial_pipe_driver_id,
+            }:
                 raise ValueError(
-                    "x1200_gpio power_detection requires the live X1200 driver "
+                    "power_detection requires the live X1200 driver "
                     "or the fake serial UPS driver"
                 )
-            if self.driver == "i2c" and self.read_interval_seconds not in (None, 1.0):
+            if (
+                self.driver.type == x1200_driver_id
+                and self.read_interval_seconds not in (None, 1.0)
+            ):
                 raise ValueError(
                     "X1200 power monitoring requires read_interval_seconds: 1"
                 )
@@ -332,6 +335,7 @@ def resolve_config_relative_path(config_path: str | Path, value: str | Path) -> 
         return candidate
 
     return (resolve_path(config_path).parent / candidate).resolve()
+
 
 def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> LabPulseConfig:
     """Reads YAML and validates it strictly against the Pydantic schema."""

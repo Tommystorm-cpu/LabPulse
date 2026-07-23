@@ -106,6 +106,13 @@ if [ ! -f "$GENERATOR_PACKAGE/__main__.py" ]; then
   exit 1
 fi
 
+HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
+if [ ! -x "$HOST_PYTHON" ]; then
+  echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
+  echo "Run setup_container_fs.sh from the LabPulse repository." >&2
+  exit 1
+fi
+
 PYTHONPATH="$PYTHON_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-  python3 -m labpulse.homeassistant \
+  "$HOST_PYTHON" -m labpulse.homeassistant \
   "$CONFIG_PATH" "$HA_CONFIG_DIR"

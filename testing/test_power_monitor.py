@@ -29,10 +29,6 @@ def test_config_validation_and_stable_identity() -> None:
     if detection is None:
         raise AssertionError("simulator has no direct power detection config")
     expected = {
-        "source": "x1200_gpio",
-        "gpio_chip": "/dev/gpiochip0",
-        "gpio_line": 6,
-        "mains_present_active_high": True,
         "outage_confirm_seconds": 3,
         "restore_confirm_seconds": 5,
     }
@@ -45,14 +41,16 @@ def test_config_validation_and_stable_identity() -> None:
 
     live_data = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
     live_service = live_data["services"]["ups_monitor"]
-    live_service.update(
-        driver="i2c",
-        i2c_sensor="x1200_ups",
-        i2c_bus=1,
-        i2c_address=0x36,
-    )
-    for key in ("serial_port", "baud_rate"):
-        live_service.pop(key, None)
+    live_service["driver"] = {
+        "type": "labpulse.x1200",
+        "options": {
+            "bus": 1,
+            "address": 0x36,
+            "gpio_chip": "/dev/gpiochip0",
+            "gpio_line": 6,
+            "mains_present_active_high": True,
+        },
+    }
     live = LabPulseConfig.model_validate(live_data)
     sim_model = RenderModel.from_config(simulated).services[0]
     live_model = RenderModel.from_config(live).services[0]
@@ -101,21 +99,23 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
 
     live_data = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
     service = live_data["services"]["ups_monitor"]
-    service.update(
-        driver="i2c",
-        i2c_sensor="x1200_ups",
-        i2c_bus=1,
-        i2c_address=0x36,
-    )
-    for key in ("serial_port", "baud_rate"):
-        service.pop(key, None)
+    service["driver"] = {
+        "type": "labpulse.x1200",
+        "options": {
+            "bus": 1,
+            "address": 0x36,
+            "gpio_chip": "/dev/gpiochip0",
+            "gpio_line": 6,
+            "mains_present_active_high": True,
+        },
+    }
     source = yaml.safe_dump(live_data, sort_keys=False)
     before = RenderModel.from_config(LabPulseConfig.model_validate(yaml.safe_load(source)))
     converted_text = convert_power_service_to_fake_serial(source)
     converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
     fake = converted.services["ups_monitor"]
-    if (fake.driver, fake.serial_port) != (
-        "serial",
+    if (fake.driver.type, fake.driver.options["port"]) != (
+        "labpulse.serial_pipe",
         "/tmp/labpulse-fake-serial/ups_monitor",
     ):
         raise AssertionError("fake conversion selected the wrong UPS transport")
@@ -140,8 +140,8 @@ def test_fake_usb_converts_starter_power_service() -> None:
         "mains_present",
     ]:
         raise AssertionError("starter fake UPS measurements are incomplete")
-    if service.power_detection is None or service.power_detection.source != "x1200_gpio":
-        raise AssertionError("starter fake UPS lacks direct GPIO lifecycle metadata")
+    if service.power_detection is None:
+        raise AssertionError("starter fake UPS lacks power lifecycle timing")
 
 
 def render_power() -> tuple[dict, dict, str]:

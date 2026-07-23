@@ -19,9 +19,11 @@ setups: {}
 services:
   ups_monitor:
     enabled: true
-    driver: serial
-    serial_port: "/tmp/labpulse-fake-serial/ups_monitor"
-    baud_rate: 9600
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "/tmp/labpulse-fake-serial/ups_monitor"
+        baud_rate: 9600
     device_name: "UPS Monitor"
     measurements:
       - name: "voltage"
@@ -39,9 +41,5 @@ services:
     read_interval_seconds: 1
     maximum_measurement_age_seconds: 15
     power_detection:
-      source: x1200_gpio
-      gpio_chip: "/dev/gpiochip0"
-      gpio_line: 6
-      mains_present_active_high: true
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5

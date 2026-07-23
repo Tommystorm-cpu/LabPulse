@@ -57,9 +57,11 @@ services:
   # MQTT sample. Override maximum_measurement_age_seconds per service if needed.
   pressure_monitor:
     enabled: true
-    driver: serial
-    serial_port: "FAKE_PRESSURE_PORT"
-    baud_rate: 9600
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "FAKE_PRESSURE_PORT"
+        baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
     measurements:
       - name: "pressure"
@@ -71,9 +73,11 @@ services:
 
   pump_room:
     enabled: true
-    driver: serial
-    serial_port: "FAKE_PUMP_ROOM_PORT"
-    baud_rate: 9600
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "FAKE_PUMP_ROOM_PORT"
+        baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
     measurements:
       - name: "flow1"
@@ -140,9 +144,11 @@ services:
 
   turbo_pump:
     enabled: true
-    driver: serial
-    serial_port: "FAKE_TURBO_PUMP_PORT"
-    baud_rate: 9600
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "FAKE_TURBO_PUMP_PORT"
+        baud_rate: 9600
     device_name: "Turbo Pump Hub"
     measurements:
       - name: "flow1"
@@ -185,9 +191,10 @@ services:
 
   room_environment:
     enabled: true
-    driver: gpio
-    gpio_sensor: dht11
-    gpio_pin: "D4"
+    driver:
+      type: labpulse.dht11
+      options:
+        pin: "D4"
     device_name: "Cryogenics Room Environment Sensor"
     measurements:
       - name: "temperature"
@@ -206,10 +213,14 @@ services:
 # transport to the UPS simulator while preserving these measurements and IDs.
   ups_monitor:
     enabled: true
-    driver: i2c
-    i2c_sensor: x1200_ups
-    i2c_bus: 1
-    i2c_address: 0x36
+    driver:
+      type: labpulse.x1200
+      options:
+        bus: 1
+        address: 0x36
+        gpio_chip: "/dev/gpiochip0"
+        gpio_line: 6
+        mains_present_active_high: true
     device_name: "UPS Monitor"
     measurements:
       - name: voltage
@@ -227,9 +238,5 @@ services:
     reconnect_interval_seconds: 5
     maximum_measurement_age_seconds: 15
     power_detection:
-      source: x1200_gpio
-      gpio_chip: "/dev/gpiochip0"
-      gpio_line: 6
-      mains_present_active_high: true
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5

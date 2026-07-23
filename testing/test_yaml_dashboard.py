@@ -33,8 +33,10 @@ def dashboard_config() -> dict[str, object]:
         },
         "services": {
             "hub_a": {
-                "driver": "serial",
-                "serial_port": "/tmp/hub-a",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/hub-a"},
+                },
                 "device_name": "Hub A",
                 "measurements": [
                     {
@@ -79,9 +81,10 @@ def dashboard_config() -> dict[str, object]:
                 ],
             },
             "hub_b": {
-                "driver": "gpio",
-                "gpio_sensor": "dht11",
-                "gpio_pin": "D4",
+                "driver": {
+                    "type": "labpulse.dht11",
+                    "options": {"pin": "D4"},
+                },
                 "device_name": "Hub B",
                 "measurements": [
                     {
@@ -96,8 +99,10 @@ def dashboard_config() -> dict[str, object]:
             },
             "disabled_hub": {
                 "enabled": False,
-                "driver": "serial",
-                "serial_port": "/tmp/disabled",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/disabled"},
+                },
                 "device_name": "Disabled Hub",
                 "measurements": [{"name": "ignored", "setups": ["alpha_setup"]}],
             },

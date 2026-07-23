@@ -1,19 +1,40 @@
-"""Geekworm X1200 UPS driver for battery-gauge and mains measurements."""
+"""Typed configuration and implementation for the Geekworm X1200 UPS."""
 
 from __future__ import annotations
 
 import subprocess
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from labpulse.hardware.drivers.base import BaseSensorDriver
+from pydantic import BaseModel, ConfigDict, Field
+
+from labpulse.hardware.api import (
+    BaseSensorDriver,
+    ComponentIssue,
+    ContainerRequirements,
+    ConnectionLost,
+    DriverDefinition,
+    DriverUnavailable,
+    ReadingBatch,
+)
 
 
 REG_VCELL = 0x02
 REG_SOC = 0x04
 CommandRunner = Callable[..., Any]
+
+
+class X1200Options(BaseModel):
+    """Normalized I2C and GPIO configuration for the X1200."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    bus: int = Field(default=1, ge=0, le=255)
+    address: int = Field(default=0x36, ge=0x36, le=0x36)
+    gpio_chip: str = Field(default="/dev/gpiochip0", pattern=r"^/dev/gpiochip\d+$")
+    gpio_line: int = Field(default=6, ge=0, le=53)
+    mains_present_active_high: bool = True
 
 
 def register_word(data: list[int]) -> int:
@@ -106,11 +127,7 @@ class Driver(BaseSensorDriver):
         gpio_chip: str,
         gpio_line: int,
         mains_present_active_high: bool,
-        read_interval_seconds: float = 1.0,
-        reconnect_interval_seconds: float = 5.0,
         bus_factory: Callable[[int], Any] | None = None,
-        monotonic: Callable[[], float] = time.monotonic,
-        sleep: Callable[[float], None] = time.sleep,
         gpio_reader: GpiodLineReader | None = None,
     ) -> None:
         """Store the verified X1200 identities and injectable dependencies."""
@@ -120,19 +137,13 @@ class Driver(BaseSensorDriver):
             raise ValueError("X1200 MAX17043 fuel gauge must use address 0x36")
         self.bus_number = bus_number
         self.address = address
-        self.read_interval_seconds = read_interval_seconds
-        self.reconnect_interval_seconds = reconnect_interval_seconds
         self._bus_factory = bus_factory or self._default_bus_factory
-        self._monotonic = monotonic
-        self._sleep = sleep
         self.gpio_reader = gpio_reader or GpiodLineReader(
             gpio_chip,
             gpio_line,
             mains_present_active_high,
         )
         self.bus: Any | None = None
-        self.last_reconnect_attempt = -reconnect_interval_seconds
-        self.next_read_at = 0.0
         self._gpio_faulted = False
 
     @staticmethod
@@ -143,40 +154,27 @@ class Driver(BaseSensorDriver):
 
         return smbus2.SMBus(bus_number)
 
-    def setup(self) -> bool:
+    def connect(self) -> None:
         """Open the X1200 fuel-gauge connection without writing registers."""
 
         try:
             self.bus = self._bus_factory(self.bus_number)
         except (OSError, IOError, ImportError) as error:
-            self.logger.error(
-                "Failed to open X1200 MAX17043 at 0x%02X: %s",
-                self.address,
-                error,
-            )
-            self._mark_disconnected()
-            return False
-
-        self.connected = True
-        self.status = "online"
-        self.next_read_at = self._monotonic()
+            self.bus = None
+            raise DriverUnavailable(
+                f"failed to open X1200 MAX17043 at 0x{self.address:02X}: {error}"
+            ) from error
         self.logger.info(
             "Connected to X1200 on I2C bus %s at 0x%02X",
             self.bus_number,
             self.address,
         )
-        return True
 
-    def read(self) -> dict[str, float] | None:
-        """Return battery and mains telemetry or reconnect after an I2C fault."""
+    def read(self) -> ReadingBatch:
+        """Return battery and mains telemetry or classify a hardware fault."""
 
-        if not self.connected or self.bus is None:
-            self._try_reconnect()
-            return None
-
-        now = self._monotonic()
-        if now < self.next_read_at:
-            self._sleep(self.next_read_at - now)
+        if self.bus is None:
+            raise ConnectionLost("X1200 I2C bus is not open")
 
         try:
             voltage = decode_voltage(self._read_register(REG_VCELL))
@@ -186,11 +184,8 @@ class Driver(BaseSensorDriver):
             )
             self._validate_measurements(voltage, battery_level)
         except (OSError, IOError, ValueError) as error:
-            self.logger.error("X1200 fuel-gauge read failed: %s", error)
-            self._mark_disconnected()
-            return None
+            raise ConnectionLost(f"X1200 fuel-gauge read failed: {error}") from error
 
-        self.next_read_at = self._monotonic() + self.read_interval_seconds
         measurements = {
             "voltage": round(voltage, 3),
             "battery_level": round(battery_level, 1),
@@ -202,19 +197,30 @@ class Driver(BaseSensorDriver):
             if not self._gpio_faulted:
                 self.logger.error("X1200 mains GPIO read failed: %s", error)
             self._gpio_faulted = True
-            self.status = "gpio_fault"
-            return measurements
+            return ReadingBatch(
+                measurements,
+                issues=(
+                    ComponentIssue(
+                        code="gpio_fault",
+                        message=f"X1200 mains GPIO read failed: {error}",
+                    ),
+                ),
+            )
 
         if self._gpio_faulted:
             self.logger.info("X1200 mains GPIO measurement recovered")
         self._gpio_faulted = False
-        self.status = "online"
-        return measurements
+        return ReadingBatch(measurements)
 
-    def disconnect(self) -> None:
-        """Close the I2C handle and mark the X1200 disconnected."""
+    def close(self) -> None:
+        """Close the I2C handle safely and idempotently."""
 
-        self._mark_disconnected(log_disconnect=True)
+        if self.bus is not None:
+            try:
+                self.bus.close()
+            except (OSError, IOError, AttributeError) as error:
+                self.logger.warning("Failed to close X1200 I2C bus: %s", error)
+        self.bus = None
 
     def _read_register(self, register: int) -> int:
         """Read one MAX17043 register from the X1200."""
@@ -233,29 +239,48 @@ class Driver(BaseSensorDriver):
         if not 0.0 <= battery_level <= 100.0:
             raise ValueError(f"impossible X1200 state of charge: {battery_level}")
 
-    def _try_reconnect(self) -> bool:
-        """Attempt I2C reconnection at the configured interval."""
 
-        now = self._monotonic()
-        if now - self.last_reconnect_attempt < self.reconnect_interval_seconds:
-            return False
-        self.last_reconnect_attempt = now
-        self.status = "reconnecting"
-        reconnected = self.setup()
-        if not reconnected:
-            self.status = "reconnecting"
-        return reconnected
+def build_driver(
+    service_name: str,
+    raw_options: BaseModel,
+) -> BaseSensorDriver:
+    """Construct one X1200 driver from registry-validated options."""
 
-    def _mark_disconnected(self, log_disconnect: bool = False) -> None:
-        """Close the current I2C handle and update health state."""
+    if not isinstance(raw_options, X1200Options):
+        raise TypeError(
+            "X1200 driver expected X1200Options, "
+            f"got {type(raw_options).__name__}"
+        )
+    return Driver(
+        name=service_name,
+        bus_number=raw_options.bus,
+        address=raw_options.address,
+        gpio_chip=raw_options.gpio_chip,
+        gpio_line=raw_options.gpio_line,
+        mains_present_active_high=raw_options.mains_present_active_high,
+    )
 
-        if self.bus is not None:
-            try:
-                self.bus.close()
-            except (OSError, IOError, AttributeError) as error:
-                self.logger.warning("Failed to close X1200 I2C bus: %s", error)
-        self.bus = None
-        self.connected = False
-        self.status = "disconnected"
-        if log_disconnect:
-            self.logger.info("Disconnected from X1200")
+
+def resources(
+    raw_options: BaseModel,
+    _force_simulated: bool,
+) -> ContainerRequirements:
+    """Expose only the configured I2C bus and GPIO chip."""
+
+    if not isinstance(raw_options, X1200Options):
+        raise TypeError("X1200 resources require X1200Options")
+    return ContainerRequirements(
+        devices=(
+            f"/dev/i2c-{raw_options.bus}",
+            raw_options.gpio_chip,
+        )
+    )
+
+
+DRIVER = DriverDefinition(
+    driver_id="labpulse.x1200",
+    options_model=X1200Options,
+    build=build_driver,
+    resources=resources,
+    default_read_interval_seconds=1.0,
+)

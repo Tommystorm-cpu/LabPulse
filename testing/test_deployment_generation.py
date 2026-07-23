@@ -34,14 +34,14 @@ def test_directory(prefix: str) -> Iterator[Path]:
 
 
 def embedded_compose_generator() -> str:
-    """Return the Python generator embedded in generate_compose.sh."""
+    """Return the Python program embedded in the Compose wrapper."""
 
     shell_source = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
     marker = "<<'PY'\n"
     if marker not in shell_source:
         marker = "<<'PY'\r\n"
-    generator = shell_source.split(marker, 1)[1]
-    return generator.rsplit("\nPY", 1)[0]
+    generator = shell_source.split(marker, 1)[1].rsplit("\nPY", 1)[0]
+    return generator
 
 
 def test_fake_usb_compose_contract() -> None:
@@ -62,7 +62,10 @@ sms:
 services:
   pressure_monitor:
     enabled: true
-    serial_port: /tmp/labpulse-fake-serial/pressure
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /tmp/labpulse-fake-serial/pressure
   disabled_hub:
     enabled: false
 """,
@@ -162,11 +165,16 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'copy_file "$SCRIPT_DIR/simulate_serial.py"',
         'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
         'copy_file "$SCRIPT_DIR/edit_config.sh"',
+        'copy_file "$HOST_REQUIREMENTS_SOURCE" "$HOST_REQUIREMENTS"',
+        'python3 -m venv "$HOST_VENV"',
+        '"$HOST_PYTHON" -m pip install',
+        "LabPulse requires Pydantic 2",
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
         'Real setup never rewrites the',
         'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
-        'serial_port: "/tmp/labpulse-fake-serial/room_environment"',
+        'convert_service_to_fake_serial',
+        '"/tmp/labpulse-fake-serial/room_environment"',
         'adafruit-circuitpython-dht',
         'adafruit-blinka',
         'lgpio',
@@ -187,9 +195,19 @@ def test_setup_refresh_and_preservation_contract() -> None:
     generator_source = (
         REFACTOR_DIR / "generate_homeassistant_config.sh"
     ).read_text(encoding="utf-8")
+    compose_source = (REFACTOR_DIR / "generate_compose.sh").read_text(encoding="utf-8")
+    for fragment in (
+        'HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"',
+        '"$HOST_PYTHON" - "$CONFIG_PATH"',
+        "from labpulse.hardware.registry import get_driver_spec",
+    ):
+        if fragment not in compose_source:
+            raise AssertionError(f"Compose wrapper contract missing: {fragment}")
     required_generator_fragments = (
         'homeassistant/config/labpulse-dashboard.yaml',
         'Generation is offline',
+        'HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"',
+        '"$HOST_PYTHON" -m labpulse.homeassistant',
     )
     for fragment in required_generator_fragments:
         if fragment not in generator_source:
@@ -225,6 +243,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         "sudo docker compose up -d --remove-orphans --force-recreate",
         'Check Monitor for "Global Mute Applied"',
         '"Test Mode Applied"',
+        '"$HOST_PYTHON" - "$WORK_CONFIG"',
     )
     for fragment in required_editor_fragments:
         if fragment not in editor_source:
@@ -349,11 +368,16 @@ sms: {dry_run: true}
 services:
   ups_monitor:
     enabled: true
-    driver: i2c
-    i2c_bus: 1
+    driver:
+      type: labpulse.x1200
+      options:
+        bus: 1
+        address: 0x36
+        gpio_chip: /dev/gpiochip0
+        gpio_line: 6
     power_detection:
-      source: x1200_gpio
-      gpio_chip: /dev/gpiochip0
+      outage_confirm_seconds: 3
+      restore_confirm_seconds: 5
 """,
             encoding="utf-8",
         )
@@ -401,7 +425,10 @@ sms:
 services:
   pressure_monitor:
     enabled: true
-    serial_port: /tmp/labpulse-fake-serial/pressure
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /tmp/labpulse-fake-serial/pressure
 """,
             encoding="utf-8",
         )

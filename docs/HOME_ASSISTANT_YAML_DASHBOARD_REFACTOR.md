@@ -143,9 +143,11 @@ Example:
 services:
   pump_room:
     enabled: true
-    driver: serial
-    serial_port: "/dev/serial/by-id/..."
-    baud_rate: 9600
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "/dev/serial/by-id/..."
+        baud_rate: 9600
     device_name: "Pump Room Sensor Hub"
     measurements:
       - name: "plant_room_temperature"
@@ -172,9 +174,10 @@ services:
 
   room_environment:
     enabled: true
-    driver: gpio
-    gpio_sensor: dht11
-    gpio_pin: "D4"
+    driver:
+      type: labpulse.dht11
+      options:
+        pin: "D4"
     device_name: "Room Environment Sensor"
     measurements:
       - name: "temperature"

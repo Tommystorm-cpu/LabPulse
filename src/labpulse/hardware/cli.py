@@ -1,13 +1,13 @@
 import argparse
 import logging
-import time
 from argparse import Namespace
 from pathlib import Path
 
 from labpulse.common.config import DEFAULT_CONFIG_PATH, get_service_config, load_config
 from labpulse.common.logging_config import configure_logging
-from labpulse.hardware.drivers.factory import build_driver
+from labpulse.hardware.registry import build_driver, get_driver_spec
 from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher
+from labpulse.hardware.runner import HardwareRunner, RunnerPolicy
 
 
 def parse_args() -> Namespace:
@@ -49,7 +49,7 @@ def parse_args() -> Namespace:
 
 
 def main() -> None:
-    """Run one LabPulse service until stopped or until --once completes."""
+    """Compose and run one LabPulse hardware service."""
 
     args = parse_args()
     configure_logging(args.service)
@@ -65,48 +65,34 @@ def main() -> None:
     driver = build_driver(args.service, service_cfg)
     logger.info("Created hardware driver for %s: %s", args.service, driver)
 
-    publisher = None
+    publisher: HomeAssistantMqttPublisher | None = None
 
     if not args.no_mqtt:
         # Publishing is optional so parser/driver work can be tested without MQTT.
         publisher = HomeAssistantMqttPublisher(args.service, service_cfg, cfg.mqtt)
         publisher.connect()
 
-    if not driver.setup():
-        logger.error("Could not start service %s because the driver did not connect", args.service)
+    driver_spec = get_driver_spec(service_cfg.driver.type)
+    read_interval_seconds = (
+        service_cfg.read_interval_seconds
+        if service_cfg.read_interval_seconds is not None
+        else driver_spec.default_read_interval_seconds
+    )
 
-    last_status = driver.get_status()
-    if publisher:
-        publisher.publish_status(last_status)
-
-    try:
-        while True:
-            measurements = driver.read()
-            current_status = driver.get_status()
-
-            if publisher and current_status != last_status:
-                publisher.publish_status(current_status)
-                last_status = current_status
-
-            if not measurements:
-                # Serial devices often produce blank lines while starting up.
-                time.sleep(0.1)
-                continue
-
-            if args.print:
-                logger.info("Measurements: %s", measurements)
-
-            if publisher:
-                publisher.publish(measurements)
-
-            if args.once:
-                break
-
-    finally:
-        driver.disconnect()
-
-        if publisher:
-            publisher.disconnect()
+    runner = HardwareRunner(
+        driver,
+        publisher,
+        RunnerPolicy(
+            reconnect_interval_seconds=service_cfg.reconnect_interval_seconds,
+            maximum_measurement_age_seconds=(
+                service_cfg.maximum_measurement_age_seconds
+            ),
+            read_interval_seconds=read_interval_seconds,
+        ),
+        print_measurements=args.print,
+        logger=logger,
+    )
+    runner.run_forever(once=args.once)
 
 
 if __name__ == "__main__":

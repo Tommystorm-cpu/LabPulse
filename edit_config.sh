@@ -8,6 +8,7 @@ CONFIG_PATH="$PROJECT_DIR/config.yaml"
 CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"
 COMPOSE_SCRIPT="$PROJECT_DIR/generate_compose.sh"
 HOMEASSISTANT_SCRIPT="$PROJECT_DIR/generate_homeassistant_config.sh"
+HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 
 # Remove temporary validation files without touching the live configuration.
 cleanup() {
@@ -27,6 +28,11 @@ for required_path in "$CONFIG_PATH" "$COMPOSE_SCRIPT" "$HOMEASSISTANT_SCRIPT"; d
     exit 1
   fi
 done
+if [ ! -x "$HOST_PYTHON" ]; then
+  echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
+  echo "Run setup_container_fs.sh from the LabPulse repository." >&2
+  exit 1
+fi
 
 # Work beside config.yaml so any relative config paths keep the same base directory.
 WORK_CONFIG="$(mktemp "$PROJECT_DIR/.config.yaml.editing.XXXXXX")"
@@ -53,7 +59,7 @@ fi
 
 echo "Validating configuration schema..."
 PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
-  python3 - "$WORK_CONFIG" <<'PY'
+  "$HOST_PYTHON" - "$WORK_CONFIG" <<'PY'
 from pathlib import Path
 import sys
 

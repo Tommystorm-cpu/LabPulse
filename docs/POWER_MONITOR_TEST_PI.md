@@ -11,10 +11,14 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
 ```yaml
   ups_monitor:
     enabled: true
-    driver: i2c
-    i2c_sensor: x1200_ups
-    i2c_bus: 1
-    i2c_address: 0x36
+    driver:
+      type: labpulse.x1200
+      options:
+        bus: 1
+        address: 0x36
+        gpio_chip: "/dev/gpiochip0"
+        gpio_line: 6
+        mains_present_active_high: true
     device_name: "UPS Monitor"
     measurements:
       - {name: voltage, label: "UPS Battery Voltage", unit: V, device_class: voltage}
@@ -24,10 +28,6 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
     reconnect_interval_seconds: 5
     maximum_measurement_age_seconds: 15
     power_detection:
-      source: x1200_gpio
-      gpio_chip: "/dev/gpiochip0"
-      gpio_line: 6
-      mains_present_active_high: true
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5
 ```

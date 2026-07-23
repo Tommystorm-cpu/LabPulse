@@ -61,10 +61,6 @@ templates:
         availability: "{{ is_number(states('[[ power.mains_present.mqtt_entity.entity_id ]]')) }}"
         state: "{{ states('[[ power.mains_present.mqtt_entity.entity_id ]]') | float(0) >= 0.5 }}"
         attributes:
-          source: "[[ power.config.source ]]"
-          gpio_chip: "[[ power.config.gpio_chip ]]"
-          gpio_line: "[[ power.config.gpio_line ]]"
-          configured_active_high: "[[ power.config.mains_present_active_high ]]"
           meaning: "On means external power present; off means running on UPS battery"
       - name: "[[ power.unique_ids.sensor_fault ]]"
         unique_id: "[[ power.unique_ids.sensor_fault ]]"
@@ -125,7 +121,7 @@ automations:
                   title: >
                     {{ ('[TEST] ' if is_state('[[ model.entities.test_mode ]]', 'on') else '') ~ 'LabPulse external power lost' }}
                   message: >
-                    [[ service.label ]] has directly detected loss of external power on GPIO[[ power.config.gpio_line ]]. The monitor is running on UPS battery. Battery level: {{ states('[[ power.battery_level.mqtt_entity.entity_id ]]') }}%. Battery voltage: {{ states('[[ power.voltage.mqtt_entity.entity_id ]]') }} V.
+                    [[ service.label ]] has directly detected loss of external power. The monitor is running on UPS battery. Battery level: {{ states('[[ power.battery_level.mqtt_entity.entity_id ]]') }}%. Battery voltage: {{ states('[[ power.voltage.mqtt_entity.entity_id ]]') }} V.
                     [[ power.mains_present.notification_context ]]
                   notification_id: "labpulse_[[ service.service_id ]]_power"
               - service: mqtt.publish

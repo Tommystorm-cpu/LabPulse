@@ -186,9 +186,11 @@ An unavailable or invalid sensor channel appears as `null`.
 On the Pi, the corresponding service in `~/labpulse-ha/config.yaml` must use:
 
 ```yaml
-driver: serial
-baud_rate: 9600
-serial_port: "/dev/serial/by-id/usb-Arduino_..."
+driver:
+  type: labpulse.serial_pipe
+  options:
+    port: "/dev/serial/by-id/usb-Arduino_..."
+    baud_rate: 9600
 ```
 
 Use the stable `/dev/serial/by-id/...` path rather than `/dev/ttyUSB0` or

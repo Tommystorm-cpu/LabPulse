@@ -373,7 +373,7 @@ listed as new feature work:
 - [x] MQTT discovery, generated alarm YAML, and the YAML dashboard use the same
   deterministic entity IDs.
 - [x] Alarm numeric helpers use box input rather than sliders.
-- [x] Serial drivers contain reconnect logic after USB loss.
+- [x] The central hardware runner reconnects serial drivers after USB loss.
 - [x] The DHT11 driver reports sustained read failure, rate-limits repeated
   warnings, and reconnects after unexpected GPIO/library errors.
 - [x] Alarm timing includes an observation window, required danger percentage,

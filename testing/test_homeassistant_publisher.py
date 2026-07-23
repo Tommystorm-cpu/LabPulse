@@ -105,9 +105,13 @@ def make_publisher(
 
     service_config = ServiceConfig(
         enabled=True,
-        driver="serial",
-        serial_port="/tmp/labpulse-fake-serial/pressure",
-        baud_rate=9600,
+        driver={
+            "type": "labpulse.serial_pipe",
+            "options": {
+                "port": "/tmp/labpulse-fake-serial/pressure",
+                "baud_rate": 9600,
+            },
+        },
         device_name=device_name,
         measurements=measurements or [
             {"name": "pressure", "label": "Pressure", "setups": ["test_setup"], "unit": "bar"}

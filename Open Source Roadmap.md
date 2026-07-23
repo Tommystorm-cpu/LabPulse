@@ -30,6 +30,8 @@ The current architecture already has several good boundaries:
 - hardware-independent tests and fake serial devices;
 - lazy hardware imports so unrelated services do not load Pi-specific
   libraries;
+- a central hardware runner owning retry, freshness, status transitions, and
+  cleanup;
 - MQTT as the boundary between acquisition and Home Assistant;
 - Home Assistant owning alarm decisions, thresholds, timing, and presentation;
 - stable service and measurement identities shared across generated components.
@@ -40,23 +42,15 @@ architecture is not required for this work.
 
 ## Current extension friction
 
-`BaseSensorDriver` provides a useful starting contract, but the complete system
-is still closed around it. Adding a new non-serial device currently requires
-changes to:
+The lifecycle and configuration seams are now centralized. Drivers implement
+`connect/read/close`, return `ReadingBatch`, classify expected failures for
+`HardwareRunner`, and register a typed `DriverSpec`. Driver-specific options and
+Compose resource requirements no longer expand the shared `ServiceConfig` or
+the driver factory.
 
-- the driver implementation;
-- the central `ServiceConfig`, including its `Literal` values and
-  device-specific validation;
-- the hard-coded `build_driver()` branches;
-- Compose generation and hardware-resource mapping;
-- the global container dependency list;
-- fake-hardware support;
-- factory, driver, deployment, and documentation tests.
-
-Lifecycle behaviour is also repeated across drivers. Each driver currently
-implements some combination of connection state, retry timing, reconnection,
-freshness, cleanup, and status strings. This makes a contributor responsible for
-service reliability as well as the hardware protocol.
+The remaining extension friction is packaging optional hardware dependencies,
+declaring fixed output metadata, first-class simulation hooks, contributor
+scaffolding, and eventually loading separately distributed registrations.
 
 Distribution presents a separate problem. The setup script currently generates
 a Dockerfile and unversioned requirements before copying source packages into
@@ -68,12 +62,12 @@ rollback.
 
 ### Use one driver identity
 
+**Status: implemented for the built-in serial-pipe, DHT11, and X1200 drivers.**
+
 Configuration should use one flat driver identifier rather than mixing a
 transport with device subtype fields:
 
 ```yaml
-schema_version: 1
-
 services:
   room_environment:
     driver:
@@ -82,9 +76,9 @@ services:
         pin: D4
     device_name: "Room Environment"
     measurements:
-      temperature:
+      - name: temperature
         setups: [cryogenics_room]
-      humidity:
+      - name: humidity
         setups: [cryogenics_room]
 ```
 
@@ -97,13 +91,19 @@ Built-in identifiers could include:
 This avoids an expanding combination of `driver`, `gpio_sensor`, `i2c_sensor`,
 and device-specific fields in the shared configuration model.
 
-The common configuration reader should validate the service envelope, find the
-selected driver specification, and then allow that specification to validate
+The common configuration reader validates the service envelope, finds the
+selected driver specification, and then allows that specification to validate
 its own `options`. Unknown driver IDs, conflicting registrations, and invalid
 options must fail during configuration validation before Compose or Home
 Assistant files are generated.
 
 ### Introduce a driver specification
+
+**Status: the dependency-light deployment definitions, internal runtime registry,
+typed option models, lazy builders, default poll intervals, and declarative
+device/mount/privilege requirements are implemented. Host-side Compose
+generation does not import Pydantic or hardware libraries. API versioning,
+fixed output metadata, and public plugin discovery remain future work.**
 
 Each registered driver should provide a `DriverSpec` containing:
 
@@ -430,7 +430,8 @@ generate, and run the complete application.
 - Add the internal driver registry and `DriverSpec`.
 - Split common service configuration from driver-owned options.
 - Introduce declarative container requirements.
-- Centralize common lifecycle and retry behaviour.
+- Centralize common lifecycle and retry behaviour. Completed as the
+  `HardwareRunner` foundation.
 - Adapt serial, DHT11, and X1200 as the first built-in specifications.
 - Add reusable driver contract tests.
 

@@ -24,8 +24,7 @@ already installed Pi.
 The Pi needs:
 
 - Docker Engine with the Compose plugin
-- Python 3
-- host PyYAML (`sudo apt install python3-yaml`) for Compose generation
+- Python 3 with virtual-environment support (`python3-full` on Raspberry Pi OS)
 - the repository checkout
 - stable Arduino serial paths for real hardware, or fake-USB mode
 
@@ -45,7 +44,11 @@ chmod +x setup_container_fs.sh
 
 The setup script creates/refreshes `~/labpulse-ha`, copies the current Python
 packages and generators, preserves existing live config, generates Compose and
-Home Assistant files, and seeds the dashboard.
+Home Assistant files, and seeds the dashboard. It also creates the private
+`~/labpulse-ha/.venv` environment and installs the bounded dependencies in
+`requirements-host.txt`. The generator, editor, USB setup, and simulator
+commands select that interpreter automatically. Do not use `sudo pip`,
+`--break-system-packages`, or manually install Pydantic into system Python.
 
 ### Simulated hardware
 
@@ -99,6 +102,9 @@ It is not required for the live config: setup always preserves an existing
   generate_compose.sh
   generate_homeassistant_config.sh
   simulate_serial.py
+  setup_usb_devices.py
+  requirements-host.txt                bounded host tooling dependencies
+  .venv/                               setup-managed; do not edit or activate
 
   labpulse-python/
     Dockerfile
@@ -156,9 +162,11 @@ setups:
 services:
   pressure_monitor:
     enabled: true
-    driver: serial
-    serial_port: "/dev/serial/by-id/usb-Arduino_..."
-    baud_rate: 9600
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "/dev/serial/by-id/usb-Arduino_..."
+        baud_rate: 9600
     device_name: "Air Pressure Sensor Hub"
     measurements:
       - name: pressure
@@ -181,10 +189,10 @@ services:
 | `service_health.recovery_confirm_seconds` | Continuous absence of a whole-service failure required before one recovery; default 15 |
 | service key | Stable machine ID used in containers, MQTT, and HA entities |
 | `enabled` | Whether Compose and HA generation include the service |
-| `driver` | Implemented: `serial`, `gpio` with DHT11, or `i2c` with the X1200 UPS |
-| `serial_port` | Real stable path or fake path |
-| `gpio_sensor` | Currently only `dht11` |
-| `gpio_pin` | Blinka board name such as `D4` |
+| `driver.type` | Stable registered ID: `labpulse.serial_pipe`, `labpulse.dht11`, or `labpulse.x1200` |
+| `driver.options` | Driver-owned settings validated for the selected type |
+| `driver.options.port`, `baud_rate` | Serial endpoint and baud rate; use a stable real path or the configured fake path |
+| `driver.options.pin` | DHT11 Blinka board name such as `D4` |
 | `device_name` | User-facing HA device label |
 | `setups` | Logical experimental setups and their presentation metadata |
 | `measurements[].name` | Stable key; must match the serial or hardware-driver output |
@@ -195,8 +203,8 @@ services:
 | `reconnect_interval_seconds` | Delay between serial, GPIO, or I2C reinitialization attempts |
 | `read_interval_seconds` | Minimum interval for GPIO or I2C reads |
 | `maximum_measurement_age_seconds` | Seconds without an MQTT sample before an ordinary measurement becomes unavailable; default 300 |
-| `i2c_sensor`, `i2c_bus`, `i2c_address` | `x1200_ups`, bus 1, and the verified address `0x36` |
-| `power_detection` | Direct X1200 GPIO chip/line, polarity, and outage/recovery confirmation timings |
+| X1200 `driver.options` | I2C `bus`, verified `address: 0x36`, `gpio_chip`, `gpio_line`, and mains polarity |
+| `power_detection` | Home Assistant outage and recovery confirmation timings |
 
 `state_class` defaults to `measurement`; set it to `null` to omit it. Alarm
 thresholds, modes, mute state, and timing are restart-persistent Home Assistant
@@ -323,14 +331,14 @@ docker compose stop
 ./setup_usb_devices.py --config config.yaml
 ```
 
-For every enabled `driver: serial` service, the helper asks you to unplug its
+For every enabled `driver.type: labpulse.serial_pipe` service, the helper asks you to unplug its
 device, detects the one `/dev/serial/by-id/...` entry that disappeared, then
 asks you to replug it and verifies that the same stable path returned. It
 aborts rather than guessing if zero or multiple devices disappear. After all
 devices are identified it shows the complete mapping and asks before changing
 anything.
 
-The write is surgical: only assigned `serial_port` lines change. Other manual
+The write is surgical: only assigned `driver.options.port` lines change. Other manual
 config text and comments are preserved. The previous file is retained as the
 single non-proliferating `config.yaml.usb-setup-backup`. After accepting:
 
@@ -350,9 +358,10 @@ rerunning the helper.
 ```yaml
 room_environment:
   enabled: true
-  driver: gpio
-  gpio_sensor: dht11
-  gpio_pin: "D4"
+  driver:
+    type: labpulse.dht11
+    options:
+      pin: "D4"
   device_name: "Room Environment Sensor"
   measurements:
     - name: temperature
@@ -381,8 +390,9 @@ Individual DHT timing misses are expected and do not immediately change service
 health. If no valid sample arrives for `maximum_measurement_age_seconds`, the
 service status changes to `error` and MQTT expiry makes both measurements
 unavailable. A later valid sample restores `online` automatically. Unexpected
-GPIO/library failures release the device and retry initialization every
-`reconnect_interval_seconds`; routine missing-sensor warnings are limited to
+GPIO/library failures are classified by the driver; the central hardware runner
+releases the device and retries initialization every
+`reconnect_interval_seconds`. It also limits routine missing-sensor warnings to
 one per minute so a disconnected sensor cannot flood persistent logs.
 
 ## Generate and start
@@ -532,14 +542,14 @@ Start the background simulator before or alongside the containers:
 
 ```bash
 cd ~/labpulse-ha
-python3 simulate_serial.py start
+./simulate_serial.py start
 docker compose up -d --build
 ```
 
 Check it:
 
 ```bash
-python3 simulate_serial.py status
+./simulate_serial.py status
 ```
 
 ### Test the USB assignment helper with fake devices
@@ -555,11 +565,11 @@ It first asks for all devices to be connected. In a second terminal, simulate
 each requested unplug and replug using the service name printed by the helper:
 
 ```bash
-python3 simulate_serial.py disconnect pressure_monitor
-python3 simulate_serial.py connect pressure_monitor
+./simulate_serial.py disconnect pressure_monitor
+./simulate_serial.py connect pressure_monitor
 
-python3 simulate_serial.py disconnect pump_room
-python3 simulate_serial.py connect pump_room
+./simulate_serial.py disconnect pump_room
+./simulate_serial.py connect pump_room
 ```
 
 The same commands work for `turbo_pump`, `room_environment`, and `ups_monitor`.
@@ -575,10 +585,10 @@ Because `config.fake.yaml` is derived, rerunning `setup_container_fs.sh
 Change one measurement without recreating its pseudo-terminal:
 
 ```bash
-python3 simulate_serial.py set pump_room.flow1 danger-low
-python3 simulate_serial.py set pump_room.flow1 recover
-python3 simulate_serial.py set pump_room.flow1 normal
-python3 simulate_serial.py set pump_room.flow1 stale
+./simulate_serial.py set pump_room.flow1 danger-low
+./simulate_serial.py set pump_room.flow1 recover
+./simulate_serial.py set pump_room.flow1 normal
+./simulate_serial.py set pump_room.flow1 stale
 ```
 
 Available states are:
@@ -614,18 +624,18 @@ room_environment.humidity
 Management commands:
 
 ```bash
-python3 simulate_serial.py clear pump_room.flow1
-python3 simulate_serial.py reset
-python3 simulate_serial.py disconnect pump_room
-python3 simulate_serial.py connect pump_room
-python3 simulate_serial.py status
-python3 simulate_serial.py stop
+./simulate_serial.py clear pump_room.flow1
+./simulate_serial.py reset
+./simulate_serial.py disconnect pump_room
+./simulate_serial.py connect pump_room
+./simulate_serial.py status
+./simulate_serial.py stop
 ```
 
 You can start with initial scenarios:
 
 ```bash
-python3 simulate_serial.py start \
+./simulate_serial.py start \
   --scenario pump_room.flow1=danger-low \
   --scenario room_environment.temperature=danger-high
 ```
@@ -763,6 +773,13 @@ docker run --rm -it --network host eclipse-mosquitto:2 \
 
 ## Troubleshoot in data-flow order
 
+### The managed Python environment is missing or invalid
+
+Rerun `setup_container_fs.sh` from the repository checkout. It safely preserves
+the live config and recreates or refreshes `~/labpulse-ha/.venv`. If environment
+creation itself fails, install `python3-full` through `apt` and rerun setup.
+Do not work around the error with a global `pip` installation.
+
 ### 1. A service container is missing
 
 ```bash
@@ -785,7 +802,7 @@ dmesg | tail -50
 Fake:
 
 ```bash
-python3 simulate_serial.py status
+./simulate_serial.py status
 ls -l /tmp/labpulse-fake-serial/
 ```
 
