@@ -52,11 +52,11 @@ The remaining extension friction is packaging optional hardware dependencies,
 declaring fixed output metadata, first-class simulation hooks, contributor
 scaffolding, and eventually loading separately distributed registrations.
 
-Distribution presents a separate problem. The setup script currently generates
-a Dockerfile and unversioned requirements before copying source packages into
-`~/labpulse-ha`. This is useful during prototyping, but it does not provide a
-clear installed version, dependency lock, upgrade boundary, or reliable
-rollback.
+Basic distribution is now in place: `pyproject.toml` builds the `labpulse`
+wheel, pipx exposes `labpulse-setup`, and that command installs the packaged
+source and deployment assets into `~/labpulse-live`. The remaining distribution
+work is publishing releases and versioned container images, locking container
+dependencies, and defining tested upgrade and rollback boundaries.
 
 ## Target driver architecture
 
@@ -216,7 +216,7 @@ runtime templates should be installed as package data and loaded through
 
 Runtime configuration should be located through an explicit `--config` option,
 an environment variable, or the documented live default
-`~/labpulse-ha/config.yaml`. It should not be found relative to an unpacked
+`~/labpulse-live/config.yaml`. It should not be found relative to an unpacked
 source directory.
 
 ### Dependencies
@@ -256,7 +256,7 @@ The Python package and the Pi installer are related but distinct artifacts:
 The preferred installation flow is:
 
 1. A small bootstrap script pulls a pinned LabPulse image.
-2. It runs `labpulse init` from that image against `~/labpulse-ha`.
+2. It runs `labpulse init` from that image against `~/labpulse-live`.
 3. The same image validates config and generates Compose and Home Assistant
    files.
 4. Generated Compose runs that exact image version.
@@ -268,7 +268,7 @@ synchronized Python environment.
 
 The bootstrap/update workflow must:
 
-- preserve `~/labpulse-ha/config.yaml`;
+- preserve `~/labpulse-live/config.yaml`;
 - preserve Home Assistant-owned configuration and state;
 - show the intended changes;
 - validate before replacing generated files;

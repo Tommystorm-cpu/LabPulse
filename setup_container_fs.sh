@@ -3,11 +3,14 @@ set -euo pipefail
 
 # One-time bootstrapper: copy the refactor files into the live Raspberry Pi
 # working directory, then run the generators that users call directly later.
-PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$HOME/labpulse-ha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ASSET_DIR="${LABPULSE_SETUP_ASSET_DIR:-$SCRIPT_DIR}"
+PACKAGE_SOURCE="${LABPULSE_PACKAGE_SOURCE:-$SCRIPT_DIR/src/labpulse}"
+SETUP_COMMAND="${LABPULSE_SETUP_COMMAND:-./setup_container_fs.sh}"
+PROJECT_DIR="${LABPULSE_LIVE_DIR:-$HOME/labpulse-live}"
 LIVE_CONFIG="$PROJECT_DIR/config.yaml"
-TEMPLATE_CONFIG="$SCRIPT_DIR/config.yaml"
-HOST_REQUIREMENTS_SOURCE="$SCRIPT_DIR/requirements-host.txt"
+TEMPLATE_CONFIG="$ASSET_DIR/config.yaml"
+HOST_REQUIREMENTS_SOURCE="$ASSET_DIR/requirements-host.txt"
 HOST_REQUIREMENTS="$PROJECT_DIR/requirements-host.txt"
 HOST_VENV="$PROJECT_DIR/.venv"
 HOST_PYTHON="$HOST_VENV/bin/python"
@@ -17,23 +20,23 @@ FAKE_USB=0
 
 # Print usage from one place so normal help and error paths stay consistent.
 usage() {
-  cat <<'EOF'
-Usage: ./setup_container_fs.sh [options]
+  cat <<EOF
+Usage: $SETUP_COMMAND [options]
 
 One-time bootstrap for the Raspberry Pi LabPulse folder.
 
 Default target:
-  ~/labpulse-ha
+  ~/labpulse-live
 
 Override target:
-  LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
+  LABPULSE_LIVE_DIR=/path/to/labpulse-live labpulse-setup
 
 Options:
   -fake_usb  Derive config.fake.yaml and mount pseudo-serial sensors,
              including the UPS power monitor, for simulator testing.
   --backup  Create .bak timestamp copies before replacing generated files.
 
-After this script has run once, work from ~/labpulse-ha:
+After this script has run once, work from ~/labpulse-live:
   ./generate_compose.sh
   ./generate_homeassistant_config.sh
 EOF
@@ -123,7 +126,7 @@ write_file() {
   cat > "$path"
 }
 
-# Copy repo-managed files into the live ~/labpulse-ha working folder.
+# Copy package-managed files into the live ~/labpulse-live working folder.
 copy_file() {
   local source="$1"
   local destination="$2"
@@ -183,7 +186,7 @@ log_dest stdout
 EOF
 
 # The live folder owns the Dockerfile so docker compose can build from
-# ~/labpulse-ha without needing the original repo checkout.
+# ~/labpulse-live without needing the original repo checkout.
 write_file "$PROJECT_DIR/labpulse-python/Dockerfile" <<'EOF'
 FROM python:3.12-slim
 
@@ -213,17 +216,17 @@ lgpio
 EOF
 
 # Copy the scripts and Python service code that the live Compose project uses.
-copy_file "$SCRIPT_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
+copy_file "$ASSET_DIR/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
-copy_file "$SCRIPT_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
+copy_file "$ASSET_DIR/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
-copy_file "$SCRIPT_DIR/edit_config.sh" "$PROJECT_DIR/edit_config.sh"
+copy_file "$ASSET_DIR/edit_config.sh" "$PROJECT_DIR/edit_config.sh"
 chmod +x "$PROJECT_DIR/edit_config.sh"
-copy_file "$SCRIPT_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
+copy_file "$ASSET_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
-copy_file "$SCRIPT_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
+copy_file "$ASSET_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
 chmod +x "$PROJECT_DIR/setup_usb_devices.py"
-replace_dir "$SCRIPT_DIR/src/labpulse" "$PROJECT_DIR/labpulse-python/labpulse"
+replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"
 find "$PROJECT_DIR/labpulse-python" -type d -name "__pycache__" -prune -exec rm -rf {} +
 rm -f "$PROJECT_DIR/labpulse-python/main.py"
 
@@ -362,8 +365,8 @@ Important:
   EDIT THIS FILE for sensors and enabled flags:
     $PROJECT_DIR/config.yaml
 
-  Do not edit the repository config.yaml for the running Pi system.
+  Do not edit a package or repository config.yaml for the running Pi system.
 
   In fake mode, config.fake.yaml is derived from config.yaml. Edit config.yaml,
-  then rerun setup_container_fs.sh -fake_usb to refresh the fake configuration.
+  then rerun $SETUP_COMMAND -fake_usb to refresh the fake configuration.
 EOF

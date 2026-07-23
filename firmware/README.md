@@ -144,7 +144,7 @@ The sensor configuration and `.cpp` output both use this record, so neither
 value is duplicated elsewhere.
 
 Do not change measurement names unless the same names are also used in the
-live Pi configuration at `~/labpulse-ha/config.yaml`.
+live Pi configuration at `~/labpulse-live/config.yaml`.
 
 ## Step 4: verify and upload
 
@@ -183,7 +183,7 @@ An unavailable or invalid sensor channel appears as `null`.
 
 ## Reconnect it to LabPulse
 
-On the Pi, the corresponding service in `~/labpulse-ha/config.yaml` must use:
+On the Pi, the corresponding service in `~/labpulse-live/config.yaml` must use:
 
 ```yaml
 driver:
@@ -209,7 +209,7 @@ When a lab needs a different mixture of sensors:
 4. Read each sensor and pass every result to `PipeSampleWriter` in the required
    output order.
 5. Add exactly the same measurement names to the service in the Pi's live
-   `~/labpulse-ha/config.yaml`.
+   `~/labpulse-live/config.yaml`.
 
 Do not write another serial format or add units to the Arduino output. Reuse
 the supplied sensor classes and `PipeSampleWriter` so the normal LabPulse

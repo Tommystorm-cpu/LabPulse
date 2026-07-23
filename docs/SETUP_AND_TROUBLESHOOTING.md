@@ -6,18 +6,18 @@ Assistant dashboard safely, test SMS, and diagnose failures in data-flow order.
 
 ## The rule that prevents config confusion
 
-Run the bootstrap script from the repository. After bootstrap, operate the
-system from the generated live directory:
+Install the LabPulse command with pipx, then run its bootstrap. After bootstrap,
+operate the system from the generated live directory:
 
 ```text
-Repository source:  ~/LabPulse/
-Live installation:  ~/labpulse-ha/
-Live config:         ~/labpulse-ha/config.yaml
+Installed command:  labpulse-setup
+Live installation:  ~/labpulse-live/
+Live config:         ~/labpulse-live/config.yaml
 ```
 
-The repository-root `config.yaml` is a starter copied only when the
-live config does not exist. Editing the repository starter does not change an
-already installed Pi.
+The packaged `config.yaml` is a starter copied only when the live config does
+not exist. Updating the package does not replace an already installed Pi's live
+configuration.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ The Pi needs:
 
 - Docker Engine with the Compose plugin
 - Python 3 with virtual-environment support (`python3-full` on Raspberry Pi OS)
-- the repository checkout
+- pipx
 - stable Arduino serial paths for real hardware, or fake-USB mode
 
 Real SMS delivery additionally needs a working ModemManager/modem on the host.
@@ -34,18 +34,19 @@ Real SMS delivery additionally needs a working ModemManager/modem on the host.
 
 ### Real hardware
 
-From the checkout:
+From a repository checkout, until LabPulse is published:
 
 ```bash
 cd ~/LabPulse
-chmod +x setup_container_fs.sh
-./setup_container_fs.sh
+pipx install .
+labpulse-setup
 ```
 
-The setup script creates/refreshes `~/labpulse-ha`, copies the current Python
-packages and generators, preserves existing live config, generates Compose and
-Home Assistant files, and seeds the dashboard. It also creates the private
-`~/labpulse-ha/.venv` environment and installs the bounded dependencies in
+After publication, install with `pipx install labpulse` instead. The
+`labpulse-setup` command creates or refreshes `~/labpulse-live`, copies the
+installed Python package and generators, preserves existing live config,
+generates Compose and Home Assistant files, and seeds the dashboard. It also creates the private
+`~/labpulse-live/.venv` environment and installs the bounded dependencies in
 `requirements-host.txt`. The generator, editor, USB setup, and simulator
 commands select that interpreter automatically. Do not use `sudo pip`,
 `--break-system-packages`, or manually install Pydantic into system Python.
@@ -54,11 +55,11 @@ commands select that interpreter automatically. Do not use `sudo pip`,
 
 ```bash
 cd ~/LabPulse
-chmod +x setup_container_fs.sh
-./setup_container_fs.sh -fake_usb
+pipx install .
+labpulse-setup -fake_usb
 ```
 
-Fake mode derives `~/labpulse-ha/config.fake.yaml` without altering the
+Fake mode derives `~/labpulse-live/config.fake.yaml` without altering the
 real-hardware settings in `config.yaml`. It changes configured serial paths to
 pseudo-terminal links, moves the room-environment DHT11 to simulated serial,
 and converts the enabled `power_detection` service from X1200/I2C to the
@@ -71,13 +72,13 @@ example—fake mode adds a complete enabled `ups_monitor` block to
 
 The generated fake Compose file mounts `config.fake.yaml` as
 `/app/config.yaml`. After editing the real source config, rerun
-`setup_container_fs.sh -fake_usb` to refresh the derived file. See
+`labpulse-setup -fake_usb` to refresh the derived file. See
 [Simulator workflow](#simulator-workflow).
 
 ### Alternate live directory
 
 ```bash
-LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
+LABPULSE_LIVE_DIR=/path/to/labpulse-live labpulse-setup
 ```
 
 ### Setup backups
@@ -86,7 +87,7 @@ LABPULSE_CONTAINER_DIR=/path/to/labpulse-ha ./setup_container_fs.sh
 files:
 
 ```bash
-./setup_container_fs.sh --backup
+labpulse-setup --backup
 ```
 
 It is not required for the live config: setup always preserves an existing
@@ -95,7 +96,7 @@ It is not required for the live config: setup always preserves an existing
 ## Generated live layout
 
 ```text
-~/labpulse-ha/
+~/labpulse-live/
   config.yaml                         edit this
   compose.yaml                        generated
   edit_config.sh                      guarded edit, validate, and refresh workflow
@@ -131,7 +132,7 @@ It is not required for the live config: setup always preserves an existing
 ## Configure the live system
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 nano config.yaml
 ```
 
@@ -326,7 +327,7 @@ device name. Start with every serial USB device plugged in and stop the Compose
 stack if it is already running:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 docker compose stop
 ./setup_usb_devices.py --config config.yaml
 ```
@@ -400,7 +401,7 @@ one per minute so a disconnected sensor cannot flood persistent logs.
 After editing live config:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./generate_compose.sh
 ./generate_homeassistant_config.sh
 docker compose config
@@ -464,7 +465,7 @@ for discovery.
 ### Live config changed
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./edit_config.sh
 ```
 
@@ -477,15 +478,16 @@ Its final message reminds the operator to review the conditional **Global Mute
 Applied** and **Test Mode Applied** banners on Monitor before changing either
 notification safeguard.
 
-### Repository Python/template/script source changed
+### Installed package or development source changed
 
-Rerun bootstrap to copy the new repository state into the live directory, then
-rebuild:
+Upgrade or reinstall the pipx package, rerun bootstrap to copy that package
+state into the live directory, then rebuild:
 
 ```bash
 cd ~/LabPulse
-./setup_container_fs.sh
-cd ~/labpulse-ha
+pipx install --editable . --force
+labpulse-setup
+cd ~/labpulse-live
 docker compose up -d --build
 ```
 
@@ -495,7 +497,7 @@ Setup regenerates and registers `labpulse-dashboard.yaml`.
 ### Stop without deleting persistent data
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 docker compose down
 ```
 
@@ -541,7 +543,7 @@ Fake-USB bootstrap creates these stable links:
 Start the background simulator before or alongside the containers:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./simulate_serial.py start
 docker compose up -d --build
 ```
@@ -557,7 +559,7 @@ Check it:
 Run the helper in one terminal:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./setup_usb_devices.py --config config.fake.yaml --fake-usb --dry-run
 ```
 
@@ -579,8 +581,8 @@ PTY at the same stable public path. Use `status` at any point to see connected
 and disconnected endpoints.
 
 Remove `--dry-run` to exercise the confirmation and surgical config write.
-Because `config.fake.yaml` is derived, rerunning `setup_container_fs.sh
--fake_usb` will recreate its deterministic fake paths later.
+Because `config.fake.yaml` is derived, rerunning `labpulse-setup -fake_usb`
+will recreate its deterministic fake paths later.
 
 Change one measurement without recreating its pseudo-terminal:
 
@@ -698,7 +700,7 @@ Set `sms.dry_run: false` and real international normal/test recipients in the li
 then regenerate Compose so the worker receives D-Bus/device access:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./generate_compose.sh
 docker compose up -d --build
 docker compose exec labpulse-sms mmcli -L
@@ -745,7 +747,7 @@ alert floods.
 ## Logs and inspection commands
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 docker compose ps
 docker compose logs -f
 docker compose logs -f homeassistant
@@ -754,7 +756,7 @@ docker compose logs -f labpulse-sms
 docker compose logs -f labpulse-pressure-monitor
 ```
 
-Python services also write persistent logs under `~/labpulse-ha/logs/`, for
+Python services also write persistent logs under `~/labpulse-live/logs/`, for
 example `pressure_monitor.log`, `pump_room.log`, and `sms.log`.
 
 Subscribe to all local MQTT traffic:
@@ -775,9 +777,9 @@ docker run --rm -it --network host eclipse-mosquitto:2 \
 
 ### The managed Python environment is missing or invalid
 
-Rerun `setup_container_fs.sh` from the repository checkout. It safely preserves
-the live config and recreates or refreshes `~/labpulse-ha/.venv`. If environment
-creation itself fails, install `python3-full` through `apt` and rerun setup.
+Rerun `labpulse-setup`. It safely preserves the live config and recreates or
+refreshes `~/labpulse-live/.venv`. If environment creation itself fails,
+install `python3-full` through `apt` and rerun setup.
 Do not work around the error with a global `pip` installation.
 
 ### 1. A service container is missing
@@ -877,7 +879,7 @@ Every SMS title, body, formatting line, footer, and subscription confirmation
 is stored in one live file:
 
 ```text
-~/labpulse-ha/labpulse-python/labpulse/common/sms_templates.yaml
+~/labpulse-live/labpulse-python/labpulse/common/sms_templates.yaml
 ```
 
 Alert entries contain Home Assistant Jinja expressions, so preserve their
@@ -886,7 +888,7 @@ placeholder present in every alert body. After editing the file, regenerate
 and validate Home Assistant YAML, then rebuild only the SMS worker:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./generate_homeassistant_config.sh
 docker compose exec homeassistant python -m homeassistant --script check_config --config /config
 docker compose up -d --build --force-recreate labpulse-sms
@@ -906,7 +908,7 @@ For real delivery, compare `mmcli -L` on the host and inside the container.
 An earlier `sudo` run may own the live directory:
 
 ```bash
-sudo chown -R "$(id -u):$(id -g)" ~/labpulse-ha
+sudo chown -R "$(id -u):$(id -g)" ~/labpulse-live
 ```
 
 Run normal setup as the intended user rather than with `sudo`.
@@ -944,10 +946,10 @@ LabPulse files. Prefer normal regeneration first.
 For an intentionally fresh Home Assistant installation only:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 docker compose stop homeassistant
-rm -rf ~/labpulse-ha/homeassistant/config
-mkdir -p ~/labpulse-ha/homeassistant/config
+rm -rf ~/labpulse-live/homeassistant/config
+mkdir -p ~/labpulse-live/homeassistant/config
 ./generate_homeassistant_config.sh
 docker compose up -d homeassistant
 ```

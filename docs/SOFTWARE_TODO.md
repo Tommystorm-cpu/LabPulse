@@ -20,7 +20,7 @@ reconstructable from the repository and documented live configuration.
 
 1. Prefer standard, maintained tools such as Python, Docker Compose, MQTT, and
    Home Assistant.
-2. Keep sensor/deployment facts in `~/labpulse-ha/config.yaml`, and keep
+2. Keep sensor/deployment facts in `~/labpulse-live/config.yaml`, and keep
    thresholds, alarm decisions, and operator controls in Home Assistant.
 3. Make changes testable without physical hardware wherever possible.
 4. Avoid unnecessary compatibility layers before the first stable release.

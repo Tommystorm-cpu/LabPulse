@@ -4,7 +4,7 @@
 #
 # On the Raspberry Pi, edit the live config here:
 #
-#   ~/labpulse-ha/config.yaml
+#   ~/labpulse-live/config.yaml
 #
 # This repo file is only copied as a starter template when the live config
 # does not already exist.

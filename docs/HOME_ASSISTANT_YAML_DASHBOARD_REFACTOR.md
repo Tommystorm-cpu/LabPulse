@@ -81,7 +81,7 @@ identity, threshold, or alarm data into separate setup-specific models.
 The live source of truth remains:
 
 ```text
-~/labpulse-ha/config.yaml
+~/labpulse-live/config.yaml
 ```
 
 The repository-root `config.yaml` remains only the fresh-install
@@ -443,7 +443,7 @@ document, not a storage wrapper.
 Target generated path:
 
 ```text
-~/labpulse-ha/homeassistant/config/labpulse-dashboard.yaml
+~/labpulse-live/homeassistant/config/labpulse-dashboard.yaml
 ```
 
 Register it through generated `configuration.yaml`:
@@ -484,7 +484,7 @@ Do not emit `.storage` fields such as `version`, `minor_version`, `key`, or
 
 | Concern | Durable source |
 | --- | --- |
-| Services, measurements, labels, setup membership | `~/labpulse-ha/config.yaml` |
+| Services, measurements, labels, setup membership | `~/labpulse-live/config.yaml` |
 | Thresholds, modes, deadband, and mute state | Home Assistant state/UI |
 | Dashboard layout/card rules | repository dashboard seed/templates |
 | Expanded live dashboard | generated `labpulse-dashboard.yaml` |

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Edit, validate, and apply the live Raspberry Pi LabPulse configuration.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$SCRIPT_DIR}"
+PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
 CONFIG_PATH="$PROJECT_DIR/config.yaml"
 CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"
 COMPOSE_SCRIPT="$PROJECT_DIR/generate_compose.sh"

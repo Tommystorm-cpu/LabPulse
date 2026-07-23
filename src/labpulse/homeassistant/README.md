@@ -12,7 +12,7 @@ For a field-by-field map of the dataclasses passed to each writer, read
 
 ## Public entry point
 
-Operators use the wrapper from the live `~/labpulse-ha` directory:
+Operators use the wrapper from the live `~/labpulse-live` directory:
 
 ```bash
 ./generate_homeassistant_config.sh

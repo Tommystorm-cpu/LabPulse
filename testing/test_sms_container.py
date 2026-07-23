@@ -189,7 +189,7 @@ def test_setup_and_compose_contract() -> None:
     assert_contains(setup, "COPY labpulse ./labpulse", "Dockerfile package copy")
     assert_contains(
         setup,
-        'replace_dir "$SCRIPT_DIR/src/labpulse" "$PROJECT_DIR/labpulse-python/labpulse"',
+        'replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"',
         "setup package copy",
     )
     assert_contains(compose, "labpulse-sms:", "SMS service")

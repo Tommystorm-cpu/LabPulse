@@ -17,31 +17,40 @@ type of question.
 
 ## Quick start
 
-Real hardware:
+Install from a repository checkout with pipx:
 
 ```bash
 cd ~/LabPulse
-./setup_container_fs.sh
+pipx install .
+labpulse-setup
 
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./edit_config.sh
 ```
 
-Fake hardware:
+Once LabPulse is published, `pipx install labpulse` replaces `pipx install .`.
+Pipx owns the command environment; `labpulse-setup` creates or refreshes the
+live deployment without replacing an existing live `config.yaml`.
+
+Fake hardware installation:
 
 ```bash
 cd ~/LabPulse
-./setup_container_fs.sh -fake_usb
+pipx install .
+labpulse-setup -fake_usb
 
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./simulate_serial.py start
 docker compose up -d --build
 ```
 
+For active development, use `pipx install --editable . --force` so the
+installed setup command follows the checkout.
+
 The running Pi is configured through:
 
 ```text
-~/labpulse-ha/config.yaml
+~/labpulse-live/config.yaml
 ```
 
 The repository `config.yaml` is only a new-install starter. Generated
@@ -51,7 +60,7 @@ permanent editing targets.
 `edit_config.sh` opens a temporary copy of the live config, validates it, keeps
 one rollback copy, regenerates Compose and Home Assistant YAML, runs Home
 Assistant's config check, and refreshes the stack through `sudo docker`.
-Setup also creates `~/labpulse-ha/.venv` and installs the bounded host tooling
+Setup also creates `~/labpulse-live/.venv` and installs the bounded host tooling
 dependencies there. LabPulse commands select that interpreter automatically;
 users should not install Pydantic globally or activate the environment.
 

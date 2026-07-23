@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Generate compose.yaml from the live LabPulse config. This script is copied
-# into ~/labpulse-ha and should be rerun there after config.yaml changes.
+# into ~/labpulse-live and should be rerun there after config.yaml changes.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$SCRIPT_DIR}"
+PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
 CONFIG_PATH="$PROJECT_DIR/config.yaml"
 OUTPUT_PATH="$PROJECT_DIR/compose.yaml"
 OUTPUT_SET=0

@@ -4,7 +4,7 @@ set -euo pipefail
 # Generate supported Home Assistant YAML from the live LabPulse configuration.
 # This wrapper never reads or writes Home Assistant's private state directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${LABPULSE_CONTAINER_DIR:-$SCRIPT_DIR}"
+PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
 CONFIG_PATH="$PROJECT_DIR/config.yaml"
 HA_CONFIG_DIR="$PROJECT_DIR/homeassistant/config"
 

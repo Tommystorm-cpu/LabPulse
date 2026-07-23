@@ -6,7 +6,7 @@ recipient routing have both been inspected.
 
 ## Live configuration
 
-Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
+Edit only `~/labpulse-live/config.yaml`. The UPS service must include:
 
 ```yaml
   ups_monitor:
@@ -35,7 +35,7 @@ Edit only `~/labpulse-ha/config.yaml`. The UPS service must include:
 ## Regenerate and start
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 ./generate_compose.sh
 ./generate_homeassistant_config.sh
 sudo docker compose up -d --build
@@ -67,7 +67,7 @@ Never connect or probe mains voltage with Raspberry Pi GPIO equipment.
 Follow the normalized measurements and service status:
 
 ```bash
-cd ~/labpulse-ha
+cd ~/labpulse-live
 sudo docker compose exec -T mosquitto mosquitto_sub -v \
   -t 'labpulse/ups_monitor/#'
 ```

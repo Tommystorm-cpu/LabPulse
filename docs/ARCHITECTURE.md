@@ -13,7 +13,7 @@ and function details are in [CODE_INTERNALS.md](CODE_INTERNALS.md).
 The repository is used to generate a live Compose project at:
 
 ```text
-~/labpulse-ha/
+~/labpulse-live/
 ```
 
 The running system is:
@@ -43,9 +43,9 @@ sensor service and the SMS worker run the project’s Python code.
 ### Deployment and generation
 
 ```text
-repository root/
-  -> setup_container_fs.sh
-  -> ~/labpulse-ha/
+pipx-installed LabPulse package
+  -> labpulse-setup
+  -> ~/labpulse-live/
        config.yaml                  live user configuration
        .venv/                       managed host Python environment
        generate_compose.sh
@@ -55,8 +55,9 @@ repository root/
   -> docker compose up
 ```
 
-`setup_container_fs.sh` is the bootstrap and code-copy step. After it has run,
-normal operator work happens from `~/labpulse-ha`, not from the checkout.
+`labpulse-setup` invokes the packaged bootstrap and code-copy step. After it has
+run, normal operator work happens from `~/labpulse-live`, not from the checkout
+or pipx environment.
 Host-side commands always use `.venv/bin/python`; Pydantic and PyYAML are
 installed there from `requirements-host.txt`, independently of system Python.
 
@@ -190,7 +191,7 @@ dry-run logging, `mmcli` retries, and result/status publishing.
 The live config describes deployment facts:
 
 ```text
-~/labpulse-ha/config.yaml
+~/labpulse-live/config.yaml
 ```
 
 It owns enabled services, hardware access, measurements, display
@@ -329,7 +330,7 @@ persistent unsubscribe filtering, deduplication, and delivery-result reporting.
 
 | Change | Owning source |
 | --- | --- |
-| Enable hardware or change a live USB path | `~/labpulse-ha/config.yaml` |
+| Enable hardware or change a live USB path | `~/labpulse-live/config.yaml` |
 | Add/validate a config field | `src/labpulse/common/config.py` |
 | Change stable IDs | `src/labpulse/common/identity.py` |
 | Change topics or SMS request fields | `src/labpulse/common/mqtt_contracts.py` |

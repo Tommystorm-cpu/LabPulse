@@ -60,9 +60,9 @@ problems.
 
 | Concern | Source of truth |
 | --- | --- |
-| Running Pi services, hardware, labels, and recipients | `~/labpulse-ha/config.yaml` |
+| Running Pi services, hardware, labels, and recipients | `~/labpulse-live/config.yaml` |
 | Fresh-install deployment starter | repository-root `config.yaml` |
-| Setup membership, subcategories, and generated dashboard arrangement | `~/labpulse-ha/config.yaml` plus `src/labpulse/homeassistant/dashboard/` |
+| Setup membership, subcategories, and generated dashboard arrangement | `~/labpulse-live/config.yaml` plus `src/labpulse/homeassistant/dashboard/` |
 | Thresholds, alarm modes, mute state, and other live alarm controls | Home Assistant state and the Alarm Setup dashboard |
 | All user-facing SMS wording | `src/labpulse/common/sms_templates.yaml` |
 | Generated dashboard fragments | `src/labpulse/homeassistant/templates/dashboard/` |

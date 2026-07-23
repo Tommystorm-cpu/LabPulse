@@ -350,7 +350,7 @@ Before uploading to a live board:
 3. upload to one identified Arduino;
 4. inspect several complete samples at 9600 baud;
 5. exercise invalid/disconnected sensors and confirm they produce `null`;
-6. confirm every emitted key exists in `~/labpulse-ha/config.yaml`;
+6. confirm every emitted key exists in `~/labpulse-live/config.yaml`;
 7. verify the readings in Home Assistant before leaving the service running.
 
 ## Unsupported old formats

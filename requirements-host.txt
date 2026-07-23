@@ -1,4 +1,4 @@
 # Dependencies for LabPulse commands that run directly on the Raspberry Pi.
-# setup_container_fs.sh installs these into ~/labpulse-ha/.venv.
+# setup_container_fs.sh installs these into ~/labpulse-live/.venv.
 pydantic>=2,<3
 PyYAML>=6,<7

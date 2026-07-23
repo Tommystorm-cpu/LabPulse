@@ -161,10 +161,10 @@ def test_setup_refresh_and_preservation_contract() -> None:
     if "text.replace('broker:" in source or 'text.replace("broker:' in source:
         raise AssertionError("setup must not rewrite the user-owned MQTT broker")
     required_fragments = (
-        'replace_dir "$SCRIPT_DIR/src/labpulse" "$PROJECT_DIR/labpulse-python/labpulse"',
-        'copy_file "$SCRIPT_DIR/simulate_serial.py"',
-        'copy_file "$SCRIPT_DIR/setup_usb_devices.py"',
-        'copy_file "$SCRIPT_DIR/edit_config.sh"',
+        'replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"',
+        'copy_file "$ASSET_DIR/simulate_serial.py"',
+        'copy_file "$ASSET_DIR/setup_usb_devices.py"',
+        'copy_file "$ASSET_DIR/edit_config.sh"',
         'copy_file "$HOST_REQUIREMENTS_SOURCE" "$HOST_REQUIREMENTS"',
         'python3 -m venv "$HOST_VENV"',
         '"$HOST_PYTHON" -m pip install',
