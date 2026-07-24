@@ -209,6 +209,12 @@ Verify the configured Blinka pin name and physical wiring. Individual DHT timing
 misses are tolerated. Sustained missing samples become stale; unexpected
 GPIO/library failures close and reconnect the driver.
 
+LabPulse deliberately constructs the DHT11 with `use_pulseio=False` on Raspberry
+Pi. Errors such as `unsigned short is greater than maximum` indicate that an
+older PulseIn-enabled build is still deployed; update and rebuild the
+`labpulse-room-environment` container. A one-time sensor power cycle may be
+needed if the previous process left the DHT11 data line wedged.
+
 Only the DHT service should need broad `/dev` access for this sensor. Rebuild
 current source if unrelated workers appear to claim GPIO devices.
 

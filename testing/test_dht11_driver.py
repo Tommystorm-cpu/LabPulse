@@ -124,6 +124,7 @@ def test_connect_and_read_returns_rounded_batch() -> None:
 
     driver.connect()
     batch = driver.read()
+    assert_equal(driver.device.use_pulseio, False, "PulseIn disabled")
     assert_equal(
         dict(batch.measurements),
         {"temperature": 21.3, "humidity": 45.7},
