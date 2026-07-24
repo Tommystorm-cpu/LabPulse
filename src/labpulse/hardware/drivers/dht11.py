@@ -128,7 +128,7 @@ class Driver(BaseSensorDriver):
     @staticmethod
     def _create_device(pin: object) -> object:
         """Create the DHT11 without PulseIn on Raspberry Pi.
-
+        (I don't think this is actually true. use_pulseio=True should work)
         Adafruit's PulseIn implementation can fail on Raspberry Pi with errors
         such as ``unsigned short is greater than maximum`` and may leave GPIO
         acquisition wedged until the sensor or host is power-cycled. The
@@ -136,7 +136,7 @@ class Driver(BaseSensorDriver):
         """
 
         dht_module, _ = _load_gpio_dependencies()
-        return dht_module.DHT11(pin, use_pulseio=False)
+        return dht_module.DHT11(pin, use_pulseio=True)
 
 
 def build_driver(
