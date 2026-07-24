@@ -24,21 +24,9 @@ LabPulse is not:
 - a machine guard or protective device;
 - a fire, gas, oxygen-deficiency, pressure, temperature, or water-flow
   interlock;
-- a substitute for a certified alarm panel;
-- a guaranteed notification-delivery service;
-- the sole means of detecting a hazardous condition; or
-- evidence by itself that equipment or a laboratory is safe to operate.
+- the sole means of detecting a hazardous condition;
 
-No person, equipment, experiment, sample, or facility should depend on
-LabPulse taking an action within a particular time. A sensor, cable, Raspberry
-Pi, power supply, operating system, container, MQTT broker, Home Assistant
-automation, network, modem, mobile network, or recipient device can fail or
-become unavailable.
-
-Independent protective systems must remain in place wherever a missed,
-incorrect, stale, delayed, or duplicated measurement or alert could cause
-injury, environmental harm, equipment damage, sample loss, or regulatory
-non-compliance.
+Please note that LabPulse is still pre-release, it has not been robustly tested. It may still be vunerable to raspberry pi crashes, USB hub failure, etc. As this software matures, it will become increasingly more reliable. For now, ensure that LabPulse is not the sole source of monitoring for any system failure that could cause harm to human life, or extensive financial damage.
 
 ## Meaning of monitoring
 
@@ -97,9 +85,6 @@ with:
 - simulation and failure-path testing; and
 - clear user-visible experimental status.
 
-Even with those measures, LabPulse control remains supervisory and non-safety
-critical. Safety functions must be implemented independently using equipment
-and engineering practices appropriate to the hazard.
 
 ## Contribution boundary
 
@@ -127,6 +112,3 @@ In LabPulse documentation:
 - **control** means requesting a change to equipment or its operating state;
 - **interlock** means an independent protective function that prevents or
   terminates an unsafe condition.
-
-Calling a Home Assistant state an alarm does not make LabPulse a certified
-alarm or safety system.

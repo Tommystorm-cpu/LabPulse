@@ -87,7 +87,7 @@ Setup:
 
 Setup does not start the stack.
 
-Edit the live configuration:
+Edit the live configuration with `labpulse config`. For instructions on how to properly set up your config file, see [configuration](CONFIGURATION.md).
 
 ```bash
 labpulse config

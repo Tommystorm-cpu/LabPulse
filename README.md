@@ -1,5 +1,7 @@
 # LabPulse
 
+NOTE: This fork is the most up to date version of LapPulse (as of 07/2026). It will eventually be merged into the main branch.
+
 LabPulse is a Raspberry Pi monitoring platform for laboratory infrastructure.
 It reads Arduino, GPIO, I2C, and simulated sensors; publishes measurements and
 device health over MQTT; presents them in Home Assistant; and can deliver alarm
