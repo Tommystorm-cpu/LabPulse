@@ -42,6 +42,9 @@ Read:
 6. Run the complete hardware-free test suite.
 7. Describe any real-Pi checks that are still required.
 
+By submitting a contribution, you agree that it may be distributed under the
+[MIT License](LICENSE) used by this project.
+
 Do not hand-edit generated `compose.yaml`,
 `homeassistant/config/packages/labpulse_generated.yaml`, or
 `homeassistant/config/labpulse-dashboard.yaml` as source changes. Update their

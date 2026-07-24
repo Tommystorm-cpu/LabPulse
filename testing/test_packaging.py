@@ -23,6 +23,18 @@ def main() -> None:
         raise AssertionError("distribution name must be labpulse")
     if project["version"] != labpulse.__version__:
         raise AssertionError("package metadata and module versions differ")
+    if project.get("license") != "MIT":
+        raise AssertionError("package metadata must declare the MIT SPDX licence")
+    if project.get("license-files") != ["LICENSE"]:
+        raise AssertionError("package metadata must include the root licence")
+    licence = (REPOSITORY / "LICENSE").read_text(encoding="utf-8")
+    for fragment in (
+        "MIT License",
+        "Copyright (c) 2026 LabPulse contributors",
+        'THE SOFTWARE IS PROVIDED "AS IS"',
+    ):
+        if fragment not in licence:
+            raise AssertionError(f"MIT licence text is incomplete: {fragment}")
     expected_commands = {
         "labpulse": "labpulse.control:main",
         "labpulse-up": "labpulse.control:up_main",
@@ -58,6 +70,7 @@ def main() -> None:
         raise AssertionError("old live-directory name remains in setup")
 
     print("[PASS] package metadata and version")
+    print("[PASS] MIT licence metadata and text")
     print("[PASS] pipx console entry points")
     print("[PASS] packaged setup assets")
     print("[PASS] labpulse-live deployment contract")

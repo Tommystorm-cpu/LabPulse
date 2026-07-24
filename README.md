@@ -114,11 +114,13 @@ new hardware support. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting.
 For sensors that can emit the standard serial protocol, new Python code is
 usually unnecessary.
 
-## Project status and licensing
+## Project status
 
 The project is pre-1.0 and its public compatibility policy is still being
 defined. See [ROADMAP.md](ROADMAP.md).
 
-An explicit open-source licence has not yet been selected. Until a licence is
-added, copyright law applies and the repository should not be assumed to grant
-permission to redistribute or create derivative works.
+## Licence
+
+LabPulse is licensed under the [MIT License](LICENSE). Unless otherwise noted,
+this includes the software, firmware, documentation, PCB design files, and
+mechanical design files in this repository.

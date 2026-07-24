@@ -12,6 +12,8 @@ artifacts are published.
 
 ### Added
 
+- Repository-wide MIT licensing for software, firmware, documentation, and
+  hardware design files.
 - A pipx-installable `labpulse` package and unified operator command.
 - Setup, lifecycle, logs, configuration, browser, firmware-help, and diagnostic
   commands.
