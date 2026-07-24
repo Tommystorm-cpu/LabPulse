@@ -4,6 +4,11 @@ LabPulse has one SMS worker container. Home Assistant publishes validated
 notification requests over MQTT; the worker routes them to dry-run logs, test
 recipients, or normal recipients.
 
+SMS is a best-effort secondary notification path. LabPulse does not guarantee
+delivery, receipt, reading, or response, and SMS must not be the sole alert for
+a hazardous condition. See
+[Product scope and safety boundary](PRODUCT_SCOPE.md).
+
 ## Safe modes
 
 ### Dry run

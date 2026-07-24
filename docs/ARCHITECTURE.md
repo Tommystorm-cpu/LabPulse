@@ -4,6 +4,17 @@ LabPulse separates hardware acquisition, transport, alarm decisions,
 presentation, and notification delivery so each can fail and be tested
 independently.
 
+## Product boundary
+
+LabPulse monitors infrastructure and produces best-effort alerts. It does not
+command equipment and must not be used as a safety-rated controller, emergency
+shutdown system, certified alarm, or protective interlock. Independent
+protective systems remain necessary wherever a missed or delayed measurement
+or notification could cause harm or loss.
+
+The authoritative boundary, terminology, and requirements for any future
+control work are in [Product scope and safety boundary](PRODUCT_SCOPE.md).
+
 ## System overview
 
 ```text

@@ -14,6 +14,10 @@ artifacts are published.
 
 - Repository-wide MIT licensing for software, firmware, documentation, and
   hardware design files.
+- A reference Raspberry Pi deployment matrix and explicit pre-1.0 support,
+  compatibility, safety, and experimental-feature boundaries.
+- An explicit product boundary defining LabPulse as monitoring and best-effort
+  alerting rather than safety-critical equipment control.
 - A pipx-installable `labpulse` package and unified operator command.
 - Setup, lifecycle, logs, configuration, browser, firmware-help, and diagnostic
   commands.

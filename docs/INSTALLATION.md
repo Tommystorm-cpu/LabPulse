@@ -6,16 +6,25 @@ is not the running Compose directory.
 
 ## Requirements
 
-Use a Raspberry Pi OS or compatible Debian-based Linux installation capable of
-running the required Python and Docker versions. The host needs:
+The verified reference host is a Raspberry Pi 5 Model B Rev 1.1 with 8 GB RAM,
+running Raspberry Pi OS 64-bit based on Debian 12 (Bookworm). Its exact
+software inventory, provisional platforms, and pre-1.0 boundaries are defined
+in [Supported environments](SUPPORT.md).
 
-- Python 3.11 or newer;
+The host needs:
+
+- CPython 3.11 or 3.12; the reference Pi uses 3.11.2;
 - Python virtual-environment support (`python3-full` on Raspberry Pi OS);
 - Git;
 - pipx;
-- Docker Engine;
-- the Docker Compose plugin;
+- Docker Engine and the plugin-style `docker compose` command; the reference
+  Pi uses Engine 29.6.1 and Compose 5.3.1;
 - working network access while packages and container images are installed.
+
+Minimum compatible Docker and Compose versions have not yet been established.
+Do not use 32-bit Raspberry Pi OS. Raspberry Pi OS Lite, Raspberry Pi OS based
+on Debian 13 (Trixie), Raspberry Pi 4, and other 64-bit Debian systems are
+provisional until they complete release qualification.
 
 Follow Docker's official
 [Debian installation guide](https://docs.docker.com/engine/install/debian/)

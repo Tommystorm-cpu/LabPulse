@@ -9,6 +9,10 @@ LabPulse is currently pre-release software. Installation is supported from a
 repository checkout; it is not yet published on PyPI and released container
 images are not yet available.
 
+LabPulse is a monitoring and best-effort alerting aid, not a safety-rated
+controller, emergency shutdown system, or protective interlock. See
+[Product scope and safety boundary](docs/PRODUCT_SCOPE.md).
+
 ## How it works
 
 Each enabled sensor service runs in its own container. A shared hardware runner
@@ -82,6 +86,8 @@ The complete command reference is in [Operations](docs/OPERATIONS.md).
 
 - [Documentation index](docs/README.md)
 - [Installation](docs/INSTALLATION.md)
+- [Supported environments](docs/SUPPORT.md)
+- [Product scope and safety boundary](docs/PRODUCT_SCOPE.md)
 - [Configuration reference](docs/CONFIGURATION.md)
 - [Operations](docs/OPERATIONS.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

@@ -4,6 +4,11 @@ LabPulse generates a native YAML-mode Home Assistant dashboard and alarm
 package. No HACS cards, custom frontend resources, JavaScript, card-mod, or
 private `.storage` mutation are required.
 
+Home Assistant alarm states and notifications are best-effort monitoring aids.
+Their absence does not establish that conditions are safe, and they must not
+replace independent protective alarms or interlocks. See
+[Product scope and safety boundary](PRODUCT_SCOPE.md).
+
 ## First connection
 
 Open:

@@ -4,12 +4,17 @@
 
 Development requires:
 
-- Python 3.11 or newer;
+- CPython 3.11 or 3.12 for the supported package test matrix;
 - Git;
 - pipx for exercising the installed CLI;
 - Docker and Compose for generated deployment tests or Pi operation;
 - Bash for checking and running deployment scripts;
 - no physical hardware for the ordinary test suite.
+
+Python 3.13 and newer may be used experimentally, but are provisional until
+they are included in automated package tests. Development may take place on
+Windows or another desktop operating system; only the Raspberry Pi deployment
+environment in [Supported environments](SUPPORT.md) is a supported runtime.
 
 ## Editable installation
 

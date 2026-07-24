@@ -31,24 +31,12 @@ Implemented foundations include:
 - dry-run, test, and real-modem SMS paths;
 - read-only `labpulse doctor` diagnostics;
 - repository-wide MIT licensing;
+- a documented monitoring, alerting, and safety boundary;
+- a documented reference deployment and pre-1.0 support policy;
 - initial packaging, contributor, architecture, and operator documentation.
 
 These foundations exist in code, but not all have completed long-duration,
 real-hardware, clean-install, or release-artifact acceptance testing.
-
-## Stage 0: product boundaries and immediate containment
-
-- Define the initial product as monitoring and alerting, not safety-critical
-  equipment control.
-- Define the initially supported Raspberry Pi, operating-system, Python,
-  Docker Compose, and Home Assistant environments.
-- Document what is and is not supported during pre-1.0 development.
-- Treat the network containing the current Pi as untrusted until confirmed
-  otherwise. Place it behind an appropriate firewall, private network, or VPN
-  before exposing Home Assistant or adding external integrations.
-
-Network containment is an operational prerequisite. It does not require the
-full LabPulse security feature set to be implemented first.
 
 ## Stage 1: reliable and polished monitoring
 

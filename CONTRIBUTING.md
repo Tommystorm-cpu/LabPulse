@@ -12,16 +12,19 @@ so the intended behavior and test boundary can be agreed.
 
 Read:
 
-1. [Architecture](docs/ARCHITECTURE.md)
-2. [Development](docs/DEVELOPMENT.md)
-3. [Driver development](docs/DRIVER_DEVELOPMENT.md) when adding hardware
-4. [Serial protocol](docs/SERIAL_PROTOCOL.md) when changing firmware or serial
+1. [Product scope and safety boundary](docs/PRODUCT_SCOPE.md)
+2. [Architecture](docs/ARCHITECTURE.md)
+3. [Development](docs/DEVELOPMENT.md)
+4. [Driver development](docs/DRIVER_DEVELOPMENT.md) when adding hardware
+5. [Serial protocol](docs/SERIAL_PROTOCOL.md) when changing firmware or serial
    output
 
 ## Development principles
 
 - Preserve `~/labpulse-live/config.yaml` as the installed source of truth.
 - Keep sensor acquisition in Python and alarm decisions in Home Assistant.
+- Keep equipment control and safety functions outside the measurement driver
+  contract; discuss any actuation proposal before implementation.
 - Prefer the standard serial protocol when firmware can normalize a device.
 - Keep optional hardware libraries lazy so unrelated drivers and host-side
   generation do not require them.

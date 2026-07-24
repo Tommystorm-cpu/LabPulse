@@ -6,11 +6,13 @@ This documentation describes the current implementation. Files under
 ## I want to operate LabPulse
 
 1. [Install LabPulse](INSTALLATION.md)
-2. [Configure sensors and services](CONFIGURATION.md)
-3. [Start, stop, inspect, and update the system](OPERATIONS.md)
-4. [Use the Home Assistant dashboard and alarms](HOME_ASSISTANT.md)
-5. [Configure SMS notifications](SMS.md)
-6. [Troubleshoot a problem](TROUBLESHOOTING.md)
+2. [Understand the product scope and safety boundary](PRODUCT_SCOPE.md)
+3. [Check supported environments and pre-1.0 boundaries](SUPPORT.md)
+4. [Configure sensors and services](CONFIGURATION.md)
+5. [Start, stop, inspect, and update the system](OPERATIONS.md)
+6. [Use the Home Assistant dashboard and alarms](HOME_ASSISTANT.md)
+7. [Configure SMS notifications](SMS.md)
+8. [Troubleshoot a problem](TROUBLESHOOTING.md)
 
 ## I want to develop LabPulse
 
@@ -25,6 +27,8 @@ This documentation describes the current implementation. Files under
 
 - [Contributing](../CONTRIBUTING.md)
 - [Changelog](../CHANGELOG.md)
+- [Product scope and safety boundary](PRODUCT_SCOPE.md)
+- [Supported environments](SUPPORT.md)
 
 ## Sources of truth
 
@@ -40,6 +44,8 @@ This documentation describes the current implementation. Files under
 | Home Assistant generation | `src/labpulse/homeassistant/` |
 | SMS payloads and topics | `src/labpulse/common/mqtt_contracts.py` |
 | Operator command behavior | `src/labpulse/control.py` |
+| Product scope and safety boundary | `docs/PRODUCT_SCOPE.md` |
+| Supported platforms and compatibility | `docs/SUPPORT.md` |
 | Current project direction | `ROADMAP.md` |
 
 Generated Compose and Home Assistant YAML are outputs. Do not document or edit
