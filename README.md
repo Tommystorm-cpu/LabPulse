@@ -9,7 +9,7 @@ notifications through an SMS modem.
 
 LabPulse is currently pre-release software. Installation is supported from a
 repository checkout; it is not yet published on PyPI and released container
-images are not yet available.
+images are not yet available. As the software matures, all aspects of the user experience will improve, so if you notice any bugs or inconsistencies right now, give it a few weeks and they should be fixed! It will also become easier to contribute to as the code matures and is continually refactored.
 
 LabPulse is a monitoring and best-effort alerting aid, not a safety-rated
 controller, emergency shutdown system, or protective interlock. See
