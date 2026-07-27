@@ -185,6 +185,53 @@ A `stale` measurement stops producing that value while the device and its peer
 measurements can remain active. Wait for the configured measurement-age and
 service-fault confirmation periods before expecting Sensor Fault.
 
+## Real-Pi GPIO and I2C fault injection
+
+Setup installs two test-only scripts that simulate unavailable hardware at the
+container boundary. They mask selected device endpoints with `/dev/null` and
+recreate only the selected service. They do not edit `compose.yaml`, change host
+device permissions, unload kernel drivers, claim GPIO lines, or require live
+rewiring.
+
+Test the X1200 fuel-gauge interface:
+
+```bash
+cd ~/labpulse-live
+./test_x1200_faults.sh block-i2c
+./test_x1200_faults.sh status
+./test_x1200_faults.sh restore
+```
+
+Test the X1200 mains-detection GPIO while leaving I2C telemetry available:
+
+```bash
+./test_x1200_faults.sh block-gpio
+./test_x1200_faults.sh restore
+```
+
+Use `block-all` to remove both interfaces. If the service has a non-default
+name, pass it before the command:
+
+```bash
+./test_x1200_faults.sh --service facility_ups block-gpio
+```
+
+Test DHT11 GPIO unavailability:
+
+```bash
+./test_dht11_fault.sh block
+./test_dht11_fault.sh status
+./test_dht11_fault.sh restore
+```
+
+Use `--service NAME` for a non-default DHT11 service. The scripts reject fake
+USB deployments and mismatched driver types.
+
+Always finish with `restore`, including after an interrupted test. Do not run
+`labpulse config`, `labpulse setup`, or `labpulse up` while a fault is active,
+because those commands may recreate the service outside the test override.
+Docker Compose 2.24.4 or newer is required for the X1200 device-list override.
+
 ## Direct generation helpers
 
 Setup copies low-level wrappers into `~/labpulse-live`:

@@ -169,6 +169,9 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'copy_file "$ASSET_DIR/simulate_serial.py"',
         'copy_file "$ASSET_DIR/setup_usb_devices.py"',
         'copy_file "$ASSET_DIR/deployment/edit_config.sh"',
+        'copy_file "$ASSET_DIR/testing/real_hardware/hardware_fault_common.sh"',
+        'copy_file "$ASSET_DIR/testing/real_hardware/test_x1200_faults.sh"',
+        'copy_file "$ASSET_DIR/testing/real_hardware/test_dht11_fault.sh"',
         'copy_file "$HOST_REQUIREMENTS_SOURCE" "$HOST_REQUIREMENTS"',
         'python3 -m venv "$HOST_VENV"',
         '"$HOST_PYTHON" -m pip install',
@@ -196,6 +199,33 @@ def test_setup_refresh_and_preservation_contract() -> None:
             raise AssertionError(f"setup contract missing: {fragment}")
     if "alarm_defaults.json" in source:
         raise AssertionError("setup still deploys the removed alarm defaults file")
+
+    x1200_fault_source = (
+        REFACTOR_DIR / "testing" / "real_hardware" / "test_x1200_faults.sh"
+    ).read_text(encoding="utf-8")
+    for fragment in (
+        "block-i2c|block-gpio|block-all|restore|status",
+        "devices: !override",
+        "devices: !reset []",
+        "source: /dev/null",
+        'fault_restore_service "$OVERRIDE_FILE" "$COMPOSE_SERVICE"',
+        'driver.get("type") != "labpulse.x1200"',
+    ):
+        if fragment not in x1200_fault_source:
+            raise AssertionError(f"X1200 fault script contract missing: {fragment}")
+
+    dht11_fault_source = (
+        REFACTOR_DIR / "testing" / "real_hardware" / "test_dht11_fault.sh"
+    ).read_text(encoding="utf-8")
+    for fragment in (
+        "block|restore|status",
+        "privileged: false",
+        "source: /dev/null",
+        "find /dev -maxdepth 1 -type c -name 'gpiochip*'",
+        'driver.get("type") != "labpulse.dht11"',
+    ):
+        if fragment not in dht11_fault_source:
+            raise AssertionError(f"DHT11 fault script contract missing: {fragment}")
     generator_source = (
         REFACTOR_DIR / "deployment" / "generate_homeassistant_config.sh"
     ).read_text(encoding="utf-8")

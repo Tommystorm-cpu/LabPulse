@@ -222,6 +222,12 @@ copy_file "$ASSET_DIR/deployment/generate_homeassistant_config.sh" "$PROJECT_DIR
 chmod +x "$PROJECT_DIR/generate_homeassistant_config.sh"
 copy_file "$ASSET_DIR/deployment/edit_config.sh" "$PROJECT_DIR/edit_config.sh"
 chmod +x "$PROJECT_DIR/edit_config.sh"
+copy_file "$ASSET_DIR/testing/real_hardware/hardware_fault_common.sh" "$PROJECT_DIR/hardware_fault_common.sh"
+chmod +x "$PROJECT_DIR/hardware_fault_common.sh"
+copy_file "$ASSET_DIR/testing/real_hardware/test_x1200_faults.sh" "$PROJECT_DIR/test_x1200_faults.sh"
+chmod +x "$PROJECT_DIR/test_x1200_faults.sh"
+copy_file "$ASSET_DIR/testing/real_hardware/test_dht11_fault.sh" "$PROJECT_DIR/test_dht11_fault.sh"
+chmod +x "$PROJECT_DIR/test_dht11_fault.sh"
 copy_file "$ASSET_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
 copy_file "$ASSET_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
@@ -331,6 +337,8 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
   $PROJECT_DIR/edit_config.sh
+  $PROJECT_DIR/test_x1200_faults.sh
+  $PROJECT_DIR/test_dht11_fault.sh
   $PROJECT_DIR/simulate_serial.py
   $PROJECT_DIR/setup_usb_devices.py
   $PROJECT_DIR/requirements-host.txt

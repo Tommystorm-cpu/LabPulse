@@ -19,6 +19,9 @@ ASSET_NAMES = (
     "deployment/setup_container_fs.sh",
     "setup_usb_devices.py",
     "simulate_serial.py",
+    "testing/real_hardware/hardware_fault_common.sh",
+    "testing/real_hardware/test_dht11_fault.sh",
+    "testing/real_hardware/test_x1200_faults.sh",
 )
 
 
