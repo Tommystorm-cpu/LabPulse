@@ -190,8 +190,8 @@ Confirm:
 8. Review recipients, thresholds and mute controls before deliberately
    disabling Test mode or Global Mute.
 
-Retain a copy of `~/labpulse-live/config.yaml` after acceptance. See
-[What to back up](#what-to-back-up) for the remaining state.
+Create a complete state archive after acceptance. See
+[Backup and blank-Pi reconstruction](#backup-and-blank-pi-reconstruction).
 
 ## Create a simulated installation
 
@@ -265,15 +265,43 @@ directory are preserved regardless.
 Review changes before updating a production Pi. A formally tested upgrade and
 rollback workflow remains roadmap work.
 
-## What to back up
+## Backup and blank-Pi reconstruction
 
-At minimum, retain:
+After first-install acceptance and before maintenance, create an archive
+outside the live directory:
 
-- `~/labpulse-live/config.yaml`;
-- the complete `~/labpulse-live/homeassistant/config/` directory;
-- `~/labpulse-live/mosquitto/data/` if retained MQTT state matters;
-- `~/labpulse-live/logs/sms_subscriptions.json`;
-- any local credentials or modem provisioning kept outside the repository.
+```bash
+mkdir -p ~/labpulse-backups
+labpulse backup ~/labpulse-backups/labpulse-$(date +%Y%m%d).tar.gz
+```
 
-Do not treat the repository starter config or generated files alone as a
-complete system backup.
+This briefly quiesces the running services to consistently capture
+`config.yaml`, complete Home Assistant configuration and private state,
+Mosquitto retained data, and SMS subscription/request state. The archive is
+checksummed and owner-readable only on Linux, but is not encrypted. Treat it as
+a secret because it includes credentials, tokens, phone-number state, and
+potentially sensitive history. Copy it to protected storage outside the Pi.
+
+To reconstruct a blank replacement Pi:
+
+1. install Raspberry Pi OS and the prerequisites in this document;
+2. install a compatible LabPulse checkout with pipx;
+3. connect the physical hardware;
+4. copy the archive onto the host;
+5. run:
+
+   ```bash
+   labpulse restore /path/to/labpulse-backup.tar.gz
+   ```
+
+Restore validates the archive, recreates the live deployment in its recorded
+real or fake-hardware mode, restores private state, regenerates managed files,
+rebuilds and starts the stack, waits for Home Assistant, and runs
+`labpulse doctor`. If the target already contains LabPulse state, it first
+creates a timestamped automatic rollback archive.
+
+Host settings are deliberately not applied from a backup. Recheck timezone and
+NTP, the systemd watchdog, Docker-group policy, modem provisioning, USB device
+identities, GPIO/I2C access, and physical wiring. See
+[Operations](OPERATIONS.md#back-up-and-reconstruct) for security and failure
+behavior.

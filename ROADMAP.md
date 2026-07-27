@@ -42,6 +42,8 @@ real-hardware, clean-install, or release-artifact acceptance testing.
 
 Target: `0.1.0-alpha`
 
+Status: complete on 27 July 2026. Stage 2 is now the active roadmap phase.
+
 ### Real-hardware reliability
 
 - [x] Complete repeated real-device unplug, reconnect, and recovery tests.
@@ -93,9 +95,9 @@ can continue powering the Pi.
 - [x] Expand `labpulse doctor` coverage for installation, configuration, Docker,
   MQTT, devices, generated files, and runtime health.
 - [x] Decide whether notification mutes need expiry or remain manual toggles.
-- Decide whether short power outage and restoration events should be combined
-  into one message.
-- Define and test complete backup and reconstruction on a blank Pi.
+- [x] Decide whether short power outage and restoration events should be
+  combined into one message.
+- [x] Define and test complete backup and reconstruction on a blank Pi.
 
 The completed health-reporting work separates process availability, physical
 service state, component faults, and individual measurement validity. Recovery
@@ -105,9 +107,26 @@ Notification mutes remain explicit manual toggles. They survive ordinary Home
 Assistant restarts and do not expire silently; the dashboard continues to show
 the active mute state so an operator must deliberately restore delivery.
 
-Acceptance: the current installation survives ordinary hardware and service
-failures and can be operated and rebuilt without undocumented maintainer
-knowledge.
+Power loss and restoration remain separate notifications. Loss must be
+reported as soon as it is confirmed; waiting to combine it with restoration
+would delay the actionable warning. The confirmed restoration closes the event
+with its duration, while the existing confirmation periods filter brief
+transitions.
+
+`labpulse backup` now quiesces running services and creates a private,
+checksummed archive of source configuration, complete Home Assistant state,
+Mosquitto retained data, and SMS subscription/request state. `labpulse restore`
+validates the archive, scaffolds a blank installation in its recorded runtime
+mode, creates a rollback archive where applicable, restores and regenerates
+the deployment, rebuilds and starts it, waits for Home Assistant, and runs
+diagnostics. Hardware-free acceptance covers exact round-trip reconstruction,
+tamper and path-traversal rejection, overwrite safeguards, operator
+confirmation, automatic rollback creation, and blank-installation routing.
+Host and physical settings remain an explicit post-restore checklist.
+
+Acceptance met: the current installation survives ordinary hardware and
+service failures and can be operated, backed up, and reconstructed without
+undocumented maintainer knowledge.
 
 ## Stage 2: packaging, continuous integration, and releases
 

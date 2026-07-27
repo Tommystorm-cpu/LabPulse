@@ -126,13 +126,16 @@ The following are the supported pre-1.0 core:
 - MQTT discovery, measurement state, and service health;
 - generated Home Assistant dashboards, thresholds, alarms, and mutes;
 - read-only diagnostics through `labpulse doctor`;
+- same-format state backup and blank-host reconstruction through
+  `labpulse backup` and `labpulse restore`;
 - dry-run SMS delivery.
 
 These capabilities remain experimental:
 
 - real-modem SMS delivery and inbound subscription commands;
 - installation updates between arbitrary repository commits;
-- restore and rollback across configuration changes;
+- restore, rollback, and migration across incompatible LabPulse or
+  configuration-schema versions;
 - security hardening beyond the documented local deployment boundary;
 - external driver or integration packages;
 - protocol-level Qubex, Triton, or other external integrations;

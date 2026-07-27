@@ -240,6 +240,14 @@ Home Assistant:
 
 Whole-hub failure still uses the service-health lifecycle.
 
+Confirmed power loss and confirmed restoration deliberately remain separate
+notifications. The loss warning is time-sensitive and must not wait to learn
+whether an outage will be short. The later restoration message closes the
+lifecycle and includes the measured duration. `outage_confirm_seconds` and
+`restore_confirm_seconds` filter momentary transitions; they are the mechanism
+for avoiding flap noise rather than combining two semantically different
+events.
+
 ## Regeneration and restarts
 
 `labpulse config` performs generation and Home Assistant's configuration check
@@ -257,8 +265,7 @@ Refresh the browser after Home Assistant has restarted.
 
 ## Backups
 
-The generated dashboard and package can be recreated from current code and
-configuration. Home Assistant accounts, integrations, recorder history, and
-private state cannot. Back up the complete
-`~/labpulse-live/homeassistant/config/` directory according to the deployment's
-recovery policy.
+Home Assistant accounts, integrations, recorder history, and private state are
+included by `labpulse backup`. See
+[Operations](OPERATIONS.md#back-up-and-reconstruct); generated files alone are
+not a complete backup.

@@ -27,6 +27,8 @@ artifacts are published.
 - Generated Home Assistant MQTT entities, alarm package, and native YAML
   dashboard.
 - Dry-run, test-mode, and modem-backed SMS delivery with subscription controls.
+- Checksummed, consistent state archives and guarded blank-host reconstruction
+  through `labpulse backup` and `labpulse restore`.
 
 ### Changed
 
@@ -55,6 +57,8 @@ artifacts are published.
 - Installation now includes ordered Home Assistant/MQTT onboarding, a
   first-install acceptance checklist, host-time validation, and a non-editable
   production update command.
+- Power-loss and restoration notifications are explicitly separate: loss is
+  reported promptly, while recovery closes the lifecycle with outage duration.
 
 ### Removed
 

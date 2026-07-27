@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
-from typing import Sequence
+import time
+from typing import Any, Sequence
 import webbrowser
 
+from labpulse.backup import (
+    BackupError,
+    create_backup,
+    inspect_backup,
+    restore_backup,
+    running_services,
+    start_services,
+    stop_services,
+)
 from labpulse.installer import find_install_assets, main as installer_main
 from labpulse.doctor import run_doctor
 
@@ -166,6 +179,164 @@ def show_firmware_help() -> int:
     return 0
 
 
+def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
+    """Create a consistent private archive of user-owned runtime state."""
+
+    try:
+        result = create_backup(
+            live_dir,
+            output,
+            docker_command(),
+            force=force,
+        )
+    except (BackupError, ValueError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    print(f"Backup created: {result.archive_path}")
+    print("This archive contains credentials, tokens, and phone-number state.")
+    print("Store it with the same care as a password.")
+    return 0
+
+
+def _wait_for_homeassistant(
+    timeout: float = 120.0,
+    *,
+    connector: Callable[..., Any] = socket.create_connection,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool:
+    """Wait for Home Assistant's local endpoint after reconstruction."""
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            connection = connector(("127.0.0.1", 8123), timeout=2.0)
+        except (OSError, TimeoutError):
+            sleep(2.0)
+            continue
+        connection.close()
+        return True
+    return False
+
+
+def _rollback_archive_path(live_dir: Path) -> Path:
+    """Return a collision-resistant pre-restore archive path."""
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return live_dir.parent / f"labpulse-pre-restore-{timestamp}.tar.gz"
+
+
+def _confirm_restore(live_dir: Path, archive: Path) -> bool:
+    """Require an explicit destructive-restore confirmation."""
+
+    print(f"Restore archive: {archive}")
+    print(f"Target installation: {live_dir}")
+    print("Current LabPulse state will be replaced after a rollback archive is made.")
+    return input("Type RESTORE to continue: ").strip() == "RESTORE"
+
+
+def _run_setup_for_manifest(live_dir: Path, manifest: dict[str, object]) -> int:
+    """Regenerate a restored installation in its recorded runtime mode."""
+
+    return run_setup(
+        str(live_dir),
+        fake_usb=manifest.get("runtime_mode") == "fake_usb",
+        backup=True,
+    )
+
+
+def run_restore_command(
+    live_dir: Path,
+    archive: Path,
+    *,
+    assume_yes: bool,
+) -> int:
+    """Restore, regenerate, start, and diagnose one LabPulse installation."""
+
+    archive = archive.expanduser().resolve()
+    try:
+        manifest = inspect_backup(archive)
+    except BackupError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    if not assume_yes and not _confirm_restore(live_dir, archive):
+        print("Restore cancelled; no files were changed.")
+        return 2
+
+    had_user_state = (live_dir / "config.yaml").exists() or (
+        live_dir / "homeassistant" / "config"
+    ).exists()
+    if not (live_dir / "compose.yaml").is_file():
+        if _run_setup_for_manifest(live_dir, manifest) != 0:
+            print("ERROR: Could not scaffold the restore target.", file=sys.stderr)
+            return 1
+
+    try:
+        docker_prefix = docker_command()
+        active_services = running_services(live_dir, docker_prefix)
+        stop_services(live_dir, docker_prefix, active_services)
+    except (BackupError, ValueError) as error:
+        print(f"ERROR: Could not quiesce the current installation: {error}", file=sys.stderr)
+        return 1
+
+    rollback_path: Path | None = None
+    restored = False
+    try:
+        if had_user_state:
+            rollback_path = _rollback_archive_path(live_dir)
+            create_backup(
+                live_dir,
+                rollback_path,
+                docker_prefix,
+                quiesce=False,
+            )
+            print(f"Pre-restore rollback archive: {rollback_path}")
+
+        restore_backup(live_dir, archive)
+        restored = True
+        if _run_setup_for_manifest(live_dir, manifest) != 0:
+            raise BackupError("setup/regeneration failed after restoring state")
+        if run_compose(live_dir, ("up", "-d", "--build")) != 0:
+            raise BackupError("rebuilt Compose stack did not start")
+    except (BackupError, OSError) as error:
+        print(f"ERROR: Restore did not complete: {error}", file=sys.stderr)
+        if restored and rollback_path is not None:
+            print("Restoring the automatic rollback snapshot...", file=sys.stderr)
+            try:
+                rollback_manifest = restore_backup(live_dir, rollback_path)
+                if _run_setup_for_manifest(live_dir, rollback_manifest) != 0:
+                    raise BackupError("setup/regeneration failed during rollback")
+            except (BackupError, OSError) as rollback_error:
+                print(
+                    f"ERROR: Automatic rollback also failed: {rollback_error}",
+                    file=sys.stderr,
+                )
+        try:
+            start_services(live_dir, docker_prefix, active_services)
+        except BackupError as start_error:
+            print(f"ERROR: Could not restart prior services: {start_error}", file=sys.stderr)
+        return 1
+
+    print("State restored and the rebuilt stack was started.")
+    print("Waiting for Home Assistant before final diagnostics...")
+    if not _wait_for_homeassistant():
+        print(
+            "ERROR: Restore succeeded, but Home Assistant did not become ready "
+            "within 120 seconds. Inspect its logs.",
+            file=sys.stderr,
+        )
+        return 1
+    doctor_result = run_doctor(live_dir, docker_prefix, timeout=5.0)
+    if doctor_result != 0:
+        print(
+            "ERROR: Restore succeeded, but final diagnostics reported failures.",
+            file=sys.stderr,
+        )
+        return doctor_result
+    print("Restore and post-restore diagnostics completed successfully.")
+    print("Review timezone, watchdog, Docker-group, modem, and physical wiring settings.")
+    return 0
+
+
 def run_setup(
     live_dir_override: str | None,
     *,
@@ -254,6 +425,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="rebuild images and recreate containers while restarting",
     )
     restart_parser.add_argument("services", nargs="*", help="optional service names")
+
+    backup_parser = commands.add_parser(
+        "backup",
+        help="create a checksummed archive of user-owned LabPulse state",
+    )
+    backup_parser.add_argument("output", help="output .tar.gz archive path")
+    backup_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing archive path",
+    )
+
+    restore_parser = commands.add_parser(
+        "restore",
+        help="restore, rebuild, start, and diagnose a LabPulse state archive",
+    )
+    restore_parser.add_argument("archive", help="LabPulse backup archive path")
+    restore_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="confirm replacement without the interactive RESTORE prompt",
+    )
 
     ps_parser = commands.add_parser("ps", help="show LabPulse container status")
     ps_parser.add_argument(
@@ -345,6 +538,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return open_homeassistant()
 
     live_dir = live_directory(arguments.live_dir)
+    if arguments.action == "backup":
+        return run_backup_command(
+            live_dir,
+            Path(arguments.output),
+            force=arguments.force,
+        )
+    if arguments.action == "restore":
+        return run_restore_command(
+            live_dir,
+            Path(arguments.archive),
+            assume_yes=arguments.yes,
+        )
     if arguments.action == "config":
         return run_config_editor(live_dir)
     if arguments.action == "doctor":

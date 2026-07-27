@@ -13,6 +13,8 @@ labpulse restart     restart or rebuild all or selected services
 labpulse ps          show container status
 labpulse logs        show container logs
 labpulse config      safely edit and apply configuration
+labpulse backup      create a consistent state archive
+labpulse restore     reconstruct an installation from a state archive
 labpulse doctor      run read-only diagnostics
 labpulse open        open Home Assistant
 labpulse firmware    show firmware download information
@@ -20,6 +22,56 @@ labpulse help        show general or command-specific help
 ```
 
 Use `labpulse help COMMAND` for detailed syntax.
+
+## Back up and reconstruct
+
+Create a complete LabPulse state archive somewhere outside the live directory:
+
+```bash
+mkdir -p ~/labpulse-backups
+labpulse backup ~/labpulse-backups/labpulse-$(date +%Y%m%d).tar.gz
+```
+
+Backup briefly stops the currently running Compose services, snapshots the
+source configuration, complete Home Assistant configuration and private state,
+retained Mosquitto data, and SMS subscription/request state, then restarts
+exactly those services. The archive contains a manifest and SHA-256 checksum
+for every file. Existing output is never replaced unless `--force` is given.
+
+The archive is created with owner-only permissions on Linux, but it is not
+encrypted. It contains Home Assistant credentials and tokens, alarm state,
+phone numbers, and potentially sensitive history. Store it outside
+`~/labpulse-live` on encrypted or access-controlled storage.
+
+Restore onto an existing or newly scaffolded host:
+
+```bash
+labpulse restore ~/labpulse-backups/labpulse-20260727.tar.gz
+```
+
+Type `RESTORE` at the prompt, or use `--yes` in an already controlled,
+non-interactive recovery procedure. Restore:
+
+1. validates all archive paths and checksums before changing state;
+2. scaffolds a missing live installation in the archive's recorded real or
+   fake-hardware mode;
+3. stops any running services;
+4. creates a timestamped pre-restore rollback archive when state already
+   exists;
+5. replaces only the state owned by the backup;
+6. regenerates managed deployment files;
+7. rebuilds and starts the complete stack;
+8. waits for Home Assistant and runs `labpulse doctor`.
+
+If regeneration or startup fails after replacing an existing installation,
+LabPulse attempts to restore the automatic rollback snapshot and restarts the
+previously running services.
+
+A state archive does not reproduce host-level configuration. On a replacement
+Pi, first install Raspberry Pi OS, Docker with Compose, pipx, and the same
+compatible LabPulse package. After restore, verify the timezone and NTP,
+systemd watchdog, Docker-group policy, modem provisioning, USB identities,
+GPIO/I2C wiring, and other physical hardware.
 
 ## Start and stop
 

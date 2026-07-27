@@ -261,6 +261,181 @@ def main() -> None:
                 raise AssertionError("setup command failed")
             installer.assert_called_once_with(["--fake-usb", "--backup"])
 
+        archive = live_dir.parent / "labpulse-state.tar.gz"
+        with patch.object(control, "run_backup_command", return_value=0) as backup:
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "backup",
+                    str(archive),
+                    "--force",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("backup command failed")
+            backup.assert_called_once_with(
+                live_dir.resolve(),
+                archive,
+                force=True,
+            )
+
+        with patch.object(control, "run_restore_command", return_value=0) as restore:
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "restore",
+                    str(archive),
+                    "--yes",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("restore command failed")
+            restore.assert_called_once_with(
+                live_dir.resolve(),
+                archive,
+                assume_yes=True,
+            )
+
+        manifest = {"runtime_mode": "real_hardware"}
+        rollback = live_dir.parent / "automatic-rollback.tar.gz"
+        with patch.object(
+            control, "inspect_backup", return_value=manifest
+        ), patch.object(
+            control, "docker_command", return_value=["docker"]
+        ), patch.object(
+            control,
+            "running_services",
+            return_value=("homeassistant", "mosquitto"),
+        ), patch.object(
+            control, "stop_services"
+        ) as stop_services, patch.object(
+            control, "create_backup"
+        ) as create_rollback, patch.object(
+            control, "_rollback_archive_path", return_value=rollback
+        ), patch.object(
+            control, "restore_backup", return_value=manifest
+        ) as restore_state, patch.object(
+            control, "_run_setup_for_manifest", return_value=0
+        ) as regenerate, patch.object(
+            control, "run_compose", return_value=0
+        ) as compose, patch.object(
+            control, "_wait_for_homeassistant", return_value=True
+        ), patch.object(
+            control, "run_doctor", return_value=0
+        ) as doctor:
+            result = control.run_restore_command(
+                live_dir.resolve(),
+                archive,
+                assume_yes=True,
+            )
+            if result != 0:
+                raise AssertionError("restore orchestration failed")
+            stop_services.assert_called_once_with(
+                live_dir.resolve(),
+                ["docker"],
+                ("homeassistant", "mosquitto"),
+            )
+            create_rollback.assert_called_once_with(
+                live_dir.resolve(),
+                rollback,
+                ["docker"],
+                quiesce=False,
+            )
+            restore_state.assert_called_once_with(live_dir.resolve(), archive)
+            regenerate.assert_called_once_with(live_dir.resolve(), manifest)
+            compose.assert_called_once_with(
+                live_dir.resolve(),
+                ("up", "-d", "--build"),
+            )
+            doctor.assert_called_once_with(
+                live_dir.resolve(),
+                ["docker"],
+                timeout=5.0,
+            )
+
+        with patch.object(
+            control, "inspect_backup", return_value=manifest
+        ), patch.object(
+            control, "_confirm_restore", return_value=False
+        ):
+            result = control.run_restore_command(
+                live_dir.resolve(),
+                archive,
+                assume_yes=False,
+            )
+            if result != 2:
+                raise AssertionError("cancelled restore did not stop safely")
+
+        blank_live = live_dir / "blank-installation"
+        with patch.object(
+            control, "inspect_backup", return_value=manifest
+        ), patch.object(
+            control, "_run_setup_for_manifest", return_value=0
+        ) as scaffold, patch.object(
+            control, "docker_command", return_value=["docker"]
+        ), patch.object(
+            control, "running_services", return_value=()
+        ), patch.object(
+            control, "stop_services"
+        ), patch.object(
+            control, "create_backup"
+        ) as unexpected_rollback, patch.object(
+            control, "restore_backup", return_value=manifest
+        ), patch.object(
+            control, "run_compose", return_value=0
+        ), patch.object(
+            control, "_wait_for_homeassistant", return_value=True
+        ), patch.object(
+            control, "run_doctor", return_value=0
+        ):
+            result = control.run_restore_command(
+                blank_live,
+                archive,
+                assume_yes=True,
+            )
+            if result != 0:
+                raise AssertionError("blank-installation reconstruction failed")
+            scaffold.assert_any_call(blank_live, manifest)
+            unexpected_rollback.assert_not_called()
+
+        with patch.object(
+            control, "inspect_backup", return_value=manifest
+        ), patch.object(
+            control, "docker_command", return_value=["docker"]
+        ), patch.object(
+            control, "running_services", return_value=("homeassistant",)
+        ), patch.object(
+            control, "stop_services"
+        ), patch.object(
+            control, "create_backup"
+        ), patch.object(
+            control, "_rollback_archive_path", return_value=rollback
+        ), patch.object(
+            control, "restore_backup", side_effect=(manifest, manifest)
+        ) as restore_state, patch.object(
+            control, "_run_setup_for_manifest", side_effect=(1, 0)
+        ) as regeneration, patch.object(
+            control, "start_services"
+        ) as restart_previous:
+            result = control.run_restore_command(
+                live_dir.resolve(),
+                archive,
+                assume_yes=True,
+            )
+            if result != 1:
+                raise AssertionError("failed regeneration did not fail restore")
+            if restore_state.call_count != 2:
+                raise AssertionError("failed restore did not apply rollback state")
+            if regeneration.call_count != 2:
+                raise AssertionError("rollback deployment was not regenerated")
+            restart_previous.assert_called_once_with(
+                live_dir.resolve(),
+                ["docker"],
+                ("homeassistant",),
+            )
+
         firmware_output = StringIO()
         with redirect_stdout(firmware_output):
             result = control.main(["firmware"])
@@ -310,6 +485,11 @@ def main() -> None:
     print("[PASS] standalone command alias routing")
     print("[PASS] Home Assistant browser routing")
     print("[PASS] unified setup command routing")
+    print("[PASS] backup and restore command routing")
+    print("[PASS] guarded reconstruction orchestration")
+    print("[PASS] blank-installation reconstruction routing")
+    print("[PASS] failed reconstruction rollback")
+    print("[PASS] interactive restore cancellation")
     print("[PASS] firmware download guidance")
     print("[PASS] general and command-specific help")
     print("[PASS] doctor command routing")
