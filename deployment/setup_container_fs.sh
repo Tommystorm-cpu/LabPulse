@@ -258,7 +258,6 @@ if [ "$FAKE_USB" -eq 1 ]; then
 "$HOST_PYTHON" - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" "$PROJECT_DIR/labpulse-python" <<'PY'
 from pathlib import Path
 import sys
-import yaml
 
 source_path = Path(sys.argv[1])
 destination_path = Path(sys.argv[2])
@@ -268,32 +267,10 @@ python_package_dir = Path(sys.argv[4])
 text = source_path.read_text()
 
 if fake_usb:
-    replacements = {
-      "FAKE_PUMP_ROOM_PORT": "/tmp/labpulse-fake-serial/pump_room",
-      "FAKE_PRESSURE_PORT": "/tmp/labpulse-fake-serial/pressure",
-      "FAKE_TURBO_PUMP_PORT": "/tmp/labpulse-fake-serial/turbo_pump",
-      "FAKE_UPS_PORT": "/tmp/labpulse-fake-serial/ups_monitor",
-    }
-    for source, replacement in replacements.items():
-        text = text.replace(source, replacement, 1)
-
-    # Convert the configured power service to the same normalized measurements and
-    # stable identities through the ups_monitor pseudo-serial endpoint. The
-    # converter changes only transport-specific keys in that service block.
     sys.path.insert(0, str(python_package_dir))
-    from labpulse.common.fake_config import (
-        convert_power_service_to_fake_serial,
-        convert_service_to_fake_serial,
-    )
+    from labpulse.common.fake_config import derive_fake_config
 
-    services = (yaml.safe_load(text) or {}).get("services", {})
-    if "room_environment" in services:
-        text = convert_service_to_fake_serial(
-            text,
-            "room_environment",
-            "/tmp/labpulse-fake-serial/room_environment",
-        )
-    text = convert_power_service_to_fake_serial(text)
+    text = derive_fake_config(text)
 
 destination_path.write_text(text)
 PY

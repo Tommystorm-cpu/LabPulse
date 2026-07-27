@@ -44,34 +44,66 @@ Target: `0.1.0-alpha`
 
 ### Real-hardware reliability
 
-- Complete repeated real-device unplug, reconnect, and recovery tests.
-- Verify DHT11 and X1200 startup, sustained failure, and recovery on the Pi.
-- Establish alarm behavior across container, Home Assistant, and whole-Pi
+- [x] Complete repeated real-device unplug, reconnect, and recovery tests.
+- [x] Verify DHT11 and X1200 startup, sustained failure, and recovery on the Pi.
+- [x] Establish alarm behavior across container, Home Assistant, and whole-Pi
   restarts.
-- Verify longer UPS outages, restoration, flapping, and GPIO failure.
-- Run sustained soak tests with real and simulated sensors.
-- Exercise real SMS delivery, inbound subscription commands, retries, and
+- [x] Verify longer UPS outages, restoration, flapping, and GPIO failure.
+- [x] Run sustained soak tests with real and simulated sensors.
+- [x] Exercise real SMS delivery, inbound subscription commands, retries, and
   recovery after modem or service interruption.
-- Test power loss and recovery without corrupting user-owned state.
-- Decide how an external system will detect failure of the Pi, broker, Home
+- [x] Test power loss and recovery without corrupting user-owned state.
+- [x] Decide how an external system will detect failure of the Pi, broker, Home
   Assistant, or SMS path itself.
+
+Completed 27 July 2026 on the Raspberry Pi 5 Model B Rev 1.1 deployment at
+revision `dc6c29f`. Acceptance evidence included repeated container and
+whole-Pi restarts, injected DHT11 and X1200 interface failures, real UPS
+outages and restoration, an abrupt total power removal, real SMS delivery and
+recovery, and two weeks of continuous operation. Measurements, retained
+service state, Home Assistant alarms, and SMS notifications recovered without
+loss of user-owned state.
+
+Two hardware defects were separated from the software result:
+
+- recurring USB disconnects were isolated to a faulty external USB hub, which
+  should be replaced;
+- the installed DHT11 can remain unresponsive after a short power interruption
+  and recover only after an extended unpowered period, even though its VCC rail
+  falls to approximately `0.014 V`. It should be replaced and is not treated as
+  reliability-qualified.
+
+The low-effort watchdog decision is to use the Raspberry Pi hardware watchdog
+through systemd with a 30-second runtime timeout. A separate external watchdog
+is deferred unless unattended operation reveals a failure that the internal
+watchdog cannot recover. An external device would need to control the X1200
+power path rather than merely interrupt mains input, because the UPS battery
+can continue powering the Pi.
 
 ### Operator polish
 
-- Make first installation, configuration, generation, startup, and diagnosis
+- [x] Make first installation, configuration, generation, startup, and diagnosis
   one coherent documented workflow.
-- Make `labpulse config` preserve and regenerate the active fake-USB mode.
-- Improve health reporting where container-running and sensor-connected states
+- [x] Make `labpulse config` preserve and regenerate the active fake-USB mode.
+- [x] Improve health reporting where container-running and sensor-connected states
   differ.
-- Make logs consistently identify the service, driver, device path, connection
+- [x] Make logs consistently identify the service, driver, device path, connection
   state, and last successful reading.
-- Ensure common errors explain the corrective action.
-- Expand `labpulse doctor` coverage for installation, configuration, Docker,
+- [x] Ensure common errors explain the corrective action.
+- [x] Expand `labpulse doctor` coverage for installation, configuration, Docker,
   MQTT, devices, generated files, and runtime health.
-- Decide whether notification mutes need expiry or remain manual toggles.
+- [x] Decide whether notification mutes need expiry or remain manual toggles.
 - Decide whether short power outage and restoration events should be combined
   into one message.
 - Define and test complete backup and reconstruction on a blank Pi.
+
+The completed health-reporting work separates process availability, physical
+service state, component faults, and individual measurement validity. Recovery
+requires a valid new reading rather than container startup alone.
+
+Notification mutes remain explicit manual toggles. They survive ordinary Home
+Assistant restarts and do not expire silently; the dashboard continues to show
+the active mute state so an operator must deliberately restore delivery.
 
 Acceptance: the current installation survives ordinary hardware and service
 failures and can be operated and rebuilt without undocumented maintainer

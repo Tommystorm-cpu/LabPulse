@@ -107,6 +107,83 @@ def main() -> None:
             )
 
         with patch.dict(
+            os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["docker"])
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "down",
+                    "labpulse-room-environment",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("targeted down command failed")
+            run.assert_called_once_with(
+                [
+                    "docker",
+                    "compose",
+                    "down",
+                    "labpulse-room-environment",
+                ],
+                cwd=live_dir.resolve(),
+                check=False,
+            )
+
+        with patch.dict(
+            os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["docker"])
+            result = control.main(
+                [
+                    "--live-dir",
+                    str(live_dir),
+                    "restart",
+                    "--build",
+                    "labpulse-room-environment",
+                ]
+            )
+            if result != 0:
+                raise AssertionError("build restart command failed")
+            run.assert_called_once_with(
+                [
+                    "docker",
+                    "compose",
+                    "up",
+                    "-d",
+                    "--build",
+                    "--force-recreate",
+                    "--no-deps",
+                    "labpulse-room-environment",
+                ],
+                cwd=live_dir.resolve(),
+                check=False,
+            )
+
+        with patch.dict(
+            os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
+        ), patch.object(control.subprocess, "run") as run:
+            run.return_value = completed(["docker"])
+            result = control.main(
+                ["--live-dir", str(live_dir), "restart", "--build"]
+            )
+            if result != 0:
+                raise AssertionError("full build restart command failed")
+            run.assert_called_once_with(
+                [
+                    "docker",
+                    "compose",
+                    "up",
+                    "-d",
+                    "--build",
+                    "--force-recreate",
+                ],
+                cwd=live_dir.resolve(),
+                check=False,
+            )
+
+        with patch.dict(
             os.environ, {"LABPULSE_DOCKER_COMMAND": "sudo docker"}, clear=False
         ), patch.object(control.subprocess, "run") as run:
             run.return_value = completed(["sudo", "docker"])
@@ -127,7 +204,13 @@ def main() -> None:
                 check=False,
             )
 
-        with patch.object(control.shutil, "which", return_value="/bin/bash"), patch.object(
+        with patch.dict(
+            os.environ,
+            {"LABPULSE_DOCKER_COMMAND": "docker"},
+            clear=False,
+        ), patch.object(
+            control.shutil, "which", return_value="/bin/bash"
+        ), patch.object(
             control, "find_install_assets", return_value=REPOSITORY
         ), patch.object(control.subprocess, "run") as run:
             run.return_value = completed(["bash"])
@@ -140,6 +223,8 @@ def main() -> None:
                 raise AssertionError(f"unexpected config command: {call.args[0]}")
             if call.kwargs["env"]["LABPULSE_LIVE_DIR"] != str(live_dir.resolve()):
                 raise AssertionError("config command did not target the live directory")
+            if call.kwargs["env"]["LABPULSE_DOCKER_COMMAND"] != "docker":
+                raise AssertionError("config command did not share Docker command routing")
 
         alias = control.alias_arguments(
             "logs", ["--live-dir", str(live_dir), "-f", "mosquitto"]
@@ -218,6 +303,8 @@ def main() -> None:
 
     print("[PASS] Docker Compose command routing")
     print("[PASS] Docker Compose restart routing")
+    print("[PASS] targeted Docker Compose down routing")
+    print("[PASS] rebuild-and-recreate restart routing")
     print("[PASS] configurable Docker command prefix")
     print("[PASS] guarded config editor routing")
     print("[PASS] standalone command alias routing")

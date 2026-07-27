@@ -59,7 +59,38 @@ export LABPULSE_DOCKER_COMMAND=docker
 ```
 
 Use the same setting for later commands or place it in the operator's shell
-configuration.
+configuration. The setting now applies to `labpulse config` as well as ordinary
+lifecycle and diagnostic commands.
+
+If Doctor reports that the Docker daemon is unreachable, verify the service,
+then confirm the selected command works for the current user:
+
+```bash
+sudo systemctl status docker
+${LABPULSE_DOCKER_COMMAND:-sudo docker} version
+```
+
+## Host clock is not synchronized
+
+Incorrect host time makes Home Assistant history, logs and notification order
+misleading. Check:
+
+```bash
+timedatectl status
+```
+
+Set the correct deployment timezone and enable NTP:
+
+```bash
+timedatectl list-timezones
+sudo timedatectl set-timezone Europe/London
+sudo timedatectl set-ntp true
+```
+
+Replace `Europe/London` with the deployment's actual timezone.
+
+If `System clock synchronized` remains `no`, repair the host's configured NTP
+client or network access before trusting timestamps.
 
 ## Configuration is rejected
 
@@ -173,8 +204,9 @@ labpulse doctor
 labpulse logs --tail 100 labpulse-pressure-monitor
 ```
 
-If real paths appear in diagnostics, rerun fake setup so Compose mounts
-`config.fake.yaml`.
+If real paths appear in diagnostics, run `labpulse setup --fake-usb` once to
+select fake mode. Subsequent `labpulse config` runs preserve that mode and
+regenerate `config.fake.yaml`.
 
 ## Serial service repeatedly reconnects
 
@@ -215,6 +247,13 @@ LabPulse deliberately constructs the DHT11 with `use_pulseio=True` on Raspberry
 Pi. Confirm that the current container is deployed before comparing runtime
 behavior with driver tests. A one-time sensor power cycle may still be needed
 if a previous process left the DHT11 data line electrically wedged.
+
+Occasional rejected samples are expected from this timing-sensitive sensor.
+Requiring an extended, complete power removal before the sensor responds again
+is not normal recovery behavior. If VCC falls close to zero while power is
+removed but the sensor repeatedly fails after short outages, treat the DHT11
+as marginal hardware. Cross-test it against a known-good sensor and replace it
+rather than depending on container restarts or a watchdog to revive it.
 
 The DHT11 real-hardware fault script does not start PulseIn against masked
 device nodes. It injects a nonexistent test pin so failure occurs before the

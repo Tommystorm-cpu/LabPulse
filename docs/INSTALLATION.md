@@ -36,6 +36,18 @@ sudo docker run hello-world
 sudo docker compose version
 ```
 
+Operators who intentionally use Docker without sudo can add their account to
+the Docker group, log out and back in, then select that command consistently:
+
+```bash
+sudo usermod -aG docker "$USER"
+export LABPULSE_DOCKER_COMMAND=docker
+docker run hello-world
+```
+
+Docker-group membership grants root-equivalent access to the host. Keep the
+default `sudo docker` route if that is not acceptable for the installation.
+
 Install pipx through the operating-system package manager where available:
 
 ```bash
@@ -50,6 +62,22 @@ the system Python.
 
 Real SMS delivery additionally requires ModemManager and a supported modem. See
 [SMS](SMS.md).
+
+Correct host time is required for Home Assistant history, alarm ordering and
+log timestamps. Before installation, set the intended timezone and confirm NTP
+synchronization:
+
+```bash
+timedatectl list-timezones
+sudo timedatectl set-timezone Europe/London
+sudo timedatectl set-ntp true
+timedatectl status
+```
+
+Replace `Europe/London` with the deployment's actual timezone.
+
+Do not proceed with alarm acceptance until the local time and timezone are
+correct and `System clock synchronized` reports `yes`.
 
 ## Install the command
 
@@ -121,7 +149,8 @@ labpulse open
 ```
 
 From another computer, browse to `http://<pi-address>:8123`. On first startup,
-create the Home Assistant account and add the MQTT integration with:
+create the Home Assistant account before evaluating LabPulse entities. Then
+add the MQTT integration with:
 
 ```text
 Broker: 127.0.0.1
@@ -130,6 +159,39 @@ Port: 1883
 
 Home Assistant uses host networking. LabPulse Python containers deliberately
 use the Compose hostname `mosquitto:1883` instead.
+
+MQTT integration must be connected before LabPulse discovery, service health
+and alarm entities are considered ready. Retained discovery messages should
+then populate the dashboard without restarting sensor containers.
+
+## First-install acceptance
+
+Complete this check before disabling notification safeguards:
+
+```bash
+labpulse doctor
+labpulse ps
+labpulse logs --tail 50
+```
+
+Confirm:
+
+1. Doctor reports no failures; resolve clock, Docker, hardware or watchdog
+   warnings that apply to this deployment.
+2. Every expected Compose service is running.
+3. Home Assistant reports the MQTT integration as connected.
+4. The Diagnostics view shows each physical service online and measurements
+   continue updating.
+5. Alarm Setup shows Global Mute enabled and Test mode enabled.
+6. If SMS is configured, add a test recipient and use the phone-book
+   notification control to verify one real test message.
+7. Run `labpulse restart`, repeat `labpulse doctor`, and confirm measurements
+   and service health recover without false recovery notifications.
+8. Review recipients, thresholds and mute controls before deliberately
+   disabling Test mode or Global Mute.
+
+Retain a copy of `~/labpulse-live/config.yaml` after acceptance. See
+[What to back up](#what-to-back-up) for the remaining state.
 
 ## Create a simulated installation
 
@@ -149,8 +211,8 @@ service to pseudo-serial endpoints while preserving service names,
 measurements, and Home Assistant identities.
 
 Always edit `config.yaml`, never `config.fake.yaml`. The guarded
-`labpulse config` command currently applies real-hardware Compose, so use a
-normal editor in fake mode and rerun `labpulse setup --fake-usb` afterward.
+`labpulse config` command detects the active fake-USB Compose mount,
+regenerates `config.fake.yaml`, and keeps the deployment simulated.
 
 ## Alternate live directory
 
@@ -190,7 +252,7 @@ Until releases exist, update from the checkout:
 ```bash
 cd ~/LabPulse
 git pull
-pipx install --editable . --force
+pipx install . --force
 labpulse setup --backup
 labpulse up --build
 labpulse doctor

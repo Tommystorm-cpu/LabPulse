@@ -8,8 +8,8 @@ directory. Commands default to `~/labpulse-live`.
 ```text
 labpulse setup       create or refresh the live installation
 labpulse up          start all or selected services
-labpulse down        stop and remove containers
-labpulse restart     restart all or selected services
+labpulse down        stop and remove all or selected containers
+labpulse restart     restart or rebuild all or selected services
 labpulse ps          show container status
 labpulse logs        show container logs
 labpulse config      safely edit and apply configuration
@@ -49,11 +49,23 @@ labpulse restart homeassistant
 labpulse restart labpulse-pressure-monitor
 ```
 
-Stop and remove containers without deleting bind-mounted configuration, logs,
-Mosquitto data, or Home Assistant state:
+Rebuild images and force recreation after source or image changes:
+
+```bash
+labpulse restart --build
+labpulse restart --build labpulse-room-environment
+```
+
+A targeted build restart recreates only the named services and does not restart
+their dependencies.
+
+Stop and remove all containers, or only selected services, without deleting
+bind-mounted configuration, logs, Mosquitto data, or Home Assistant state:
 
 ```bash
 labpulse down
+labpulse down labpulse-room-environment
+labpulse down labpulse-pressure-monitor labpulse-pump-room
 ```
 
 ## Inspect containers and logs
@@ -86,29 +98,31 @@ also include their numeric UTC offset so daylight-saving changes are explicit.
 labpulse config
 ```
 
-This guarded workflow currently applies real-hardware configuration. In a
-fake-USB installation, edit `~/labpulse-live/config.yaml` directly and run
-`labpulse setup --fake-usb` so the derived runtime config and Compose mounts
-remain simulated.
+This guarded workflow preserves the active runtime mode. In a fake-USB
+installation, it detects the active Compose mount, regenerates
+`config.fake.yaml`, and keeps the Compose deployment simulated. In either mode,
+the user-owned source remains `~/labpulse-live/config.yaml`.
 
 The command:
 
 1. opens a temporary copy beside the live config;
 2. uses `$VISUAL`, then `$EDITOR`, then `nano`;
 3. validates the edited YAML and typed configuration;
-4. exercises Compose and Home Assistant generation;
-5. keeps one rolling `config.yaml.edit-backup`;
-6. replaces the live config only after validation;
-7. runs `docker compose config`;
-8. runs Home Assistant's configuration check;
-9. recreates the stack and shows its status.
+4. derives and validates `config.fake.yaml` when fake mode is active;
+5. exercises Compose and Home Assistant generation for the active mode;
+6. keeps one rolling source backup, plus a fake-runtime backup when applicable;
+7. replaces the live config only after validation;
+8. runs `docker compose config`;
+9. runs Home Assistant's configuration check;
+10. recreates the stack and shows its status.
 
 If validation or Home Assistant checking fails, the command restores the prior
 config and deterministic generated output.
 
-The command uses `sudo docker` in its current Linux workflow. Set
-`LABPULSE_DOCKER_COMMAND` for ordinary lifecycle commands when Docker is
-configured differently.
+The guarded configuration workflow uses the same Docker command selection as
+every other `labpulse` lifecycle command. Set
+`LABPULSE_DOCKER_COMMAND=docker` for Docker-group access; otherwise non-root
+Linux installations default to `sudo docker`.
 
 ## Run diagnostics
 
@@ -120,16 +134,19 @@ Doctor is read-only. It checks:
 
 - the live directory;
 - source and active runtime configuration;
-- fake-mode runtime config detection;
+- explicit real-hardware or fake-USB runtime-mode detection;
+- host timezone and NTP synchronization;
+- hardware-watchdog availability and systemd runtime timeout;
 - generated Home Assistant files;
 - declared host paths for enabled drivers;
-- Docker Compose availability and syntax;
+- Docker daemon access, Engine and Compose versions, and Compose syntax;
 - defined versus running Compose services;
 - local MQTT reachability on `127.0.0.1:1883`;
 - local Home Assistant reachability on `127.0.0.1:8123`.
 
 Results are labelled `PASS`, `WARN`, `FAIL`, or `SKIP`. Any required failure
-returns shell status 1.
+returns shell status 1. Failures include the next corrective command or the
+hardware path, cable, permission, or log check an operator should perform.
 
 Use a longer endpoint timeout on a slow Pi:
 
@@ -239,6 +256,47 @@ Always finish with `restore`, including after an interrupted test. Do not run
 `labpulse config`, `labpulse setup`, or `labpulse up` while a fault is active,
 because those commands may recreate the service outside the test override.
 Docker Compose 2.24.4 or newer is required for the X1200 device-list override.
+
+## Host hardware watchdog
+
+For the Raspberry Pi 5 reference deployment, use the built-in hardware
+watchdog before adding an external watchdog. Add this setting to
+`/boot/firmware/config.txt`:
+
+```ini
+kernel_watchdog_timeout=30
+```
+
+Create `/etc/systemd/system.conf.d/watchdog.conf`:
+
+```bash
+sudo mkdir -p /etc/systemd/system.conf.d
+printf '[Manager]\nRuntimeWatchdogSec=30s\nRebootWatchdogSec=5min\n' | \
+  sudo tee /etc/systemd/system.conf.d/watchdog.conf >/dev/null
+sudo reboot
+```
+
+After reboot, verify the effective configuration:
+
+```bash
+systemctl show \
+  --property=RuntimeWatchdogUSec \
+  --property=RebootWatchdogUSec
+sudo wdctl /dev/watchdog0
+journalctl -b | grep -i watchdog
+```
+
+The watchdog resets the Pi if systemd can no longer service the hardware timer.
+Docker restart policies and LabPulse alarms remain responsible for individual
+service failures. Do not deliberately hang or panic a production Pi merely to
+test the watchdog; reserve a destructive watchdog-reset test for a maintenance
+window with current backups.
+
+An external watchdog is not part of the current reference deployment. If one
+is later required, it must independently monitor a heartbeat and control the
+X1200 output or Pi power path with boot grace and reset-loop protection.
+Cycling only the mains input is insufficient while the X1200 battery is able to
+keep the Pi powered.
 
 ## Direct generation helpers
 

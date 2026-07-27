@@ -10,6 +10,12 @@ from yaml.nodes import MappingNode, ScalarNode
 
 
 FAKE_UPS_PORT = "/tmp/labpulse-fake-serial/ups_monitor"
+FAKE_SERIAL_REPLACEMENTS = {
+    "FAKE_PUMP_ROOM_PORT": "/tmp/labpulse-fake-serial/pump_room",
+    "FAKE_PRESSURE_PORT": "/tmp/labpulse-fake-serial/pressure",
+    "FAKE_TURBO_PUMP_PORT": "/tmp/labpulse-fake-serial/turbo_pump",
+    "FAKE_UPS_PORT": FAKE_UPS_PORT,
+}
 DEFAULT_FAKE_POWER_SERVICE = {
     "enabled": True,
     "driver": {
@@ -47,6 +53,28 @@ DEFAULT_FAKE_POWER_SERVICE = {
         "restore_confirm_seconds": 5,
     },
 }
+
+
+def derive_fake_config(text: str) -> str:
+    """Derive the simulator runtime YAML from the user-owned source YAML."""
+
+    for source, replacement in FAKE_SERIAL_REPLACEMENTS.items():
+        text = text.replace(source, replacement, 1)
+
+    payload = yaml.safe_load(text) or {}
+    services = payload.get("services", {})
+    room_service = services.get("room_environment")
+    if (
+        isinstance(room_service, dict)
+        and isinstance(room_service.get("driver"), dict)
+        and room_service["driver"].get("type") == "labpulse.dht11"
+    ):
+        text = convert_service_to_fake_serial(
+            text,
+            "room_environment",
+            "/tmp/labpulse-fake-serial/room_environment",
+        )
+    return convert_power_service_to_fake_serial(text)
 
 
 def convert_power_service_to_fake_serial(text: str) -> str:

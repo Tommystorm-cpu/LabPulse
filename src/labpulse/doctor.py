@@ -134,7 +134,11 @@ def _validate_config(
     """Validate one LabPulse configuration and record its outcome."""
 
     if not path.is_file():
-        report.add(CheckStatus.FAIL, name, f"missing {path}")
+        report.add(
+            CheckStatus.FAIL,
+            name,
+            f"missing {path}; run 'labpulse setup' to restore managed files",
+        )
         return None
     try:
         config = LabPulseConfig.model_validate(_read_yaml(path))
@@ -203,7 +207,9 @@ def _check_hardware(
             report.add(
                 CheckStatus.FAIL,
                 f"Hardware {service_name}",
-                "missing " + ", ".join(missing),
+                "missing "
+                + ", ".join(missing)
+                + "; check the cable, configured device path, and host permissions",
             )
         else:
             detail = ", ".join(sorted(str(path) for path in paths))
@@ -250,13 +256,41 @@ def _check_docker(
     if docker_prefix is None:
         report.add(
             CheckStatus.FAIL,
-            "Docker Compose",
+            "Docker daemon",
             "Docker command is not configured correctly",
         )
+        report.add(CheckStatus.SKIP, "Docker Compose", "Docker daemon is unavailable")
         report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
         return
 
     command = [*docker_prefix, "compose"]
+    try:
+        engine = _run(
+            runner,
+            [*docker_prefix, "version", "--format", "{{.Server.Version}}"],
+            live_dir,
+        )
+    except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
+        report.add(
+            CheckStatus.FAIL,
+            "Docker daemon",
+            f"{error}; install/start Docker or correct LABPULSE_DOCKER_COMMAND",
+        )
+        report.add(CheckStatus.SKIP, "Docker Compose", "Docker daemon is unavailable")
+        report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
+        return
+    if engine.returncode != 0:
+        report.add(
+            CheckStatus.FAIL,
+            "Docker daemon",
+            f"{_process_error(engine)}; check Docker service status and user permissions",
+        )
+        report.add(CheckStatus.SKIP, "Docker Compose", "Docker daemon is unavailable")
+        report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
+        return
+    engine_version = engine.stdout.strip() or "version unavailable"
+    report.add(CheckStatus.PASS, "Docker daemon", f"server {engine_version} is reachable")
+
     try:
         version = _run(runner, [*command, "version"], live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
@@ -267,7 +301,12 @@ def _check_docker(
         report.add(CheckStatus.FAIL, "Docker Compose", _process_error(version))
         report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
         return
-    report.add(CheckStatus.PASS, "Docker Compose", "command is available")
+    compose_version = version.stdout.strip().splitlines()
+    report.add(
+        CheckStatus.PASS,
+        "Docker Compose",
+        compose_version[-1] if compose_version else "command is available",
+    )
 
     try:
         validation = _run(runner, [*command, "config", "--quiet"], live_dir)
@@ -300,7 +339,9 @@ def _check_docker(
         report.add(
             CheckStatus.FAIL,
             "Containers",
-            "not running: " + ", ".join(missing),
+            "not running: "
+            + ", ".join(missing)
+            + "; run 'labpulse up' and inspect 'labpulse logs SERVICE'",
         )
     else:
         report.add(
@@ -324,9 +365,120 @@ def _check_tcp(
         connection = connector((host, port), timeout=timeout)
         connection.close()
     except (OSError, TimeoutError) as error:
-        report.add(CheckStatus.FAIL, name, f"{host}:{port} is unavailable ({error})")
+        service = "mosquitto" if name == "MQTT" else "homeassistant"
+        report.add(
+            CheckStatus.FAIL,
+            name,
+            f"{host}:{port} is unavailable ({error}); "
+            f"run 'labpulse restart {service}' and inspect its logs",
+        )
         return
     report.add(CheckStatus.PASS, name, f"{host}:{port} accepted a connection")
+
+
+def _check_clock(
+    report: DoctorReport,
+    live_dir: Path,
+    runner: CommandRunner,
+) -> None:
+    """Report host timezone and NTP synchronization without changing either."""
+
+    command = [
+        "timedatectl",
+        "show",
+        "--property=Timezone",
+        "--property=NTPSynchronized",
+    ]
+    try:
+        result = _run(runner, command, live_dir)
+    except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
+        report.add(
+            CheckStatus.WARN,
+            "Host clock",
+            f"could not query timedatectl ({error}); verify timezone and NTP manually",
+        )
+        return
+    if result.returncode != 0:
+        report.add(
+            CheckStatus.WARN,
+            "Host clock",
+            f"{_process_error(result)}; run 'timedatectl status' and restore NTP",
+        )
+        return
+
+    properties = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            properties[key.strip()] = value.strip()
+    timezone = properties.get("Timezone", "unknown timezone")
+    synchronized = properties.get("NTPSynchronized", "").lower() == "yes"
+    if not synchronized:
+        report.add(
+            CheckStatus.WARN,
+            "Host clock",
+            f"{timezone}; NTP is not synchronized. Run 'timedatectl status' "
+            "before trusting timestamps or alarm ordering",
+        )
+        return
+    report.add(CheckStatus.PASS, "Host clock", f"{timezone}; NTP synchronized")
+
+
+def _check_watchdog(
+    report: DoctorReport,
+    live_dir: Path,
+    runner: CommandRunner,
+    watchdog_path: Path,
+) -> None:
+    """Check that a hardware watchdog exists and systemd is servicing it."""
+
+    if not watchdog_path.exists():
+        report.add(
+            CheckStatus.WARN,
+            "Hardware watchdog",
+            "watchdog0 is unavailable; configure kernel_watchdog_timeout "
+            "before relying on automatic recovery",
+        )
+        return
+    try:
+        result = _run(
+            runner,
+            [
+                "systemctl",
+                "show",
+                "--property=RuntimeWatchdogUSec",
+                "--value",
+            ],
+            live_dir,
+        )
+    except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
+        report.add(
+            CheckStatus.WARN,
+            "Hardware watchdog",
+            f"could not query systemd ({error}); verify RuntimeWatchdogSec manually",
+        )
+        return
+    if result.returncode != 0:
+        report.add(
+            CheckStatus.WARN,
+            "Hardware watchdog",
+            f"{_process_error(result)}; verify RuntimeWatchdogSec in system.conf",
+        )
+        return
+
+    timeout = result.stdout.strip()
+    if timeout.lower() in {"", "0", "0s", "0us", "off", "infinity"}:
+        report.add(
+            CheckStatus.WARN,
+            "Hardware watchdog",
+            "device exists but RuntimeWatchdogSec is disabled",
+        )
+        return
+    report.add(
+        CheckStatus.PASS,
+        "Hardware watchdog",
+        f"systemd runtime timeout is {timeout}",
+    )
 
 
 def diagnose(
@@ -336,6 +488,7 @@ def diagnose(
     timeout: float = 1.0,
     command_runner: CommandRunner = subprocess.run,
     connector: Connector = socket.create_connection,
+    watchdog_path: Path = Path("/sys/class/watchdog/watchdog0"),
 ) -> DoctorReport:
     """Run all read-only LabPulse deployment checks."""
 
@@ -348,6 +501,8 @@ def diagnose(
         )
         return report
     report.add(CheckStatus.PASS, "Installation", "live directory exists")
+    _check_clock(report, live_dir, command_runner)
+    _check_watchdog(report, live_dir, command_runner, watchdog_path)
 
     compose_path = live_dir / "compose.yaml"
     compose_data: Any = None
@@ -373,6 +528,23 @@ def diagnose(
     source_config_path = (live_dir / "config.yaml").resolve()
     source_config = _validate_config(report, source_config_path, "Source configuration")
     runtime_config_path = _runtime_config_path(live_dir, compose_data)
+    simulated = runtime_config_path.name == "config.fake.yaml"
+    if compose_data is None:
+        report.add(
+            CheckStatus.SKIP,
+            "Runtime mode",
+            "cannot determine mode until compose.yaml is valid",
+        )
+    else:
+        report.add(
+            CheckStatus.PASS,
+            "Runtime mode",
+            (
+                "fake USB via config.fake.yaml"
+                if simulated
+                else "real hardware via config.yaml"
+            ),
+        )
     if runtime_config_path == source_config_path.resolve():
         runtime_config = source_config
     else:
@@ -396,7 +568,9 @@ def diagnose(
         report.add(
             CheckStatus.FAIL,
             "Generated Home Assistant files",
-            "missing " + ", ".join(missing_generated),
+            "missing "
+            + ", ".join(missing_generated)
+            + "; run 'labpulse config' to validate and regenerate them",
         )
     else:
         report.add(
@@ -408,7 +582,7 @@ def diagnose(
     _check_hardware(
         report,
         runtime_config,
-        simulated=runtime_config_path.name == "config.fake.yaml",
+        simulated=simulated,
     )
 
     if compose_services:

@@ -9,6 +9,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import ServiceConfig
+from labpulse.hardware.cli import _target_summary
 from labpulse.hardware.drivers.dht11 import Driver as Dht11Driver
 from labpulse.hardware.registry import build_driver, get_driver_spec
 from labpulse.hardware.drivers.serial_pipe import (
@@ -79,6 +80,18 @@ def test_serial_driver_builds() -> None:
     assert_equal(driver.name, "pump_room", "driver name")
     assert_equal(driver.port, "/tmp/labpulse-fake-serial/pump_room", "port")
     assert_equal(driver.baud_rate, 9600, "baud rate")
+
+
+def test_operator_target_summary_uses_hardware_identity() -> None:
+    """Log useful hardware targets without relying on object representations."""
+
+    summary = _target_summary(
+        SerialPipeOptions(
+            port="/dev/serial/by-id/usb-labpulse",
+            baud_rate=9600,
+        )
+    )
+    assert_equal(summary, "port=/dev/serial/by-id/usb-labpulse", "target summary")
 
 
 def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
@@ -238,6 +251,7 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
 
 TESTS = [
     ("serial driver builds", test_serial_driver_builds),
+    ("operator target summary", test_operator_target_summary_uses_hardware_identity),
     (
         "serial factory keeps GPIO dependencies unloaded",
         test_serial_factory_keeps_gpio_dependencies_unloaded,

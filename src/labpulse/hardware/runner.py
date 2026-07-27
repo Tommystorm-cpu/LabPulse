@@ -88,7 +88,7 @@ class HardwareRunner:
         self.print_measurements = print_measurements
         self._monotonic = monotonic
         self._sleep = sleep
-        self.logger = logger or logging.getLogger("HardwareRunner")
+        self.logger = logger or logging.getLogger(f"HardwareRunner.{driver.name}")
         self.connected = False
         self.status = ServiceStatus.DISCONNECTED.value
         self.next_connect_at = self._monotonic()
@@ -259,9 +259,16 @@ class HardwareRunner:
         if freshness_reference is None:
             return
         if now - freshness_reference >= self.policy.maximum_measurement_age_seconds:
+            if self.last_success_at is None:
+                last_success = "none since this connection opened"
+            else:
+                last_success = f"{now - self.last_success_at:.1f} seconds ago"
             self.logger.error(
-                "No valid hardware readings for %.1f seconds; reinitializing driver",
+                "No valid hardware readings for %.1f seconds "
+                "(last successful reading: %s); reinitializing driver. "
+                "Check the configured device, cable, power, and service logs.",
                 now - freshness_reference,
+                last_success,
             )
             self._lose_connection(ServiceStatus.ERROR)
 
@@ -295,7 +302,20 @@ class HardwareRunner:
         normalized = status.value if isinstance(status, ServiceStatus) else status
         if self._status_published and normalized == self.status:
             return
+        previous = self.status
         self.status = normalized
         self._status_published = True
+        now = self._monotonic()
+        last_success = (
+            "none"
+            if self.last_success_at is None
+            else f"{max(0.0, now - self.last_success_at):.1f} seconds ago"
+        )
+        self.logger.info(
+            "Service status changed: %s -> %s (last successful reading: %s)",
+            previous,
+            normalized,
+            last_success,
+        )
         if self.publisher:
             self.publisher.publish_status(normalized)

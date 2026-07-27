@@ -311,13 +311,15 @@ serial placeholders, converts DHT11 to simulated serial, and converts the power
 service to the UPS pseudo-serial endpoint. It does not alter `config.yaml`.
 
 Do not edit `config.fake.yaml` manually. The current `labpulse config` workflow
-regenerates real-hardware Compose and does not preserve fake mode. While using
-fake mode, edit the source directly and rerun fake setup:
+detects whether generated Compose is using fake USB, regenerates
+`config.fake.yaml` from the edited source, and preserves that runtime mode:
 
 ```bash
-${EDITOR:-nano} ~/labpulse-live/config.yaml
-labpulse setup --fake-usb
+labpulse config
 ```
+
+The guarded workflow validates both the edited source and derived fake runtime
+configuration before replacing either file.
 
 ## Validation and application
 

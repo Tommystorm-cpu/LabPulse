@@ -72,8 +72,8 @@ setup, development installs, and updates.
 labpulse setup       create or refresh ~/labpulse-live
 labpulse config      safely edit, validate, generate, and apply config
 labpulse up          start the stack
-labpulse down        stop the stack without deleting persistent data
-labpulse restart     restart all or selected services
+labpulse down        stop all or selected services without deleting persistent data
+labpulse restart     restart all or selected services; use --build to rebuild
 labpulse ps          show container status
 labpulse logs        inspect container logs
 labpulse doctor      run read-only installation and runtime diagnostics

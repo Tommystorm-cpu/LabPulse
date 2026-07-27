@@ -256,6 +256,23 @@ def test_transient_failure_logs_are_rate_limited() -> None:
     assert_equal(logger.warning.call_count, 2, "warning after interval")
 
 
+def test_status_logs_include_freshness_context() -> None:
+    """Put the service transition and last-reading state in operator logs."""
+
+    logger = Mock()
+    driver = FakeDriver(read_results=[ReadingBatch({"temperature": 21.0})])
+    runner, _, _ = make_runner(driver, logger=logger)
+
+    runner.step()
+    runner.step()
+    rendered_calls = [" ".join(str(value) for value in call.args) for call in logger.info.call_args_list]
+    if not any(
+        "Service status changed" in call and "last successful reading" in call
+        for call in rendered_calls
+    ):
+        raise AssertionError(f"status log lacks freshness context: {rendered_calls!r}")
+
+
 def test_connection_loss_closes_and_reconnects() -> None:
     """Close a lost connection, wait, reconnect, and resume publication."""
 
@@ -382,6 +399,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
         test_transient_failures_recycle_stale_driver_and_recover,
     ),
     ("transient log rate limit", test_transient_failure_logs_are_rate_limited),
+    ("status freshness logging", test_status_logs_include_freshness_context),
     ("connection loss and recovery", test_connection_loss_closes_and_reconnects),
     ("unexpected read error", test_unexpected_read_error_enters_error_and_recovers),
     ("component issue", test_component_issue_keeps_partial_measurements),

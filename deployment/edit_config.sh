@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
 CONFIG_PATH="$PROJECT_DIR/config.yaml"
 CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"
+FAKE_CONFIG_PATH="$PROJECT_DIR/config.fake.yaml"
+FAKE_CONFIG_BACKUP="$PROJECT_DIR/config.fake.yaml.edit-backup"
+COMPOSE_PATH="$PROJECT_DIR/compose.yaml"
 COMPOSE_SCRIPT="$PROJECT_DIR/generate_compose.sh"
 HOMEASSISTANT_SCRIPT="$PROJECT_DIR/generate_homeassistant_config.sh"
 HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
@@ -14,6 +17,9 @@ HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 cleanup() {
   if [ -n "${WORK_CONFIG:-}" ] && [ -e "$WORK_CONFIG" ]; then
     rm -f "$WORK_CONFIG"
+  fi
+  if [ -n "${WORK_FAKE_CONFIG:-}" ] && [ -e "$WORK_FAKE_CONFIG" ]; then
+    rm -f "$WORK_FAKE_CONFIG"
   fi
   if [ -n "${CHECK_DIR:-}" ] && [ -d "$CHECK_DIR" ]; then
     rm -rf "$CHECK_DIR"
@@ -34,8 +40,27 @@ if [ ! -x "$HOST_PYTHON" ]; then
   exit 1
 fi
 
+DOCKER_COMMAND_TEXT="${LABPULSE_DOCKER_COMMAND:-sudo docker}"
+read -r -a DOCKER_PARTS <<< "$DOCKER_COMMAND_TEXT"
+if [ "${#DOCKER_PARTS[@]}" -eq 0 ]; then
+  echo "ERROR: LABPULSE_DOCKER_COMMAND resolved to an empty command." >&2
+  exit 1
+fi
+
+# Preserve the runtime mode selected by the current generated Compose file.
+ACTIVE_FAKE_USB=0
+if [ -f "$COMPOSE_PATH" ] && \
+  grep -Eq 'config\.fake\.yaml:/app/config\.yaml(:ro)?' "$COMPOSE_PATH"; then
+  ACTIVE_FAKE_USB=1
+fi
+COMPOSE_MODE_ARGS=()
+if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
+  COMPOSE_MODE_ARGS+=("--fake-usb")
+fi
+
 # Work beside config.yaml so any relative config paths keep the same base directory.
 WORK_CONFIG="$(mktemp "$PROJECT_DIR/.config.yaml.editing.XXXXXX")"
+WORK_FAKE_CONFIG=""
 CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/labpulse-config-check.XXXXXX")"
 cp -p "$CONFIG_PATH" "$WORK_CONFIG"
 
@@ -69,45 +94,86 @@ load_config(Path(sys.argv[1]))
 print("Configuration schema is valid.")
 PY
 
+RUNTIME_WORK_CONFIG="$WORK_CONFIG"
+if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
+  WORK_FAKE_CONFIG="$(mktemp "$PROJECT_DIR/.config.fake.yaml.editing.XXXXXX")"
+  PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
+    "$HOST_PYTHON" - "$WORK_CONFIG" "$WORK_FAKE_CONFIG" <<'PY'
+from pathlib import Path
+import sys
+
+from labpulse.common.config import load_config
+from labpulse.common.fake_config import derive_fake_config
+
+source_path = Path(sys.argv[1])
+runtime_path = Path(sys.argv[2])
+runtime_path.write_text(derive_fake_config(source_path.read_text()))
+load_config(runtime_path)
+print("Fake-USB runtime configuration is valid.")
+PY
+  RUNTIME_WORK_CONFIG="$WORK_FAKE_CONFIG"
+fi
+
 # Exercise both generators away from the live outputs before installing anything.
 echo "Checking generated Compose and Home Assistant configuration..."
 bash "$COMPOSE_SCRIPT" \
-  --config "$WORK_CONFIG" \
+  --config "$RUNTIME_WORK_CONFIG" \
   --output "$CHECK_DIR/compose.yaml" \
-  --project-dir "$PROJECT_DIR"
+  --project-dir "$PROJECT_DIR" \
+  "${COMPOSE_MODE_ARGS[@]}"
 bash "$HOMEASSISTANT_SCRIPT" \
-  --config "$WORK_CONFIG" \
+  --config "$RUNTIME_WORK_CONFIG" \
   --ha-config-dir "$CHECK_DIR/homeassistant/config" \
   --project-dir "$PROJECT_DIR"
 
 # Keep one predictable rollback copy instead of accumulating timestamped backups.
 cp -p "$CONFIG_PATH" "$CONFIG_BACKUP"
+if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
+  if [ ! -f "$FAKE_CONFIG_PATH" ]; then
+    echo "ERROR: Active fake-USB mode is missing $FAKE_CONFIG_PATH." >&2
+    echo "Run 'labpulse setup --fake-usb' to repair the deployment." >&2
+    exit 1
+  fi
+  cp -p "$FAKE_CONFIG_PATH" "$FAKE_CONFIG_BACKUP"
+fi
 cp -p "$WORK_CONFIG" "$CONFIG_PATH"
+RUNTIME_CONFIG="$CONFIG_PATH"
+if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
+  cp -p "$WORK_FAKE_CONFIG" "$FAKE_CONFIG_PATH"
+  RUNTIME_CONFIG="$FAKE_CONFIG_PATH"
+fi
 
 # Restore the prior source of truth and its deterministic outputs after a failed check.
 restore_previous_config() {
   echo "Restoring the previous validated configuration..." >&2
   cp -p "$CONFIG_BACKUP" "$CONFIG_PATH"
+  local restored_runtime_config="$CONFIG_PATH"
+  if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
+    cp -p "$FAKE_CONFIG_BACKUP" "$FAKE_CONFIG_PATH"
+    restored_runtime_config="$FAKE_CONFIG_PATH"
+  fi
   bash "$COMPOSE_SCRIPT" \
-    --config "$CONFIG_PATH" \
+    --config "$restored_runtime_config" \
     --output "$PROJECT_DIR/compose.yaml" \
-    --project-dir "$PROJECT_DIR"
+    --project-dir "$PROJECT_DIR" \
+    "${COMPOSE_MODE_ARGS[@]}"
   bash "$HOMEASSISTANT_SCRIPT" \
-    --config "$CONFIG_PATH" \
+    --config "$restored_runtime_config" \
     --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
     --project-dir "$PROJECT_DIR"
 }
 
 echo "Generating live configuration..."
 if ! bash "$COMPOSE_SCRIPT" \
-  --config "$CONFIG_PATH" \
+  --config "$RUNTIME_CONFIG" \
   --output "$PROJECT_DIR/compose.yaml" \
-  --project-dir "$PROJECT_DIR"; then
+  --project-dir "$PROJECT_DIR" \
+  "${COMPOSE_MODE_ARGS[@]}"; then
   restore_previous_config
   exit 1
 fi
 if ! bash "$HOMEASSISTANT_SCRIPT" \
-  --config "$CONFIG_PATH" \
+  --config "$RUNTIME_CONFIG" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
   --project-dir "$PROJECT_DIR"; then
   restore_previous_config
@@ -115,22 +181,22 @@ if ! bash "$HOMEASSISTANT_SCRIPT" \
 fi
 
 cd "$PROJECT_DIR"
-if ! sudo docker compose config --quiet; then
+if ! "${DOCKER_PARTS[@]}" compose config --quiet; then
   echo "Docker Compose rejected the generated configuration." >&2
   restore_previous_config
   exit 1
 fi
 
 echo "Checking the generated YAML with Home Assistant..."
-if ! RUNNING_SERVICES="$(sudo docker compose ps --status running --services)"; then
+if ! RUNNING_SERVICES="$("${DOCKER_PARTS[@]}" compose ps --status running --services)"; then
   echo "Could not inspect the running Compose services." >&2
   restore_previous_config
   exit 1
 fi
 if grep -qx "homeassistant" <<< "$RUNNING_SERVICES"; then
-  HA_CHECK=(sudo docker compose exec -T homeassistant)
+  HA_CHECK=("${DOCKER_PARTS[@]}" compose exec -T homeassistant)
 else
-  HA_CHECK=(sudo docker compose run --rm --no-deps homeassistant)
+  HA_CHECK=("${DOCKER_PARTS[@]}" compose run --rm --no-deps homeassistant)
 fi
 if ! "${HA_CHECK[@]}" python -m homeassistant --script check_config --config /config; then
   echo "Home Assistant rejected the generated configuration." >&2
@@ -139,13 +205,14 @@ if ! "${HA_CHECK[@]}" python -m homeassistant --script check_config --config /co
 fi
 
 echo "Refreshing LabPulse and Home Assistant..."
-sudo docker compose up -d --remove-orphans --force-recreate
-sudo docker compose ps
+"${DOCKER_PARTS[@]}" compose up -d --remove-orphans --force-recreate
+"${DOCKER_PARTS[@]}" compose ps
 
 cat <<EOF
 
 Configuration applied successfully.
-Live config: $CONFIG_PATH
+Source config: $CONFIG_PATH
+Runtime config: $RUNTIME_CONFIG
 Rollback copy: $CONFIG_BACKUP
 
 SAFETY REMINDER

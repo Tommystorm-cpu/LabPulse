@@ -211,6 +211,11 @@ deliberately turn Test mode off before normal recipients can receive alerts.
 Turning global mute on or off does not overwrite setup or measurement mute
 choices.
 
+All notification mutes are intentionally manual and have no automatic expiry.
+Home Assistant restores them after ordinary restarts, and the dashboard keeps
+the active mute state visible. This avoids notifications silently resuming
+after a maintenance window; an operator must explicitly unmute them.
+
 ## Power alarm model
 
 A configured power service has states:

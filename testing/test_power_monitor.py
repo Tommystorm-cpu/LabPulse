@@ -12,7 +12,10 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig, ServiceConfig, load_config
-from labpulse.common.fake_config import convert_power_service_to_fake_serial
+from labpulse.common.fake_config import (
+    convert_power_service_to_fake_serial,
+    derive_fake_config,
+)
 from labpulse.homeassistant.cli import main as generate_homeassistant
 from labpulse.homeassistant.render_model import RenderModel
 
@@ -142,6 +145,24 @@ def test_fake_usb_converts_starter_power_service() -> None:
         raise AssertionError("starter fake UPS measurements are incomplete")
     if service.power_detection is None:
         raise AssertionError("starter fake UPS lacks power lifecycle timing")
+
+
+def test_fake_usb_derivation_converts_direct_hardware() -> None:
+    """Derive the complete runtime config used by setup and guarded editing."""
+
+    starter = (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8")
+    converted_text = derive_fake_config(starter)
+    converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
+    room = converted.services["room_environment"]
+    power = converted.services["ups_monitor"]
+    if room.driver.type != "labpulse.serial_pipe":
+        raise AssertionError("fake derivation retained the DHT11 driver")
+    if room.driver.options.get("port") != "/tmp/labpulse-fake-serial/room_environment":
+        raise AssertionError("fake derivation selected the wrong room endpoint")
+    if power.driver.options.get("port") != "/tmp/labpulse-fake-serial/ups_monitor":
+        raise AssertionError("fake derivation selected the wrong UPS endpoint")
+    if "FAKE_" in converted_text:
+        raise AssertionError("fake derivation retained a starter port placeholder")
 
 
 def render_power() -> tuple[dict, dict, str]:
@@ -333,6 +354,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("configuration and identity", test_config_validation_and_stable_identity),
     ("fake conversion", test_fake_usb_conversion_preserves_power_identity_and_metadata),
     ("starter fake UPS", test_fake_usb_converts_starter_power_service),
+    ("complete fake derivation", test_fake_usb_derivation_converts_direct_hardware),
     ("direct lifecycle", test_direct_lifecycle_and_confirmation_semantics),
     ("fault/restart/SMS", test_fault_reconciliation_and_sms_contract),
     ("dashboard", test_power_dashboard_rendering),

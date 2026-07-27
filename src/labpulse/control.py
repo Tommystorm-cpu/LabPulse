@@ -129,6 +129,11 @@ def run_config_editor(live_dir: Path) -> int:
     environment = os.environ.copy()
     environment["LABPULSE_LIVE_DIR"] = str(live_dir)
     try:
+        environment["LABPULSE_DOCKER_COMMAND"] = shlex.join(docker_command())
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
+    try:
         return subprocess.run(
             [bash, str(edit_script)],
             cwd=live_dir,
@@ -235,12 +240,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     up_parser.add_argument("services", nargs="*", help="optional service names")
 
-    commands.add_parser(
+    down_parser = commands.add_parser(
         "down", help="stop and remove containers without deleting persistent data"
     )
+    down_parser.add_argument("services", nargs="*", help="optional service names")
 
     restart_parser = commands.add_parser(
         "restart", help="restart the stack or selected services"
+    )
+    restart_parser.add_argument(
+        "--build",
+        action="store_true",
+        help="rebuild images and recreate containers while restarting",
     )
     restart_parser.add_argument("services", nargs="*", help="optional service names")
 
@@ -353,9 +364,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             compose_arguments.append("--build")
         compose_arguments.extend(arguments.services)
     elif arguments.action == "down":
-        compose_arguments = ["down"]
+        compose_arguments = ["down", *arguments.services]
     elif arguments.action == "restart":
-        compose_arguments = ["restart", *arguments.services]
+        if arguments.build:
+            compose_arguments = ["up", "-d", "--build", "--force-recreate"]
+            if arguments.services:
+                compose_arguments.append("--no-deps")
+            compose_arguments.extend(arguments.services)
+        else:
+            compose_arguments = ["restart", *arguments.services]
     elif arguments.action == "ps":
         compose_arguments = ["ps"]
         if arguments.all:

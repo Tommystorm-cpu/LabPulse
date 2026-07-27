@@ -35,6 +35,26 @@ artifacts are published.
 - Deployment shell scripts are maintained under `deployment/`.
 - Measurement units are published exactly as configured while icons are
   derived independently.
+- Real-Pi reliability acceptance now records two weeks of continuous operation,
+  real and injected hardware faults, UPS and abrupt-power recovery, restart
+  alarm reconciliation, SMS delivery, and the built-in watchdog decision.
+- `labpulse config` now preserves an active fake-USB deployment and validates
+  and regenerates its derived runtime configuration transactionally.
+- Hardware lifecycle logs now include stable service/driver/target context,
+  status transitions, and the age of the last valid reading.
+- `labpulse doctor` now reports the active runtime mode and gives corrective
+  commands or checks for common deployment, container, hardware, MQTT, and
+  Home Assistant failures.
+- `labpulse down` now accepts individual Compose service names, and
+  `labpulse restart --build` rebuilds and recreates the complete stack or only
+  the selected services.
+- Guarded configuration now uses the same configurable Docker command as every
+  other lifecycle operation.
+- Doctor now checks Docker daemon access and versions, host timezone/NTP state,
+  and systemd hardware-watchdog activation.
+- Installation now includes ordered Home Assistant/MQTT onboarding, a
+  first-install acceptance checklist, host-time validation, and a non-editable
+  production update command.
 
 ### Removed
 
