@@ -265,6 +265,7 @@ def test_fault_reconciliation_and_sms_contract() -> None:
         automation["LabPulse UPS Monitor Outage Confirm"],
         automation["LabPulse UPS Monitor Recovery Confirm"],
         automation["LabPulse UPS Monitor Power Sensor Fault"],
+        automation["LabPulse UPS Monitor Power Sensor Recovery"],
         automation["LabPulse UPS Monitor Reconcile Missed Outage"],
         automation["LabPulse UPS Monitor Reconcile Missed Recovery"],
     ]
@@ -278,6 +279,21 @@ def test_fault_reconciliation_and_sms_contract() -> None:
             raise AssertionError(f"{rule['alias']} omits SMS test_mode")
         if "Monitoring context: Dedicated power monitoring." not in str(rule):
             raise AssertionError(f"{rule['alias']} omits setup notification context")
+
+    sensor_recovery = yaml.safe_dump(
+        automation["LabPulse UPS Monitor Power Sensor Recovery"],
+        sort_keys=False,
+    )
+    for fragment in (
+        "persistent_notification.create",
+        "labpulse_ups_monitor_power_sensor_recovery_",
+        "power_sensor_recovery",
+        "External-power GPIO",
+    ):
+        if fragment not in sensor_recovery:
+            raise AssertionError(
+                f"power sensor recovery notification missing: {fragment}"
+            )
     for field in (
         "request_id",
         "event",

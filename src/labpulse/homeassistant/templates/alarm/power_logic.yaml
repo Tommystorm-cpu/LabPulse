@@ -262,6 +262,30 @@ automations:
           - service: input_select.select_option
             target: {entity_id: "[[ power.entities.state ]]"}
             data: {option: "Normal"}
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: "[[ power.entities.muted ]]"
+                state: "off"
+              - condition: state
+                entity_id: "[[ model.entities.global_muted ]]"
+                state: "off"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: >
+                    {{ ('[TEST] ' if is_state('[[ model.entities.test_mode ]]', 'on') else '') ~ 'LabPulse external-power sensor restored' }}
+                  message: >
+                    [[ service.label ]] can read the X1200 external-power signal again. Current mains state: {{ states('[[ power.mains_present.mqtt_entity.entity_id ]]') }}. Service status: {{ states('[[ service.status_entity.entity_id ]]') }}.
+                    [[ power.mains_present.notification_context ]]
+                  notification_id: "labpulse_[[ service.service_id ]]_power"
+              - service: mqtt.publish
+                data:
+                  topic: "[[ model.sms_send_topic ]]"
+                  qos: 1
+                  retain: false
+                  payload: >
+                    {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External-power GPIO", "state": states('[[ power.entities.state ]]'), "title": [[ sms.alerts.power_sensor_recovery.title ]], "message": ([[ sms.alerts.power_sensor_recovery.message ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ model.entities.test_mode ]]', 'on'), "current_measurement": states('[[ power.mains_present.mqtt_entity.entity_id ]]')} | to_json }}
 
   - id: "labpulse_[[ service.service_id ]]_power_reconcile"
     alias: "LabPulse [[ service.label ]] Power Reconcile"

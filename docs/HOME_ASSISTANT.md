@@ -226,6 +226,7 @@ Home Assistant:
 - records the last outage duration;
 - restores the persistent lifecycle across restarts;
 - treats an unreadable power GPIO as Sensor Fault, not as an outage.
+- reports when a confirmed external-power GPIO sensor fault recovers.
 
 Whole-hub failure still uses the service-health lifecycle.
 
