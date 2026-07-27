@@ -192,6 +192,11 @@ one service as a whole-service fault. This is the liveness fallback for a
 hardware call that blocks the runner before it can publish `error`. Partial
 telemetry loss remains an individual sensor fault.
 
+The MQTT publisher remembers the runner's current service status. Every broker
+connection or reconnection republishes retained discovery and that status. This
+prevents a broker restart from leaving a retained Last Will state of `offline`
+while the same worker has already resumed measurement publication.
+
 ## Driver discovery and deployment
 
 Each public module under `src/labpulse/hardware/drivers/` exports one:

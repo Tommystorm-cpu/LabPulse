@@ -2,6 +2,7 @@
 
 import json
 import logging
+from typing import Any
 
 import paho.mqtt.client as mqtt
 
@@ -65,6 +66,7 @@ class HomeAssistantMqttPublisher:
         }
         self.discovered_measurements: set[str] = set()
         self.status_discovery_published = False
+        self.current_status: str | None = None
         self.logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -73,6 +75,7 @@ class HomeAssistantMqttPublisher:
 
     def connect(self) -> None:
         """Connect to the MQTT broker and start the background network loop."""
+        self.client.on_connect = self._on_connect
         self.client.will_set(
             service_status_topic(self.service_name),
             payload="offline",
@@ -120,6 +123,7 @@ class HomeAssistantMqttPublisher:
     def publish_status(self, status: str) -> None:
         """Publish the service health status as a retained Home Assistant entity."""
 
+        self.current_status = status
         if not self.status_discovery_published:
             self.publish_status_discovery()
             self.status_discovery_published = True
@@ -127,9 +131,50 @@ class HomeAssistantMqttPublisher:
         self.client.publish(
             service_status_topic(self.service_name),
             status,
+            qos=1,
             retain=True,
         )
         self.logger.info("Published service status: %s", status)
+
+    def _on_connect(
+        self,
+        client: mqtt.Client,
+        _userdata: object,
+        _flags: Any,
+        reason_code: Any,
+        _properties: Any,
+    ) -> None:
+        """Restore retained discovery and service status after every connection."""
+
+        if getattr(reason_code, "is_failure", False):
+            self.logger.error("MQTT connection failed: %s", reason_code)
+            return
+
+        # A broker restart can retain the client's Last Will ``offline`` state.
+        # The runner may still be internally online and suppress an identical
+        # status transition, so reconnect handling must restore that fact.
+        self.publish_status_discovery()
+        self.status_discovery_published = True
+
+        if self.discovered_measurements:
+            self.publish_discovery(
+                {
+                    measurement_name: 0.0
+                    for measurement_name in self.discovered_measurements
+                }
+            )
+
+        if self.current_status is not None:
+            client.publish(
+                service_status_topic(self.service_name),
+                self.current_status,
+                qos=1,
+                retain=True,
+            )
+            self.logger.info(
+                "Republished service status after MQTT connection: %s",
+                self.current_status,
+            )
 
     def publish_status_discovery(self) -> None:
         """Publish Home Assistant MQTT discovery config for service status."""

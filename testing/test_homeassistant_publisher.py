@@ -250,8 +250,42 @@ def test_publish_status_discovery_once_then_status() -> None:
 
     assert_equal(first_status["topic"], "home/sensor/pressure_monitor/status", "first status topic")
     assert_equal(first_status["payload"], "disconnected", "first status payload")
+    assert_equal(first_status["qos"], 1, "first status qos")
     assert_equal(first_status["retain"], True, "first status retain")
     assert_equal(second_status["payload"], "reconnecting", "second status payload")
+
+
+def test_reconnect_republishes_current_status_and_discovery() -> None:
+    """Restore retained status after a broker restart without a runner transition."""
+
+    publisher = make_publisher()
+    publisher.connect()
+    publisher.publish({"pressure": 1.23})
+    publisher.publish_status("online")
+    publisher.client.published.clear()
+
+    publisher.client.on_connect(
+        publisher.client,
+        None,
+        None,
+        0,
+        None,
+    )
+
+    published = publisher.client.published
+    assert_equal(
+        [item["topic"] for item in published],
+        [
+            "homeassistant/sensor/pressure_monitor_status/config",
+            "homeassistant/sensor/pressure_monitor_pressure/config",
+            "home/sensor/pressure_monitor/status",
+        ],
+        "reconnect topics",
+    )
+    restored_status = published[-1]
+    assert_equal(restored_status["payload"], "online", "reconnect status")
+    assert_equal(restored_status["qos"], 1, "reconnect status qos")
+    assert_equal(restored_status["retain"], True, "reconnect status retain")
 
 
 def test_publish_discovery_for_new_measurements() -> None:
@@ -395,6 +429,7 @@ TESTS = [
     ("connect and disconnect", test_connect_and_disconnect),
     ("publish discovery once then measurements", test_publish_discovery_once_then_measurements),
     ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
+    ("reconnect restores status and discovery", test_reconnect_republishes_current_status_and_discovery),
     ("publish discovery for new measurements", test_publish_discovery_for_new_measurements),
     ("ignore unconfigured measurements", test_ignore_unconfigured_measurements),
     ("configured message expiry", test_discovery_uses_configured_message_expiry),
