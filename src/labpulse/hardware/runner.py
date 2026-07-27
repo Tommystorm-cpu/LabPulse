@@ -8,9 +8,9 @@ The runner is a small state machine::
 
 An unavailable connection waits in ``reconnecting`` before trying again.
 Connection loss closes the hardware and returns to ``disconnected``. A
-transient sample failure retains the connection; prolonged missing data changes
-the published status to ``error`` while reads continue, allowing recovery
-without recreating otherwise healthy hardware.
+transient sample failure retains the connection, but prolonged missing data
+changes the published status to ``error`` and recreates the driver. A connection
+is not reported online until it produces a valid reading batch.
 """
 
 from collections.abc import Callable
@@ -162,12 +162,16 @@ class HardwareRunner:
             if batch.issues
             else ServiceStatus.ONLINE.value
         )
-        self._set_status(batch_status)
 
         if self.print_measurements:
             self.logger.info("Measurements: %s", measurements)
         if self.publisher:
+            # Publish the new process's values before declaring the service
+            # healthy. Home Assistant recovery rules are gated by service
+            # status; reversing this order could let a cached pre-restart value
+            # produce a false measurement-recovery notification.
             self.publisher.publish(measurements)
+        self._set_status(batch_status)
         return True
 
     def run_forever(self, *, once: bool = False) -> None:
@@ -223,7 +227,10 @@ class HardwareRunner:
         self.last_success_at = None
         self.last_failure_log_at = None
         self.next_read_at = now
-        self._set_status(ServiceStatus.ONLINE)
+        # Opening a handle does not prove that the sensor can produce data.
+        # Stay in reconnecting until the first valid batch prevents false
+        # service-recovery notifications for initialized but wedged hardware.
+        self._set_status(ServiceStatus.RECONNECTING)
         return False
 
     def _record_transient_failure(
@@ -242,7 +249,7 @@ class HardwareRunner:
             self.last_failure_log_at = now
 
     def _check_freshness(self, now: float) -> None:
-        """Publish an error after a connected service stops producing valid data."""
+        """Recycle hardware after a connected service stops producing valid data."""
 
         freshness_reference = (
             self.last_success_at
@@ -252,7 +259,11 @@ class HardwareRunner:
         if freshness_reference is None:
             return
         if now - freshness_reference >= self.policy.maximum_measurement_age_seconds:
-            self._set_status(ServiceStatus.ERROR)
+            self.logger.error(
+                "No valid hardware readings for %.1f seconds; reinitializing driver",
+                now - freshness_reference,
+            )
+            self._lose_connection(ServiceStatus.ERROR)
 
     def _schedule_next_read(self, now: float) -> None:
         """Schedule the next driver read from the current monotonic time."""

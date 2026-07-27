@@ -100,6 +100,7 @@ class FakePublisher:
 
         self.statuses: list[str] = []
         self.measurements: list[dict[str, float]] = []
+        self.events: list[tuple[str, object]] = []
         self.disconnect_calls = 0
         self.disconnect_error = disconnect_error
 
@@ -107,11 +108,13 @@ class FakePublisher:
         """Record one measurement mapping."""
 
         self.measurements.append(dict(measurements))
+        self.events.append(("measurements", dict(measurements)))
 
     def publish_status(self, status: str) -> None:
         """Record one status transition."""
 
         self.statuses.append(status)
+        self.events.append(("status", status))
 
     def disconnect(self) -> None:
         """Record publisher cleanup and optionally fail."""
@@ -164,10 +167,19 @@ def test_connect_and_publish_batch() -> None:
     runner, publisher, _ = make_runner(driver)
 
     assert_equal(runner.step(), False, "connection step")
-    assert_equal(publisher.statuses, ["online"], "connect status")
+    assert_equal(publisher.statuses, ["reconnecting"], "awaiting first sample")
     assert_equal(runner.step(), True, "measurement step")
     assert_equal(publisher.measurements, [{"pressure": 1.23}], "measurements")
-    assert_equal(publisher.statuses, ["online"], "deduplicated online")
+    assert_equal(publisher.statuses, ["reconnecting", "online"], "validated online")
+    assert_equal(
+        publisher.events,
+        [
+            ("status", "reconnecting"),
+            ("measurements", {"pressure": 1.23}),
+            ("status", "online"),
+        ],
+        "fresh data precedes online status",
+    )
 
 
 def test_connection_retry_is_throttled_and_recovers() -> None:
@@ -187,13 +199,16 @@ def test_connection_retry_is_throttled_and_recovers() -> None:
     clock.advance(4.9)
     runner.step()
     assert_equal(driver.connect_calls, 2, "retry attempt")
+    assert_equal(publisher.statuses[-1], "reconnecting", "awaiting recovery sample")
+    runner.step()
     assert_equal(publisher.statuses[-1], "online", "recovery status")
 
 
-def test_transient_failures_become_stale_and_recover() -> None:
-    """Keep the connection while freshness moves from online to error and back."""
+def test_transient_failures_recycle_stale_driver_and_recover() -> None:
+    """Retain brief failures, then recreate stale hardware before recovery."""
 
     driver = FakeDriver(
+        connect_results=[None, None],
         read_results=[
             TransientReadError("timing"),
             TransientReadError("timing"),
@@ -205,10 +220,15 @@ def test_transient_failures_become_stale_and_recover() -> None:
     runner.step()
     runner.step()
     assert_equal(runner.connected, True, "connected after transient failure")
-    assert_equal(publisher.statuses[-1], "online", "initial transient status")
+    assert_equal(publisher.statuses[-1], "reconnecting", "initial transient status")
     clock.advance(5.0)
     runner.step()
     assert_equal(publisher.statuses[-1], "error", "freshness status")
+    assert_equal(runner.connected, False, "stale driver disconnected")
+    assert_equal(driver.close_calls, 1, "stale driver closed")
+    clock.advance(5.0)
+    runner.step()
+    assert_equal(driver.connect_calls, 2, "stale driver reinitialized")
     runner.step()
     assert_equal(publisher.statuses[-1], "online", "recovered status")
     assert_equal(publisher.measurements, [{"temperature": 21.4}], "recovery data")
@@ -357,7 +377,10 @@ def test_cleanup_failures_do_not_skip_other_cleanup() -> None:
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("connect and publish batch", test_connect_and_publish_batch),
     ("connection retry", test_connection_retry_is_throttled_and_recovers),
-    ("transient freshness and recovery", test_transient_failures_become_stale_and_recover),
+    (
+        "transient freshness and recovery",
+        test_transient_failures_recycle_stale_driver_and_recover,
+    ),
     ("transient log rate limit", test_transient_failure_logs_are_rate_limited),
     ("connection loss and recovery", test_connection_loss_closes_and_reconnects),
     ("unexpected read error", test_unexpected_read_error_enters_error_and_recovers),

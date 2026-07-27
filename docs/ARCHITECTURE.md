@@ -181,8 +181,11 @@ error
 ```
 
 If valid readings remain absent beyond
-`maximum_measurement_age_seconds`, the runner publishes `error` while continuing
-to read. A later valid batch restores `online`.
+`maximum_measurement_age_seconds`, the runner publishes `error`, closes the
+driver, and reinitializes it through the bounded reconnect path. Opening a
+hardware handle reports `reconnecting`; only a valid batch restores `online`.
+The batch is published before the healthy status transition so Home Assistant
+cannot classify a cached pre-restart value as recovered data.
 
 ## Driver discovery and deployment
 
