@@ -220,8 +220,9 @@ def test_setup_refresh_and_preservation_contract() -> None:
     for fragment in (
         "block|restore|status",
         "privileged: false",
-        "source: /dev/null",
-        "find /dev -maxdepth 1 -type c -name 'gpiochip*'",
+        'service["driver"]["options"]["pin"] = "D999999"',
+        "target: /app/config.yaml",
+        'fault_restore_service "$OVERRIDE_FILE" "$COMPOSE_SERVICE" 5',
         'driver.get("type") != "labpulse.dht11"',
     ):
         if fragment not in dht11_fault_source:

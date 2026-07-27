@@ -251,17 +251,21 @@ sensors:
 #   whole-service failures use the service-health lifecycle below
 binary_sensors:
   service:
-    # Only these values represent a whole-service acquisition failure.
-    # Component-specific values such as X1200 gpio_fault remain healthy here
-    # and continue through their dedicated alarm lifecycle.
+    # A bad published status or total loss of this service's telemetry is a
+    # whole-service acquisition failure. The telemetry fallback catches a
+    # driver read that blocks before it can publish a new status. A partial
+    # loss remains available for the individual sensor-fault lifecycle.
     - name: "[[ service.unique_ids.health_unhealthy ]]"
       unique_id: "[[ service.unique_ids.health_unhealthy ]]"
       device_class: problem
       state: >
-        {{ states('[[ service.status_entity.entity_id ]]')
-           in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] }}
+        {% set status_unhealthy =
+             states('[[ service.status_entity.entity_id ]]')
+             in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] %}
+        {{ status_unhealthy or [[ service.all_measurements_invalid_template ]] }}
       attributes:
         service_status: "{{ states('[[ service.status_entity.entity_id ]]') }}"
+        all_measurements_invalid: "{{ [[ service.all_measurements_invalid_template ]] }}"
         fault_confirm_seconds: "[[ service.health_fault_confirm_seconds ]]"
         recovery_confirm_seconds: "[[ service.health_recovery_confirm_seconds ]]"
 
@@ -364,6 +368,20 @@ automations:
         - condition: state
           entity_id: "[[ service.entities.health_unhealthy ]]"
           state: "on"
+        # Reconcile subordinate state even when Home Assistant restarts with an
+        # already-active service fault. The active-state condition below still
+        # prevents a duplicate hub notification.
+        - service: input_select.select_option
+          target:
+            entity_id: "[[ service.alarm_state_entities ]]"
+          data:
+            option: Normal
+        - repeat:
+            for_each: "[[ service.subordinate_notification_ids ]]"
+            sequence:
+              - service: persistent_notification.dismiss
+                data:
+                  notification_id: "{{ repeat.item }}"
         - condition: state
           entity_id: "[[ service.entities.health_fault_active ]]"
           state: "off"
@@ -433,7 +451,7 @@ automations:
                       {{ ('[TEST] ' if is_state('[[ model.entities.test_mode ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] restored' }}
                     message: >
                       Communication with [[ service.label ]] has been restored.
-                      Telemetry is available again. Downtime: {{ downtime_seconds }} seconds.
+                      Fresh telemetry is available again. Downtime: {{ downtime_seconds }} seconds.
                     notification_id: "labpulse_[[ service.service_id ]]_service_health"
                 - service: mqtt.publish
                   data:
@@ -636,6 +654,15 @@ automations:
         - condition: state
           entity_id: "[[ measurement.entities.sensor_fault_zone ]]"
           state: "on"
+        # Recheck service ownership after the confirmation delay. This prevents
+        # measurement automations that started on the same expiry edge from
+        # racing a whole-service fault.
+        - condition: state
+          entity_id: "[[ service.entities.health_unhealthy ]]"
+          state: "off"
+        - condition: state
+          entity_id: "[[ service.entities.health_fault_active ]]"
+          state: "off"
         - condition: template
           value_template: "{{ not is_state('[[ measurement.entities.alarm_state ]]', 'Sensor Fault') }}"
         - service: input_select.select_option

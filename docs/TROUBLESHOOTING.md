@@ -216,6 +216,11 @@ Pi. Confirm that the current container is deployed before comparing runtime
 behavior with driver tests. A one-time sensor power cycle may still be needed
 if a previous process left the DHT11 data line electrically wedged.
 
+The DHT11 real-hardware fault script does not start PulseIn against masked
+device nodes. It injects a nonexistent test pin so failure occurs before the
+live GPIO line is touched. Its restore path leaves the worker stopped for five
+seconds before normal recreation.
+
 Only the DHT service should need broad `/dev` access for this sensor. Rebuild
 current source if unrelated workers appear to claim GPIO devices.
 
@@ -313,6 +318,11 @@ Expected timing can include:
 
 Repeated identical numeric samples are not stale. Only missing valid samples
 cause expiry.
+
+If every measurement from one hub expires together, LabPulse reports one
+service fault even when the retained status entity still says `online`. If at
+least one peer measurement remains numeric, only the missing value follows the
+individual Sensor Fault lifecycle.
 
 ## SMS does not send
 

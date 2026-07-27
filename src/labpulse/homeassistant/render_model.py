@@ -133,6 +133,36 @@ class ServiceModel:
 
         return slug(self.name)
 
+    @property
+    def all_measurements_invalid_template(self) -> str:
+        """Return a Home Assistant expression detecting total telemetry loss."""
+
+        checks = [
+            f"not is_number(states('{measurement.mqtt_entity.entity_id}'))"
+            for measurement in self.measurements
+        ]
+        return "(" + " and ".join(checks or ["true"]) + ")"
+
+    @property
+    def alarm_state_entities(self) -> list[str]:
+        """Return persistent alarm selectors superseded by a service fault."""
+
+        if self.power is not None:
+            return [self.power.entities["state"]]
+        return [
+            measurement.entities["alarm_state"]
+            for measurement in self.measurements
+        ]
+
+    @property
+    def subordinate_notification_ids(self) -> list[str]:
+        """Return measurement notification IDs replaced by a service fault."""
+
+        return [
+            f"labpulse_{measurement.measurement_id}_status"
+            for measurement in self.measurements
+        ]
+
     @classmethod
     def from_config(
         cls: type[ServiceModel],

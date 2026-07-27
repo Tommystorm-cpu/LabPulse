@@ -188,10 +188,12 @@ service-fault confirmation periods before expecting Sensor Fault.
 ## Real-Pi GPIO and I2C fault injection
 
 Setup installs two test-only scripts that simulate unavailable hardware at the
-container boundary. They mask selected device endpoints with `/dev/null` and
-recreate only the selected service. They do not edit `compose.yaml`, change host
-device permissions, unload kernel drivers, claim GPIO lines, or require live
-rewiring.
+container boundary. The X1200 script masks selected device endpoints with
+`/dev/null`. The DHT11 script supplies a temporary invalid pin configuration so
+the real PulseIn object is never constructed and the live GPIO line is not
+disturbed. They recreate only the selected service and do not edit
+`compose.yaml`, change host device permissions, unload kernel drivers, claim
+GPIO lines, or require live rewiring.
 
 Test the X1200 fuel-gauge interface:
 
@@ -223,6 +225,9 @@ Test DHT11 GPIO unavailability:
 ./test_dht11_fault.sh status
 ./test_dht11_fault.sh restore
 ```
+
+Restore stops the faulted DHT11 worker for five seconds before recreating it,
+allowing the GPIO/PulseIn resources to settle.
 
 Use `--service NAME` for a non-default DHT11 service. The scripts reject fake
 USB deployments and mismatched driver types.

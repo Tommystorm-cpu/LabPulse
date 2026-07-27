@@ -9,8 +9,9 @@ usage() {
   cat <<'EOF'
 Usage: ./test_dht11_fault.sh [--service SERVICE] COMMAND
 
-Recreate one real DHT11 service without usable GPIO device interfaces. GPIO
-devices are masked only inside that container; no live rewiring is required.
+Recreate one real DHT11 service with a deliberately unavailable test pin. This
+exercises the driver/service fault lifecycle without touching the live GPIO
+line or requiring live rewiring.
 
 Commands:
   block    Block GPIO access and recreate the DHT11 service
@@ -47,6 +48,7 @@ esac
 
 fault_require_live_install
 OVERRIDE_FILE="$PROJECT_DIR/.labpulse-dht11-fault.override.yaml"
+FAULT_CONFIG="$PROJECT_DIR/.labpulse-dht11-fault.config.yaml"
 
 readarray -t DHT11_METADATA < <(
   "$HOST_PYTHON" - "$LIVE_CONFIG" "$COMPOSE_FILE" "$SERVICE_NAME" <<'PY'
@@ -94,39 +96,47 @@ COMPOSE_SERVICE="${DHT11_METADATA[0]}"
 
 case "$ACTION" in
   restore)
-    fault_restore_service "$OVERRIDE_FILE" "$COMPOSE_SERVICE"
+    fault_restore_service "$OVERRIDE_FILE" "$COMPOSE_SERVICE" 5
+    rm -f "$FAULT_CONFIG"
     ;;
   status)
+    if [ -f "$FAULT_CONFIG" ]; then
+      echo "Fault configuration present: $FAULT_CONFIG"
+    else
+      echo "No DHT11 fault configuration is present."
+    fi
+    echo
     fault_show_status "$OVERRIDE_FILE" "$COMPOSE_SERVICE"
     ;;
   block)
-    GPIO_MASKS=()
-    while IFS= read -r gpio_path; do
-      [ -n "$gpio_path" ] && GPIO_MASKS+=("$gpio_path")
-    done < <(
-      {
-        find /dev -maxdepth 1 -type c -name 'gpiochip*' -print 2>/dev/null || true
-        [ ! -e /dev/gpiomem ] || echo /dev/gpiomem
-        [ ! -e /dev/mem ] || echo /dev/mem
-      } | sort -u
-    )
-    [ "${#GPIO_MASKS[@]}" -gt 0 ] ||
-      fault_die "No GPIO device interfaces were found under /dev."
+    "$HOST_PYTHON" - "$LIVE_CONFIG" "$FAULT_CONFIG" "$SERVICE_NAME" <<'PY'
+from pathlib import Path
+import sys
+import yaml
 
-    {
-      echo "services:"
-      echo "  $COMPOSE_SERVICE:"
-      echo "    privileged: false"
-      echo "    volumes:"
-      for gpio_path in "${GPIO_MASKS[@]}"; do
-        cat <<EOF
+source_path = Path(sys.argv[1])
+fault_path = Path(sys.argv[2])
+service_name = sys.argv[3]
+config = yaml.safe_load(source_path.read_text()) or {}
+service = config["services"][service_name]
+
+# Select a syntactically valid Blinka pin name that cannot exist. The DHT11
+# driver then raises DriverUnavailable before constructing PulseIn or changing
+# the real GPIO line.
+service["driver"]["options"]["pin"] = "D999999"
+fault_path.write_text(yaml.safe_dump(config, sort_keys=False))
+PY
+
+    cat >"$OVERRIDE_FILE" <<EOF
+services:
+  $COMPOSE_SERVICE:
+    privileged: false
+    volumes:
       - type: bind
-        source: /dev/null
-        target: $gpio_path
+        source: $FAULT_CONFIG
+        target: /app/config.yaml
         read_only: true
 EOF
-      done
-    } >"$OVERRIDE_FILE"
 
     fault_apply_override "$OVERRIDE_FILE" "$COMPOSE_SERVICE"
     ;;

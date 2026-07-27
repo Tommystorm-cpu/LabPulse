@@ -86,8 +86,14 @@ fault_apply_override() {
 fault_restore_service() {
   local override_file="$1"
   local compose_service="$2"
+  local settle_seconds="${3:-0}"
 
   echo "Recreating $compose_service from the normal generated Compose definition..."
+  if [ "$settle_seconds" != "0" ]; then
+    echo "Stopping $compose_service and allowing hardware resources to settle..."
+    fault_compose -f "$COMPOSE_FILE" stop "$compose_service"
+    sleep "$settle_seconds"
+  fi
   fault_compose \
     -f "$COMPOSE_FILE" \
     up -d --no-deps --force-recreate "$compose_service"

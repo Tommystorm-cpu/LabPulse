@@ -197,6 +197,90 @@ def test_generated_package() -> None:
         "sensor recovery classifications",
     )
 
+    service_unhealthy = next(
+        item
+        for block in package["template"]
+        for item in block.get("binary_sensor", [])
+        if item.get("unique_id")
+        == "labpulse_pressure_monitor_service_unhealthy"
+    )
+    service_unhealthy_state = str(service_unhealthy["state"])
+    for required_fragment in (
+        "sensor.labpulse_pressure_monitor_pressure",
+        "sensor.labpulse_pressure_monitor_temperature",
+        "not is_number",
+        "status_unhealthy or",
+    ):
+        if required_fragment not in service_unhealthy_state:
+            raise AssertionError(
+                "service health does not aggregate total telemetry loss: "
+                + required_fragment
+            )
+
+    sensor_fault = next(
+        item
+        for item in package["automation"]
+        if item["alias"] == "LabPulse Pressure Sensor Fault"
+    )
+    post_delay_conditions = sensor_fault["action"][1:4]
+    condition_entities = {
+        item.get("entity_id")
+        for item in post_delay_conditions
+        if item.get("condition") == "state"
+    }
+    for required_entity in (
+        "binary_sensor.labpulse_pressure_monitor_pressure_sensor_fault_zone",
+        "binary_sensor.labpulse_pressure_monitor_service_unhealthy",
+        "input_boolean.labpulse_pressure_monitor_service_fault_active",
+    ):
+        if required_entity not in condition_entities:
+            raise AssertionError(
+                "sensor fault does not recheck service ownership: "
+                + required_entity
+            )
+
+    service_fault = next(
+        item
+        for item in package["automation"]
+        if item["alias"] == "LabPulse Air Pressure Sensor Hub Service Fault"
+    )
+    normalizations = [
+        item
+        for item in walk(service_fault["action"])
+        if isinstance(item, dict)
+        and item.get("service") == "input_select.select_option"
+        and item.get("data", {}).get("option") == "Normal"
+    ]
+    assert_equal(len(normalizations), 1, "service fault subordinate reset count")
+    assert_equal(
+        set(normalizations[0]["target"]["entity_id"]),
+        {
+            "input_select.labpulse_pressure_monitor_pressure_alarm_state",
+            "input_select.labpulse_pressure_monitor_temperature_alarm_state",
+        },
+        "service fault subordinate alarm states",
+    )
+    dismissals = [
+        item
+        for item in walk(service_fault["action"])
+        if isinstance(item, dict)
+        and item.get("service") == "persistent_notification.dismiss"
+    ]
+    assert_equal(len(dismissals), 1, "service fault subordinate dismissal action")
+    repeated_ids = next(
+        item["repeat"]["for_each"]
+        for item in service_fault["action"]
+        if "repeat" in item
+    )
+    assert_equal(
+        set(repeated_ids),
+        {
+            "labpulse_pressure_monitor_pressure_status",
+            "labpulse_pressure_monitor_temperature_status",
+        },
+        "service fault subordinate notification IDs",
+    )
+
     configuration = paths.configuration_path.read_text(encoding="utf-8")
     if "labpulse-monitor:" not in configuration:
         raise AssertionError("configuration does not register LabPulse dashboard")

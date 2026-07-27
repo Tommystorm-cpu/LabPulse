@@ -158,10 +158,12 @@ MQTT discovery uses `expire_after` based on
 `maximum_measurement_age_seconds`. A repeatedly published unchanged value stays
 healthy; a value becomes unavailable only when valid samples stop.
 
-An unavailable or non-numeric individual value can become Sensor Fault. When
-the complete service is unhealthy, Home Assistant uses the hub-level
-service-fault lifecycle instead of sending one stale warning for every
-measurement.
+An unavailable or non-numeric individual value can become Sensor Fault while
+at least one peer measurement from the same service remains valid. When every
+measurement from a service is unavailable, Home Assistant uses the hub-level
+service-fault lifecycle even if the last retained service status still says
+`online`. This covers a hardware read that blocks before the worker can publish
+an error and prevents one stale warning per measurement.
 
 ## Service health
 
@@ -179,8 +181,11 @@ Home Assistant confirms whole-service failure and recovery using
 `service_health.fault_confirm_seconds` and
 `service_health.recovery_confirm_seconds`.
 
-A confirmed failure creates one hub-level notification and SMS request. On
-recovery, Home Assistant reports restored communication and downtime.
+A confirmed failure creates one hub-level notification and SMS request and
+clears subordinate persisted measurement-fault states without sending recovery
+messages for each one. Recovery requires both a healthy service status and
+fresh telemetry, after which Home Assistant reports restored communication and
+downtime.
 
 ## Notification safety
 

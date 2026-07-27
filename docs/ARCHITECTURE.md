@@ -187,6 +187,11 @@ hardware handle reports `reconnecting`; only a valid batch restores `online`.
 The batch is published before the healthy status transition so Home Assistant
 cannot classify a cached pre-restart value as recovered data.
 
+Home Assistant also classifies total expiry of every measurement belonging to
+one service as a whole-service fault. This is the liveness fallback for a
+hardware call that blocks the runner before it can publish `error`. Partial
+telemetry loss remains an individual sensor fault.
+
 ## Driver discovery and deployment
 
 Each public module under `src/labpulse/hardware/drivers/` exports one:
