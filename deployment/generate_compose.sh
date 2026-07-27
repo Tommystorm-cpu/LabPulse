@@ -227,6 +227,7 @@ if sms_needs_modem:
             "    volumes:",
             "      - ./logs:/app/logs",
             f"      - {config_mount_source}:/app/config.yaml:ro",
+            "      - /etc/localtime:/etc/localtime:ro",
             "      - /run/dbus:/run/dbus:ro",
             "      - /dev:/dev",
             "    privileged: true",
@@ -247,6 +248,7 @@ else:
             "    volumes:",
             "      - ./logs:/app/logs",
             f"      - {config_mount_source}:/app/config.yaml:ro",
+            "      - /etc/localtime:/etc/localtime:ro",
             "    container_name: labpulse-sms",
             f"    command: {sms_command()}",
             "",
@@ -286,6 +288,7 @@ lines.extend(
         "      - ./mosquitto/config:/mosquitto/config",
         "      - ./mosquitto/data:/mosquitto/data",
         "      - ./mosquitto/log:/mosquitto/log",
+        "      - /etc/localtime:/etc/localtime:ro",
         "    restart: unless-stopped",
         "",
         *sms_service_lines,
@@ -319,6 +322,7 @@ for service_name in enabled_services:
         "    volumes:",
         "      - ./logs:/app/logs",
         f"      - {config_mount_source}:/app/config.yaml:ro",
+        "      - /etc/localtime:/etc/localtime:ro",
     ]
 
     if requirements.devices:

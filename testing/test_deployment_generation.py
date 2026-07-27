@@ -140,6 +140,18 @@ services:
             raise AssertionError("fake hardware does not mount the derived runtime config")
         if expected_config_mount not in sms["volumes"]:
             raise AssertionError("fake SMS worker does not mount the derived runtime config")
+        for service_name in (
+            "homeassistant",
+            "mosquitto",
+            "labpulse-sms",
+            "labpulse-pressure-monitor",
+        ):
+            if "/etc/localtime:/etc/localtime:ro" not in services[service_name].get(
+                "volumes", []
+            ):
+                raise AssertionError(
+                    f"{service_name} does not inherit the host timezone"
+                )
     finally:
         # Keep cleanup simple and local; repository-wide test cleanup also
         # removes testing/tmp after the full suite.

@@ -77,6 +77,9 @@ Python services also write persistent logs under:
 ~/labpulse-live/logs/
 ```
 
+LabPulse containers inherit the host's `/etc/localtime`. Python log timestamps
+also include their numeric UTC offset so daylight-saving changes are explicit.
+
 ## Change configuration safely
 
 ```bash
