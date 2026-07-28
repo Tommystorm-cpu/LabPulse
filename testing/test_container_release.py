@@ -52,6 +52,8 @@ def main() -> None:
     ).read_text(encoding="utf-8")
     for fragment, label in (
         ("release:", "release trigger"),
+        ("if actual != expected:", "safe release-version comparison"),
+        ("Release tag matches package version", "successful version-check path"),
         ("python -m build", "distribution build"),
         ("python -m twine check", "distribution metadata validation"),
         ('setup --fake-usb', "installed-wheel setup smoke test"),
@@ -64,6 +66,8 @@ def main() -> None:
         ("subject-digest: ${{ steps.image.outputs.digest }}", "image attestation"),
     ):
         require(workflow, fragment, label)
+    if "raise SystemExit(" in workflow and ") if actual !=" in workflow:
+        raise AssertionError("release version check conditionally raises None on success")
 
     print("[PASS] Dockerfile installs the versioned release wheel")
     print("[PASS] Docker build context excludes repository-only content")
