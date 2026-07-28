@@ -94,18 +94,6 @@ check_homeassistant_config_writable() {
 mkdir -p "$HA_CONFIG_DIR"
 check_homeassistant_config_writable
 
-if [ -d "$SCRIPT_DIR/src/labpulse" ]; then
-  PYTHON_PACKAGE_DIR="$SCRIPT_DIR/src"
-else
-  PYTHON_PACKAGE_DIR="$SCRIPT_DIR/labpulse-python"
-fi
-
-GENERATOR_PACKAGE="$PYTHON_PACKAGE_DIR/labpulse/homeassistant"
-if [ ! -f "$GENERATOR_PACKAGE/__main__.py" ]; then
-  echo "ERROR: Home Assistant Python generator package not found: $GENERATOR_PACKAGE" >&2
-  exit 1
-fi
-
 HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 if [ ! -x "$HOST_PYTHON" ]; then
   echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
@@ -113,6 +101,5 @@ if [ ! -x "$HOST_PYTHON" ]; then
   exit 1
 fi
 
-PYTHONPATH="$PYTHON_PACKAGE_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-  "$HOST_PYTHON" -m labpulse.homeassistant \
+"$HOST_PYTHON" -m labpulse.homeassistant \
   "$CONFIG_PATH" "$HA_CONFIG_DIR"

@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import ValidationError
 import yaml
 
+from labpulse import __version__
 from labpulse.common.config import LabPulseConfig
 from labpulse.hardware.registry import get_driver_spec
 
@@ -124,6 +125,43 @@ def _runtime_config_path(live_dir: Path, compose_data: Any) -> Path:
                 source = Path(parts[0]).expanduser()
                 return source if source.is_absolute() else (live_dir / source).resolve()
     return (live_dir / "config.yaml").resolve()
+
+
+def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
+    """Report whether LabPulse services use the installed release's image."""
+
+    expected = f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
+    services = compose_data.get("services") if isinstance(compose_data, dict) else None
+    if not isinstance(services, dict):
+        report.add(
+            CheckStatus.SKIP,
+            "Runtime image",
+            "compose.yaml is unavailable",
+        )
+        return
+
+    images = {
+        service.get("image")
+        for name, service in services.items()
+        if isinstance(name, str)
+        and name.startswith("labpulse-")
+        and isinstance(service, dict)
+    }
+    if images == {expected}:
+        report.add(
+            CheckStatus.PASS,
+            "Runtime image",
+            f"{expected} matches the installed package",
+        )
+        return
+
+    rendered = ", ".join(sorted(str(image) for image in images)) or "none"
+    report.add(
+        CheckStatus.WARN,
+        "Runtime image",
+        f"installed package expects {expected}, Compose uses {rendered}; "
+        "rerun 'labpulse setup' unless this is an intentional LABPULSE_IMAGE override",
+    )
 
 
 def _validate_config(
@@ -524,6 +562,7 @@ def diagnose(
                 "Compose file",
                 f"{len(compose_services)} services are defined",
             )
+    _check_runtime_image(report, compose_data)
 
     source_config_path = (live_dir / "config.yaml").resolve()
     source_config = _validate_config(report, source_config_path, "Source configuration")

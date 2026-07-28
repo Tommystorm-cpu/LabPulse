@@ -21,6 +21,8 @@ artifacts are published.
 - A pipx-installable `labpulse` package and unified operator command.
 - Setup, lifecycle, logs, configuration, browser, firmware-help, and diagnostic
   commands.
+- Version reporting through `labpulse version` and runtime-image matching in
+  `labpulse doctor`.
 - One-container-per-service hardware execution with a central lifecycle runner.
 - Self-contained serial, DHT11, and X1200 drivers with declarative resources.
 - Hardware-free fake serial devices and controllable alarm scenarios.
@@ -29,6 +31,9 @@ artifacts are published.
 - Dry-run, test-mode, and modem-backed SMS delivery with subscription controls.
 - Checksummed, consistent state archives and guarded blank-host reconstruction
   through `labpulse backup` and `labpulse restore`.
+- A release workflow that validates wheel, source distribution, and container
+  artifacts, publishes through PyPI Trusted Publishing, and publishes
+  attested AMD64/ARM64 images to GHCR.
 
 ### Changed
 
@@ -47,9 +52,10 @@ artifacts are published.
 - `labpulse doctor` now reports the active runtime mode and gives corrective
   commands or checks for common deployment, container, hardware, MQTT, and
   Home Assistant failures.
-- `labpulse down` now accepts individual Compose service names, and
-  `labpulse restart --build` rebuilds and recreates the complete stack or only
-  the selected services.
+- `labpulse down` and `labpulse restart` accept individual Compose service
+  names.
+- Generated deployments use the GHCR image matching the installed package
+  version instead of copying source and rebuilding containers on each Pi.
 - Guarded configuration now uses the same configurable Docker command as every
   other lifecycle operation.
 - Doctor now checks Docker daemon access and versions, host timezone/NTP state,

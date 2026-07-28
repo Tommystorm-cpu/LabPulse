@@ -181,7 +181,7 @@ Use fake mode:
 labpulse setup --fake-usb
 cd ~/labpulse-live
 ./simulate_serial.py start
-labpulse up --build
+labpulse up
 ```
 
 ## Protocol change checklist

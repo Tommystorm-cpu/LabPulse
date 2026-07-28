@@ -16,6 +16,7 @@ import time
 from typing import Any, Sequence
 import webbrowser
 
+from labpulse import __version__
 from labpulse.backup import (
     BackupError,
     create_backup,
@@ -295,8 +296,8 @@ def run_restore_command(
         restored = True
         if _run_setup_for_manifest(live_dir, manifest) != 0:
             raise BackupError("setup/regeneration failed after restoring state")
-        if run_compose(live_dir, ("up", "-d", "--build")) != 0:
-            raise BackupError("rebuilt Compose stack did not start")
+        if run_compose(live_dir, ("up", "-d", "--pull", "missing")) != 0:
+            raise BackupError("versioned Compose stack did not start")
     except (BackupError, OSError) as error:
         print(f"ERROR: Restore did not complete: {error}", file=sys.stderr)
         if restored and rollback_path is not None:
@@ -316,7 +317,7 @@ def run_restore_command(
             print(f"ERROR: Could not restart prior services: {start_error}", file=sys.stderr)
         return 1
 
-    print("State restored and the rebuilt stack was started.")
+    print("State restored and the versioned stack was started.")
     print("Waiting for Home Assistant before final diagnostics...")
     if not _wait_for_homeassistant():
         print(
@@ -404,11 +405,6 @@ def build_parser() -> argparse.ArgumentParser:
     up_parser = commands.add_parser(
         "up", help="start the stack or selected services in the background"
     )
-    up_parser.add_argument(
-        "--build",
-        action="store_true",
-        help="rebuild local LabPulse images before starting",
-    )
     up_parser.add_argument("services", nargs="*", help="optional service names")
 
     down_parser = commands.add_parser(
@@ -418,11 +414,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     restart_parser = commands.add_parser(
         "restart", help="restart the stack or selected services"
-    )
-    restart_parser.add_argument(
-        "--build",
-        action="store_true",
-        help="rebuild images and recreate containers while restarting",
     )
     restart_parser.add_argument("services", nargs="*", help="optional service names")
 
@@ -439,7 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     restore_parser = commands.add_parser(
         "restore",
-        help="restore, rebuild, start, and diagnose a LabPulse state archive",
+        help="restore, regenerate, start, and diagnose a LabPulse state archive",
     )
     restore_parser.add_argument("archive", help="LabPulse backup archive path")
     restore_parser.add_argument(
@@ -493,6 +484,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=FIRMWARE_HELP,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    commands.add_parser("version", help="show the installed LabPulse version")
 
     help_topics = tuple(commands.choices)
     help_parser = commands.add_parser(
@@ -528,6 +520,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if arguments.action == "firmware":
         return show_firmware_help()
+    if arguments.action == "version":
+        print(f"LabPulse {__version__}")
+        return 0
     if arguments.action == "setup":
         return run_setup(
             arguments.live_dir,
@@ -564,20 +559,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     compose_arguments: list[str]
     if arguments.action == "up":
-        compose_arguments = ["up", "-d"]
-        if arguments.build:
-            compose_arguments.append("--build")
+        compose_arguments = ["up", "-d", "--pull", "missing"]
         compose_arguments.extend(arguments.services)
     elif arguments.action == "down":
         compose_arguments = ["down", *arguments.services]
     elif arguments.action == "restart":
-        if arguments.build:
-            compose_arguments = ["up", "-d", "--build", "--force-recreate"]
-            if arguments.services:
-                compose_arguments.append("--no-deps")
-            compose_arguments.extend(arguments.services)
-        else:
-            compose_arguments = ["restart", *arguments.services]
+        compose_arguments = ["restart", *arguments.services]
     elif arguments.action == "ps":
         compose_arguments = ["ps"]
         if arguments.all:

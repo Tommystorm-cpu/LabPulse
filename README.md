@@ -7,9 +7,9 @@ It reads Arduino, GPIO, I2C, and simulated sensors; publishes measurements and
 device health over MQTT; presents them in Home Assistant; and can deliver alarm
 notifications through an SMS modem.
 
-LabPulse is currently pre-release software. Installation is supported from a
-repository checkout; it is not yet published on PyPI and released container
-images are not yet available. As the software matures, all aspects of the user experience will improve, so if you notice any bugs or inconsistencies right now, give it a few weeks and they should be fixed! It will also become easier to contribute to as the code matures and is continually refactored.
+LabPulse is currently pre-release software. Released installations use a
+pipx-installed Python package for operator commands and matching versioned
+container images for sensor and SMS services.
 
 LabPulse is a monitoring and best-effort alerting aid, not a safety-rated
 controller, emergency shutdown system, or protective interlock. See
@@ -41,15 +41,13 @@ by an installed system.
 ## Quick start
 
 Install Docker Engine with the Compose plugin, Python with virtual-environment
-support, Git, and pipx. Then clone this repository and install LabPulse:
+support, and pipx. Then install LabPulse:
 
 ```bash
-git clone https://github.com/Tommystorm-cpu/LabPulse.git
-cd LabPulse
-pipx install .
+pipx install labpulse
 labpulse setup
 labpulse config
-labpulse up --build
+labpulse up
 labpulse doctor
 labpulse open
 ```
@@ -60,7 +58,7 @@ For a hardware-free installation:
 labpulse setup --fake-usb
 cd ~/labpulse-live
 ./simulate_serial.py start
-labpulse up --build
+labpulse up
 ```
 
 See [Installation](docs/INSTALLATION.md) for prerequisites, real-hardware
@@ -72,13 +70,14 @@ setup, development installs, and updates.
 labpulse setup       create or refresh ~/labpulse-live
 labpulse config      safely edit, validate, generate, and apply config
 labpulse backup      create a consistent state archive
-labpulse restore     reconstruct, rebuild, start, and diagnose from an archive
+labpulse restore     reconstruct, regenerate, start, and diagnose from an archive
 labpulse up          start the stack
 labpulse down        stop all or selected services without deleting persistent data
-labpulse restart     restart all or selected services; use --build to rebuild
+labpulse restart     restart all or selected services
 labpulse ps          show container status
 labpulse logs        inspect container logs
 labpulse doctor      run read-only installation and runtime diagnostics
+labpulse version     show the installed package version
 labpulse open        open Home Assistant
 labpulse firmware    show firmware download information
 labpulse help        show command help

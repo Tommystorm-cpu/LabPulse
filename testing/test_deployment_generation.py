@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from collections.abc import Iterator
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 TEST_TMP_DIR = REFACTOR_DIR / "testing" / "tmp"
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
+from labpulse import __version__
 from labpulse.homeassistant.cli import main as generate_homeassistant
 
 
@@ -87,6 +89,10 @@ services:
             capture_output=True,
             text=True,
             check=False,
+            env={
+                **os.environ,
+                "PYTHONPATH": str(REFACTOR_DIR / "src"),
+            },
         )
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
@@ -103,6 +109,11 @@ services:
             raise AssertionError(f"unexpected Compose services: {set(services)!r}")
 
         hardware = services["labpulse-pressure-monitor"]
+        expected_image = f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
+        if hardware.get("image") != expected_image:
+            raise AssertionError(
+                f"hardware image is not version-coupled: {hardware.get('image')!r}"
+            )
         if hardware["command"] != [
             "python",
             "-m",
@@ -113,6 +124,10 @@ services:
             raise AssertionError(f"unexpected hardware command: {hardware['command']!r}")
 
         sms = services["labpulse-sms"]
+        if sms.get("image") != expected_image:
+            raise AssertionError(
+                f"SMS image is not version-coupled: {sms.get('image')!r}"
+            )
         if sms["command"] != [
             "python",
             "-m",
@@ -177,7 +192,10 @@ def test_setup_refresh_and_preservation_contract() -> None:
     if "text.replace('broker:" in source or 'text.replace("broker:' in source:
         raise AssertionError("setup must not rewrite the user-owned MQTT broker")
     required_fragments = (
-        'replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"',
+        'PACKAGE_PARENT="${LABPULSE_PACKAGE_PARENT:-$ASSET_DIR/src}"',
+        "labpulse-installed-package.pth",
+        "Linked managed Python to installed LabPulse",
+        "from labpulse import __version__",
         'copy_file "$ASSET_DIR/simulate_serial.py"',
         'copy_file "$ASSET_DIR/setup_usb_devices.py"',
         'copy_file "$ASSET_DIR/deployment/edit_config.sh"',
@@ -191,13 +209,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
         'Real setup never rewrites the',
-        'rm -f "$PROJECT_DIR/labpulse-python/main.py"',
         'derive_fake_config',
-        'adafruit-circuitpython-dht',
-        'adafruit-blinka',
-        'lgpio',
-        'smbus2',
-        'gpiod modemmanager',
         'RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"',
         '--config "$RUNTIME_CONFIG"',
         'including UPS power',
@@ -206,6 +218,13 @@ def test_setup_refresh_and_preservation_contract() -> None:
     for fragment in required_fragments:
         if fragment not in source:
             raise AssertionError(f"setup contract missing: {fragment}")
+    for forbidden in (
+        "labpulse-python",
+        "COPY labpulse ./labpulse",
+        'replace_dir "$PACKAGE_SOURCE"',
+    ):
+        if forbidden in source:
+            raise AssertionError(f"obsolete local image build remains: {forbidden}")
     if "alarm_defaults.json" in source:
         raise AssertionError("setup still deploys the removed alarm defaults file")
 
@@ -246,6 +265,8 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"',
         '"$HOST_PYTHON" - "$CONFIG_PATH"',
         "from labpulse.hardware.registry import get_driver_spec",
+        "ghcr.io/tommystorm-cpu/labpulse:",
+        'f"  image: {runtime_image}"',
     ):
         if fragment not in compose_source:
             raise AssertionError(f"Compose wrapper contract missing: {fragment}")
@@ -258,6 +279,8 @@ def test_setup_refresh_and_preservation_contract() -> None:
     for fragment in required_generator_fragments:
         if fragment not in generator_source:
             raise AssertionError(f"Home Assistant wrapper contract missing: {fragment}")
+    if "PYTHONPATH=" in generator_source or "labpulse-python" in generator_source:
+        raise AssertionError("Home Assistant wrapper still depends on copied source")
     forbidden_generator_fragments = (
         "alarm_defaults.json",
         ".storage",
@@ -441,6 +464,10 @@ services:
             capture_output=True,
             text=True,
             check=False,
+            env={
+                **os.environ,
+                "PYTHONPATH": str(REFACTOR_DIR / "src"),
+            },
         )
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
@@ -501,6 +528,11 @@ services:
             capture_output=True,
             text=True,
             check=False,
+            env={
+                **os.environ,
+                "PYTHONPATH": str(REFACTOR_DIR / "src"),
+                "LABPULSE_IMAGE": "local/labpulse:test",
+            },
         )
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
@@ -508,6 +540,8 @@ services:
         sms = yaml.safe_load(output_path.read_text(encoding="utf-8"))["services"][
             "labpulse-sms"
         ]
+        if sms.get("image") != "local/labpulse:test":
+            raise AssertionError("LABPULSE_IMAGE override was not applied")
         if sms.get("privileged") is not True:
             raise AssertionError("real SMS delivery is missing privileged modem access")
         for mount in ("/run/dbus:/run/dbus:ro", "/dev:/dev"):

@@ -1,8 +1,9 @@
 # Installation
 
-LabPulse currently installs from a Git repository checkout with pipx. It
-creates a self-contained live deployment under `~/labpulse-live`; the checkout
-is not the running Compose directory.
+LabPulse installs its operator command from PyPI with pipx and runs matching
+versioned containers from GitHub Container Registry. It creates a
+self-contained live deployment under `~/labpulse-live`; a repository checkout
+is required only for development.
 
 ## Requirements
 
@@ -15,7 +16,6 @@ The host needs:
 
 - CPython 3.11 or 3.12; the reference Pi uses 3.11.2;
 - Python virtual-environment support (`python3-full` on Raspberry Pi OS);
-- Git;
 - pipx;
 - Docker Engine and the plugin-style `docker compose` command; the reference
   Pi uses Engine 29.6.1 and Compose 5.3.1;
@@ -82,9 +82,7 @@ correct and `System clock synchronized` reports `yes`.
 ## Install the command
 
 ```bash
-git clone https://github.com/Tommystorm-cpu/LabPulse.git
-cd LabPulse
-pipx install .
+pipx install labpulse
 ```
 
 This installs the unified `labpulse` command. Confirm:
@@ -92,9 +90,6 @@ This installs the unified `labpulse` command. Confirm:
 ```bash
 labpulse help
 ```
-
-LabPulse is not yet published on PyPI. `pipx install labpulse` is therefore not
-currently a supported installation command.
 
 ## Create a real-hardware installation
 
@@ -108,9 +103,10 @@ Setup:
 - preserves an existing live `config.yaml`;
 - creates the private host `.venv`;
 - installs bounded generator dependencies into that environment;
-- copies the installed LabPulse package into the container build context;
+- links that environment to the exact pipx-installed LabPulse package;
 - installs operational helpers;
-- writes local Mosquitto and Docker build files;
+- writes local Mosquitto configuration;
+- selects the GHCR image whose tag matches the installed package version;
 - generates Compose and Home Assistant YAML.
 
 Setup does not start the stack.
@@ -138,7 +134,7 @@ Apply any USB mapping and start:
 
 ```bash
 labpulse config
-labpulse up --build
+labpulse up
 labpulse doctor
 ```
 
@@ -202,7 +198,7 @@ real-hardware settings in `config.yaml`:
 labpulse setup --fake-usb
 cd ~/labpulse-live
 ./simulate_serial.py start
-labpulse up --build
+labpulse up
 labpulse doctor
 ```
 
@@ -235,26 +231,28 @@ pipx install --editable . --force
 ```
 
 Rerun this command after changing package metadata or console entry points.
-Rerun `labpulse setup` after changing deployment assets, package code that is
-copied into containers, or generated configuration behavior. Rebuild containers
-with:
+To test runtime source changes, build a wheel and local image, select it during
+generation, and start the stack:
 
 ```bash
-labpulse up --build
+python -m build
+LABPULSE_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+docker build --build-arg LABPULSE_VERSION="$LABPULSE_VERSION" -t "labpulse-dev:$LABPULSE_VERSION" .
+export LABPULSE_IMAGE="labpulse-dev:$LABPULSE_VERSION"
+labpulse setup
+labpulse up
 ```
 
 See [Development](DEVELOPMENT.md).
 
 ## Updating
 
-Until releases exist, update from the checkout:
+Update the installed release with:
 
 ```bash
-cd ~/LabPulse
-git pull
-pipx install . --force
+pipx upgrade labpulse
 labpulse setup --backup
-labpulse up --build
+labpulse up
 labpulse doctor
 ```
 
@@ -285,7 +283,7 @@ potentially sensitive history. Copy it to protected storage outside the Pi.
 To reconstruct a blank replacement Pi:
 
 1. install Raspberry Pi OS and the prerequisites in this document;
-2. install a compatible LabPulse checkout with pipx;
+2. install the recorded compatible LabPulse package with pipx;
 3. connect the physical hardware;
 4. copy the archive onto the host;
 5. run:
@@ -296,7 +294,7 @@ To reconstruct a blank replacement Pi:
 
 Restore validates the archive, recreates the live deployment in its recorded
 real or fake-hardware mode, restores private state, regenerates managed files,
-rebuilds and starts the stack, waits for Home Assistant, and runs
+pulls and starts the versioned stack, waits for Home Assistant, and runs
 `labpulse doctor`. If the target already contains LabPulse state, it first
 creates a timestamped automatic rollback archive.
 

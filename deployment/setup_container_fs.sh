@@ -5,7 +5,7 @@ set -euo pipefail
 # working directory, then run the generators that users call directly later.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASSET_DIR="${LABPULSE_SETUP_ASSET_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-PACKAGE_SOURCE="${LABPULSE_PACKAGE_SOURCE:-$ASSET_DIR/src/labpulse}"
+PACKAGE_PARENT="${LABPULSE_PACKAGE_PARENT:-$ASSET_DIR/src}"
 SETUP_COMMAND="${LABPULSE_SETUP_COMMAND:-./deployment/setup_container_fs.sh}"
 PROJECT_DIR="${LABPULSE_LIVE_DIR:-$HOME/labpulse-live}"
 LIVE_CONFIG="$PROJECT_DIR/config.yaml"
@@ -82,6 +82,36 @@ if major != 2:
     )
 print(f"Host Python ready: Pydantic {pydantic.__version__}, PyYAML {yaml.__version__}")
 PY
+
+  if [ ! -d "$PACKAGE_PARENT/labpulse" ]; then
+    echo "ERROR: Installed LabPulse package not found below: $PACKAGE_PARENT" >&2
+    echo "Reinstall LabPulse with pipx, then rerun setup." >&2
+    exit 1
+  fi
+
+  # Make the managed generator environment import the exact pipx-installed
+  # LabPulse release without copying its source into the live deployment.
+  "$HOST_PYTHON" - "$PACKAGE_PARENT" <<'PY'
+from pathlib import Path
+import sys
+import sysconfig
+
+package_parent = Path(sys.argv[1]).expanduser().resolve()
+if "\n" in str(package_parent):
+    raise SystemExit("ERROR: LabPulse package path contains a newline")
+purelib = Path(sysconfig.get_path("purelib"))
+link_path = purelib / "labpulse-installed-package.pth"
+link_path.write_text(f"{package_parent}\n", encoding="utf-8")
+print(f"Linked managed Python to installed LabPulse: {link_path}")
+PY
+
+  "$HOST_PYTHON" - <<'PY'
+from labpulse import __version__
+from labpulse.hardware.registry import get_driver_spec
+
+get_driver_spec("labpulse.serial_pipe")
+print(f"Installed LabPulse package ready: {__version__}")
+PY
 }
 
 while [ "$#" -gt 0 ]; do
@@ -134,24 +164,6 @@ copy_file() {
   cp "$source" "$destination"
 }
 
-# Replace copied Python package code so rebuilt containers use this repo state.
-replace_dir() {
-  local source="$1"
-  local destination="$2"
-
-  if [ -e "$destination" ]; then
-    if [ "$BACKUP" -eq 1 ]; then
-      local backup="${destination}.bak.$(date +%Y%m%d-%H%M%S)"
-      cp -a "$destination" "$backup"
-      echo "Backed up existing directory: $backup"
-    fi
-
-    rm -rf "$destination"
-  fi
-
-  cp -a "$source" "$destination"
-}
-
 echo "Setting up LabPulse container filesystem at: $PROJECT_DIR"
 
 # Create the live folder skeleton expected by Docker volume mounts.
@@ -160,7 +172,6 @@ mkdir -p "$PROJECT_DIR/homeassistant/config"
 mkdir -p "$PROJECT_DIR/mosquitto/config"
 mkdir -p "$PROJECT_DIR/mosquitto/data"
 mkdir -p "$PROJECT_DIR/mosquitto/log"
-mkdir -p "$PROJECT_DIR/labpulse-python"
 mkdir -p "$PROJECT_DIR/logs"
 
 install_host_python_environment
@@ -185,37 +196,7 @@ persistence_location /mosquitto/data/
 log_dest stdout
 EOF
 
-# The live folder owns the Dockerfile so docker compose can build from
-# ~/labpulse-live without needing the original repo checkout.
-write_file "$PROJECT_DIR/labpulse-python/Dockerfile" <<'EOF'
-FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gpiod modemmanager \
-    && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY labpulse ./labpulse
-
-CMD ["python", "-m", "labpulse.hardware", "--service", "pressure_monitor"]
-EOF
-
-# Keep the runtime dependency list small for Raspberry Pi builds.
-write_file "$PROJECT_DIR/labpulse-python/requirements.txt" <<'EOF'
-paho-mqtt
-pydantic>=2,<3
-PyYAML>=6,<7
-pyserial
-smbus2
-adafruit-blinka
-adafruit-circuitpython-dht
-lgpio
-EOF
-
-# Copy the scripts and Python service code that the live Compose project uses.
+# Copy the package-managed scripts used by the live Compose project.
 copy_file "$ASSET_DIR/deployment/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$ASSET_DIR/deployment/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
@@ -232,9 +213,6 @@ copy_file "$ASSET_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
 chmod +x "$PROJECT_DIR/simulate_serial.py"
 copy_file "$ASSET_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
 chmod +x "$PROJECT_DIR/setup_usb_devices.py"
-replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"
-find "$PROJECT_DIR/labpulse-python" -type d -name "__pycache__" -prune -exec rm -rf {} +
-rm -f "$PROJECT_DIR/labpulse-python/main.py"
 
 # Preserve the live user-edited config if it exists. The repo config is only a
 # starter template for new installations.
@@ -255,19 +233,17 @@ fi
 # Derive config.fake.yaml only in fake mode. Real setup never rewrites the
 # live user-edited config.yaml.
 if [ "$FAKE_USB" -eq 1 ]; then
-"$HOST_PYTHON" - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" "$PROJECT_DIR/labpulse-python" <<'PY'
+"$HOST_PYTHON" - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" <<'PY'
 from pathlib import Path
 import sys
 
 source_path = Path(sys.argv[1])
 destination_path = Path(sys.argv[2])
 fake_usb = sys.argv[3] == "1"
-python_package_dir = Path(sys.argv[4])
 
 text = source_path.read_text()
 
 if fake_usb:
-    sys.path.insert(0, str(python_package_dir))
     from labpulse.common.fake_config import derive_fake_config
 
     text = derive_fake_config(text)
@@ -323,8 +299,6 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml
   $PROJECT_DIR/homeassistant/config/labpulse-dashboard.yaml
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
-  $PROJECT_DIR/labpulse-python/
-  $PROJECT_DIR/labpulse-python/labpulse/
   $PROJECT_DIR/logs/
 
 USB mode:
@@ -337,7 +311,7 @@ Next commands:
   cd "$PROJECT_DIR"
   $NEXT_USB_COMMAND
   labpulse config
-  labpulse up --build
+  labpulse up
   labpulse restart
   labpulse ps
   labpulse open

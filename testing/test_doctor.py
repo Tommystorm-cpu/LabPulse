@@ -13,6 +13,7 @@ from uuid import uuid4
 REPOSITORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY / "src"))
 
+from labpulse import __version__
 from labpulse.doctor import CheckStatus, diagnose
 
 
@@ -26,7 +27,7 @@ setups: {}
 services: {}
 """
 
-COMPOSE = """\
+COMPOSE = f"""\
 services:
   homeassistant:
     volumes:
@@ -35,6 +36,7 @@ services:
     ports:
       - "127.0.0.1:1883:1883"
   labpulse-sms:
+    image: ghcr.io/tommystorm-cpu/labpulse:{__version__}
     volumes:
       - ./config.fake.yaml:/app/config.yaml:ro
 """
@@ -143,6 +145,7 @@ def main() -> None:
         ):
             raise AssertionError("doctor did not report the active fake-USB mode")
         expected_platform_checks = {
+            "Runtime image": f"labpulse:{__version__}",
             "Docker daemon": "29.6.1",
             "Docker Compose": "v5.3.1",
             "Host clock": "NTP synchronized",

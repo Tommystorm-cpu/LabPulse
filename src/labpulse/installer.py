@@ -63,7 +63,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     environment = os.environ.copy()
     environment["LABPULSE_SETUP_ASSET_DIR"] = str(assets)
-    environment["LABPULSE_PACKAGE_SOURCE"] = str(Path(__file__).resolve().parent)
+    environment["LABPULSE_PACKAGE_PARENT"] = str(
+        Path(__file__).resolve().parent.parent
+    )
     environment.setdefault("LABPULSE_SETUP_COMMAND", "labpulse-setup")
 
     result = subprocess.run(

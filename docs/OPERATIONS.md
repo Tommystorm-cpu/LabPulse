@@ -9,13 +9,14 @@ directory. Commands default to `~/labpulse-live`.
 labpulse setup       create or refresh the live installation
 labpulse up          start all or selected services
 labpulse down        stop and remove all or selected containers
-labpulse restart     restart or rebuild all or selected services
+labpulse restart     restart all or selected services
 labpulse ps          show container status
 labpulse logs        show container logs
 labpulse config      safely edit and apply configuration
 labpulse backup      create a consistent state archive
 labpulse restore     reconstruct an installation from a state archive
 labpulse doctor      run read-only diagnostics
+labpulse version     show the installed package version
 labpulse open        open Home Assistant
 labpulse firmware    show firmware download information
 labpulse help        show general or command-specific help
@@ -60,7 +61,7 @@ non-interactive recovery procedure. Restore:
    exists;
 5. replaces only the state owned by the backup;
 6. regenerates managed deployment files;
-7. rebuilds and starts the complete stack;
+7. pulls any missing versioned images and starts the complete stack;
 8. waits for Home Assistant and runs `labpulse doctor`.
 
 If regeneration or startup fails after replacing an existing installation,
@@ -81,11 +82,9 @@ Start the complete stack in the background:
 labpulse up
 ```
 
-Rebuild local LabPulse images after setup or source changes:
-
-```bash
-labpulse up --build
-```
+`labpulse up` pulls a missing image whose tag matches the installed LabPulse
+package. Released tags are immutable, so an already present matching image is
+reused.
 
 Start selected Compose services:
 
@@ -100,16 +99,6 @@ labpulse restart
 labpulse restart homeassistant
 labpulse restart labpulse-pressure-monitor
 ```
-
-Rebuild images and force recreation after source or image changes:
-
-```bash
-labpulse restart --build
-labpulse restart --build labpulse-room-environment
-```
-
-A targeted build restart recreates only the named services and does not restart
-their dependencies.
 
 Stop and remove all containers, or only selected services, without deleting
 bind-mounted configuration, logs, Mosquitto data, or Home Assistant state:

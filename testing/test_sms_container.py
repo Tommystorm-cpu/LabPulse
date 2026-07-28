@@ -190,12 +190,14 @@ def test_setup_and_compose_contract() -> None:
     compose = (REFACTOR_DIR / "deployment" / "generate_compose.sh").read_text(
         encoding="utf-8"
     )
-    assert_contains(setup, "COPY labpulse ./labpulse", "Dockerfile package copy")
+    assert_contains(setup, "labpulse-installed-package.pth", "managed package link")
     assert_contains(
-        setup,
-        'replace_dir "$PACKAGE_SOURCE" "$PROJECT_DIR/labpulse-python/labpulse"',
-        "setup package copy",
+        compose,
+        "ghcr.io/tommystorm-cpu/labpulse:",
+        "versioned runtime image",
     )
+    if "build: ./labpulse-python" in compose:
+        raise AssertionError("Compose still builds the LabPulse image locally")
     assert_contains(compose, "labpulse-sms:", "SMS service")
     assert_contains(compose, "container_name: labpulse-sms", "SMS container name")
     assert_contains(compose, "127.0.0.1:1883:1883", "localhost-only MQTT port")

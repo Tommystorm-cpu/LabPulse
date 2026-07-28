@@ -16,6 +16,7 @@ from uuid import uuid4
 REPOSITORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY / "src"))
 
+from labpulse import __version__
 from labpulse import control
 
 
@@ -55,7 +56,6 @@ def main() -> None:
                     "--live-dir",
                     str(live_dir),
                     "up",
-                    "--build",
                     "homeassistant",
                 ]
             )
@@ -67,7 +67,8 @@ def main() -> None:
                     "compose",
                     "up",
                     "-d",
-                    "--build",
+                    "--pull",
+                    "missing",
                     "homeassistant",
                 ],
                 cwd=live_dir.resolve(),
@@ -140,44 +141,17 @@ def main() -> None:
                     "--live-dir",
                     str(live_dir),
                     "restart",
-                    "--build",
                     "labpulse-room-environment",
                 ]
             )
             if result != 0:
-                raise AssertionError("build restart command failed")
+                raise AssertionError("targeted restart command failed")
             run.assert_called_once_with(
                 [
                     "docker",
                     "compose",
-                    "up",
-                    "-d",
-                    "--build",
-                    "--force-recreate",
-                    "--no-deps",
+                    "restart",
                     "labpulse-room-environment",
-                ],
-                cwd=live_dir.resolve(),
-                check=False,
-            )
-
-        with patch.dict(
-            os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
-        ), patch.object(control.subprocess, "run") as run:
-            run.return_value = completed(["docker"])
-            result = control.main(
-                ["--live-dir", str(live_dir), "restart", "--build"]
-            )
-            if result != 0:
-                raise AssertionError("full build restart command failed")
-            run.assert_called_once_with(
-                [
-                    "docker",
-                    "compose",
-                    "up",
-                    "-d",
-                    "--build",
-                    "--force-recreate",
                 ],
                 cwd=live_dir.resolve(),
                 check=False,
@@ -347,7 +321,7 @@ def main() -> None:
             regenerate.assert_called_once_with(live_dir.resolve(), manifest)
             compose.assert_called_once_with(
                 live_dir.resolve(),
-                ("up", "-d", "--build"),
+                ("up", "-d", "--pull", "missing"),
             )
             doctor.assert_called_once_with(
                 live_dir.resolve(),
@@ -446,6 +420,15 @@ def main() -> None:
             if expected not in firmware_text:
                 raise AssertionError(f"firmware help is missing: {expected}")
 
+        version_output = StringIO()
+        with redirect_stdout(version_output):
+            result = control.main(["version"])
+        if (
+            result != 0
+            or version_output.getvalue().strip() != f"LabPulse {__version__}"
+        ):
+            raise AssertionError("version command does not report the package version")
+
         general_help = StringIO()
         with redirect_stdout(general_help):
             result = control.main(["help"])
@@ -479,7 +462,7 @@ def main() -> None:
     print("[PASS] Docker Compose command routing")
     print("[PASS] Docker Compose restart routing")
     print("[PASS] targeted Docker Compose down routing")
-    print("[PASS] rebuild-and-recreate restart routing")
+    print("[PASS] selected-service restart routing")
     print("[PASS] configurable Docker command prefix")
     print("[PASS] guarded config editor routing")
     print("[PASS] standalone command alias routing")
@@ -491,6 +474,7 @@ def main() -> None:
     print("[PASS] failed reconstruction rollback")
     print("[PASS] interactive restore cancellation")
     print("[PASS] firmware download guidance")
+    print("[PASS] installed version reporting")
     print("[PASS] general and command-specific help")
     print("[PASS] doctor command routing")
     print("[PASS] missing installation handling")

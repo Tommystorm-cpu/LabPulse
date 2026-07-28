@@ -61,11 +61,14 @@ def main() -> None:
     for fragment in (
         '$HOME/labpulse-live',
         "LABPULSE_SETUP_ASSET_DIR",
-        "LABPULSE_PACKAGE_SOURCE",
-        'replace_dir "$PACKAGE_SOURCE"',
+        "LABPULSE_PACKAGE_PARENT",
+        "labpulse-installed-package.pth",
     ):
         if fragment not in setup_source:
             raise AssertionError(f"packaged setup contract missing: {fragment}")
+    for forbidden in ("LABPULSE_PACKAGE_SOURCE", "labpulse-python"):
+        if forbidden in setup_source:
+            raise AssertionError(f"obsolete packaged setup path remains: {forbidden}")
     if "labpulse-" + "ha" in setup_source:
         raise AssertionError("old live-directory name remains in setup")
 

@@ -83,8 +83,7 @@ if cmp -s "$CONFIG_PATH" "$WORK_CONFIG"; then
 fi
 
 echo "Validating configuration schema..."
-PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
-  "$HOST_PYTHON" - "$WORK_CONFIG" <<'PY'
+"$HOST_PYTHON" - "$WORK_CONFIG" <<'PY'
 from pathlib import Path
 import sys
 
@@ -97,8 +96,7 @@ PY
 RUNTIME_WORK_CONFIG="$WORK_CONFIG"
 if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
   WORK_FAKE_CONFIG="$(mktemp "$PROJECT_DIR/.config.fake.yaml.editing.XXXXXX")"
-  PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/labpulse-python${PYTHONPATH:+:$PYTHONPATH}" \
-    "$HOST_PYTHON" - "$WORK_CONFIG" "$WORK_FAKE_CONFIG" <<'PY'
+  "$HOST_PYTHON" - "$WORK_CONFIG" "$WORK_FAKE_CONFIG" <<'PY'
 from pathlib import Path
 import sys
 

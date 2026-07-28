@@ -120,7 +120,7 @@ checksummed archive of source configuration, complete Home Assistant state,
 Mosquitto retained data, and SMS subscription/request state. `labpulse restore`
 validates the archive, scaffolds a blank installation in its recorded runtime
 mode, creates a rollback archive where applicable, restores and regenerates
-the deployment, rebuilds and starts it, waits for Home Assistant, and runs
+the deployment, pulls and starts it, waits for Home Assistant, and runs
 diagnostics. Hardware-free acceptance covers exact round-trip reconstruction,
 tamper and path-traversal rejection, overwrite safeguards, operator
 confirmation, automatic rollback creation, and blank-installation routing.

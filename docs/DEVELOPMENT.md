@@ -28,12 +28,17 @@ labpulse help
 Python source changes are then visible to the pipx command. Reinstall after
 changing `pyproject.toml`, console entry points, or environment dependencies.
 
-`labpulse setup` still copies package code and deployment assets into
-`~/labpulse-live`. Rerun setup and rebuild after changing runtime source:
+`labpulse setup` installs deployment assets and links the managed generator
+environment to the editable pipx package. Runtime services still use an image,
+so build and select a local image after changing runtime source:
 
 ```bash
+python -m build
+LABPULSE_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+docker build --build-arg LABPULSE_VERSION="$LABPULSE_VERSION" -t "labpulse-dev:$LABPULSE_VERSION" .
+export LABPULSE_IMAGE="labpulse-dev:$LABPULSE_VERSION"
 labpulse setup
-labpulse up --build
+labpulse up
 ```
 
 Use fake mode for hardware-free Compose testing:
@@ -42,7 +47,7 @@ Use fake mode for hardware-free Compose testing:
 labpulse setup --fake-usb
 cd ~/labpulse-live
 ./simulate_serial.py start
-labpulse up --build
+labpulse up
 ```
 
 ## Repository layout
@@ -123,7 +128,28 @@ python -m build
 
 Before a release, install the wheel and source distribution into clean
 environments and verify console entry points and package data. Automated clean
-build validation remains roadmap work.
+build validation also runs in the release workflow.
+
+## Release process
+
+The package version in `pyproject.toml` and `src/labpulse/__init__.py` must
+match. Update the changelog, run the full hardware-free suite, and push the
+release commit before creating a GitHub Release whose tag is `vVERSION`.
+
+The release workflow rejects a mismatched tag, builds and clean-installs the
+wheel and source distribution, smoke-tests the container, publishes the Python
+artifacts through PyPI Trusted Publishing, and publishes attested
+`linux/amd64` and `linux/arm64` images to GHCR. It publishes immutable full and
+major/minor image tags, but no floating `latest` tag.
+
+PyPI Trusted Publishing is a one-time external prerequisite. Configure the
+`Tommystorm-cpu/LabPulse` repository, workflow
+`.github/workflows/release.yml`, and GitHub environment `pypi` as the publisher
+for the `labpulse` project. New projects can use a pending publisher before the
+first production upload.
+
+Never reuse a released version or move its tag. Correct a release with a new
+patch version.
 
 ## Deployment development
 

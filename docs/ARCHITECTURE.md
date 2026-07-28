@@ -59,17 +59,19 @@ The pipx environment provides the operator CLI and packaged deployment assets.
   edit_config.sh
   simulate_serial.py
   setup_usb_devices.py
-  labpulse-python/
   homeassistant/config/
   mosquitto/
   logs/
 ```
 
-The host `.venv` contains only generation/configuration dependencies. Operators
-do not activate it; live wrappers select it automatically.
+The host `.venv` contains generation/configuration dependencies plus a `.pth`
+link to the pipx-installed LabPulse package. Operators do not activate it;
+live wrappers select it automatically. The link lets generators use the exact
+installed driver manifests without copying application source.
 
-Current sensor and SMS containers build from Python source copied into
-`labpulse-python/`. Released versioned images are future work.
+Sensor and SMS services use
+`ghcr.io/tommystorm-cpu/labpulse:<package-version>`. The package version,
+generated Compose image tag, wheel, and image label are released together.
 
 ## Sources of truth and generated output
 
@@ -83,7 +85,7 @@ User-owned state:
 Generated or package-managed state:
 
 - `compose.yaml`;
-- the live Python build context;
+- the managed Python-environment link to the installed package;
 - Mosquitto's generated config;
 - `configuration.yaml`;
 - `packages/labpulse_generated.yaml`;

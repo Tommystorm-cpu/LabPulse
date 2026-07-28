@@ -1,0 +1,164 @@
+name: Release LabPulse
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  validate:
+    name: Validate release artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Check release version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          python -c "import sys, tomllib; actual = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']; expected = sys.argv[1]; raise SystemExit(f'tag {expected!r} does not match package {actual!r}') if actual != expected else None" "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tools and LabPulse
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m pip install --editable .
+
+      - name: Run hardware-free tests
+        run: |
+          for test in testing/test_*.py; do
+            python "$test"
+          done
+
+      - name: Build and check distributions
+        run: |
+          python -m build
+          python -m twine check dist/*
+
+      - name: Smoke-test installed wheel and source distribution
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-smoke"
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install dist/*.whl
+          "$RUNNER_TEMP/wheel-smoke/bin/labpulse" help
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -c "from labpulse.installer import find_install_assets; print(find_install_assets())"
+          "$RUNNER_TEMP/wheel-smoke/bin/labpulse" \
+            --live-dir "$RUNNER_TEMP/labpulse-live" setup --fake-usb
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -c "import sys, yaml; data = yaml.safe_load(open(sys.argv[1])); images = {service.get('image') for name, service in data['services'].items() if name.startswith('labpulse-')}; expected = {'ghcr.io/tommystorm-cpu/labpulse:${{ steps.version.outputs.version }}'}; assert images == expected, (images, expected)" "$RUNNER_TEMP/labpulse-live/compose.yaml"
+          test ! -d "$RUNNER_TEMP/labpulse-live/labpulse-python"
+          python -m venv "$RUNNER_TEMP/sdist-smoke"
+          "$RUNNER_TEMP/sdist-smoke/bin/python" -m pip install dist/*.tar.gz
+          "$RUNNER_TEMP/sdist-smoke/bin/labpulse" help
+
+      - name: Smoke-test container
+        run: |
+          docker build \
+            --build-arg "LABPULSE_VERSION=${{ steps.version.outputs.version }}" \
+            --tag labpulse-release-smoke \
+            .
+          docker run --rm labpulse-release-smoke \
+            python -c "from importlib.metadata import version; assert version('labpulse') == '${{ steps.version.outputs.version }}'"
+          docker run --rm labpulse-release-smoke python -m labpulse.hardware --help
+          docker run --rm labpulse-release-smoke python -m labpulse.sms --help
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-python:
+    name: Publish Python distributions
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/labpulse/${{ needs.validate.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-container:
+    name: Publish multi-platform container
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/tommystorm-cpu/labpulse
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }}
+          labels: |
+            org.opencontainers.image.title=LabPulse
+            org.opencontainers.image.description=Raspberry Pi laboratory infrastructure monitoring
+
+      - name: Build and push image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            LABPULSE_VERSION=${{ needs.validate.outputs.version }}
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest image provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/tommystorm-cpu/labpulse
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true

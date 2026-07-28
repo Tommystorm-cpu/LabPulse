@@ -104,11 +104,9 @@ the `stable` image tag used by the generated Compose file. Beta, development,
 Core-in-a-virtual-environment, Supervised, and Home Assistant OS installations
 are not supported deployment targets.
 
-Before LabPulse publishes versioned container images, `stable` is a moving
-dependency. A newly published Home Assistant stable release is therefore
-provisional until the hardware-free generator suite and the installed Pi have
-been checked. Release engineering will replace this moving boundary with a
-recorded, reproducible image version.
+The Home Assistant `stable` tag remains a moving dependency. A newly published
+Home Assistant stable release is therefore provisional until the hardware-free
+generator suite and the installed Pi have been checked.
 
 LabPulse supports its generated native YAML dashboard, MQTT entities, helpers,
 and automations. Custom cards, themes, HACS components, and manual edits to
@@ -118,7 +116,8 @@ LabPulse-generated Home Assistant files are not supported.
 
 The following are the supported pre-1.0 core:
 
-- installation from a repository checkout with pipx;
+- installation of a versioned PyPI package with pipx;
+- matching AMD64 and ARM64 LabPulse runtime images from GHCR;
 - generation and operation of `~/labpulse-live`;
 - typed configuration through `~/labpulse-live/config.yaml`;
 - built-in serial, DHT11, and X1200 measurement acquisition;

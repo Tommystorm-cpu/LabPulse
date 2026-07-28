@@ -19,10 +19,11 @@ def _use_managed_python_when_deployed() -> None:
     """Re-execute deployed commands with LabPulse's managed interpreter."""
 
     project_dir = Path(__file__).resolve().parent
-    if not (project_dir / "labpulse-python").is_dir():
+    default_python = project_dir / ".venv/bin/python"
+    if not default_python.is_file() and "LABPULSE_PYTHON" not in os.environ:
         return
     configured = os.environ.get("LABPULSE_PYTHON")
-    python_path = Path(configured) if configured else project_dir / ".venv/bin/python"
+    python_path = Path(configured) if configured else default_python
     if not python_path.is_file():
         raise SystemExit(
             f"ERROR: LabPulse's managed Python environment is missing: {python_path}\n"

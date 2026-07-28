@@ -131,15 +131,14 @@ Frequent causes:
 - the container cannot reach `mosquitto`;
 - the runtime config still says `localhost`;
 - the hardware path does not exist;
-- a driver dependency failed to install;
-- configuration copied into the build context is stale;
-- the image was not rebuilt after setup.
+- the installed package and generated image tag do not match;
+- the versioned image could not be pulled.
 
-Refresh and rebuild:
+Refresh generated files and pull the matching image:
 
 ```bash
 labpulse setup
-labpulse up --build
+labpulse up
 ```
 
 Inside LabPulse Python containers, MQTT must be `mosquitto:1883`.
@@ -193,7 +192,7 @@ labpulse setup --fake-usb
 cd ~/labpulse-live
 ./simulate_serial.py start
 ./simulate_serial.py status
-labpulse up --build
+labpulse up
 ```
 
 Check:
@@ -394,7 +393,7 @@ Then refresh package-managed and generated files:
 
 ```bash
 labpulse setup --backup
-labpulse up --build
+labpulse up
 labpulse doctor
 ```
 
