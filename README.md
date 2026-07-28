@@ -44,7 +44,10 @@ Install Docker Engine with the Compose plugin, Python with virtual-environment
 support, and pipx. Then install LabPulse:
 
 ```bash
-pipx install labpulse
+pipx install \
+  --index-url https://test.pypi.org/simple/ \
+  --pip-args="--extra-index-url https://pypi.org/simple/" \
+  labpulse
 labpulse setup
 labpulse config
 labpulse up

@@ -1,7 +1,8 @@
 # Installation
 
-LabPulse installs its operator command from PyPI with pipx and runs matching
-versioned containers from GitHub Container Registry. It creates a
+During pre-production testing, LabPulse installs its operator command from
+TestPyPI with pipx and runs matching versioned containers from GitHub Container
+Registry. It creates a
 self-contained live deployment under `~/labpulse-live`; a repository checkout
 is required only for development.
 
@@ -82,7 +83,10 @@ correct and `System clock synchronized` reports `yes`.
 ## Install the command
 
 ```bash
-pipx install labpulse
+pipx install \
+  --index-url https://test.pypi.org/simple/ \
+  --pip-args="--extra-index-url https://pypi.org/simple/" \
+  labpulse
 ```
 
 This installs the unified `labpulse` command. Confirm:
@@ -235,8 +239,9 @@ To test runtime source changes, build a wheel and local image, select it during
 generation, and start the stack:
 
 ```bash
+python -m pip install setuptools-scm
+LABPULSE_VERSION="$(python -m setuptools_scm)"
 python -m build
-LABPULSE_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 docker build --build-arg LABPULSE_VERSION="$LABPULSE_VERSION" -t "labpulse-dev:$LABPULSE_VERSION" .
 export LABPULSE_IMAGE="labpulse-dev:$LABPULSE_VERSION"
 labpulse setup
@@ -250,7 +255,10 @@ See [Development](DEVELOPMENT.md).
 Update the installed release with:
 
 ```bash
-pipx upgrade labpulse
+pipx upgrade \
+  --index-url https://test.pypi.org/simple/ \
+  --pip-args="--extra-index-url https://pypi.org/simple/" \
+  labpulse
 labpulse setup --backup
 labpulse up
 labpulse doctor

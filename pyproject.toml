@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools>=80", "setuptools-scm>=9.2,<11"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "labpulse"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Raspberry Pi laboratory infrastructure monitoring with Home Assistant and MQTT"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -57,6 +57,8 @@ Repository = "https://github.com/Tommystorm-cpu/LabPulse"
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
 where = ["src"]

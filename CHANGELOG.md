@@ -23,6 +23,7 @@ artifacts are published.
   commands.
 - Version reporting through `labpulse version` and runtime-image matching in
   `labpulse doctor`.
+- Tag-derived package, runtime, and container versions through `setuptools-scm`.
 - One-container-per-service hardware execution with a central lifecycle runner.
 - Self-contained serial, DHT11, and X1200 drivers with declarative resources.
 - Hardware-free fake serial devices and controllable alarm scenarios.
@@ -32,7 +33,7 @@ artifacts are published.
 - Checksummed, consistent state archives and guarded blank-host reconstruction
   through `labpulse backup` and `labpulse restore`.
 - A release workflow that validates wheel, source distribution, and container
-  artifacts, publishes through PyPI Trusted Publishing, and publishes
+  artifacts, publishes through TestPyPI Trusted Publishing, and publishes
   attested AMD64/ARM64 images to GHCR.
 
 ### Changed

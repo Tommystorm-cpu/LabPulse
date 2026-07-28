@@ -8,9 +8,6 @@ import tomllib
 REPOSITORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY / "src"))
 
-import labpulse
-
-
 def require(source: str, fragment: str, label: str) -> None:
     """Raise when a release contract fragment is missing."""
 
@@ -21,11 +18,14 @@ def require(source: str, fragment: str, label: str) -> None:
 def main() -> None:
     """Validate image contents, build context, and automated release coupling."""
 
-    project = tomllib.loads(
+    metadata = tomllib.loads(
         (REPOSITORY / "pyproject.toml").read_text(encoding="utf-8")
-    )["project"]
-    if project["version"] != labpulse.__version__:
-        raise AssertionError("package metadata and module versions differ")
+    )
+    project = metadata["project"]
+    if "version" in project or "version" not in project.get("dynamic", []):
+        raise AssertionError("release version must be dynamically derived")
+    if "setuptools_scm" not in metadata.get("tool", {}):
+        raise AssertionError("setuptools-scm release versioning is not enabled")
 
     dockerfile = (REPOSITORY / "Dockerfile").read_text(encoding="utf-8")
     for fragment, label in (
@@ -52,13 +52,27 @@ def main() -> None:
     ).read_text(encoding="utf-8")
     for fragment, label in (
         ("release:", "release trigger"),
-        ("if actual != expected:", "safe release-version comparison"),
-        ("Release tag matches package version", "successful version-check path"),
+        ("fetch-depth: 0", "complete Git tag history"),
+        ("ref: ${{ github.event.release.tag_name }}", "release-tag checkout"),
+        ('scm_version="$(python -m setuptools_scm)"', "SCM version resolution"),
+        (
+            'if [ "$scm_version" != "$version" ]; then',
+            "release-tag version validation",
+        ),
+        (
+            "Release tag determines package version",
+            "successful version-check path",
+        ),
         ("python -m build", "distribution build"),
         ("python -m twine check", "distribution metadata validation"),
         ('setup --fake-usb', "installed-wheel setup smoke test"),
         ('test ! -d "$RUNNER_TEMP/labpulse-live/labpulse-python"', "source-copy rejection"),
-        ("pypa/gh-action-pypi-publish", "trusted PyPI publication"),
+        ("pypa/gh-action-pypi-publish", "trusted package publication"),
+        ("name: testpypi", "TestPyPI publishing environment"),
+        (
+            "repository-url: https://test.pypi.org/legacy/",
+            "TestPyPI upload endpoint",
+        ),
         ("packages: write", "GHCR permission"),
         ("linux/amd64,linux/arm64", "multi-platform targets"),
         ("ghcr.io/tommystorm-cpu/labpulse", "runtime image repository"),
@@ -66,12 +80,12 @@ def main() -> None:
         ("subject-digest: ${{ steps.image.outputs.digest }}", "image attestation"),
     ):
         require(workflow, fragment, label)
-    if "raise SystemExit(" in workflow and ") if actual !=" in workflow:
-        raise AssertionError("release version check conditionally raises None on success")
+    if '["project"]["version"]' in workflow:
+        raise AssertionError("workflow still reads a hard-coded package version")
 
     print("[PASS] Dockerfile installs the versioned release wheel")
     print("[PASS] Docker build context excludes repository-only content")
-    print("[PASS] release workflow couples PyPI and GHCR versions")
+    print("[PASS] release workflow couples TestPyPI and GHCR versions")
     print("[PASS] release workflow publishes AMD64 and ARM64 images")
 
 

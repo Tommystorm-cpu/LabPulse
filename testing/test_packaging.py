@@ -21,8 +21,22 @@ def main() -> None:
     project = metadata["project"]
     if project["name"] != "labpulse":
         raise AssertionError("distribution name must be labpulse")
-    if project["version"] != labpulse.__version__:
-        raise AssertionError("package metadata and module versions differ")
+    if "version" in project:
+        raise AssertionError("package version must not be hard-coded")
+    if "version" not in project.get("dynamic", []):
+        raise AssertionError("package version must be dynamically derived")
+    build_requirements = metadata["build-system"]["requires"]
+    if not any(requirement.startswith("setuptools-scm") for requirement in build_requirements):
+        raise AssertionError("setuptools-scm must provide the package version")
+    if "tool" not in metadata or "setuptools_scm" not in metadata["tool"]:
+        raise AssertionError("setuptools-scm must be explicitly enabled")
+    init_source = (REPOSITORY / "src" / "labpulse" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    if 'version("labpulse")' not in init_source:
+        raise AssertionError("runtime version must come from installed metadata")
+    if not labpulse.__version__:
+        raise AssertionError("runtime package version is empty")
     if project.get("license") != "MIT":
         raise AssertionError("package metadata must declare the MIT SPDX licence")
     if project.get("license-files") != ["LICENSE"]:
@@ -72,7 +86,7 @@ def main() -> None:
     if "labpulse-" + "ha" in setup_source:
         raise AssertionError("old live-directory name remains in setup")
 
-    print("[PASS] package metadata and version")
+    print("[PASS] tag-derived package and runtime version")
     print("[PASS] MIT licence metadata and text")
     print("[PASS] pipx console entry points")
     print("[PASS] packaged setup assets")
