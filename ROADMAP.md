@@ -8,10 +8,12 @@ describe local hardware in one configuration file, operate it without
 maintainer-only knowledge, and add standard or custom sensors through stable,
 documented interfaces.
 
-The immediate priority is proving and polishing the monitoring system used in
-the current laboratory. Release engineering, security, and extensibility should
-build on that foundation rather than outrun it. Equipment control is a later,
-explicitly opt-in capability and must not turn LabPulse into a safety interlock.
+The immediate priority is delivering useful monitoring in the current
+laboratory. Stage 1 established a reliable base; the next priority is a
+read-only Triton integration. Release engineering, generic extension systems,
+and wider-adoption work should be pulled forward only when a concrete need
+justifies them. Equipment control remains a separate, explicitly opt-in
+capability and must not turn LabPulse into a safety interlock.
 
 ## Current foundation
 
@@ -128,247 +130,243 @@ Acceptance met: the current installation survives ordinary hardware and
 service failures and can be operated, backed up, and reconstructed without
 undocumented maintainer knowledge.
 
-## Stage 2: packaging, continuous integration, and releases
+## Roadmap policy after Stage 1
 
-Target: `0.2.0-alpha`
+Future work is ordered by value to the current laboratory, not by an assumed
+path to becoming a general software product. A concrete integration should
+teach LabPulse what abstractions it needs; speculative protocol, packaging, and
+extension systems must not block useful monitoring.
 
-LabPulse already has a `pyproject.toml`, bounded core dependencies, package-data
-declarations, and pipx commands. This stage turns those foundations into a
-reproducible release process rather than redesigning the package.
+Only the following are hard prerequisites for a read-only integration:
 
-### Automated quality gates
+- credentials and secrets are not committed or exposed in logs;
+- the integration cannot issue equipment commands;
+- connection loss, stale data, invalid data, and recovery are represented
+  honestly;
+- a hardware-free simulator or recorded fixture covers normal and failure
+  paths;
+- the existing installation remains recoverable through backup and restore.
 
-- Run the complete hardware-free suite in continuous integration.
-- Convert or wrap the standalone test scripts in a conventional test runner so
-  selection, failure reporting, and coverage are easier to manage.
-- Test every supported Python version.
-- Build wheel and source distributions for every proposed release.
-- Install both artifacts into clean environments and exercise all console
-  entry points and packaged deployment assets.
-- Check formatting, typing, shell syntax, documentation links, and
-  deterministic generated Compose and Home Assistant output.
-- Publish reusable driver contract tests.
+The productisation tracks later in this document are selected when their
+trigger occurs. They are not mandatory sequential stages.
 
-### Release model
+## Stage 2: Triton read-only vertical slice
 
-- Use Semantic Versioning for the product, with compatibility still allowed to
-  evolve during `0.x`.
-- Use release candidates before deploying a final version to the real Pi.
-- Require a changelog, release checklist, migration notes, and recorded
-  real-Pi acceptance for each release.
-- Add `labpulse version` and include the version in diagnostic output.
-- Version the configuration schema independently from the package version.
-- Automate package publication from a tagged release.
-- Publish LabPulse to PyPI so normal installation becomes:
+Status: active.
 
-  ```text
-  pipx install labpulse
-  labpulse setup
-  ```
+### Interface discovery
 
-Acceptance: the wheel and source distribution both produce a functioning CLI
-and deployment from clean environments, and releases do not depend on a
-maintainer's local checkout.
+- Identify the deployed Triton product, software or firmware version, network
+  location, and supported interfaces.
+- Establish whether data is available through MQTT, HTTP, another network
+  protocol, a vendor library, files, or an existing database.
+- Obtain a least-privilege read-only account where the interface supports one.
+- Record authentication, polling or subscription limits, timestamps, units,
+  identifier stability, and expected disconnection behavior.
+- Capture sanitized example responses or traffic for hardware-free tests
+  without committing credentials or sensitive laboratory data.
+- Select the smallest implementation after inspecting the real interface:
+  prefer configuration and existing protocols; otherwise add a focused
+  in-tree adapter or isolate a necessary vendor dependency in its own
+  container. Do not build a public extension framework merely to host one
+  integration.
 
-## Stage 3: reproducible deployment, updates, and rollback
+### End-to-end slice
 
-Target: `0.3.0-alpha`
+- Read one useful Triton measurement from the real system.
+- Give the source and measurement stable LabPulse identities.
+- Publish its value, availability, freshness, and connection status through
+  the existing MQTT and Home Assistant path.
+- Display the measurement and integration health in the generated dashboard.
+- Represent authentication failure, timeout, invalid response, stale data,
+  disconnect, and recovery without manufacturing a healthy reading.
+- Add fixture-backed or simulated adapter, generation, and health tests.
+- Document configuration, secret placement, diagnosis, and safe removal.
 
-- Publish versioned multi-architecture container images.
-- Ensure the CLI, deployment assets, Python runtime, and containers report the
-  same LabPulse release version.
-- Pin image versions rather than following mutable `latest` tags.
-- Constrain and review Python, system-package, and base-image dependencies.
-- Produce a release manifest identifying all package and image versions.
-- Add an update preflight check and explicit operator confirmation.
-- Back up user-owned state before applying migrations.
-- Add versioned configuration migrations only after a released schema requires
-  them; do not add compatibility layers for unreleased prototype layouts.
-- Provide and test rollback to the previous working release.
-- Preserve live configuration, Home Assistant state, MQTT data, SMS
-  subscription state, and local secrets across updates.
-- Publish checksums and software bills of materials for release artifacts.
+Acceptance: one real Triton measurement travels from Triton to the LabPulse
+dashboard with the correct value, unit, timestamp, freshness, and health;
+simulated failure and recovery work without physical Triton access; and the
+integration has no command capability.
 
-Acceptance: a Pi can install, update, and restore a known LabPulse version
-without losing user-owned state.
+## Stage 3: complete Triton monitoring
 
-## Stage 4: supported security baseline
+Stage 3 expands only after the vertical slice proves the interface and
+implementation shape.
 
-Target: `0.4.0-beta`
+- Inventory the measurements and events that are operationally useful; do not
+  mirror every vendor field by default.
+- Define labels, units, update intervals, freshness limits, and stable
+  identities for the selected data.
+- Add those measurements to configuration, MQTT discovery, dashboards,
+  diagnostics, and alarm rules.
+- Reuse existing service and measurement fault semantics rather than creating
+  a parallel Triton health model.
+- Add thresholds, mutes, notifications, and SMS only where the required
+  operator response is known.
+- Rate-limit retries and logs so a Triton or network outage cannot create a
+  local resource problem or notification storm.
+- Exercise service, Pi and Triton restarts; network interruption; credential
+  failure; stale telemetry; invalid payloads; and recovery.
+- Complete a real-system soak test and record the evidence.
+- Include Triton configuration in backup and reconstruction documentation
+  while keeping secrets out of publishable configuration and diagnostics.
 
-- Replace anonymous MQTT access with generated or operator-supplied
-  credentials.
-- Give hardware publishers, Home Assistant, SMS, and integrations separate
-  identities.
-- Add MQTT access-control rules so each component can use only the topics it
-  requires.
-- Keep unencrypted MQTT internal to the host or private deployment network;
-  require a VPN or TLS for remote clients.
-- Establish a secrets-file or secrets-directory model with restrictive
-  permissions.
-- Document supported firewall, private-network, VPN, SSH, and HTTPS deployment
-  patterns.
-- Extend `labpulse doctor` with read-only security checks for network-facing
-  services, anonymous MQTT, unsafe permissions, and unnecessary container
-  privilege.
-- Reduce container privileges, mounts, and device access where practical.
-- Add dependency and vulnerability-update policies.
-- Add a `SECURITY.md` with a private vulnerability-reporting route.
-- Check backups, logs, and diagnostic output for accidental disclosure of
-  credentials or private network information.
+Acceptance: required Triton monitoring survives ordinary restarts and
+realistic communication failures, recovers only after valid new telemetry, and
+behaves consistently with existing LabPulse alarms and diagnostics.
 
-LabPulse setup should not silently alter host firewall or SSH rules. It should
-inspect, warn, and provide documented guidance because the correct rules depend
-on the laboratory network and incorrect automation could lock out the
-operator.
+## Later work selected by need
 
-Acceptance: the supported network model is explicit, normal deployment does
-not rely on anonymous trust, and external access has a documented secure path.
+The following tracks retain important work from the earlier roadmap, but none
+blocks Stages 2 or 3 unless its trigger is met.
 
-## Stage 5: contributor and adoption readiness
+### Track A: release safety baseline
 
-Target: `0.5.0-beta`
+Trigger: updates become frequent, another developer contributes regularly, or
+LabPulse is installed from anything other than the maintained checkout.
 
-- Prove the standard serial-device workflow with someone unfamiliar with the
-  internals.
-- Prove the direct-driver workflow using only public documentation, the driver
-  template, and the contract-test kit.
-- Add fixed-output metadata and first-class simulation hooks to driver
-  definitions where contributor experience shows they are useful.
-- Record real-Pi smoke-test evidence in a consistent form.
-- Keep ordinary serial sensor additions configuration-only.
-- Add issue and pull-request templates and a concise contribution checklist.
-- Remove assumptions tied specifically to the original laboratory where they
-  are discovered.
-- Establish a realistic long-term maintenance model.
+- Run the existing hardware-free suite in continuous integration.
+- Build wheel and source distributions and install both in clean environments.
+- Exercise all console commands and packaged deployment assets.
+- Add `labpulse version` and include it in diagnostic output.
+- Use a short release checklist with changelog, migration notes, backup, and
+  recorded real-Pi acceptance.
+- Publish to PyPI only when external installation is genuinely useful.
+- Convert tests to a conventional runner, add broad formatting and type gates,
+  and test multiple Python versions when that improves maintenance rather than
+  merely changing tooling.
 
-A clean installation outside the primary development setup is valuable late
-acceptance evidence, but deployment in another laboratory is not a prerequisite
-for developing the release or extension architecture. Broader multi-lab
-validation belongs near 1.0 or after the project is otherwise ready for
-adoption.
+Acceptance when activated: a release artifact constructs a functioning
+deployment without depending on a maintainer's checkout.
 
-Acceptance: another contributor can add and test a sensor without editing
-central configuration, registry, runner, Compose, MQTT, or Home Assistant
-branches.
+### Track B: reproducible updates and rollback
 
-## Stage 6: protocol-level external integrations
+Trigger: LabPulse has published versions or an update introduces the first
+real configuration migration.
 
-Target: `0.6.0-beta`
+- Pin release and container versions rather than following mutable tags.
+- Report matching versions across the CLI, assets, runtime, and containers.
+- Add update preflight, confirmation, automatic state backup, and tested
+  rollback to the previous working release.
+- Introduce a configuration-schema version only when a released schema needs
+  migration.
+- Preserve live configuration, Home Assistant state, MQTT data, SMS state,
+  secrets, and integration state across updates.
+- Publish checksums and a release manifest; add software bills of materials
+  when artifacts are distributed.
 
-The first external integration mechanism should be a versioned protocol that
-external software can use without installing Python code inside LabPulse.
+Acceptance when activated: a Pi can install, update, and roll back a known
+release without losing user-owned state.
 
-- Define a stable MQTT contract for measurement publication.
-- Include stable source and measurement identity, numeric values, units or
-  metadata, availability, freshness, component faults, acknowledgements,
-  errors, protocol version, and advertised capabilities.
-- Define generic outbound events or output destinations independently from
-  vendor-specific integrations.
-- Publish schemas, examples, conformance tests, and a small simulator.
-- Allow external software to supply measurements through configuration and the
-  protocol without modifying LabPulse core code.
-- Keep these concepts distinct in configuration:
+### Track C: security for the deployed boundary
 
-  ```yaml
-  services:       # sources producing measurements
-  integrations:   # external systems exchanging data or events
-  outputs:        # destinations such as MQTT, webhooks, or files
-  ```
+Trigger: Triton requires network credentials, MQTT leaves the host, remote
+access is added, the network is not fully trusted, or LabPulse is offered to
+other installations.
 
-- Do not require an external process to run inside a LabPulse container when a
-  network contract is sufficient.
-- Keep read-only measurement exchange separate from equipment-control
-  commands.
+The minimum Triton credential and log protections required by Stage 2 happen
+immediately. Broader hardening is pulled from this track as the boundary grows.
 
-Acceptance: an independently deployed program can publish valid measurements
-and health to LabPulse using only the documented contract.
+- Establish a restrictive secrets-file or secrets-directory model.
+- Replace anonymous MQTT with separate identities and least-privilege topic
+  access where the deployment boundary requires it.
+- Keep unencrypted MQTT internal to the trusted host or network and use a VPN
+  or TLS for remote clients.
+- Document firewall, VPN, SSH, and HTTPS patterns without silently changing
+  host firewall or SSH rules.
+- Extend Doctor with read-only checks for exposed services, unsafe
+  permissions, anonymous access, and unnecessary container privilege.
+- Add dependency and vulnerability policy and a private reporting route before
+  supporting external users.
 
-## Stage 7: external Python extension packages
+Acceptance when activated: credentials are protected, each exposed component
+has only the access it needs, and the supported network path is explicit.
 
-Target: `0.7.0-beta`
+### Track D: general external-integration contract
 
-Only add external packages after the in-tree driver API and contributor
-workflow have been proven.
+Trigger: Triton proves a reusable boundary, or a second integration such as
+Qubex needs the same exchange model.
 
-- Declare and version a public driver and extension API.
-- Discover installed extensions through a Python entry-point group.
-- Require extension metadata containing its ID, API version, dependencies, and
-  capabilities.
-- Reject duplicate IDs and incompatible API versions clearly.
-- Publish a small extension SDK and contract-test package.
-- Pin exact extension package versions in an installation lock file.
-- Build or select a derived runtime image containing the pinned extension
-  wheels.
-- Record extension provenance and versions in `labpulse doctor`.
-- Do not install arbitrary packages merely because they appear in
-  `config.yaml`.
-- Do not download packages on every container start.
+- Extract the smallest generic measurement and health contract already proven
+  by a working integration.
+- Include only identities, values, metadata, timestamps, availability,
+  freshness, faults, errors, versions, and capabilities that real
+  implementations need.
+- Keep services producing measurements, integrations exchanging data, and
+  outputs delivering events conceptually distinct.
+- Publish schemas, examples, conformance tests, and a simulator when an
+  independently deployed program needs the contract.
+- Prefer a configuration-only or protocol-only Qubex integration when its
+  interface permits it.
+- Generalize vendor behavior only after a second implementation demonstrates
+  that it is genuinely reusable.
 
-A future command such as:
+Acceptance when activated: Triton and at least one independent implementation
+use the same documented boundary without vendor-specific branches in the
+contract.
 
-```text
-labpulse extension install labpulse-triton
-```
+### Track E: external packages and contributor adoption
 
-should resolve an approved package, validate compatibility, pin it, prepare the
-appropriate runtime image, regenerate deployment, and report what changed. It
-should not be a thin wrapper around an uncontrolled `pip install`.
+Trigger: an integration must be released independently, third parties need to
+add code without changing LabPulse, or multiple deployments need a stable
+extension API.
 
-Third-party extensions should normally live in separate repositories and be
-released independently. A small set of reference drivers may remain in the
-main LabPulse repository.
+- Prove the in-tree workflow before declaring an API public.
+- Add entry-point discovery, API-version checks, duplicate-ID rejection,
+  dependency and capability metadata, and reusable contract tests.
+- Pin extension versions and prepare a deterministic runtime image; never
+  download arbitrary packages from `config.yaml` or on every container start.
+- Record extension provenance in Doctor.
+- Keep ordinary serial sensors configuration-only.
+- Exercise contributor documentation with someone unfamiliar with the
+  internals and remove original-laboratory assumptions as adoption begins.
 
-## Stage 8: specific integrations and controlled outputs
+A future `labpulse extension install labpulse-triton` command is justified only
+if Triton genuinely needs independent packaging. It must be controlled and
+versioned rather than an unrestricted `pip install`.
 
-Target: experimental pre-1.0 releases
+Acceptance when activated: an external integration can be installed and
+tested without editing LabPulse core or weakening reproducibility.
 
-Qubex and Triton should validate the general contracts rather than define
-them.
+## Separately gated future work: equipment control
 
-- Prefer a configuration-only or protocol-only Qubex integration if it can
-  publish or consume the standard MQTT contract.
-- Use the same contract for Triton measurements when its available interface
-  permits it.
-- If Triton requires a proprietary protocol, vendor library, or network API,
-  implement it in a separately released `labpulse-triton` package.
-- Keep vendor-specific options and dependencies outside the LabPulse core
-  configuration model.
-- Promote generally useful capabilities into the contract only after they have
-  at least one concrete implementation.
+Read-only Triton monitoring does not authorize equipment control. Commands are
+a separate project phase requiring an explicit operator decision after
+read-only monitoring has been proven.
 
-Equipment control requires a separate, explicitly enabled contract with:
+Before any Triton, Qubex, or other equipment command is enabled, the design
+must include:
 
-- per-device opt-in and constrained allowed operations;
-- separate control credentials and MQTT permissions;
-- command IDs, acknowledgements, timeouts, and expiry;
-- replay protection and audit logs;
-- safe behavior after communication loss;
-- manual override and local interlocks;
+- per-device opt-in and a constrained allow-list of operations;
+- separate control credentials and network permissions;
+- command IDs, acknowledgements, timeouts, expiry, and replay protection;
+- an append-only audit trail;
+- safe behavior after LabPulse, network, or equipment communication loss;
+- manual override and independent local interlocks;
+- real-system failure testing in a controlled maintenance window;
 - a clear statement that LabPulse is not a safety interlock.
 
-Read-only measurements and events must be proven before LabPulse is permitted
-to command equipment.
+Acceptance: read-only monitoring remains independently usable, every command
+has an attributable result or explicit timeout, stale commands cannot execute,
+and loss of LabPulse cannot defeat the equipment's local protections.
 
-## Stage 9: 1.0 readiness
+## Long-term 1.0 readiness
 
-Target: `1.0.0`
+Target: `1.0.0` only if LabPulse is being maintained as a reusable product.
 
-- Installation, operation, backup, upgrade, rollback, and reconstruction are
-  proven on supported hardware.
-- Core configuration and extension compatibility policies are published.
-- Releases are reproducible and their provenance is recorded.
-- The security defaults match the documented deployment model.
-- Hardware-free continuous integration and real-Pi acceptance both pass.
-- Operator and contributor documentation have been exercised by people other
-  than their authors.
-- At least one clean installation independent of the primary development
-  setup has been completed.
-- The project has a credible maintenance and vulnerability-response model.
-- Stable releases can be archived in an appropriate long-term repository.
+- Installation, operation, backup, necessary upgrades, rollback, and
+  reconstruction are proven on the supported deployment.
+- Compatibility promises cover only interfaces that real integrations use.
+- Releases are reproducible if releases are being distributed.
+- Security defaults match the actual supported network boundary.
+- Hardware-free regression tests and relevant real-Pi acceptance both pass.
+- Operator documentation has been exercised outside its authoring context.
+- The project has a credible maintenance and vulnerability-response model if
+  it has external users.
 
-Use in multiple laboratories is desirable evidence after the product is ready
-for adoption, not a condition that should block reaching a mature release.
+Use in multiple laboratories, PyPI publication, a public extension ecosystem,
+and a broad compatibility matrix are desirable only when LabPulse is actually
+being adopted beyond the current laboratory.
 
 ## Explicit non-goals
 
@@ -399,15 +397,13 @@ A roadmap item is complete only when:
 - upgrade or compatibility effects are documented;
 - remaining follow-up work is explicit.
 
-The intended order is:
+The active delivery order is:
 
 ```text
 reliability and operator polish
-  → CI and package releases
-  → reproducible updates and rollback
-  → supported security baseline
-  → contributor readiness
-  → protocol-level integrations
-  → external packages
-  → controlled outputs
+  -> Triton read-only vertical slice
+  -> complete Triton monitoring
+  -> select later tracks only when their trigger occurs
 ```
+
+Equipment control is never implied by progress through the monitoring roadmap.
