@@ -116,7 +116,7 @@ LabPulse-generated Home Assistant files are not supported.
 
 The following are the supported pre-1.0 core:
 
-- installation of a versioned PyPI package with pipx;
+- installation of the current versioned TestPyPI package with pipx;
 - matching AMD64 and ARM64 LabPulse runtime images from GHCR;
 - generation and operation of `~/labpulse-live`;
 - typed configuration through `~/labpulse-live/config.yaml`;

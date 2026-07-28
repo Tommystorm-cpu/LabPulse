@@ -41,19 +41,26 @@ by an installed system.
 ## Quick start
 
 Install Docker Engine with the Compose plugin, Python with virtual-environment
-support, and pipx. Then install LabPulse:
+support, and pipx. The current `0.1.1` release is on TestPyPI rather than
+production PyPI, so both package indexes are supplied explicitly:
 
 ```bash
 pipx install \
   --index-url https://test.pypi.org/simple/ \
   --pip-args="--extra-index-url https://pypi.org/simple/" \
-  labpulse
+  "labpulse==0.1.1"
+labpulse version
 labpulse setup
 labpulse config
 labpulse up
 labpulse doctor
 labpulse open
 ```
+
+TestPyPI supplies LabPulse; production PyPI supplies its dependencies. The
+installed package automatically selects and pulls the matching public
+`ghcr.io/tommystorm-cpu/labpulse:0.1.1` image. No repository clone or local
+container build is part of an installed deployment.
 
 For a hardware-free installation:
 

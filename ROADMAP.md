@@ -10,17 +10,24 @@ documented interfaces.
 
 The immediate priority is delivering useful monitoring in the current
 laboratory. Stage 1 established a reliable base; the next priority is a
-read-only Triton integration. Release engineering, generic extension systems,
-and wider-adoption work should be pulled forward only when a concrete need
-justifies them. Equipment control remains a separate, explicitly opt-in
-capability and must not turn LabPulse into a safety interlock.
+read-only Triton integration. The release-engineering baseline was completed
+after Stage 1 so installations no longer depend on a repository checkout.
+Generic extension systems and wider-adoption work should be pulled forward
+only when a concrete need justifies them. Equipment control remains a
+separate, explicitly opt-in capability and must not turn LabPulse into a
+safety interlock.
 
 ## Current foundation
 
 Implemented foundations include:
 
-- a `src/`-layout Python package with pipx-visible commands;
+- a `src/`-layout Python package published to TestPyPI with pipx-visible
+  commands;
 - a generated `~/labpulse-live` Docker Compose installation;
+- tag-derived versions shared by the Python distributions, installed command,
+  generated Compose services, and runtime image;
+- automated clean-install release validation and TestPyPI Trusted Publishing;
+- attested AMD64 and ARM64 runtime images published to GHCR;
 - typed configuration shared by deployment and runtime components;
 - one isolated container per enabled hardware service;
 - a central hardware lifecycle runner;
@@ -35,10 +42,12 @@ Implemented foundations include:
 - repository-wide MIT licensing;
 - a documented monitoring, alerting, and safety boundary;
 - a documented reference deployment and pre-1.0 support policy;
-- initial packaging, contributor, architecture, and operator documentation.
+- packaging, contributor, architecture, installation, and operator
+  documentation.
 
-These foundations exist in code, but not all have completed long-duration,
-real-hardware, clean-install, or release-artifact acceptance testing.
+These foundations have completed automated clean-install and release-artifact
+acceptance. Long-duration and real-hardware evidence remains scoped to the
+reference deployment and the individual roadmap items that record it.
 
 ## Stage 1: reliable and polished monitoring
 
@@ -225,35 +234,49 @@ blocks Stages 2 or 3 unless its trigger is met.
 Trigger: updates become frequent, another developer contributes regularly, or
 LabPulse is installed from anything other than the maintained checkout.
 
-- Run the existing hardware-free suite in continuous integration.
-- Build wheel and source distributions and install both in clean environments.
-- Exercise all console commands and packaged deployment assets.
-- Add `labpulse version` and include it in diagnostic output.
-- Use a short release checklist with changelog, migration notes, backup, and
-  recorded real-Pi acceptance.
-- Publish to PyPI only when external installation is genuinely useful.
-- Convert tests to a conventional runner, add broad formatting and type gates,
-  and test multiple Python versions when that improves maintenance rather than
-  merely changing tooling.
+Status: baseline completed on 28 July 2026.
 
-Acceptance when activated: a release artifact constructs a functioning
-deployment without depending on a maintainer's checkout.
+- [x] Run the existing hardware-free suite in the release workflow.
+- [x] Build wheel and source distributions and install both in clean
+  environments.
+- [x] Exercise console commands and packaged deployment assets.
+- [x] Add `labpulse version` and include version/image matching in diagnostics.
+- [x] Derive the wheel, source-distribution, runtime, and image versions from
+  one immutable Git release tag.
+- [x] Publish Python artifacts to TestPyPI through Trusted Publishing.
+- [x] Build, smoke-test, attest, and publish AMD64 and ARM64 images to GHCR.
+- [x] Document installation from published artifacts without a repository
+  checkout.
+- [ ] Add migration notes and recorded real-Pi acceptance to each release when
+  that release changes live-state or hardware behavior.
+- [ ] Publish to production PyPI only when external installation is genuinely
+  useful.
+- [ ] Convert tests to a conventional runner, add broad formatting and type
+  gates, and test multiple Python versions when that improves maintenance
+  rather than merely changing tooling.
+
+Acceptance met: the `v0.1.1` release produced clean-installable TestPyPI
+artifacts and matching multi-architecture GHCR images, and a release artifact
+constructs a functioning deployment without a maintainer's checkout.
 
 ### Track B: reproducible updates and rollback
 
 Trigger: LabPulse has published versions or an update introduces the first
 real configuration migration.
 
-- Pin release and container versions rather than following mutable tags.
-- Report matching versions across the CLI, assets, runtime, and containers.
-- Add update preflight, confirmation, automatic state backup, and tested
+Status: partially complete after the `v0.1.1` release.
+
+- [x] Pin release and container versions rather than following mutable tags.
+- [x] Report matching versions across the CLI, assets, runtime, and containers.
+- [ ] Add update preflight, confirmation, automatic state backup, and tested
   rollback to the previous working release.
-- Introduce a configuration-schema version only when a released schema needs
+- [ ] Introduce a configuration-schema version only when a released schema needs
   migration.
-- Preserve live configuration, Home Assistant state, MQTT data, SMS state,
+- [x] Preserve live configuration, Home Assistant state, MQTT data, SMS state,
   secrets, and integration state across updates.
-- Publish checksums and a release manifest; add software bills of materials
-  when artifacts are distributed.
+- [x] Publish image provenance attestations and software bills of materials.
+- [ ] Publish standalone checksums and a release manifest if operators need
+  offline artifact verification.
 
 Acceptance when activated: a Pi can install, update, and roll back a known
 release without losing user-owned state.

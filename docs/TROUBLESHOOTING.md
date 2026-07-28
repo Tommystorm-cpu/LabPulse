@@ -21,6 +21,29 @@ host hardware
 Avoid changing several layers at once. Confirm the last known-good boundary
 before moving downstream.
 
+## pipx cannot find or install LabPulse
+
+LabPulse is currently published on TestPyPI, not production PyPI. Plain
+`pipx install labpulse` is therefore not the supported command. Install the
+current release with:
+
+```bash
+pipx install --force \
+  --index-url https://test.pypi.org/simple/ \
+  --pip-args="--extra-index-url https://pypi.org/simple/" \
+  "labpulse==0.1.1"
+```
+
+TestPyPI supplies the LabPulse distribution. The extra production-PyPI index
+is required for dependencies that TestPyPI does not mirror. Confirm:
+
+```bash
+labpulse version
+```
+
+Expected output is `LabPulse 0.1.1`. Do not work around installation failures
+with `sudo pip` or `--break-system-packages`.
+
 ## Installation is missing
 
 Symptom:

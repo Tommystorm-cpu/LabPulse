@@ -2,9 +2,24 @@
 
 During pre-production testing, LabPulse installs its operator command from
 TestPyPI with pipx and runs matching versioned containers from GitHub Container
-Registry. It creates a
-self-contained live deployment under `~/labpulse-live`; a repository checkout
-is required only for development.
+Registry. It creates a self-contained live deployment under
+`~/labpulse-live`; a repository checkout is required only for development.
+
+## Current distribution status
+
+The current published release is `0.1.1`. It is intentionally hosted on
+TestPyPI while the installation and release process is being qualified.
+LabPulse is not yet published on production PyPI, so plain
+`pipx install labpulse` is not the supported installation command yet.
+
+The matching public runtime image is:
+
+```text
+ghcr.io/tommystorm-cpu/labpulse:0.1.1
+```
+
+No GitHub account, TestPyPI account, repository clone, container build, or
+container-registry login is required to install this public release.
 
 ## Requirements
 
@@ -86,13 +101,32 @@ correct and `System clock synchronized` reports `yes`.
 pipx install \
   --index-url https://test.pypi.org/simple/ \
   --pip-args="--extra-index-url https://pypi.org/simple/" \
-  labpulse
+  "labpulse==0.1.1"
 ```
 
-This installs the unified `labpulse` command. Confirm:
+The arguments are currently necessary:
+
+- `--index-url https://test.pypi.org/simple/` tells pipx to obtain LabPulse
+  from TestPyPI;
+- `--pip-args="--extra-index-url https://pypi.org/simple/"` allows pip to
+  obtain LabPulse's ordinary dependencies from production PyPI, because
+  TestPyPI is not a dependency mirror;
+- `"labpulse==0.1.1"` selects the exact tested release rather than whichever
+  test upload happens to be newest.
+
+This installs the unified `labpulse` command into a user-owned isolated
+environment; administrator rights are not required. Confirm the installed
+release:
 
 ```bash
+labpulse version
 labpulse help
+```
+
+Expected version output:
+
+```text
+LabPulse 0.1.1
 ```
 
 ## Create a real-hardware installation
@@ -252,17 +286,25 @@ See [Development](DEVELOPMENT.md).
 
 ## Updating
 
-Update the installed release with:
+Until LabPulse moves to production PyPI, select the desired TestPyPI version
+explicitly. To install or replace the current release:
 
 ```bash
-pipx upgrade \
+pipx install --force \
   --index-url https://test.pypi.org/simple/ \
   --pip-args="--extra-index-url https://pypi.org/simple/" \
-  labpulse
+  "labpulse==0.1.1"
+labpulse version
 labpulse setup --backup
 labpulse up
 labpulse doctor
 ```
+
+`--force` replaces the existing pipx environment with the requested version.
+`labpulse setup --backup` then refreshes package-managed deployment assets
+while preserving the live configuration and state. When production PyPI
+publishing is enabled, the installation and update commands can be simplified
+to ordinary `pipx install labpulse` and `pipx upgrade labpulse`.
 
 `--backup` creates timestamped copies of package-managed files before setup
 replaces them. The live `config.yaml` and existing Home Assistant configuration
