@@ -12,12 +12,12 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig, ServiceConfig, load_config
+from labpulse.common.identity import stable_id
 from labpulse.common.fake_config import (
     convert_power_service_to_fake_serial,
     derive_fake_config,
 )
-from labpulse.homeassistant.cli import main as generate_homeassistant
-from labpulse.homeassistant.render_model import RenderModel
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
@@ -55,10 +55,14 @@ def test_config_validation_and_stable_identity() -> None:
         },
     }
     live = LabPulseConfig.model_validate(live_data)
-    sim_model = RenderModel.from_config(simulated).services[0]
-    live_model = RenderModel.from_config(live).services[0]
-    sim_ids = [sim_model.status_entity.unique_id] + [r.mqtt_entity.unique_id for r in sim_model.measurements]
-    live_ids = [live_model.status_entity.unique_id] + [r.mqtt_entity.unique_id for r in live_model.measurements]
+    sim_service = simulated.services["ups_monitor"]
+    live_service_config = live.services["ups_monitor"]
+    sim_ids = [stable_id("ups_monitor", "status")] + [
+        stable_id("ups_monitor", item.name) for item in sim_service.measurements
+    ]
+    live_ids = [stable_id("ups_monitor", "status")] + [
+        stable_id("ups_monitor", item.name) for item in live_service_config.measurements
+    ]
     if sim_ids != live_ids:
         raise AssertionError("live and simulated power identities differ")
 
@@ -113,7 +117,7 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
         },
     }
     source = yaml.safe_dump(live_data, sort_keys=False)
-    before = RenderModel.from_config(LabPulseConfig.model_validate(yaml.safe_load(source)))
+    before = LabPulseConfig.model_validate(yaml.safe_load(source))
     converted_text = convert_power_service_to_fake_serial(source)
     converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
     fake = converted.services["ups_monitor"]
@@ -122,10 +126,9 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
         "/tmp/labpulse-fake-serial/ups_monitor",
     ):
         raise AssertionError("fake conversion selected the wrong UPS transport")
-    after = RenderModel.from_config(converted)
-    if [r.mqtt_entity.unique_id for r in before.services[0].measurements] != [
-        r.mqtt_entity.unique_id for r in after.services[0].measurements
-    ]:
+    before_ids = [stable_id("ups_monitor", item.name) for item in before.services["ups_monitor"].measurements]
+    after_ids = [stable_id("ups_monitor", item.name) for item in converted.services["ups_monitor"].measurements]
+    if before_ids != after_ids:
         raise AssertionError("fake conversion changed power measurement identities")
 
 

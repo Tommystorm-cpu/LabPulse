@@ -1,0 +1,10 @@
+- title: Alarm Setup
+  path: alarm-setup
+  type: sections
+  max_columns: 3
+  dense_section_placement: false
+  sections:
+[% set power_services = model.services | selectattr('power', 'ne', none) | list %]
+[% include "dashboard/alarm_setup/targets.yaml.j2" %]
+[% include "dashboard/alarm_setup/notification_controls.yaml.j2" %]
+[% include "dashboard/alarm_setup/bulk_editor.yaml.j2" %]

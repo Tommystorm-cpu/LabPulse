@@ -11,8 +11,8 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig, SetupConfig
-from labpulse.homeassistant.measurement_catalog import MeasurementKey, build_measurement_catalog
-from labpulse.homeassistant.render_model import RenderModel
+from labpulse.common.identity import stable_id
+from labpulse.homeassistant.alarm import build_template_context
 
 
 def config_data() -> dict[str, object]:
@@ -207,39 +207,41 @@ def test_dedicated_power_omits_setup_membership() -> None:
 
 
 def test_canonical_catalog_and_projections() -> None:
-    """Project the same canonical measurement objects by setup and physical service."""
+    """Project the same measurement dictionaries by setup and physical service."""
 
-    catalog = build_measurement_catalog(LabPulseConfig.model_validate(config_data()))
-    if [item.key.service_name for item in catalog.measurements] != [
+    context = build_template_context(LabPulseConfig.model_validate(config_data()))
+    measurements = context["measurements"]
+    if [item["service_name"] for item in measurements] != [
         "pump_room",
         "pump_room",
         "pump_room",
         "room_environment",
     ]:
         raise AssertionError("catalog did not follow YAML service order")
-    if "disabled" in catalog.by_service:
+    if any(service["name"] == "disabled" for service in context["services"]):
         raise AssertionError("disabled service entered the measurement catalog")
 
-    cryostat_only = catalog.by_key[MeasurementKey("pump_room", "cryostat_only")]
-    turbo = catalog.by_key[MeasurementKey("pump_room", "turbo")]
-    shared = catalog.by_key[MeasurementKey("pump_room", "shared")]
-    global_measurement = catalog.by_key[MeasurementKey("room_environment", "temperature")]
+    by_key = {(item["service_name"], item["name"]): item for item in measurements}
+    cryostat_only = by_key[("pump_room", "cryostat_only")]
+    turbo = by_key[("pump_room", "turbo")]
+    shared = by_key[("pump_room", "shared")]
+    global_measurement = by_key[("room_environment", "temperature")]
 
-    if catalog.selected_shared_measurements != (shared,):
+    if tuple(item for item in measurements if len(item["setup_ids"]) > 1) != (shared,):
         raise AssertionError("selected shared projection is incorrect")
-    if shared.effective_setup_ids != ("cryostat", "turbo_pump"):
+    if shared["setup_ids"] != ("cryostat", "turbo_pump"):
         raise AssertionError("selected setups did not follow configured setup order")
-    if global_measurement.effective_setup_ids != ("cryostat",):
+    if global_measurement["setup_ids"] != ("cryostat",):
         raise AssertionError("single setup membership is incorrect")
-    if catalog.by_setup["cryostat"] != (cryostat_only, shared, global_measurement):
+    if context["measurements_by_setup"]["cryostat"] != [cryostat_only, shared, global_measurement]:
         raise AssertionError("cryostat projection is incorrect")
-    if catalog.by_setup["turbo_pump"] != (turbo, shared):
+    if context["measurements_by_setup"]["turbo_pump"] != [turbo, shared]:
         raise AssertionError("turbo projection is incorrect")
-    if catalog.by_service["pump_room"] != (cryostat_only, turbo, shared):
+    if context["services"][0]["measurements"] != [cryostat_only, turbo, shared]:
         raise AssertionError("physical service projection is incorrect")
-    if catalog.by_setup["turbo_pump"][0] is not turbo:
+    if context["measurements_by_setup"]["turbo_pump"][0] is not turbo:
         raise AssertionError("setup projection copied a canonical measurement")
-    if turbo.key.stable_id != "labpulse_pump_room_turbo":
+    if stable_id("pump_room", turbo["name"]) != "labpulse_pump_room_turbo":
         raise AssertionError("setup membership changed physical stable identity")
 
 
@@ -247,33 +249,32 @@ def test_bulk_deadband_compatibility_groups() -> None:
     """Group exact device-class/unit pairs and isolate missing device classes."""
 
     config = LabPulseConfig.model_validate(config_data())
-    catalog = build_measurement_catalog(config)
-    model = RenderModel.from_config(config, catalog)
-    all_target = model.bulk_alarm_targets[0]
+    model = build_template_context(config)
+    all_target = model["bulk_alarm_targets"][0]
     groups = {
-        (group.key.device_class, group.key.unit): group
-        for group in all_target.deadband_groups
+        (group["device_class"], group["unit"]): group
+        for group in all_target["deadband_groups"]
     }
     celsius = groups[("temperature", "°C")]
-    if celsius.measurement_keys != (
-        MeasurementKey("pump_room", "cryostat_only"),
-        MeasurementKey("pump_room", "shared"),
+    if celsius["measurement_keys"] != (
+        ("pump_room", "cryostat_only"),
+        ("pump_room", "shared"),
     ):
         raise AssertionError("same-class Celsius measurements were not grouped")
     fahrenheit = groups[("temperature", "°F")]
-    if fahrenheit.measurement_keys != (
-        MeasurementKey("room_environment", "temperature"),
+    if fahrenheit["measurement_keys"] != (
+        ("room_environment", "temperature"),
     ):
         raise AssertionError("different temperature units were combined")
     fallback_groups = [
-        group for group in all_target.deadband_groups
-        if group.key.device_class.startswith("measurement:")
+        group for group in all_target["deadband_groups"]
+        if group["device_class"].startswith("measurement:")
     ]
-    if len(fallback_groups) != 1 or fallback_groups[0].measurement_keys != (
-        MeasurementKey("pump_room", "turbo"),
+    if len(fallback_groups) != 1 or fallback_groups[0]["measurement_keys"] != (
+        ("pump_room", "turbo"),
     ):
         raise AssertionError("missing device class was not isolated")
-    if len(all_target.measurement_keys) != len(set(all_target.measurement_keys)):
+    if len(all_target["measurement_keys"]) != len(set(all_target["measurement_keys"])):
         raise AssertionError("all-measurements target duplicated a shared measurement")
 
 

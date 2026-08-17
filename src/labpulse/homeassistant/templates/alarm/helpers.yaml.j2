@@ -1,0 +1,190 @@
+input_number:
+[% if model.bulk_alarm_targets %]
+  labpulse_bulk_required_danger_percent:
+    name: Bulk Required Danger
+    min: 1
+    max: 100
+    step: 1
+    initial: 70
+    unit_of_measurement: '%'
+    mode: box
+  labpulse_bulk_observation_window_seconds:
+    name: Bulk Observation Window
+    min: 10
+    max: 3600
+    step: 10
+    initial: 120
+    unit_of_measurement: s
+    mode: box
+  labpulse_bulk_required_recovery_seconds:
+    name: Bulk Required Recovery
+    min: 0
+    max: 3600
+    step: 10
+    initial: 120
+    unit_of_measurement: s
+    mode: box
+[% for group in model.bulk_deadband_groups %]
+  [[ group.value_entity.split('.', 1)[1] ]]:
+    name: [[ ('Bulk ' ~ group.label ~ ' Recovery Deadband') | yaml_scalar ]]
+    min: [[ group.range_min ]]
+    max: [[ group.range_max ]]
+    step: [[ group.step ]]
+    unit_of_measurement: [[ group.unit | yaml_scalar ]]
+    mode: box
+[% endfor %]
+[% endif %]
+[% for service, measurement in model.alarm_measurements %]
+  labpulse_[[ measurement.measurement_id ]]_required_danger_percent:
+    name: '[[ measurement.label ]] Required Danger'
+    min: 1
+    max: 100
+    step: 1
+    unit_of_measurement: '%'
+    mode: box
+  labpulse_[[ measurement.measurement_id ]]_observation_window_seconds:
+    name: '[[ measurement.label ]] Observation Window'
+    min: 10
+    max: 3600
+    step: 10
+    unit_of_measurement: s
+    mode: box
+  labpulse_[[ measurement.measurement_id ]]_required_recovery_seconds:
+    name: '[[ measurement.label ]] Required Recovery'
+    min: 0
+    max: 3600
+    step: 10
+    unit_of_measurement: s
+    mode: box
+  labpulse_[[ measurement.measurement_id ]]_minimum_threshold:
+    name: '[[ measurement.label ]] Minimum Threshold'
+    min: [[ measurement.threshold.range_min | yaml_scalar ]]
+    max: [[ measurement.threshold.range_max | yaml_scalar ]]
+    step: [[ measurement.threshold.step | yaml_scalar ]]
+    unit_of_measurement: [[ measurement.threshold.unit | yaml_scalar ]]
+    mode: box
+  labpulse_[[ measurement.measurement_id ]]_maximum_threshold:
+    name: '[[ measurement.label ]] Maximum Threshold'
+    min: [[ measurement.threshold.range_min | yaml_scalar ]]
+    max: [[ measurement.threshold.range_max | yaml_scalar ]]
+    step: [[ measurement.threshold.step | yaml_scalar ]]
+    unit_of_measurement: [[ measurement.threshold.unit | yaml_scalar ]]
+    mode: box
+  labpulse_[[ measurement.measurement_id ]]_recovery_deadband:
+    name: '[[ measurement.label ]] Recovery Deadband'
+    min: 0
+    max: [[ measurement.threshold.range_max | yaml_scalar ]]
+    step: [[ measurement.threshold.step | yaml_scalar ]]
+    unit_of_measurement: [[ measurement.threshold.unit | yaml_scalar ]]
+    mode: box
+[% endfor %]
+[% for service in model.services if service.power is not none %]
+[% set power = service.power %]
+  labpulse_[[ service.service_id ]]_power_last_outage_duration:
+    name: '[[ service.label ]] Last Outage Duration'
+    min: 0
+    max: 604800
+    step: 1
+    unit_of_measurement: s
+    mode: box
+[% endfor %]
+
+input_select:
+[% if model.bulk_alarm_targets %]
+  labpulse_bulk_alarm_timing_target:
+    name: Bulk Alarm Timing Target
+    options: [[ model.bulk_alarm_target_options | yaml_scalar ]]
+[% endif %]
+[% for service, measurement in model.alarm_measurements %]
+  labpulse_[[ measurement.measurement_id ]]_alarm_state:
+    name: '[[ measurement.label ]] Alarm State'
+    options:
+    - Normal
+    - Danger
+    - Sensor Fault
+  labpulse_[[ measurement.measurement_id ]]_alarm_mode:
+    name: '[[ measurement.label ]] Alarm Mode'
+    options:
+    - Disabled
+    - Low Only
+    - High Only
+    - Range
+[% endfor %]
+[% for service in model.services if service.power is not none %]
+[% set power = service.power %]
+  labpulse_[[ service.service_id ]]_power_state:
+    name: '[[ service.label ]] Power State'
+    options:
+    - Normal
+    - On Battery
+    - Sensor Fault
+[% endfor %]
+
+input_boolean:
+  labpulse_global_notifications_muted:
+    name: LabPulse Global Notifications Muted
+  labpulse_first_install_initialized:
+    name: LabPulse First Installation Initialized
+  labpulse_notification_test_mode:
+    name: LabPulse Notification Test Mode
+    initial: true
+[% if model.bulk_alarm_targets %]
+  [[ 'input_boolean.labpulse_bulk_alarm_editor_expanded'.split('.', 1)[1] ]]:
+    name: Bulk Alarm Editor Expanded
+    initial: false
+[% for label, bulk_entity in bulk_common_flags %]
+  [[ bulk_entity.split('.', 1)[1] ]]:
+    name: [[ ('Bulk Apply ' ~ label) | yaml_scalar ]]
+    initial: false
+[% endfor %]
+[% for group in model.bulk_deadband_groups %]
+  [[ group.apply_entity.split('.', 1)[1] ]]:
+    name: [[ ('Bulk Apply ' ~ group.label ~ ' Recovery Deadband') | yaml_scalar ]]
+    initial: false
+[% endfor %]
+[% endif %]
+[% for setup in model.setups %]
+  [[ setup.muted_helper_id ]]:
+    name: '[[ setup.label ]] Notifications Muted'
+[% endfor %]
+[% for service in model.services %]
+  labpulse_[[ service.service_id ]]_service_fault_active:
+    name: '[[ service.label ]] Service Fault Active'
+[% endfor %]
+[% for service, measurement in model.alarm_measurements %]
+  labpulse_[[ measurement.measurement_id ]]_alarm_timing_initialized:
+    name: '[[ measurement.label ]] Alarm Timing Initialized'
+  labpulse_[[ measurement.measurement_id ]]_alarm_controls_expanded:
+    name: '[[ measurement.label ]] Show Alarm Controls'
+  labpulse_[[ measurement.measurement_id ]]_alarm_muted:
+    name: '[[ measurement.label ]] Alarm Muted'
+[% endfor %]
+[% for service in model.services if service.power is not none %]
+[% set power = service.power %]
+  labpulse_[[ service.service_id ]]_power_muted:
+    name: '[[ service.label ]] Power Alerts Muted'
+  labpulse_[[ service.service_id ]]_power_outage_active:
+    name: '[[ service.label ]] Outage Active'
+  labpulse_[[ service.service_id ]]_power_sensor_fault_confirmed:
+    name: '[[ service.label ]] Confirmed GPIO Fault'
+[% endfor %]
+
+input_datetime:
+[% for service in model.services %]
+  labpulse_[[ service.service_id ]]_service_fault_started:
+    name: '[[ service.label ]] Service Fault Started'
+    has_date: true
+    has_time: true
+[% endfor %]
+[% for service in model.services if service.power is not none %]
+[% set power = service.power %]
+  labpulse_[[ service.service_id ]]_power_outage_started:
+    name: '[[ service.label ]] Outage Started'
+    has_date: true
+    has_time: true
+  labpulse_[[ service.service_id ]]_power_last_outage_started:
+    name: '[[ service.label ]] Last Outage Started'
+    has_date: true
+    has_time: true
+[% endfor %]
+

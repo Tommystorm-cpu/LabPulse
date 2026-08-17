@@ -280,8 +280,10 @@ in several setup views while retaining one MQTT entity and alarm state.
 
 ## Home Assistant ownership
 
-The Home Assistant generator constructs one canonical catalogue and render
-model, then writes:
+The Home Assistant generator receives the already-validated `ConfigDocument`,
+builds one small context of enabled services, setup membership and bulk-alarm
+groups, then renders final-shaped Jinja YAML. There is no separate Home
+Assistant model or card-builder hierarchy. The generator writes:
 
 - core configuration and dashboard registration;
 - alarm helpers and transition automations;
@@ -321,7 +323,7 @@ src/labpulse/
   common/          config, identity, MQTT contracts, shared logging
   deployment/      Compose rendering and atomic deployment generation
   hardware/        driver API, registry, runner, parsing, MQTT publishing
-  homeassistant/   render models, alarm package, dashboard generation
+  homeassistant/   one generator, derived alarm context, final YAML templates
   sms/             request subscription, routing, modem delivery
   control.py       operator CLI
   doctor.py        read-only deployment diagnostics

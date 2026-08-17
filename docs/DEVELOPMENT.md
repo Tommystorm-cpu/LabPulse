@@ -180,9 +180,14 @@ script is a thin launcher for `python -m labpulse.deployment`. Supplying
 outputs from one configuration load. Setup and guarded editing use this unified
 mode.
 
-Compose and Home Assistant outputs are deterministic. Update source generators
-and compare generated output through the deployment tests rather than
-committing local live output.
+Compose and Home Assistant outputs are deterministic. Home Assistant uses
+strict Jinja templates with `[% ... %]` generator blocks and `[[ ... ]]`
+generator values, leaving Home Assistant's `{% ... %}` and `{{ ... }}` intact.
+Update the final-shaped templates directly and compare generated output through
+the deployment tests rather than committing local live output. Large documents
+are assembled from shallow, feature-named includes; keep those includes tied to
+concrete dashboard or alarm behavior instead of introducing generic card,
+entity, or automation macros.
 
 ## Code organization
 
@@ -202,7 +207,7 @@ Configuration changes affect multiple consumers. Update:
 - `src/labpulse/common/config.py`;
 - relevant driver options;
 - Compose generation;
-- Home Assistant render models and generators;
+- Home Assistant context calculations and final-shaped YAML templates;
 - starter `config.yaml`;
 - configuration documentation;
 - validation and generated-output tests.

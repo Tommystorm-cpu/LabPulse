@@ -69,6 +69,22 @@ def main() -> None:
     if missing:
         raise AssertionError(f"installer assets are missing: {missing}")
 
+    homeassistant_data = metadata["tool"]["setuptools"]["package-data"][
+        "labpulse.homeassistant"
+    ]
+    if "templates/*/*/*.j2" not in homeassistant_data:
+        raise AssertionError("nested Home Assistant templates are not packaged")
+    nested_templates = (
+        "alarm/automations/measurement.yaml.j2",
+        "alarm/automations/power_reconciliation.yaml.j2",
+        "dashboard/alarm_setup/bulk_editor.yaml.j2",
+        "dashboard/setup_subviews/measurement_cards.yaml.j2",
+    )
+    template_root = REPOSITORY / "src" / "labpulse" / "homeassistant" / "templates"
+    for relative_path in nested_templates:
+        if not (template_root / relative_path).is_file():
+            raise AssertionError(f"nested Home Assistant template is missing: {relative_path}")
+
     setup_source = (REPOSITORY / "deployment" / "setup_container_fs.sh").read_text(
         encoding="utf-8"
     )
@@ -90,6 +106,7 @@ def main() -> None:
     print("[PASS] MIT licence metadata and text")
     print("[PASS] pipx console entry points")
     print("[PASS] packaged setup assets")
+    print("[PASS] nested Home Assistant templates")
     print("[PASS] labpulse-live deployment contract")
 
 

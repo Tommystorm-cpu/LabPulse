@@ -20,8 +20,7 @@ from labpulse.deployment.compose import (
     build_compose,
     service_slug,
 )
-from labpulse.homeassistant.cli import generate_homeassistant
-from labpulse.homeassistant.paths import GeneratorPaths
+from labpulse.homeassistant.generator import generate_homeassistant
 
 
 def _mount_source(config_path: Path, project_dir: Path) -> str:
@@ -55,21 +54,24 @@ def _replace_text(path: Path, text: str) -> None:
         raise
 
 
-def _install_homeassistant(staged: GeneratorPaths, live: GeneratorPaths) -> None:
+def _install_homeassistant(staged: Path, live: Path) -> None:
     """Install owned HA files and initialize, but never overwrite, UI files."""
 
     owned_pairs = (
-        (staged.configuration_path, live.configuration_path),
-        (staged.package_path, live.package_path),
-        (staged.dashboard_path, live.dashboard_path),
+        (staged / "configuration.yaml", live / "configuration.yaml"),
+        (
+            staged / "packages" / "labpulse_generated.yaml",
+            live / "packages" / "labpulse_generated.yaml",
+        ),
+        (staged / "labpulse-dashboard.yaml", live / "labpulse-dashboard.yaml"),
     )
     for staged_path, live_path in owned_pairs:
         _replace_text(live_path, staged_path.read_text(encoding="utf-8"))
 
     for ui_path in (
-        live.ui_automations_path,
-        live.ui_scripts_path,
-        live.ui_scenes_path,
+        live / "automations.yaml",
+        live / "scripts.yaml",
+        live / "scenes.yaml",
     ):
         if not ui_path.exists():
             _replace_text(ui_path, "[]\n")
@@ -100,20 +102,13 @@ def generate_deployment(
     staging_root = project_dir / f".labpulse-generation-{uuid4().hex}"
     staging_root.mkdir(parents=True)
     try:
-        staged_paths = GeneratorPaths(
-            config_path=document.path,
-            ha_config_dir=staging_root / "homeassistant" / "config",
-        )
-        generate_homeassistant(document, staged_paths)
+        staged_ha_dir = staging_root / "homeassistant" / "config"
+        generate_homeassistant(document, staged_ha_dir)
 
         # No live generated file is touched until both Compose and every owned
         # Home Assistant artifact have been built successfully.
         _replace_text(compose_output, compose_text)
-        live_paths = GeneratorPaths(
-            config_path=document.path,
-            ha_config_dir=ha_config_dir,
-        )
-        _install_homeassistant(staged_paths, live_paths)
+        _install_homeassistant(staged_ha_dir, ha_config_dir)
     finally:
         shutil.rmtree(staging_root)
 

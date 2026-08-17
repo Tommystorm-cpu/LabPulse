@@ -1,0 +1,143 @@
+[% if model.bulk_alarm_targets %]
+  - type: grid
+    column_span: 2
+    cards:
+    - type: heading
+      heading: Group Alarm Settings
+      heading_style: title
+      icon: mdi:tune-vertical
+[% for expanded in (false, true) %]
+    - type: conditional
+      conditions:
+      - entity: input_boolean.labpulse_bulk_alarm_editor_expanded
+        state: [[ ('on' if expanded else 'off') | yaml_scalar ]]
+      grid_options: {columns: full}
+      card:
+        type: tile
+        entity: input_boolean.labpulse_bulk_alarm_editor_expanded
+        name: [[ ('Close group alarm settings' if expanded else 'Configure group alarm settings') | yaml_scalar ]]
+        icon: [[ ('mdi:close' if expanded else 'mdi:tune-variant') ]]
+        hide_state: true
+        tap_action:
+          action: perform-action
+          perform_action: [[ ('input_boolean.turn_off' if expanded else 'input_boolean.turn_on') ]]
+          target: {entity_id: input_boolean.labpulse_bulk_alarm_editor_expanded}
+        icon_tap_action: {action: none}
+[% endfor %]
+    - type: conditional
+      conditions:
+      - entity: input_boolean.labpulse_bulk_alarm_editor_expanded
+        state: 'on'
+      grid_options: {columns: full}
+      card:
+        type: vertical-stack
+        cards:
+        - type: markdown
+          content: Choose where the changes should go, then switch on only the settings you want to replace. Review the result before applying.
+          grid_options: {columns: full}
+        - type: entities
+          title: 1. Choose target
+          show_header_toggle: false
+          grid_options: {columns: full}
+          entities:
+          - entity: input_select.labpulse_bulk_alarm_timing_target
+            name: Apply changes to
+          - entity: sensor.labpulse_bulk_alarm_target_count
+            name: Measurements affected
+        - type: entities
+          title: 2. Choose settings and values
+          show_header_toggle: false
+          grid_options: {columns: full}
+          entities:
+          - type: section
+            label: Only switched-on settings will be applied
+[% for apply_entity, value_entity, change_name, value_name in (
+  ('input_boolean.labpulse_bulk_apply_required_danger_percent', 'input_number.labpulse_bulk_required_danger_percent', 'Change required danger', 'New required danger'),
+  ('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'input_number.labpulse_bulk_observation_window_seconds', 'Change observation window', 'New observation window'),
+  ('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'input_number.labpulse_bulk_required_recovery_seconds', 'Change required recovery', 'New required recovery')
+) %]
+          - entity: [[ apply_entity ]]
+            name: [[ change_name | yaml_scalar ]]
+          - type: conditional
+            conditions:
+            - entity: [[ apply_entity ]]
+              state: 'on'
+            row:
+              entity: [[ value_entity ]]
+              name: [[ value_name | yaml_scalar ]]
+[% endfor %]
+[% for target in model.bulk_alarm_targets %]
+        - type: conditional
+          conditions:
+          - entity: input_select.labpulse_bulk_alarm_timing_target
+            state: [[ target.option | yaml_scalar ]]
+          grid_options: {columns: full}
+          card:
+            type: entities
+            show_header_toggle: false
+            entities:
+            - type: section
+              label: Deadbands available for this target
+[% for group in target.deadband_groups %]
+            - entity: [[ group.apply_entity ]]
+              name: [[ ('Change ' ~ (group.label | lower) ~ ' deadband (' ~ (group.measurement_keys | length) ~ ' ' ~ ('measurement' if group.measurement_keys | length == 1 else 'measurements') ~ ')') | yaml_scalar ]]
+            - type: conditional
+              conditions:
+              - entity: [[ group.apply_entity ]]
+                state: 'on'
+              row:
+                entity: [[ group.value_entity ]]
+                name: [[ ('New ' ~ (group.label | lower) ~ ' deadband' ~ (' (' ~ group.unit ~ ')' if group.unit else '')) | yaml_scalar ]]
+[% endfor %]
+[% endfor %]
+        - type: markdown
+          content: |-
+            ## 3. Review changes
+            {% set target = states('input_select.labpulse_bulk_alarm_timing_target') %}
+            **Target:** {{ target }} ({{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements)
+
+            {% if is_state('input_boolean.labpulse_bulk_apply_required_danger_percent', 'on') %}- Required danger: **{{ states('input_number.labpulse_bulk_required_danger_percent') }}%** → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements{% endif %}
+            {% if is_state('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'on') %}- Observation window: **{{ states('input_number.labpulse_bulk_observation_window_seconds') }} s** → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements{% endif %}
+            {% if is_state('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'on') %}- Required recovery: **{{ states('input_number.labpulse_bulk_required_recovery_seconds') }} s** → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements{% endif %}
+[%- for target in model.bulk_alarm_targets %]
+[%- for group in target.deadband_groups %]
+            {% if target == [[ target.option | pyrepr ]] and is_state('[[ group.apply_entity ]]', 'on') %}- [[ group.label ]] deadband: **{{ states('[[ group.value_entity ]]') }}[[ (' ' ~ group.unit) if group.unit else '' ]]** → [[ group.measurement_keys | length ]] measurements{% endif %}
+[%- endfor %]
+[%- endfor %]
+            {% if is_state('binary_sensor.labpulse_bulk_alarm_changes_selected', 'off') %}
+            **Nothing will be changed.**
+            {% endif %}
+          grid_options: {columns: full}
+        - type: conditional
+          conditions:
+          - entity: binary_sensor.labpulse_bulk_alarm_changes_selected
+            state: 'off'
+          grid_options: {columns: full}
+          card:
+            type: tile
+            entity: binary_sensor.labpulse_bulk_alarm_changes_selected
+            name: Apply unavailable — select at least one change
+            icon: mdi:checkbox-blank-off-outline
+            grid_options: {columns: full}
+            tap_action: {action: none}
+            hold_action: {action: none}
+            double_tap_action: {action: none}
+            icon_tap_action: {action: none}
+        - type: conditional
+          conditions:
+          - entity: binary_sensor.labpulse_bulk_alarm_changes_selected
+            state: 'on'
+          grid_options: {columns: full}
+          card:
+            type: tile
+            entity: script.labpulse_apply_bulk_alarm_settings
+            name: 4. Apply selected changes
+            icon: mdi:check-bold
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: script.labpulse_apply_bulk_alarm_settings
+              confirmation:
+                text: Apply exactly the changes shown in the review above?
+            icon_tap_action: {action: none}
+[% endif %]

@@ -3,9 +3,11 @@
 from collections.abc import Callable, Iterable
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from uuid import uuid4
 
 import yaml
+from jinja2 import UndefinedError
 
 
 sys.dont_write_bytecode = True
@@ -13,8 +15,9 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
-from labpulse.homeassistant.cli import main as generate_homeassistant
-from labpulse.homeassistant.paths import GeneratorPaths
+from labpulse.common.config import load_config
+import labpulse.homeassistant.generator as generator
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -58,7 +61,7 @@ def sample_config() -> dict[str, object]:
     }
 
 
-def render_into(temp_dir: Path) -> GeneratorPaths:
+def render_into(temp_dir: Path) -> SimpleNamespace:
     """Render the sample configuration into an isolated directory."""
 
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -66,9 +69,13 @@ def render_into(temp_dir: Path) -> GeneratorPaths:
     config_path.write_text(
         yaml.safe_dump(sample_config(), sort_keys=False), encoding="utf-8"
     )
-    paths = GeneratorPaths(
+    ha_config_dir = temp_dir / "homeassistant" / "config"
+    paths = SimpleNamespace(
         config_path=config_path,
-        ha_config_dir=temp_dir / "homeassistant" / "config",
+        ha_config_dir=ha_config_dir,
+        package_path=ha_config_dir / "packages" / "labpulse_generated.yaml",
+        configuration_path=ha_config_dir / "configuration.yaml",
+        dashboard_path=ha_config_dir / "labpulse-dashboard.yaml",
     )
     result = generate_homeassistant(
         ["generator", str(paths.config_path), str(paths.ha_config_dir)]
@@ -358,10 +365,60 @@ def test_first_install_starts_globally_muted_once() -> None:
     )
 
 
+def test_invalid_render_preserves_every_live_file() -> None:
+    """Do not touch managed or UI-owned files when one render fails."""
+
+    temp = REFACTOR_DIR / "testing" / "tmp" / f"generator-atomic-{uuid4().hex}"
+    ha_dir = temp / "homeassistant" / "config"
+    package = ha_dir / "packages" / "labpulse_generated.yaml"
+    managed = (ha_dir / "configuration.yaml", package, ha_dir / "labpulse-dashboard.yaml")
+    ui_files = tuple(ha_dir / name for name in ("automations.yaml", "scripts.yaml", "scenes.yaml"))
+    for path in (*managed, *ui_files):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"sentinel:{path.name}\n", encoding="utf-8")
+    config_path = temp / "config.yaml"
+    config_path.write_text(yaml.safe_dump(sample_config(), sort_keys=False), encoding="utf-8")
+
+    original = generator._render_dashboard
+    generator._render_dashboard = lambda _context: (_ for _ in ()).throw(ValueError("bad dashboard"))
+    try:
+        try:
+            generator.generate_homeassistant(load_config(config_path), ha_dir)
+        except ValueError as error:
+            if str(error) != "bad dashboard":
+                raise
+        else:
+            raise AssertionError("invalid render unexpectedly installed output")
+    finally:
+        generator._render_dashboard = original
+    for path in (*managed, *ui_files):
+        assert_equal(path.read_text(encoding="utf-8"), f"sentinel:{path.name}\n", f"preserved {path.name}")
+
+
+def test_strict_and_malformed_templates_fail() -> None:
+    """Reject undefined generator values and malformed dashboard shapes."""
+
+    try:
+        generator._environment().from_string("[[ absent_value ]]").render()
+    except UndefinedError:
+        pass
+    else:
+        raise AssertionError("StrictUndefined was not active")
+    for malformed in ("views: {}\n", "- not-a-mapping\n"):
+        try:
+            generator._validate_dashboard(malformed)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("malformed dashboard shape passed validation")
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("generated package", test_generated_package),
     ("thresholds need no defaults file", test_thresholds_need_no_defaults_file),
     ("first installation starts globally muted once", test_first_install_starts_globally_muted_once),
+    ("invalid render preserves live files", test_invalid_render_preserves_every_live_file),
+    ("strict and malformed templates fail", test_strict_and_malformed_templates_fail),
 ]
 
 

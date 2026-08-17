@@ -46,8 +46,17 @@ hand-edit the generated package. Change:
 
 - sensors, setups, labels, subcategories, units, and icons in live
   `config.yaml`;
-- dashboard layout rules in `src/labpulse/homeassistant/dashboard/`;
-- alarm-generation behavior in the Home Assistant generator and templates.
+- dashboard layout in `src/labpulse/homeassistant/templates/dashboard/`;
+- alarm entities and behavior in the concrete feature templates under
+  `src/labpulse/homeassistant/templates/alarm/`; `alarm_package.yaml.j2` is
+  only their top-level assembly order;
+- genuinely derived setup, threshold and bulk-group calculations in
+  `src/labpulse/homeassistant/alarm.py`.
+
+`generator.py` constructs the shared context once, renders and parses all
+three managed YAML documents in memory, and only then atomically replaces the
+managed files. Existing UI-owned `automations.yaml`, `scripts.yaml` and
+`scenes.yaml` are never overwritten.
 
 Apply ordinary changes with:
 

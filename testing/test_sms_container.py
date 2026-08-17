@@ -741,12 +741,12 @@ def test_shared_sms_template_catalogue() -> None:
     )
     assert_equal(len(templates["alerts"]), 10, "alert template pairs")
     for name, alert in templates["alerts"].items():
-        assert_equal("[TEST]" in alert["title"], False, f"{name} central test prefix")
+        assert_equal("[TEST]" in alert["title"], True, f"{name} template test prefix")
         assert_contains(
             alert["message"], CURRENT_MEASUREMENT_PLACEHOLDER, f"{name} current measurement"
         )
     phone_book = templates["notifications"]["phone_book"]
-    assert_equal("[TEST]" in phone_book["title"], False, "notification test prefix")
+    assert_equal("[TEST]" in phone_book["title"], True, "notification test prefix")
     assert_contains(
         phone_book["title"],
         "LabPulse Phone Book Notification",

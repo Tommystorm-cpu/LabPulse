@@ -1,0 +1,166 @@
+[% for measurement in setup.measurements %]
+[% set service_name = measurement.service_name %]
+[% for mobile in (false, true) %]
+  - type: grid
+    column_span: 3
+    visibility:
+    - condition: screen
+      media_query: [[ ('(max-width: 899px)' if mobile else '(min-width: 900px)') | yaml_scalar ]]
+    cards:
+    - type: tile
+      entity: [[ entity_id('sensor', service_name, measurement.name) ]]
+      name: [[ measurement.label | yaml_scalar ]]
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      tap_action: {action: none}
+      hold_action: {action: none}
+      double_tap_action: {action: none}
+      icon_tap_action: {action: none}
+    - type: tile
+      entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+      name: Alarm state
+      icon: mdi:alarm-light-outline
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      tap_action: {action: none}
+      hold_action: {action: none}
+      double_tap_action: {action: none}
+      icon_tap_action: {action: none}
+[% for role, label, icon in (('minimum_threshold', 'Minimum', 'mdi:arrow-collapse-down'), ('maximum_threshold', 'Maximum', 'mdi:arrow-collapse-up')) %]
+    - type: tile
+      entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+      name: [[ label ]]
+      icon: [[ icon ]]
+      grid_options: {columns: [[ (4 if mobile else 6) ]]}
+      tap_action: {action: none}
+      hold_action: {action: none}
+      double_tap_action: {action: none}
+      icon_tap_action: {action: none}
+[% endfor %]
+[% for muted, label, icon, action in ((false, 'Notifications active', 'mdi:bell-ring-outline', 'input_boolean.turn_on'), (true, 'Notifications muted', 'mdi:bell-off-outline', 'input_boolean.turn_off')) %]
+    - type: conditional
+      conditions:
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+        state: [[ ('on' if muted else 'off') | yaml_scalar ]]
+      grid_options: {columns: [[ (4 if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+        name: [[ label | yaml_scalar ]]
+        icon: [[ icon ]]
+        hide_state: true
+        tap_action:
+          action: perform-action
+          perform_action: [[ action ]]
+          target:
+            entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+        icon_tap_action: {action: none}
+[% endfor %]
+[% for expanded, label, icon, action in ((false, 'Configure', 'mdi:tune-variant', 'input_boolean.turn_on'), (true, 'Close', 'mdi:close', 'input_boolean.turn_off')) %]
+    - type: conditional
+      conditions:
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        state: [[ ('on' if expanded else 'off') | yaml_scalar ]]
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        name: [[ label ]]
+        icon: [[ icon ]]
+        hide_state: true
+        tap_action:
+          action: perform-action
+          perform_action: [[ action ]]
+          target:
+            entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        icon_tap_action: {action: none}
+[% endfor %]
+    - type: conditional
+      conditions:
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        state: 'on'
+      grid_options: {columns: full}
+      card:
+        type: vertical-stack
+        cards:
+[% if not mobile %]
+        - type: grid
+          columns: 2
+          square: false
+          cards:
+          - type: entities
+            title: [[ (measurement.label ~ ': Alarm behaviour') | yaml_scalar ]]
+            show_header_toggle: false
+            entities:
+            - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+              name: Alarm mode
+            - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+              name: Measurement notifications muted
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'minimum_threshold') ]]
+              name: Minimum threshold
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'maximum_threshold') ]]
+              name: Maximum threshold
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'recovery_deadband') ]]
+              name: Recovery deadband
+          - type: entities
+            title: Confirmation timing
+            show_header_toggle: false
+            entities:
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_danger_percent') ]]
+              name: Required danger
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'observation_window_seconds') ]]
+              name: Observation window
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_recovery_seconds') ]]
+              name: Required recovery
+[% else %]
+        - type: entities
+          title: [[ (measurement.label ~ ': Alarm behaviour') | yaml_scalar ]]
+          show_header_toggle: false
+          entities:
+          - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+            name: Alarm mode
+          - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+            name: Measurement notifications muted
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'minimum_threshold') ]]
+            name: Minimum threshold
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'maximum_threshold') ]]
+            name: Maximum threshold
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'recovery_deadband') ]]
+            name: Recovery deadband
+        - type: entities
+          title: Confirmation timing
+          show_header_toggle: false
+          entities:
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_danger_percent') ]]
+            name: Required danger
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'observation_window_seconds') ]]
+            name: Observation window
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_recovery_seconds') ]]
+            name: Required recovery
+[% endif %]
+        - type: entities
+          title: Live status
+          show_header_toggle: false
+          entities:
+          - entity: [[ entity_id('sensor', service_name, measurement.name) ]]
+            name: Current value
+          - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+            name: Alarm state
+          - entity: [[ entity_id('sensor', service_name, measurement.name, 'observed_danger_percent') ]]
+            name: Observed danger
+          - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'danger_zone') ]]
+            name: Danger zone
+          - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'recovery_zone') ]]
+            name: Recovery zone
+          - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'sensor_fault_zone') ]]
+            name: Sensor fault
+          - type: button
+            entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+            name: Close editor
+            icon: mdi:close
+            action_name: Close
+            tap_action:
+              action: perform-action
+              perform_action: input_boolean.turn_off
+              target:
+                entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+[% endfor %]
+[% endfor %]

@@ -1,0 +1,12 @@
+[% for setup in model.setups if setup.measurements %]
+- title: [[ setup.label | yaml_scalar ]]
+  path: alarm-setup-[[ setup.setup_id ]]
+  subview: true
+  back_path: /labpulse-monitor/alarm-setup
+  type: sections
+  max_columns: 3
+  dense_section_placement: false
+  sections:
+[% include "dashboard/setup_subviews/setup_header.yaml.j2" %]
+[% include "dashboard/setup_subviews/measurement_cards.yaml.j2" %]
+[% endfor %]

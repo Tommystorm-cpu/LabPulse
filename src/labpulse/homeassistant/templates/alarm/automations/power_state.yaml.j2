@@ -1,0 +1,124 @@
+  - id: labpulse_[[ service.service_id ]]_power_outage_confirm
+    alias: LabPulse [[ service.label ]] Outage Confirm
+    mode: single
+    trigger:
+    - platform: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
+      to: 'off'
+      for:
+        seconds: [[ power.config.outage_confirm_seconds | yaml_scalar ]]
+    condition:
+    - condition: state
+      entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+      state: 'off'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'sensor_fault') | yaml_scalar ]]
+      state: 'off'
+    action:
+    - variables:
+        outage_start: >-
+          {{ as_timestamp(trigger.to_state.last_changed, as_timestamp(now())) }}
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: [[ entity_id('input_datetime', service.name, 'power', 'outage_started') | yaml_scalar ]]
+      data:
+        timestamp: >-
+          {{ outage_start }}
+    - service: input_boolean.turn_on
+      target:
+        entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+    - service: input_select.select_option
+      target:
+        entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
+      data:
+        option: On Battery
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', service.name, 'power', 'muted') | yaml_scalar ]]
+          state: 'off'
+        - condition: state
+          entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
+          state: 'off'
+        sequence:
+        - service: persistent_notification.create
+          data:
+            title: >
+              {{ ('[TEST] ' if is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on') else '') ~ 'LabPulse external power lost' }}
+            message: >
+              [[ service.label ]] has directly detected loss of external power. The monitor is running on UPS battery. Battery level: {{ states('[[ entity_id('sensor', service.name, 'battery_level') ]]') }}%. Battery voltage: {{ states('[[ entity_id('sensor', service.name, 'voltage') ]]') }} V. [[ power.mains_present.notification_context ]]
+            notification_id: labpulse_[[ service.service_id ]]_power
+        - service: mqtt.publish
+          data:
+            topic: [[ model.sms_send_topic | yaml_scalar ]]
+            qos: 1
+            retain: false
+            payload: >
+              {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "On Battery", "title": [[ sms.alerts.power_warning.title | render_fragment(service=service, power=power, model=model) ]], "message": ([[ sms.alerts.power_warning.message | render_fragment(service=service, power=power, model=model) ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'voltage') ]]')} | to_json }}
+  - id: labpulse_[[ service.service_id ]]_power_recovery_confirm
+    alias: LabPulse [[ service.label ]] Recovery Confirm
+    mode: single
+    trigger:
+    - platform: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
+      to: 'on'
+      for:
+        seconds: [[ power.config.restore_confirm_seconds | yaml_scalar ]]
+    condition:
+    - condition: state
+      entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+      state: 'on'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'sensor_fault') | yaml_scalar ]]
+      state: 'off'
+    action:
+    - variables:
+        outage_start: >-
+          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'power', 'outage_started') ]]'), as_timestamp(now())) }}
+        recovery_start: >-
+          {{ as_timestamp(trigger.to_state.last_changed, as_timestamp(now())) }}
+        outage_duration: >-
+          {{ [0, recovery_start - outage_start] | max | round(0) }}
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: [[ entity_id('input_datetime', service.name, 'power', 'last_outage_started') | yaml_scalar ]]
+      data:
+        timestamp: >-
+          {{ outage_start }}
+    - service: input_number.set_value
+      target:
+        entity_id: [[ entity_id('input_number', service.name, 'power', 'last_outage_duration') | yaml_scalar ]]
+      data:
+        value: >-
+          {{ outage_duration }}
+    - service: input_boolean.turn_off
+      target:
+        entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+    - service: input_select.select_option
+      target:
+        entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
+      data:
+        option: Normal
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', service.name, 'power', 'muted') | yaml_scalar ]]
+          state: 'off'
+        - condition: state
+          entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
+          state: 'off'
+        sequence:
+        - service: persistent_notification.create
+          data:
+            title: >
+              {{ ('[TEST] ' if is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on') else '') ~ 'LabPulse external power restored' }}
+            message: >
+              [[ service.label ]] has directly detected restored external power after {{ outage_duration }} seconds. Battery level: {{ states('[[ entity_id('sensor', service.name, 'battery_level') ]]') }}%. Battery voltage: {{ states('[[ entity_id('sensor', service.name, 'voltage') ]]') }} V. [[ power.mains_present.notification_context ]]
+            notification_id: labpulse_[[ service.service_id ]]_power
+        - service: mqtt.publish
+          data:
+            topic: [[ model.sms_send_topic | yaml_scalar ]]
+            qos: 1
+            retain: false
+            payload: >
+              {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "Normal", "title": [[ sms.alerts.power_recovery.title | render_fragment(service=service, power=power, model=model) ]], "message": ([[ sms.alerts.power_recovery.message | render_fragment(service=service, power=power, model=model) ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'voltage') ]]')} | to_json }}

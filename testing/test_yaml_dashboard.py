@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import Callable
 from uuid import uuid4
 
@@ -13,8 +14,7 @@ import yaml
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
-from labpulse.homeassistant.cli import main as generate_homeassistant
-from labpulse.homeassistant.paths import GeneratorPaths
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
@@ -113,7 +113,7 @@ def dashboard_config() -> dict[str, object]:
 def generate(
     config: dict[str, object] | None = None,
     config_path: Path | None = None,
-) -> tuple[GeneratorPaths, dict[str, object], str]:
+) -> tuple[SimpleNamespace, dict[str, object], str]:
     """Run normal offline generation and return parsed dashboard output."""
 
     temp = REFACTOR_DIR / "testing" / "tmp" / f"yaml-dashboard-{uuid4().hex}"
@@ -146,7 +146,13 @@ def generate(
     if registry.read_text(encoding="utf-8") != '{"registry_owned": true}\n':
         raise AssertionError("normal generation modified the dashboard registry")
 
-    paths = GeneratorPaths(config_path=selected_path, ha_config_dir=ha_dir)
+    paths = SimpleNamespace(
+        config_path=selected_path,
+        ha_config_dir=ha_dir,
+        dashboard_path=ha_dir / "labpulse-dashboard.yaml",
+        configuration_path=ha_dir / "configuration.yaml",
+        package_path=ha_dir / "packages" / "labpulse_generated.yaml",
+    )
     text = paths.dashboard_path.read_text(encoding="utf-8")
     return paths, yaml.safe_load(text), text
 

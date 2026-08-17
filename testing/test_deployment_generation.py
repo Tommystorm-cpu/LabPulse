@@ -20,7 +20,7 @@ sys.path.insert(0, str(REFACTOR_DIR / "src"))
 from labpulse import __version__
 from labpulse.common.config import load_config
 from labpulse.deployment.compose import build_compose
-from labpulse.homeassistant.cli import main as generate_homeassistant
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 @contextmanager

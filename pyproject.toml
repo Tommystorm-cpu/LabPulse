@@ -24,6 +24,7 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
+  "Jinja2>=3.1,<4",
   "paho-mqtt>=2,<3",
   "pydantic>=2,<3",
   "PyYAML>=6,<7",
@@ -67,8 +68,10 @@ include = ["labpulse*"]
 [tool.setuptools.package-data]
 "labpulse.common" = ["*.yaml"]
 "labpulse.homeassistant" = [
+  "templates/*.j2",
   "templates/*/*.yaml",
   "templates/*/*.j2",
+  "templates/*/*/*.j2",
 ]
 
 [tool.setuptools.data-files]

@@ -1,0 +1,6 @@
+[% for service in model.services if service.power is not none %]
+[% set power = service.power %]
+[% include "automations/power_state.yaml.j2" %]
+[% include "automations/power_sensor_health.yaml.j2" %]
+[% include "automations/power_reconciliation.yaml.j2" %]
+[% endfor %]

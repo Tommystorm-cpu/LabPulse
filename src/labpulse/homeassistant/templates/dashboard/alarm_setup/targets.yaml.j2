@@ -1,0 +1,86 @@
+[% if model.setups or power_services %]
+  - type: grid
+    column_span: 3
+    cards:
+    - type: heading
+      heading: Configure Alarms
+      heading_style: title
+      icon: mdi:tune-variant
+[% for setup in model.setups %]
+    - type: grid
+      columns: 3
+      square: false
+      grid_options: {columns: full}
+      cards:
+      - type: tile
+        entity: [[ setup.muted_entity ]]
+        name: [[ (setup.label ~ ' — ' ~ setup.measurement_count ~ ' measurements') | yaml_scalar ]]
+        icon: [[ setup.icon ]]
+        grid_options: {columns: 4}
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+        icon_tap_action: {action: none}
+        hide_state: true
+      - type: vertical-stack
+        cards:
+        - type: conditional
+          conditions:
+          - entity: [[ setup.muted_entity ]]
+            state: 'off'
+          grid_options: {columns: full}
+          card:
+            type: tile
+            entity: [[ setup.muted_entity ]]
+            name: Mute notifications
+            icon: mdi:bell-off-outline
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: input_boolean.turn_on
+              target: {entity_id: [[ setup.muted_entity ]]}
+[% if setup.shared_measurement_labels %]
+              confirmation:
+                text: [[ setup.shared_measurement_warning | yaml_scalar ]]
+[% endif %]
+        - type: conditional
+          conditions:
+          - entity: [[ setup.muted_entity ]]
+            state: 'on'
+          grid_options: {columns: full}
+          card:
+            type: tile
+            entity: [[ setup.muted_entity ]]
+            name: Unmute notifications
+            icon: mdi:bell-outline
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: input_boolean.turn_off
+              target: {entity_id: [[ setup.muted_entity ]]}
+      - type: tile
+        entity: [[ setup.muted_entity ]]
+        name: Configure
+        icon: mdi:tune-variant
+        hide_state: true
+        tap_action:
+          action: navigate
+          navigation_path: /labpulse-monitor/alarm-setup-[[ setup.setup_id ]]
+        icon_tap_action:
+          action: navigate
+          navigation_path: /labpulse-monitor/alarm-setup-[[ setup.setup_id ]]
+[% endfor %]
+[% for service in power_services %]
+    - type: tile
+      entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+      name: Power Monitoring
+      icon: mdi:battery-charging
+      hide_state: true
+      tap_action:
+        action: navigate
+        navigation_path: /labpulse-monitor/alarm-power-[[ service.service_id ]]
+      icon_tap_action:
+        action: navigate
+        navigation_path: /labpulse-monitor/alarm-power-[[ service.service_id ]]
+[% endfor %]
+[% endif %]

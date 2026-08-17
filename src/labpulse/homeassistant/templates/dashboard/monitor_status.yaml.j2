@@ -1,0 +1,74 @@
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: input_boolean.labpulse_global_notifications_muted
+        state: 'on'
+      card:
+        type: markdown
+        content: |-
+          ## Global Mute Applied
+
+          Alarm states remain visible, but LabPulse notifications are disabled.
+
+          [Review notification controls](/labpulse-monitor/alarm-setup)
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: input_boolean.labpulse_notification_test_mode
+        state: 'on'
+      card:
+        type: markdown
+        content: |-
+          ## Test Mode Applied
+
+          Notifications are routed only to the configured test recipients.
+
+          [Review notification controls](/labpulse-monitor/alarm-setup)
+    - type: entity-filter
+      entities:
+[% for service in model.services %]
+      - entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
+        name: [[ (service.label ~ ': confirmed service fault') | yaml_scalar ]]
+        icon: mdi:lan-disconnect
+[% endfor %]
+[% for service, measurement in model.alarm_measurements %]
+      - entity: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]
+        name: [[ (measurement.label ~ ': alarm state') | yaml_scalar ]]
+        icon: mdi:alert-outline
+        conditions:
+        - condition: state
+          state: [Danger, Sensor Fault]
+        - condition: state
+          entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_muted') ]]
+          state: 'off'
+[% if measurement.setup_ids | length == 1 %]
+        - condition: state
+          entity: [[ entity_id('input_boolean', 'setup', measurement.setup_ids[0], 'notifications_muted') ]]
+          state: 'off'
+[% elif measurement.setup_ids %]
+        - condition: or
+          conditions:
+[% for setup_id in measurement.setup_ids %]
+          - condition: state
+            entity: [[ entity_id('input_boolean', 'setup', setup_id, 'notifications_muted') ]]
+            state: 'off'
+[% endfor %]
+[% endif %]
+[% endfor %]
+[% for service in model.services if service.power is not none %]
+      - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+        name: 'Power monitoring: lifecycle state'
+        icon: mdi:power-plug-off-outline
+[% endfor %]
+      conditions:
+      - condition: or
+        conditions:
+        - condition: state
+          state: 'on'
+        - condition: state
+          state: [Danger, Sensor Fault, On Battery]
+      show_empty: false
+      card:
+        type: entities
+        title: Active Problems
+        show_header_toggle: false

@@ -1,0 +1,38 @@
+[% for service in model.services if service.power is not none %]
+- title: Power Monitoring
+  path: alarm-power-[[ service.service_id ]]
+  subview: true
+  back_path: /labpulse-monitor/alarm-setup
+  type: sections
+  max_columns: 1
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: Power Monitoring
+      heading_style: title
+      icon: mdi:battery-charging
+    - type: heading
+      heading: [[ service.label | yaml_scalar ]]
+      heading_style: subtitle
+      icon: mdi:chip
+    - type: entities
+      show_header_toggle: false
+      entities:
+      - entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
+        name: Sensor hub fault active
+      - type: divider
+      - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+        name: Power lifecycle state
+      - entity: [[ entity_id('input_boolean', service.name, 'power', 'muted') ]]
+        name: Power alerts muted
+      - type: divider
+      - entity: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]
+        name: Confirmed external-power input
+      - entity: [[ entity_id('sensor', service.name, 'mains_present') ]]
+        name: Raw GPIO6 mains value
+      - entity: [[ entity_id('binary_sensor', service.name, 'power', 'sensor_fault') ]]
+        name: External-power sensor fault
+      - entity: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]
+        name: Confirmed outage active
+[% endfor %]

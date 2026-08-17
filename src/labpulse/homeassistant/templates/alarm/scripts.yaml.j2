@@ -1,0 +1,94 @@
+script:
+  labpulse_send_phone_book_notification:
+    alias: Send LabPulse Phone Book Notification
+    icon: mdi:account-multiple-check
+    mode: single
+    sequence:
+    - condition: state
+      entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
+      state: 'off'
+    - service: mqtt.publish
+      data:
+        topic: [[ model.sms_send_topic | yaml_scalar ]]
+        qos: 1
+        retain: false
+        payload: >
+          {{ {"request_id": "labpulse_phone_book_notification_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "notification", "service": "labpulse", "service_label": "LabPulse", "measurement": "phone_book", "measurement_label": "Phone book", "state": "Notification", "title": [[ sms.notifications.phone_book.title | render_fragment(model=model) ]], "message": [[ sms.notifications.phone_book.message | render_fragment(model=model) ]], "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": none} | to_json }}
+[% if model.bulk_alarm_targets %]
+  labpulse_clear_bulk_alarm_selection:
+    alias: Clear LabPulse Bulk Alarm Selection
+    mode: restart
+    sequence:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: [[ model.bulk_apply_entities | yaml_scalar ]]
+  labpulse_apply_bulk_alarm_settings:
+    alias: Apply LabPulse Bulk Alarm Settings
+    icon: mdi:timer-sync-outline
+    mode: single
+    sequence:
+    - variables:
+        selected_target: "{{ states('input_select.labpulse_bulk_alarm_timing_target') }}"
+        apply_required_danger: "{{ is_state('input_boolean.labpulse_bulk_apply_required_danger_percent', 'on') }}"
+        apply_observation_window: "{{ is_state('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'on') }}"
+        apply_required_recovery: "{{ is_state('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'on') }}"
+        required_danger_value: "{{ states('input_number.labpulse_bulk_required_danger_percent') | float(70) }}"
+        observation_window_value: "{{ states('input_number.labpulse_bulk_observation_window_seconds') | int(120) }}"
+        required_recovery_value: "{{ states('input_number.labpulse_bulk_required_recovery_seconds') | int(120) }}"
+[% for group in model.bulk_deadband_groups %]
+        apply_deadband_[[ group.helper_slug ]]: "{{ is_state('[[ group.apply_entity ]]', 'on') }}"
+        deadband_[[ group.helper_slug ]]_value: "{{ states('[[ group.value_entity ]]') | float(0) }}"
+[% endfor %]
+    - condition: template
+      value_template: "{{ apply_required_danger or apply_observation_window or apply_required_recovery[% for group in model.bulk_deadband_groups %] or apply_deadband_[[ group.helper_slug ]][% endfor %] }}"
+    - choose:
+[% for target in model.bulk_alarm_targets %]
+      - conditions:
+        - condition: template
+          value_template: [[ ('{{ selected_target == ' ~ (target.option | tojson) ~ ' }}') | yaml_scalar ]]
+        sequence:
+[% for apply_variable, entities, value_variable in (
+  ('apply_required_danger', target.required_danger_percent_entities, 'required_danger_value'),
+  ('apply_observation_window', target.observation_window_seconds_entities, 'observation_window_value'),
+  ('apply_required_recovery', target.required_recovery_seconds_entities, 'required_recovery_value')
+) %]
+        - if:
+          - condition: template
+            value_template: "{{ [[ apply_variable ]] }}"
+          then:
+          - service: input_number.set_value
+            target:
+              entity_id: [[ entities | yaml_scalar ]]
+            data:
+              value: "{{ [[ value_variable ]] }}"
+[% endfor %]
+[% for group in target.deadband_groups %]
+        - if:
+          - condition: template
+            value_template: "{{ apply_deadband_[[ group.helper_slug ]] }}"
+          then:
+          - service: input_number.set_value
+            target:
+              entity_id: [[ group.recovery_deadband_entities | list | yaml_scalar ]]
+            data:
+              value: "{{ deadband_[[ group.helper_slug ]]_value }}"
+[% endfor %]
+[% endfor %]
+    - service: persistent_notification.create
+      data:
+        title: LabPulse group settings applied
+        message: |-
+          {% set measurement_count = [[ model.bulk_target_counts | json ]].get(selected_target, 0) %}
+          Applied bulk alarm settings to {{ selected_target }}:
+          {% if apply_required_danger %}- Required danger: {{ required_danger_value }}% → {{ measurement_count }} measurements{% endif %}
+          {% if apply_observation_window %}- Observation window: {{ observation_window_value }} s → {{ measurement_count }} measurements{% endif %}
+          {% if apply_required_recovery %}- Required recovery: {{ required_recovery_value }} s → {{ measurement_count }} measurements{% endif %}
+[% for target in model.bulk_alarm_targets %]
+[% for group in target.deadband_groups %]
+          {% if selected_target == [[ target.option | tojson ]] and apply_deadband_[[ group.helper_slug ]] %}- [[ group.label ]] deadband: {{ deadband_[[ group.helper_slug ]]_value }}[[ (' ' ~ group.unit) if group.unit else '' ]] → [[ group.measurement_keys | length ]] measurements{% endif %}
+[% endfor %]
+[% endfor %]
+        notification_id: labpulse_bulk_alarm_settings_result
+    - service: script.labpulse_clear_bulk_alarm_selection
+[% endif %]
+

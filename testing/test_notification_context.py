@@ -11,14 +11,8 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig
-from labpulse.homeassistant.alarm_package import (
-    automations,
-    input_booleans,
-    load_alarm_seed,
-    load_power_seed,
-)
-from labpulse.homeassistant.render_model import RenderModel
-from labpulse.homeassistant.measurement_catalog import build_measurement_catalog
+from labpulse.common.identity import entity_id, stable_id
+from labpulse.homeassistant.alarm import build_template_context, render_alarm
 
 
 def config_data() -> dict[str, object]:
@@ -86,11 +80,10 @@ def service_actions(
 
 
 def rendered_automations(config: LabPulseConfig) -> list[dict[str, object]]:
-    """Render alarm automations from the canonical catalog."""
+    """Render alarm automations from the validated configuration."""
 
-    catalog = build_measurement_catalog(config)
-    model = RenderModel.from_config(config, catalog=catalog)
-    return automations(load_alarm_seed(), load_power_seed(), model)
+    package = yaml.safe_load(render_alarm(build_template_context(config)))
+    return package["automation"]
 
 
 def test_context_for_every_scope_without_duplicate_events() -> None:
@@ -146,27 +139,27 @@ def test_membership_does_not_change_alarm_identity() -> None:
         "alpha",
         "beta",
     ]
-    first = RenderModel.from_config(LabPulseConfig.model_validate(first_data)).services[0]
-    second = RenderModel.from_config(LabPulseConfig.model_validate(second_data)).services[0]
-    first_measurement = first.measurements[1]
-    second_measurement = second.measurements[1]
+    first = build_template_context(LabPulseConfig.model_validate(first_data))
+    second = build_template_context(LabPulseConfig.model_validate(second_data))
+    first_measurement = first["services"][0]["measurements"][1]
+    second_measurement = second["services"][0]["measurements"][1]
     first_identity = (
-        first_measurement.measurement_id,
-        first_measurement.mqtt_entity,
-        first_measurement.entities["alarm_state"],
-        first_measurement.entities["alarm_mode"],
-        first_measurement.entities["alarm_muted"],
+        stable_id("shared_hub", first_measurement["name"]),
+        entity_id("sensor", "shared_hub", first_measurement["name"]),
+        entity_id("input_select", "shared_hub", first_measurement["name"], "alarm_state"),
+        entity_id("input_select", "shared_hub", first_measurement["name"], "alarm_mode"),
+        entity_id("input_boolean", "shared_hub", first_measurement["name"], "alarm_muted"),
     )
     second_identity = (
-        second_measurement.measurement_id,
-        second_measurement.mqtt_entity,
-        second_measurement.entities["alarm_state"],
-        second_measurement.entities["alarm_mode"],
-        second_measurement.entities["alarm_muted"],
+        stable_id("shared_hub", second_measurement["name"]),
+        entity_id("sensor", "shared_hub", second_measurement["name"]),
+        entity_id("input_select", "shared_hub", second_measurement["name"], "alarm_state"),
+        entity_id("input_select", "shared_hub", second_measurement["name"], "alarm_mode"),
+        entity_id("input_boolean", "shared_hub", second_measurement["name"], "alarm_muted"),
     )
     if first_identity != second_identity:
         raise AssertionError("setup membership changed physical alarm identity")
-    if first_measurement.notification_context == second_measurement.notification_context:
+    if first_measurement["notification_context"] == second_measurement["notification_context"]:
         raise AssertionError("setup membership did not update notification context")
 
 
@@ -192,11 +185,10 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
     """Keep shared alerts open while any owning setup remains unmuted."""
 
     config = LabPulseConfig.model_validate(config_data())
-    catalog = build_measurement_catalog(config)
-    model = RenderModel.from_config(config, catalog=catalog)
+    model = build_template_context(config)
     alpha_mute = "input_boolean.labpulse_setup_alpha_notifications_muted"
     beta_mute = "input_boolean.labpulse_setup_beta_notifications_muted"
-    helpers = input_booleans(load_alarm_seed(), load_power_seed(), model)
+    helpers = yaml.safe_load(render_alarm(model))["input_boolean"]
     for helper in (alpha_mute, beta_mute):
         helper_id = helper.split(".", 1)[1]
         if helper_id not in helpers:
@@ -205,11 +197,11 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
             raise AssertionError(f"setup mute does not restore state: {helper}")
 
     measurements = {
-        measurement.label: measurement
-        for service in model.services
-        for measurement in service.measurements
+        measurement["label"]: measurement
+        for service in model["services"]
+        for measurement in service["measurements"]
     }
-    shared_gate = measurements["Shared Measurement"].setup_notifications_unmuted_template
+    shared_gate = measurements["Shared Measurement"]["setup_notifications_unmuted_template"]
     if shared_gate != (
         "{{ is_state('" + alpha_mute + "', 'off') or "
         "is_state('" + beta_mute + "', 'off') }}"
