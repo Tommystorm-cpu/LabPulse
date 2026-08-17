@@ -55,6 +55,7 @@ labpulse up
 
 ```text
 src/labpulse/common/          shared typed contracts
+src/labpulse/deployment/      Compose and unified output generation
 src/labpulse/hardware/        hardware acquisition runtime
 src/labpulse/homeassistant/   Home Assistant generator
 src/labpulse/sms/             notification delivery
@@ -96,14 +97,14 @@ Important focused suites:
 
 | Area | Tests |
 |---|---|
-| Config, identity, MQTT contracts | `test_common_contracts.py` |
+| Config pipeline, identity, MQTT contracts | `test_config_pipeline.py`, `test_common_contracts.py` |
 | Driver registry and options | `test_hardware_factory.py` |
 | Lifecycle and retry behavior | `test_hardware_runner.py` |
 | Serial protocol and driver | `test_serial_parser.py`, `test_serial_driver.py` |
 | DHT11 and X1200 | `test_dht11_driver.py`, `test_x1200_ups_driver.py` |
 | MQTT discovery | `test_homeassistant_publisher.py` |
 | Home Assistant generation | `test_homeassistant_generator.py`, `test_yaml_dashboard.py` |
-| Compose and setup | `test_deployment_generation.py`, `test_packaging.py` |
+| Compose, atomic generation, and setup | `test_deployment_generation.py`, `test_unified_generation.py`, `test_packaging.py` |
 | Fake hardware | `test_simulate_serial.py`, `test_usb_setup.py` |
 | SMS | `test_sms_container.py` |
 
@@ -173,6 +174,12 @@ Do not run the setup script on a development machine unless creating a real
 Linux test installation is intended. It writes a live directory, creates a
 virtual environment, and may invoke Docker workflows.
 
+Compose rendering lives in `src/labpulse/deployment/compose.py`; the shell
+script is a thin launcher for `python -m labpulse.deployment`. Supplying
+`--ha-config-dir` makes that entry point stage Compose and Home Assistant
+outputs from one configuration load. Setup and guarded editing use this unified
+mode.
+
 Compose and Home Assistant outputs are deterministic. Update source generators
 and compare generated output through the deployment tests rather than
 committing local live output.
@@ -201,7 +208,8 @@ Configuration changes affect multiple consumers. Update:
 - validation and generated-output tests.
 
 Do not add driver-specific fields to `ServiceConfig`; place them under
-`driver.options`.
+`driver.options`. The central loader must return the driver's typed options;
+consumers must not call the driver option model again or read raw YAML.
 
 ## Documentation changes
 

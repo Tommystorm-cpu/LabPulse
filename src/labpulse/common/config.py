@@ -1,13 +1,19 @@
-"""Load and validate LabPulse service configuration."""
+"""Load and validate the single authoritative LabPulse configuration model."""
 
-import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
 import re
-import sys
 from pathlib import Path
-from typing import Any
-
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializeAsAny,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from labpulse.common.identity import slug, title
 
@@ -22,7 +28,64 @@ def find_default_config_path() -> Path:
 
 
 DEFAULT_CONFIG_PATH = find_default_config_path()
-logger = logging.getLogger("Config")
+
+
+@dataclass(frozen=True)
+class ConfigProblem:
+    """One source-aware configuration problem suitable for any user interface."""
+
+    location: tuple[str | int, ...]
+    message: str
+    kind: str
+
+
+class ConfigError(Exception):
+    """Report one or more failures while reading or validating configuration."""
+
+    def __init__(self, path: Path, problems: tuple[ConfigProblem, ...]) -> None:
+        """Store the normalized source path and immutable problem collection."""
+
+        self.path = path
+        self.problems = problems
+        super().__init__(format_config_error(self))
+
+
+@dataclass(frozen=True)
+class ConfigDocument:
+    """One validated configuration together with its authoritative source path."""
+
+    path: Path
+    config: "LabPulseConfig"
+
+    def service(self, service_name: str) -> "ServiceConfig":
+        """Return one configured service or raise a source-aware selection error."""
+
+        try:
+            return self.config.services[service_name]
+        except KeyError as error:
+            available = ", ".join(sorted(self.config.services))
+            raise ConfigError(
+                self.path,
+                (
+                    ConfigProblem(
+                        location=("services", service_name),
+                        message=(
+                            f"unknown service; available services: {available}"
+                        ),
+                        kind="service_not_found",
+                    ),
+                ),
+            ) from error
+
+
+def format_config_error(error: "ConfigError") -> str:
+    """Render a consistent multi-line configuration failure for CLI consumers."""
+
+    lines = [f"Configuration validation failed for {error.path}:"]
+    for problem in error.problems:
+        location = " -> ".join(str(item) for item in problem.location) or "root"
+        lines.append(f"[ {location} ]: {problem.message}")
+    return "\n".join(lines)
 
 # ==========================================
 # PYDANTIC SCHEMAS
@@ -31,11 +94,15 @@ logger = logging.getLogger("Config")
 class MqttConfig(BaseModel):
     """MQTT broker connection settings used by LabPulse publishers."""
 
+    model_config = ConfigDict(extra="forbid")
+
     broker: str
     port: int = Field(default=1883, ge=1, le=65535)
 
 class SmsConfig(BaseModel):
     """SMS delivery settings used by the LabPulse SMS service."""
+
+    model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = Field(default=True, strict=True)
     recipients: list[str] = Field(default_factory=list)
@@ -196,34 +263,36 @@ class MeasurementConfig(BaseModel):
         return self.label or title(self.name)
 
 class DriverConfig(BaseModel):
-    """One stable driver identity and its driver-owned option mapping."""
+    """One stable driver identity and its typed, driver-owned options."""
 
     model_config = ConfigDict(extra="forbid")
 
     type: str
-    options: dict[str, Any] = Field(default_factory=dict)
+    options: SerializeAsAny[BaseModel]
 
-    @model_validator(mode="after")
-    def validate_registered_driver(self) -> "DriverConfig":
-        """Require a known driver and normalize its validated options."""
+    @model_validator(mode="before")
+    @classmethod
+    def validate_registered_driver(cls, value: object) -> object:
+        """Resolve the driver and retain its concrete validated options model."""
 
         from labpulse.hardware.registry import get_driver_spec
 
-        driver_type = self.type.strip()
+        if not isinstance(value, Mapping):
+            raise ValueError("driver must be a mapping")
+        raw = dict(value)
+        driver_value = raw.get("type")
+        if not isinstance(driver_value, str):
+            raise ValueError("driver type must be a string")
+        driver_type = driver_value.strip()
         if not driver_type:
             raise ValueError("driver type must not be blank")
         spec = get_driver_spec(driver_type)
-        validated = spec.validate_options(self.options)
-        self.type = driver_type
-        self.options = validated.model_dump()
-        return self
-
-    def validated_options(self) -> BaseModel:
-        """Return this driver's typed options model."""
-
-        from labpulse.hardware.registry import get_driver_spec
-
-        return get_driver_spec(self.type).validate_options(self.options)
+        options = raw.get("options", {})
+        if not isinstance(options, (Mapping, BaseModel)):
+            raise ValueError("driver options must be a mapping")
+        raw["type"] = driver_type
+        raw["options"] = spec.validate_options(options)
+        return raw
 
 
 class PowerDetectionConfig(BaseModel):
@@ -303,6 +372,8 @@ class ServiceConfig(BaseModel):
 class LabPulseConfig(BaseModel):
     """Validated top-level LabPulse configuration object."""
 
+    model_config = ConfigDict(extra="forbid")
+
     mqtt: MqttConfig
     sms: SmsConfig = Field(default_factory=SmsConfig)
     service_health: ServiceHealthConfig = Field(default_factory=ServiceHealthConfig)
@@ -350,45 +421,59 @@ def resolve_config_relative_path(config_path: str | Path, value: str | Path) -> 
     return (resolve_path(config_path).parent / candidate).resolve()
 
 
-def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH) -> LabPulseConfig:
-    """Reads YAML and validates it strictly against the Pydantic schema."""
-    config_path = resolve_path(yaml_path)
+def _single_problem(path: Path, message: str, kind: str) -> ConfigError:
+    """Build a root-level configuration error for read and YAML failures."""
 
-    if not config_path.exists():
-        logger.critical("Configuration file missing at %s", config_path)
-        sys.exit(1)
+    return ConfigError(
+        path,
+        (ConfigProblem(location=(), message=message, kind=kind),),
+    )
 
-    with config_path.open("r", encoding="utf-8") as file:
-        try:
-            yaml_data = yaml.safe_load(file)
-        except yaml.YAMLError as e:
-            logger.critical("Invalid YAML formatting in %s. Details: %s", config_path, e)
-            sys.exit(1)
 
-    try:
-        # This line forces the dictionary through the validation engine
-        validated_config = LabPulseConfig(**yaml_data)
-        return validated_config
-    except ValidationError as e:
-        # Fail Fast: Print exact human-readable errors and kill the script
-        logger.critical("CONFIGURATION VALIDATION FAILED")
-        logger.critical("LabPulse cannot start because %s has errors:", config_path)
-        for error in e.errors():
-            location = " -> ".join([str(loc) for loc in error['loc']])
-            logger.critical("[ %s ]: %s", location, error["msg"])
-        sys.exit(1)
+def _validate_config(data: object, source: Path) -> ConfigDocument:
+    """Validate decoded YAML data into one source-aware configuration document."""
 
-def get_service_config(config: LabPulseConfig, service_name: str) -> ServiceConfig:
-    """Return one service config, exiting with a readable error if missing."""
+    if not isinstance(data, Mapping):
+        if data is None:
+            message = "configuration is empty; expected a top-level mapping"
+        else:
+            message = (
+                "configuration root must be a mapping, "
+                f"not {type(data).__name__}"
+            )
+        raise _single_problem(source, message, "invalid_root")
 
     try:
-        return config.services[service_name]
-    except KeyError:
-        available = ", ".join(sorted(config.services))
-        logger.critical(
-            "Unknown service '%s'. Available services: %s",
-            service_name,
-            available,
+        config = LabPulseConfig.model_validate(dict(data))
+    except ValidationError as error:
+        problems = tuple(
+            ConfigProblem(
+                location=tuple(item["loc"]),
+                message=str(item["msg"]),
+                kind=str(item["type"]),
+            )
+            for item in error.errors()
         )
-        sys.exit(1)
+        raise ConfigError(source, problems) from error
+    return ConfigDocument(path=source, config=config)
+
+
+def load_config(
+    yaml_path: str | Path = DEFAULT_CONFIG_PATH,
+    *,
+    text: str | None = None,
+) -> ConfigDocument:
+    """Read or decode and validate one LabPulse configuration without exiting."""
+
+    config_path = resolve_path(yaml_path)
+    if text is None:
+        try:
+            text = config_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise _single_problem(config_path, str(error), "read_error") from error
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise _single_problem(config_path, str(error), "yaml_error") from error
+    return _validate_config(data, config_path)
 

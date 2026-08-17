@@ -8,7 +8,7 @@ from pathlib import Path
 import signal
 import sys
 
-from labpulse.common.config import DEFAULT_CONFIG_PATH, load_config
+from labpulse.common.config import ConfigError, DEFAULT_CONFIG_PATH, format_config_error, load_config
 from labpulse.common.logging_config import configure_logging
 from labpulse.sms.sender import SmsSender
 from labpulse.sms.subscriber import RecentRequestCache, SMSSubscriber
@@ -34,7 +34,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parse_args(argv)
     configure_logging("sms")
-    cfg = load_config(args.config)
+    try:
+        document = load_config(args.config)
+    except ConfigError as error:
+        logging.getLogger("LabPulse.SMS").critical("%s", format_config_error(error))
+        return 1
+    cfg = document.config
 
     logger = logging.getLogger("LabPulse.SMS")
     log_dir = Path(os.environ.get("LABPULSE_LOG_DIR", APP_DIR / "logs"))

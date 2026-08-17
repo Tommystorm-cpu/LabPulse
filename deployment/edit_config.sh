@@ -9,8 +9,6 @@ CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"
 FAKE_CONFIG_PATH="$PROJECT_DIR/config.fake.yaml"
 FAKE_CONFIG_BACKUP="$PROJECT_DIR/config.fake.yaml.edit-backup"
 COMPOSE_PATH="$PROJECT_DIR/compose.yaml"
-COMPOSE_SCRIPT="$PROJECT_DIR/generate_compose.sh"
-HOMEASSISTANT_SCRIPT="$PROJECT_DIR/generate_homeassistant_config.sh"
 HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 
 # Remove temporary validation files without touching the live configuration.
@@ -28,12 +26,10 @@ cleanup() {
 trap cleanup EXIT
 
 # Stop early when setup has not installed every file this workflow needs.
-for required_path in "$CONFIG_PATH" "$COMPOSE_SCRIPT" "$HOMEASSISTANT_SCRIPT"; do
-  if [ ! -f "$required_path" ]; then
-    echo "ERROR: Required LabPulse file is missing: $required_path" >&2
-    exit 1
-  fi
-done
+if [ ! -f "$CONFIG_PATH" ]; then
+  echo "ERROR: Required LabPulse file is missing: $CONFIG_PATH" >&2
+  exit 1
+fi
 if [ ! -x "$HOST_PYTHON" ]; then
   echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
   echo "Run 'labpulse setup' to restore the managed environment." >&2
@@ -82,17 +78,6 @@ if cmp -s "$CONFIG_PATH" "$WORK_CONFIG"; then
   exit 0
 fi
 
-echo "Validating configuration schema..."
-"$HOST_PYTHON" - "$WORK_CONFIG" <<'PY'
-from pathlib import Path
-import sys
-
-from labpulse.common.config import load_config
-
-load_config(Path(sys.argv[1]))
-print("Configuration schema is valid.")
-PY
-
 RUNTIME_WORK_CONFIG="$WORK_CONFIG"
 if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
   WORK_FAKE_CONFIG="$(mktemp "$PROJECT_DIR/.config.fake.yaml.editing.XXXXXX")"
@@ -100,29 +85,23 @@ if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
 from pathlib import Path
 import sys
 
-from labpulse.common.config import load_config
 from labpulse.common.fake_config import derive_fake_config
 
 source_path = Path(sys.argv[1])
 runtime_path = Path(sys.argv[2])
 runtime_path.write_text(derive_fake_config(source_path.read_text()))
-load_config(runtime_path)
-print("Fake-USB runtime configuration is valid.")
 PY
   RUNTIME_WORK_CONFIG="$WORK_FAKE_CONFIG"
 fi
 
-# Exercise both generators away from the live outputs before installing anything.
-echo "Checking generated Compose and Home Assistant configuration..."
-bash "$COMPOSE_SCRIPT" \
+# Exercise the single pipeline away from the live outputs before installing anything.
+echo "Validating and checking generated Compose and Home Assistant configuration..."
+"$HOST_PYTHON" -m labpulse.deployment \
   --config "$RUNTIME_WORK_CONFIG" \
-  --output "$CHECK_DIR/compose.yaml" \
+  --compose-output "$CHECK_DIR/compose.yaml" \
   --project-dir "$PROJECT_DIR" \
-  "${COMPOSE_MODE_ARGS[@]}"
-bash "$HOMEASSISTANT_SCRIPT" \
-  --config "$RUNTIME_WORK_CONFIG" \
   --ha-config-dir "$CHECK_DIR/homeassistant/config" \
-  --project-dir "$PROJECT_DIR"
+  "${COMPOSE_MODE_ARGS[@]}"
 
 # Keep one predictable rollback copy instead of accumulating timestamped backups.
 cp -p "$CONFIG_PATH" "$CONFIG_BACKUP"
@@ -150,30 +129,21 @@ restore_previous_config() {
     cp -p "$FAKE_CONFIG_BACKUP" "$FAKE_CONFIG_PATH"
     restored_runtime_config="$FAKE_CONFIG_PATH"
   fi
-  bash "$COMPOSE_SCRIPT" \
+  "$HOST_PYTHON" -m labpulse.deployment \
     --config "$restored_runtime_config" \
-    --output "$PROJECT_DIR/compose.yaml" \
+    --compose-output "$PROJECT_DIR/compose.yaml" \
     --project-dir "$PROJECT_DIR" \
-    "${COMPOSE_MODE_ARGS[@]}"
-  bash "$HOMEASSISTANT_SCRIPT" \
-    --config "$restored_runtime_config" \
     --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
-    --project-dir "$PROJECT_DIR"
+    "${COMPOSE_MODE_ARGS[@]}"
 }
 
 echo "Generating live configuration..."
-if ! bash "$COMPOSE_SCRIPT" \
+if ! "$HOST_PYTHON" -m labpulse.deployment \
   --config "$RUNTIME_CONFIG" \
-  --output "$PROJECT_DIR/compose.yaml" \
+  --compose-output "$PROJECT_DIR/compose.yaml" \
   --project-dir "$PROJECT_DIR" \
-  "${COMPOSE_MODE_ARGS[@]}"; then
-  restore_previous_config
-  exit 1
-fi
-if ! bash "$HOMEASSISTANT_SCRIPT" \
-  --config "$RUNTIME_CONFIG" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
-  --project-dir "$PROJECT_DIR"; then
+  "${COMPOSE_MODE_ARGS[@]}"; then
   restore_previous_config
   exit 1
 fi

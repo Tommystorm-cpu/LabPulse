@@ -259,17 +259,13 @@ if [ "$FAKE_USB" -eq 1 ]; then
   COMPOSE_MODE_ARGS+=("-fake_usb")
 fi
 
-# Leave the live folder with fresh generated Compose and Home Assistant config.
-bash "$PROJECT_DIR/generate_compose.sh" \
+# Leave the live folder with outputs built from one validated configuration load.
+"$HOST_PYTHON" -m labpulse.deployment \
   --config "$RUNTIME_CONFIG" \
-  --output "$PROJECT_DIR/compose.yaml" \
+  --compose-output "$PROJECT_DIR/compose.yaml" \
   --project-dir "$PROJECT_DIR" \
-  "${COMPOSE_MODE_ARGS[@]}"
-
-bash "$PROJECT_DIR/generate_homeassistant_config.sh" \
-  --config "$RUNTIME_CONFIG" \
   --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
-  --project-dir "$PROJECT_DIR"
+  "${COMPOSE_MODE_ARGS[@]}"
 
 FAKE_CONFIG_OUTPUT=""
 NEXT_USB_COMMAND="./setup_usb_devices.py --config config.yaml"

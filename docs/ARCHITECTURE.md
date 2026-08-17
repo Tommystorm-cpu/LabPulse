@@ -98,13 +98,13 @@ their outputs.
 ## Configuration flow
 
 ```text
-config.yaml
+config.yaml → common.config.load_config()
+  │              │
+  │              ├── source-aware ConfigDocument
+  │              ├── common schema validation
+  │              └── typed selected-driver options
   │
-  ├── Pydantic validation
-  │     ├── common service envelope
-  │     └── selected driver's options model
-  │
-  ├── Compose generation
+  ├── deployment generation
   │     └── driver container requirements
   │
   ├── Home Assistant generation
@@ -117,8 +117,21 @@ config.yaml
         └── recipients and delivery mode
 ```
 
-`src/labpulse/common/config.py` is the shared typed configuration model.
-Drivers own the schema beneath `driver.options`.
+`src/labpulse/common/config.py` is the only production reader for LabPulse
+configuration. It returns a `ConfigDocument` containing the resolved source
+path and fully validated model. Drivers own the schema beneath
+`driver.options`; the loader selects and applies that schema once, so consumers
+receive typed options and do not reinterpret raw dictionaries.
+
+Every independent process still loads and validates once at startup. Within a
+process, the same document is passed to Compose, Home Assistant, hardware, SMS,
+or diagnostic consumers. File, YAML, schema, driver, and option failures use
+the same structured configuration error model.
+
+`src/labpulse/deployment/compose.py` is the importable Compose renderer.
+`generate_compose.sh` is only a launcher. Setup and guarded editing use the
+unified deployment entry point, which loads once, builds Compose and Home
+Assistant outputs in staging, and only then replaces managed live files.
 
 Fake setup derives `config.fake.yaml` from the live source config and mounts it
 as `/app/config.yaml`. The real source remains unchanged.
@@ -130,8 +143,7 @@ python -m labpulse.hardware --service NAME
   → load and validate config
   → select service
   → discover DriverDefinition
-  → validate driver options
-  → construct driver and MQTT publisher
+  → construct driver from already-typed options and MQTT publisher
   → HardwareRunner.connect/read/retry
   → publish discovery, readings, and service status
 ```
@@ -307,6 +319,7 @@ modem access outside Home Assistant and hardware services.
 ```text
 src/labpulse/
   common/          config, identity, MQTT contracts, shared logging
+  deployment/      Compose rendering and atomic deployment generation
   hardware/        driver API, registry, runner, parsing, MQTT publishing
   homeassistant/   render models, alarm package, dashboard generation
   sms/             request subscription, routing, modem delivery

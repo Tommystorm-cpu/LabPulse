@@ -71,5 +71,4 @@ def build_driver(
     """Build the configured hardware driver for one service."""
 
     definition = get_driver_spec(service_config.driver.type)
-    options = definition.validate_options(service_config.driver.options)
-    return definition.create(service_name, options)
+    return definition.create(service_name, service_config.driver.options)

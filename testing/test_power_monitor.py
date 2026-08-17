@@ -26,7 +26,7 @@ SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
 def test_config_validation_and_stable_identity() -> None:
     """Require direct GPIO configuration and stable live/simulated identities."""
 
-    simulated = load_config(SIM_CONFIG)
+    simulated = load_config(SIM_CONFIG).config
     service = simulated.services["ups_monitor"]
     detection = service.power_detection
     if detection is None:
@@ -117,7 +117,7 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
     converted_text = convert_power_service_to_fake_serial(source)
     converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
     fake = converted.services["ups_monitor"]
-    if (fake.driver.type, fake.driver.options["port"]) != (
+    if (fake.driver.type, getattr(fake.driver.options, "port", None)) != (
         "labpulse.serial_pipe",
         "/tmp/labpulse-fake-serial/ups_monitor",
     ):
@@ -157,9 +157,9 @@ def test_fake_usb_derivation_converts_direct_hardware() -> None:
     power = converted.services["ups_monitor"]
     if room.driver.type != "labpulse.serial_pipe":
         raise AssertionError("fake derivation retained the DHT11 driver")
-    if room.driver.options.get("port") != "/tmp/labpulse-fake-serial/room_environment":
+    if getattr(room.driver.options, "port", None) != "/tmp/labpulse-fake-serial/room_environment":
         raise AssertionError("fake derivation selected the wrong room endpoint")
-    if power.driver.options.get("port") != "/tmp/labpulse-fake-serial/ups_monitor":
+    if getattr(power.driver.options, "port", None) != "/tmp/labpulse-fake-serial/ups_monitor":
         raise AssertionError("fake derivation selected the wrong UPS endpoint")
     if "FAKE_" in converted_text:
         raise AssertionError("fake derivation retained a starter port placeholder")

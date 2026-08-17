@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 
-from labpulse.common.config import load_config
+from labpulse.common.config import ConfigDocument, ConfigError, format_config_error, load_config
 
 from .alarm_package import render_alarm
 from .measurement_catalog import build_measurement_catalog
@@ -32,6 +32,17 @@ def parse_args(
     )
 
 
+def generate_homeassistant(document: ConfigDocument, paths: GeneratorPaths) -> None:
+    """Generate all owned Home Assistant files from one validated document."""
+
+    config = document.config
+    measurement_catalog = build_measurement_catalog(config)
+    render_model = RenderModel.from_config(config, measurement_catalog)
+    render_core(paths)
+    render_alarm(paths, render_model)
+    render_yaml_dashboard(paths, config, measurement_catalog, render_model)
+
+
 def main(argv: list[str]) -> int:
     """Generate Home Assistant config from the LabPulse config.
 
@@ -40,16 +51,12 @@ def main(argv: list[str]) -> int:
 
     # Load and validate the single LabPulse configuration source.
     paths = parse_args(argv)
-    config = load_config(paths.config_path)
-
-    # Build the relationship catalogue and its Home Assistant render model.
-    measurement_catalog = build_measurement_catalog(config)
-    render_model = RenderModel.from_config(config, measurement_catalog)
-
-    # Write core configuration, alarm resources, and the dashboard.
-    render_core(paths)
-    render_alarm(paths, render_model)
-    render_yaml_dashboard(paths, config, measurement_catalog, render_model)
+    try:
+        document = load_config(paths.config_path)
+    except ConfigError as error:
+        print(format_config_error(error), file=sys.stderr)
+        return 1
+    generate_homeassistant(document, paths)
     return 0
 
 

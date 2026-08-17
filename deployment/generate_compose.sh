@@ -1,39 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate compose.yaml from the live LabPulse config. This script is copied
-# into ~/labpulse-live and should be rerun there after config.yaml changes.
+# Thin packaged launcher for the authoritative Python configuration/generation
+# pipeline. The live copy belongs in ~/labpulse-live.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
-CONFIG_PATH="$PROJECT_DIR/config.yaml"
-OUTPUT_PATH="$PROJECT_DIR/compose.yaml"
-OUTPUT_SET=0
-CONFIG_SET=0
+CONFIG_PATH=""
+OUTPUT_PATH=""
 FAKE_USB=0
 
-# Print usage from one place so help text and invalid-option errors match.
 usage() {
   cat <<'EOF'
 Usage: ./generate_compose.sh [options]
 
-Generates a Docker Compose file from the live LabPulse config.yaml.
-Each enabled service in config.yaml becomes its own Python container.
+Generates Compose from the validated live LabPulse configuration.
 
 Options:
-  --config PATH       Config YAML to read. Default: ./config.yaml
-  --output PATH       Compose YAML to write. Default: ./compose.yaml
+  --config PATH       Config YAML to read. Default: PROJECT_DIR/config.yaml
+  --output PATH       Compose YAML to write. Default: PROJECT_DIR/compose.yaml
   --project-dir PATH  LabPulse container folder. Default: script directory
   -fake_usb           Force pseudo-serial simulator mounts.
   -h, --help          Show this help text.
-
-Service config:
-  services:
-    pump_room:
-      enabled: true   # optional, defaults to true
-      driver:
-        type: labpulse.serial_pipe
-        options:
-          port: /dev/serial/by-id/...
 EOF
 }
 
@@ -41,12 +28,10 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --config)
       CONFIG_PATH="$2"
-      CONFIG_SET=1
       shift 2
       ;;
     --output)
       OUTPUT_PATH="$2"
-      OUTPUT_SET=1
       shift 2
       ;;
     --project-dir)
@@ -69,17 +54,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Resolve default paths after parsing options so --project-dir can change them.
-if [ "$OUTPUT_SET" -eq 0 ]; then
-  OUTPUT_PATH="$PROJECT_DIR/compose.yaml"
-fi
-
-if [ "$CONFIG_SET" -eq 0 ]; then
-  CONFIG_PATH="$PROJECT_DIR/config.yaml"
-fi
-
-mkdir -p "$(dirname "$OUTPUT_PATH")"
-
+CONFIG_PATH="${CONFIG_PATH:-$PROJECT_DIR/config.yaml}"
+OUTPUT_PATH="${OUTPUT_PATH:-$PROJECT_DIR/compose.yaml}"
 HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 if [ ! -x "$HOST_PYTHON" ]; then
   echo "ERROR: LabPulse's managed Python environment is missing: $HOST_PYTHON" >&2
@@ -87,261 +63,13 @@ if [ ! -x "$HOST_PYTHON" ]; then
   exit 1
 fi
 
-# Use Python for the YAML/config logic. Bash is kept for CLI plumbing; Python is
-# safer for parsing config.yaml and emitting predictable Compose YAML.
-"$HOST_PYTHON" - "$CONFIG_PATH" "$OUTPUT_PATH" "$PROJECT_DIR" "$FAKE_USB" <<'PY'
-from pathlib import Path
-import json
-import os
-import re
-import sys
-
-import yaml
-
-from labpulse import __version__
-from labpulse.hardware.registry import get_driver_spec
-
-config_path = Path(sys.argv[1]).expanduser().resolve()
-output_path = Path(sys.argv[2]).expanduser().resolve()
-project_dir = Path(sys.argv[3]).expanduser().resolve()
-fake_usb = sys.argv[4] == "1"
-runtime_image = os.environ.get(
-    "LABPULSE_IMAGE",
-    f"ghcr.io/tommystorm-cpu/labpulse:{__version__}",
-).strip()
-if not runtime_image:
-    print("ERROR: LABPULSE_IMAGE cannot be empty", file=sys.stderr)
-    sys.exit(1)
-
-
-def service_slug(service_name: str) -> str:
-    """Convert a service key into a Docker/Compose-friendly slug."""
-
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", service_name).strip("-").lower()
-    return slug or "service"
-
-
-def quoted_command(service_name: str) -> str:
-    """Serialize the command as JSON so Compose receives clean list syntax."""
-
-    command = ["python", "-m", "labpulse.hardware", "--service", service_name]
-    return json.dumps(command)
-
-
-def sms_command() -> str:
-    """Serialize the SMS service command as JSON."""
-
-    command = ["python", "-m", "labpulse.sms", "--config", "/app/config.yaml"]
-    return json.dumps(command)
-
-
-def validated_driver(service_name: str, service_config: dict):
-    """Resolve and validate one self-contained driver definition."""
-
-    driver = service_config.get("driver")
-    if not isinstance(driver, dict):
-        raise ValueError(
-            f"service '{service_name}' requires driver.type and driver.options"
-        )
-    driver_id = driver.get("type")
-    options = driver.get("options", {})
-    if not isinstance(driver_id, str) or not isinstance(options, dict):
-        raise ValueError(f"service '{service_name}' has an invalid driver declaration")
-    definition = get_driver_spec(driver_id)
-    return definition, definition.validate_options(options)
-
-
-if not config_path.exists():
-    print(f"ERROR: config file does not exist: {config_path}", file=sys.stderr)
-    sys.exit(1)
-
-data = yaml.safe_load(config_path.read_text()) or {}
-services = data.get("services", {})
-sms_config = data.get("sms", {}) or {}
-sms_dry_run = sms_config.get("dry_run", True)
-if not isinstance(sms_dry_run, bool):
-    print("ERROR: sms.dry_run must be true or false", file=sys.stderr)
-    sys.exit(1)
-sms_needs_modem = not sms_dry_run
-
-enabled_services = [
-    service_name
-    for service_name, service_config in services.items()
-    if service_config is None or service_config.get("enabled", True)
-]
-
-if not enabled_services:
-    print("ERROR: config.yaml has no enabled services under services:", file=sys.stderr)
-    sys.exit(1)
-
-# Fake USB mode can be requested explicitly, or inferred from config.yaml when
-# any enabled service points at /tmp/labpulse-fake-serial.
-if not fake_usb:
-    for service_name in enabled_services:
-        service_config = services.get(service_name) or {}
-        definition, options = validated_driver(service_name, service_config)
-        if (
-            definition.driver_id == "labpulse.serial_pipe"
-            and str(options.port).startswith("/tmp/labpulse-fake-serial")
-        ):
-            fake_usb = True
-            break
-
-project_dir.mkdir(parents=True, exist_ok=True)
-(project_dir / "logs").mkdir(parents=True, exist_ok=True)
-
-try:
-    config_mount_source = "./" + config_path.relative_to(project_dir).as_posix()
-except ValueError:
-    config_mount_source = config_path.as_posix()
-
-# Build the output line-by-line because this file is generated and should be
-# simple to inspect on the Pi.
-lines = [
-    "# Generated by generate_compose.sh",
-    "# Edit ./config.yaml in this Compose folder, then regenerate this file.",
-    "# Do not edit this file by hand.",
-    "",
-    "x-labpulse-runtime-base: &labpulse-runtime-base",
-    f"  image: {runtime_image}",
-    "  depends_on:",
-    "    - mosquitto",
-]
-
-sms_service_lines = [
-    "  labpulse-sms:",
-]
-
-if sms_needs_modem:
-    sms_service_lines.extend(
-        [
-            f"    image: {runtime_image}",
-            "    depends_on:",
-            "      - mosquitto",
-            "    volumes:",
-            "      - ./logs:/app/logs",
-            f"      - {config_mount_source}:/app/config.yaml:ro",
-            "      - /etc/localtime:/etc/localtime:ro",
-            "      - /run/dbus:/run/dbus:ro",
-            "      - /dev:/dev",
-            "    privileged: true",
-            "    environment:",
-            "      MQTT_BROKER: mosquitto",
-            "      MQTT_PORT: 1883",
-            "      LABPULSE_LOG_DIR: /app/logs",
-            "    restart: unless-stopped",
-            "    container_name: labpulse-sms",
-            f"    command: {sms_command()}",
-            "",
-        ]
-    )
-else:
-    sms_service_lines.extend(
-        [
-            "    <<: *labpulse-runtime-base",
-            "    volumes:",
-            "      - ./logs:/app/logs",
-            f"      - {config_mount_source}:/app/config.yaml:ro",
-            "      - /etc/localtime:/etc/localtime:ro",
-            "    container_name: labpulse-sms",
-            f"    command: {sms_command()}",
-            "",
-        ]
-    )
-
-# Home Assistant uses host networking so its MQTT integration can connect to
-# Mosquitto at 127.0.0.1:1883. Python containers use the Compose service name.
-lines.extend(
-    [
-        "  environment:",
-        "    MQTT_BROKER: mosquitto",
-        "    MQTT_PORT: 1883",
-        "    LABPULSE_LOG_DIR: /app/logs",
-        "  restart: unless-stopped",
-        "",
-        "services:",
-        "  homeassistant:",
-        "    container_name: labpulse-homeassistant",
-        "    image: ghcr.io/home-assistant/home-assistant:stable",
-        "    volumes:",
-        "      - ./homeassistant/config:/config",
-        "      - /etc/localtime:/etc/localtime:ro",
-        "      - /run/dbus:/run/dbus:ro",
-        "    restart: unless-stopped",
-        "    privileged: true",
-        "    network_mode: host",
-        "    environment:",
-        "      TZ: Europe/London",
-        "",
-        "  mosquitto:",
-        "    container_name: labpulse-mqtt",
-        "    image: eclipse-mosquitto:2",
-        "    ports:",
-        '      - "127.0.0.1:1883:1883"',
-        "    volumes:",
-        "      - ./mosquitto/config:/mosquitto/config",
-        "      - ./mosquitto/data:/mosquitto/data",
-        "      - ./mosquitto/log:/mosquitto/log",
-        "      - /etc/localtime:/etc/localtime:ro",
-        "    restart: unless-stopped",
-        "",
-        *sms_service_lines,
-    ]
+ARGS=(
+  --config "$CONFIG_PATH"
+  --output "$OUTPUT_PATH"
+  --project-dir "$PROJECT_DIR"
 )
+if [ "$FAKE_USB" -eq 1 ]; then
+  ARGS+=(--fake-usb)
+fi
 
-used_container_names = set()
-
-# Each enabled service becomes one Python container. This keeps hub failures and
-# restarts isolated.
-for service_name in enabled_services:
-    service_config = services.get(service_name) or {}
-    slug = service_slug(service_name)
-    container_name = f"labpulse-{slug}"
-
-    if container_name in used_container_names:
-        print(
-            f"ERROR: service name '{service_name}' creates duplicate container "
-            f"name '{container_name}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    used_container_names.add(container_name)
-
-    definition, driver_options = validated_driver(service_name, service_config)
-    requirements = definition.resolve_resources(driver_options, fake_usb)
-    service_lines = [
-        f"  {container_name}:",
-        "    <<: *labpulse-runtime-base",
-        "    volumes:",
-        "      - ./logs:/app/logs",
-        f"      - {config_mount_source}:/app/config.yaml:ro",
-        "      - /etc/localtime:/etc/localtime:ro",
-    ]
-
-    if requirements.devices:
-        service_lines.append("    devices:")
-        service_lines.extend(
-            f"      - {device}:{device}" for device in requirements.devices
-        )
-    service_lines.extend(f"      - {mount}" for mount in requirements.mounts)
-    if requirements.privileged:
-        service_lines.append("    privileged: true")
-
-    service_lines.extend(
-        [
-            f"    container_name: {container_name}",
-            f"    command: {quoted_command(service_name)}",
-            "",
-        ]
-    )
-    lines.extend(service_lines)
-
-output_path.write_text("\n".join(lines), encoding="utf-8")
-
-print(f"Generated {output_path}")
-print(f"LabPulse runtime image: {runtime_image}")
-print("LabPulse service containers:")
-for service_name in enabled_services:
-    print(f"  labpulse-{service_slug(service_name)} -> {service_name}")
-PY
+"$HOST_PYTHON" -m labpulse.deployment "${ARGS[@]}"

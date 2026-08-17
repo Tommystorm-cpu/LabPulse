@@ -37,7 +37,13 @@ services: {}
 
 Configuration is validated with Pydantic before generation and service startup.
 Unknown driver IDs, invalid driver options, missing setup references, duplicate
-measurement names, and invalid timing values fail early.
+measurement names, unknown fields, and invalid timing values fail early. File,
+YAML, schema, driver, and option failures are reported through one error format
+that includes the source path and field location.
+
+Each command or service validates its selected configuration once at startup.
+Driver options are typed as part of that load; Compose, Home Assistant,
+hardware, SMS, and diagnostics do not validate or reinterpret them again.
 
 ## MQTT
 
@@ -319,7 +325,9 @@ labpulse config
 ```
 
 The guarded workflow validates both the edited source and derived fake runtime
-configuration before replacing either file.
+configuration through the central loader. It then builds Compose and Home
+Assistant output from one loaded runtime document before replacing managed
+live files.
 
 ## Validation and application
 

@@ -3,9 +3,7 @@
 from contextlib import contextmanager
 from collections.abc import Iterator
 from pathlib import Path
-import os
 import shutil
-import subprocess
 import sys
 from typing import Callable
 from uuid import uuid4
@@ -20,6 +18,8 @@ TEST_TMP_DIR = REFACTOR_DIR / "testing" / "tmp"
 sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse import __version__
+from labpulse.common.config import load_config
+from labpulse.deployment.compose import build_compose
 from labpulse.homeassistant.cli import main as generate_homeassistant
 
 
@@ -35,17 +35,28 @@ def test_directory(prefix: str) -> Iterator[Path]:
         shutil.rmtree(root)
 
 
-def embedded_compose_generator() -> str:
-    """Return the Python program embedded in the Compose wrapper."""
+def compose_document(
+    config_path: Path,
+    project_dir: Path,
+    *,
+    force_simulated: bool,
+    runtime_image: str | None = None,
+) -> dict[str, object]:
+    """Build and decode Compose directly from the validated Python generator."""
 
-    shell_source = (REFACTOR_DIR / "deployment" / "generate_compose.sh").read_text(
-        encoding="utf-8"
+    document = load_config(config_path)
+    compose_text = build_compose(
+        document,
+        config_mount_source="./" + config_path.relative_to(project_dir).as_posix(),
+        runtime_image=(
+            runtime_image or f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
+        ),
+        force_simulated=force_simulated,
     )
-    marker = "<<'PY'\n"
-    if marker not in shell_source:
-        marker = "<<'PY'\r\n"
-    generator = shell_source.split(marker, 1)[1].rsplit("\nPY", 1)[0]
-    return generator
+    payload = yaml.safe_load(compose_text)
+    if not isinstance(payload, dict):
+        raise AssertionError("Compose generator did not return a mapping")
+    return payload
 
 
 def test_fake_usb_compose_contract() -> None:
@@ -56,13 +67,14 @@ def test_fake_usb_compose_contract() -> None:
     project_dir.mkdir()
     try:
         config_path = project_dir / "config.fake.yaml"
-        output_path = project_dir / "compose.yaml"
         config_path.write_text(
             """mqtt:
   broker: mosquitto
   port: 1883
 sms:
   dry_run: true
+setups:
+  monitor: {}
 services:
   pressure_monitor:
     enabled: true
@@ -70,34 +82,25 @@ services:
       type: labpulse.serial_pipe
       options:
         port: /tmp/labpulse-fake-serial/pressure
+    device_name: Pressure Monitor
+    measurements:
+      - name: pressure
+        setups: [monitor]
   disabled_hub:
     enabled: false
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /tmp/labpulse-fake-serial/disabled
+    device_name: Disabled Hub
+    measurements:
+      - name: unused
+        setups: [monitor]
 """,
             encoding="utf-8",
         )
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                embedded_compose_generator(),
-                str(config_path),
-                str(output_path),
-                str(project_dir),
-                "1",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            env={
-                **os.environ,
-                "PYTHONPATH": str(REFACTOR_DIR / "src"),
-            },
-        )
-        if result.returncode != 0:
-            raise AssertionError(result.stderr or result.stdout)
-
-        compose = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+        compose = compose_document(config_path, project_dir, force_simulated=True)
         services = compose["services"]
         expected_names = {
             "homeassistant",
@@ -118,6 +121,8 @@ services:
             "python",
             "-m",
             "labpulse.hardware",
+            "--config",
+            "/app/config.yaml",
             "--service",
             "pressure_monitor",
         ]:
@@ -212,6 +217,7 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'derive_fake_config',
         'RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"',
         '--config "$RUNTIME_CONFIG"',
+        "labpulse.deployment",
         'including UPS power',
         '$PROJECT_DIR/homeassistant/config/labpulse-dashboard.yaml',
     )
@@ -263,10 +269,9 @@ def test_setup_refresh_and_preservation_contract() -> None:
     ).read_text(encoding="utf-8")
     for fragment in (
         'HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"',
-        '"$HOST_PYTHON" - "$CONFIG_PATH"',
-        "from labpulse.hardware.registry import get_driver_spec",
-        "ghcr.io/tommystorm-cpu/labpulse:",
-        'f"  image: {runtime_image}"',
+        '"$HOST_PYTHON" -m labpulse.deployment',
+        '--config "$CONFIG_PATH"',
+        '--output "$OUTPUT_PATH"',
     ):
         if fragment not in compose_source:
             raise AssertionError(f"Compose wrapper contract missing: {fragment}")
@@ -305,22 +310,20 @@ def test_setup_refresh_and_preservation_contract() -> None:
     )
     required_editor_fragments = (
         'mktemp "$PROJECT_DIR/.config.yaml.editing.XXXXXX"',
-        "from labpulse.common.config import load_config",
-        'bash "$COMPOSE_SCRIPT"',
-        'bash "$HOMEASSISTANT_SCRIPT"',
+        "labpulse.deployment",
+        '--compose-output "$CHECK_DIR/compose.yaml"',
+        '--ha-config-dir "$CHECK_DIR/homeassistant/config"',
         'CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"',
         '"${DOCKER_PARTS[@]}" compose config --quiet',
         "python -m homeassistant --script check_config --config /config",
         '"${DOCKER_PARTS[@]}" compose up -d --remove-orphans --force-recreate',
         'Check Monitor for "Global Mute Applied"',
         '"Test Mode Applied"',
-        '"$HOST_PYTHON" - "$WORK_CONFIG"',
         'ACTIVE_FAKE_USB=1',
         'from labpulse.common.fake_config import derive_fake_config',
         'RUNTIME_WORK_CONFIG="$WORK_FAKE_CONFIG"',
         'RUNTIME_CONFIG="$FAKE_CONFIG_PATH"',
         '"${COMPOSE_MODE_ARGS[@]}"',
-        "Fake-USB runtime configuration is valid.",
         'DOCKER_COMMAND_TEXT="${LABPULSE_DOCKER_COMMAND:-sudo docker}"',
     )
     for fragment in required_editor_fragments:
@@ -439,10 +442,10 @@ def test_real_x1200_compose_is_least_privilege() -> None:
     project_dir.mkdir()
     try:
         config_path = project_dir / "config.yaml"
-        output_path = project_dir / "compose.yaml"
         config_path.write_text(
             """mqtt: {broker: mosquitto}
 sms: {dry_run: true}
+setups: {}
 services:
   ups_monitor:
     enabled: true
@@ -453,25 +456,19 @@ services:
         address: 0x36
         gpio_chip: /dev/gpiochip0
         gpio_line: 6
+    device_name: UPS Monitor
+    measurements:
+      - {name: voltage}
+      - {name: battery_level}
+      - {name: mains_present}
     power_detection:
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5
 """,
             encoding="utf-8",
         )
-        result = subprocess.run(
-            [sys.executable, "-c", embedded_compose_generator(), str(config_path), str(output_path), str(project_dir), "0"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env={
-                **os.environ,
-                "PYTHONPATH": str(REFACTOR_DIR / "src"),
-            },
-        )
-        if result.returncode != 0:
-            raise AssertionError(result.stderr or result.stdout)
-        service = yaml.safe_load(output_path.read_text(encoding="utf-8"))["services"]["labpulse-ups-monitor"]
+        compose = compose_document(config_path, project_dir, force_simulated=False)
+        service = compose["services"]["labpulse-ups-monitor"]
         if service.get("devices") != [
             "/dev/i2c-1:/dev/i2c-1",
             "/dev/gpiochip0:/dev/gpiochip0",
@@ -496,7 +493,6 @@ def test_sms_delivery_mode_controls_modem_access() -> None:
     project_dir.mkdir()
     try:
         config_path = project_dir / "config.yaml"
-        output_path = project_dir / "compose.yaml"
         config_path.write_text(
             """mqtt:
   broker: mosquitto
@@ -504,6 +500,8 @@ sms:
   dry_run: false
   recipients:
     - "+447700900000"
+setups:
+  monitor: {}
 services:
   pressure_monitor:
     enabled: true
@@ -511,35 +509,21 @@ services:
       type: labpulse.serial_pipe
       options:
         port: /tmp/labpulse-fake-serial/pressure
+    device_name: Pressure Monitor
+    measurements:
+      - name: pressure
+        setups: [monitor]
 """,
             encoding="utf-8",
         )
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                embedded_compose_generator(),
-                str(config_path),
-                str(output_path),
-                str(project_dir),
-                "1",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            env={
-                **os.environ,
-                "PYTHONPATH": str(REFACTOR_DIR / "src"),
-                "LABPULSE_IMAGE": "local/labpulse:test",
-            },
+        compose = compose_document(
+            config_path,
+            project_dir,
+            force_simulated=True,
+            runtime_image="local/labpulse:test",
         )
-        if result.returncode != 0:
-            raise AssertionError(result.stderr or result.stdout)
-
-        sms = yaml.safe_load(output_path.read_text(encoding="utf-8"))["services"][
-            "labpulse-sms"
-        ]
+        sms = compose["services"]["labpulse-sms"]
         if sms.get("image") != "local/labpulse:test":
             raise AssertionError("LABPULSE_IMAGE override was not applied")
         if sms.get("privileged") is not True:

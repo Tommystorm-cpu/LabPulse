@@ -36,7 +36,12 @@ def _use_managed_python_when_deployed() -> None:
 if __name__ == "__main__":
     _use_managed_python_when_deployed()
 
-import yaml
+from labpulse.common.config import (
+    ConfigError,
+    format_config_error,
+    load_config,
+)
+from labpulse.hardware.drivers.serial_pipe import SerialPipeOptions
 
 
 REAL_DEVICE_DIR = Path("/dev/serial/by-id")
@@ -55,33 +60,18 @@ class SerialService:
 def load_serial_services(config_path: Path) -> list[SerialService]:
     """Load enabled serial services in config order without changing the file."""
 
-    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or not isinstance(raw.get("services"), dict):
-        raise ValueError("Config must contain a services mapping")
-
-    services = []
-    for name, config in raw["services"].items():
-        if not isinstance(config, dict):
-            continue
-        driver = config.get("driver")
-        if not isinstance(driver, dict):
-            continue
-        options = driver.get("options")
-        if not isinstance(options, dict):
-            continue
-        if (
-            config.get("enabled", True)
-            and driver.get("type") == "labpulse.serial_pipe"
-        ):
+    document = load_config(config_path)
+    services: list[SerialService] = []
+    for name, config in document.config.services.items():
+        if config.enabled and config.driver.type == "labpulse.serial_pipe":
+            options = config.driver.options
+            if not isinstance(options, SerialPipeOptions):
+                raise TypeError("serial service did not retain SerialPipeOptions")
             services.append(
                 SerialService(
-                    name=str(name),
-                    label=str(config.get("device_name") or name),
-                    current_port=(
-                        str(options["port"])
-                        if options.get("port") is not None
-                        else None
-                    ),
+                    name=name,
+                    label=config.device_name or name,
+                    current_port=options.port,
                 )
             )
     return services
@@ -150,7 +140,12 @@ def identify_devices(
     return assignments
 
 
-def replace_serial_ports(config_text: str, assignments: dict[str, str]) -> str:
+def replace_serial_ports(
+    config_text: str,
+    assignments: dict[str, str],
+    *,
+    source: Path = Path("config.yaml"),
+) -> str:
     """Replace only assigned nested driver port lines, preserving other text."""
 
     lines = config_text.splitlines(keepends=True)
@@ -213,9 +208,10 @@ def replace_serial_ports(config_text: str, assignments: dict[str, str]) -> str:
         lines.insert(insert_after + 1, replacement)
 
     updated = "".join(lines)
-    parsed = yaml.safe_load(updated)
+    document = load_config(source, text=updated)
     for service_name, port in assignments.items():
-        actual = parsed["services"][service_name]["driver"]["options"].get("port")
+        options = document.config.services[service_name].driver.options
+        actual = getattr(options, "port", None)
         if actual != port:
             raise ValueError(f"Failed to update driver port for {service_name}")
     return updated
@@ -290,7 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"  {service.name}: {assignments[service.name]}")
 
         original = config_path.read_text(encoding="utf-8")
-        updated = replace_serial_ports(original, assignments)
+        updated = replace_serial_ports(original, assignments, source=config_path)
         if args.dry_run:
             print("\nDry run complete; config was not changed.")
             return 0
@@ -305,7 +301,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Previous config saved at {backup_path}")
         print("Regenerate Compose before restarting LabPulse services.")
         return 0
-    except (KeyError, OSError, RuntimeError, ValueError, yaml.YAMLError) as error:
+    except ConfigError as error:
+        print(format_config_error(error), file=sys.stderr)
+        return 1
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 

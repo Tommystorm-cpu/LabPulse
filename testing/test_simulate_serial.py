@@ -40,7 +40,7 @@ def test_generated_payloads_match_parsers() -> None:
         raise AssertionError(f"invalid pump payload: {payloads['pump_room']!r}")
     configured_pump_measurements = {
         measurement.name
-        for measurement in load_config(REFACTOR_DIR / "config.yaml").services[
+        for measurement in load_config(REFACTOR_DIR / "config.yaml").config.services[
             "pump_room"
         ].measurements
     }

@@ -88,9 +88,16 @@ class DriverDefinition:
         if self.default_read_interval_seconds < 0:
             raise ValueError("default_read_interval_seconds must not be negative")
 
-    def validate_options(self, options: Mapping[str, Any]) -> BaseModel:
+    def validate_options(self, options: Mapping[str, Any] | BaseModel) -> BaseModel:
         """Return the driver's typed and normalized configuration."""
 
+        if isinstance(options, self.options_model):
+            return options
+        if isinstance(options, BaseModel):
+            raise TypeError(
+                f"{self.driver_id} expected {self.options_model.__name__}, "
+                f"got {type(options).__name__}"
+            )
         return self.options_model.model_validate(dict(options))
 
     def resolve_resources(

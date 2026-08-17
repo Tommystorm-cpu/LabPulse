@@ -187,8 +187,10 @@ def test_setup_and_compose_contract() -> None:
     setup = (REFACTOR_DIR / "deployment" / "setup_container_fs.sh").read_text(
         encoding="utf-8"
     )
-    compose = (REFACTOR_DIR / "deployment" / "generate_compose.sh").read_text(
-        encoding="utf-8"
+    deployment_dir = REFACTOR_DIR / "src" / "labpulse" / "deployment"
+    compose = "\n".join(
+        (deployment_dir / name).read_text(encoding="utf-8")
+        for name in ("compose.py", "generate.py")
     )
     assert_contains(setup, "labpulse-installed-package.pth", "managed package link")
     assert_contains(

@@ -5,7 +5,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from labpulse.common.config import DEFAULT_CONFIG_PATH, get_service_config, load_config
+from labpulse.common.config import (
+    DEFAULT_CONFIG_PATH,
+    ConfigError,
+    format_config_error,
+    load_config,
+)
 from labpulse.common.logging_config import configure_logging
 from labpulse.hardware.registry import get_driver_spec
 from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher
@@ -67,10 +72,15 @@ def main() -> None:
     logger = logging.getLogger(f"HardwareRunner.{args.service}")
 
     config_path = Path(args.config).expanduser().resolve()
-    cfg = load_config(config_path)
-    service_cfg = get_service_config(cfg, args.service)
+    try:
+        document = load_config(config_path)
+        service_cfg = document.service(args.service)
+    except ConfigError as error:
+        logger.critical("%s", format_config_error(error))
+        raise SystemExit(1) from error
+    cfg = document.config
     driver_spec = get_driver_spec(service_cfg.driver.type)
-    driver_options = driver_spec.validate_options(service_cfg.driver.options)
+    driver_options = service_cfg.driver.options
     read_interval_seconds = (
         service_cfg.read_interval_seconds
         if service_cfg.read_interval_seconds is not None

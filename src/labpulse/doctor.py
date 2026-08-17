@@ -11,11 +11,10 @@ import subprocess
 import sys
 from typing import Any
 
-from pydantic import ValidationError
 import yaml
 
 from labpulse import __version__
-from labpulse.common.config import LabPulseConfig
+from labpulse.common.config import ConfigError, LabPulseConfig, format_config_error, load_config
 from labpulse.hardware.registry import get_driver_spec
 
 
@@ -95,10 +94,8 @@ def _read_yaml(path: Path) -> Any:
 def _validation_detail(error: Exception) -> str:
     """Return a concise first error suitable for a one-line report."""
 
-    if isinstance(error, ValidationError):
-        first = error.errors()[0]
-        location = " -> ".join(str(item) for item in first["loc"]) or "root"
-        return f"{location}: {first['msg']}"
+    if isinstance(error, ConfigError):
+        return format_config_error(error).replace("\n", "; ")
     return str(error).replace("\n", " ")
 
 
@@ -179,8 +176,8 @@ def _validate_config(
         )
         return None
     try:
-        config = LabPulseConfig.model_validate(_read_yaml(path))
-    except (OSError, yaml.YAMLError, ValidationError, TypeError, ValueError) as error:
+        config = load_config(path).config
+    except ConfigError as error:
         report.add(CheckStatus.FAIL, name, _validation_detail(error))
         return None
 
@@ -201,7 +198,7 @@ def _host_resource_paths(config: LabPulseConfig, *, simulated: bool) -> dict[str
         if not service.enabled:
             continue
         definition = get_driver_spec(service.driver.type)
-        options = definition.validate_options(service.driver.options)
+        options = service.driver.options
         requirements = definition.resolve_resources(options, simulated)
         paths = {Path(device.split(":", 1)[0]) for device in requirements.devices}
         paths.update(Path(mount.split(":", 1)[0]) for mount in requirements.mounts)

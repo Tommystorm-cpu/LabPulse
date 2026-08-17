@@ -1,0 +1,209 @@
+"""Generate deployment artifacts through the shared configuration pipeline."""
+
+import argparse
+from argparse import Namespace
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+from uuid import uuid4
+
+from labpulse import __version__
+from labpulse.common.config import (
+    ConfigDocument,
+    ConfigError,
+    format_config_error,
+    load_config,
+)
+from labpulse.deployment.compose import (
+    build_compose,
+    service_slug,
+)
+from labpulse.homeassistant.cli import generate_homeassistant
+from labpulse.homeassistant.paths import GeneratorPaths
+
+
+def _mount_source(config_path: Path, project_dir: Path) -> str:
+    """Return the host-side Compose path for the selected runtime config."""
+
+    try:
+        return "./" + config_path.relative_to(project_dir).as_posix()
+    except ValueError:
+        return config_path.as_posix()
+
+
+def _replace_text(path: Path, text: str) -> None:
+    """Atomically replace one generated text file on its destination filesystem."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".generating",
+        text=True,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(text)
+        os.replace(temporary_name, path)
+    except Exception:
+        try:
+            Path(temporary_name).unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _install_homeassistant(staged: GeneratorPaths, live: GeneratorPaths) -> None:
+    """Install owned HA files and initialize, but never overwrite, UI files."""
+
+    owned_pairs = (
+        (staged.configuration_path, live.configuration_path),
+        (staged.package_path, live.package_path),
+        (staged.dashboard_path, live.dashboard_path),
+    )
+    for staged_path, live_path in owned_pairs:
+        _replace_text(live_path, staged_path.read_text(encoding="utf-8"))
+
+    for ui_path in (
+        live.ui_automations_path,
+        live.ui_scripts_path,
+        live.ui_scenes_path,
+    ):
+        if not ui_path.exists():
+            _replace_text(ui_path, "[]\n")
+
+
+def generate_deployment(
+    config_path: Path,
+    compose_output: Path,
+    project_dir: Path,
+    ha_config_dir: Path,
+    runtime_image: str,
+    force_simulated: bool = False,
+) -> ConfigDocument:
+    """Load once, stage every generated artifact, then install owned outputs."""
+
+    config_path = config_path.expanduser().resolve()
+    project_dir = project_dir.expanduser().resolve()
+    compose_output = compose_output.expanduser().resolve()
+    ha_config_dir = ha_config_dir.expanduser().resolve()
+    document = load_config(config_path)
+    compose_text = build_compose(
+        document,
+        config_mount_source=_mount_source(config_path, project_dir),
+        runtime_image=runtime_image,
+        force_simulated=force_simulated,
+    )
+
+    staging_root = project_dir / f".labpulse-generation-{uuid4().hex}"
+    staging_root.mkdir(parents=True)
+    try:
+        staged_paths = GeneratorPaths(
+            config_path=document.path,
+            ha_config_dir=staging_root / "homeassistant" / "config",
+        )
+        generate_homeassistant(document, staged_paths)
+
+        # No live generated file is touched until both Compose and every owned
+        # Home Assistant artifact have been built successfully.
+        _replace_text(compose_output, compose_text)
+        live_paths = GeneratorPaths(
+            config_path=document.path,
+            ha_config_dir=ha_config_dir,
+        )
+        _install_homeassistant(staged_paths, live_paths)
+    finally:
+        shutil.rmtree(staging_root)
+
+    (project_dir / "logs").mkdir(parents=True, exist_ok=True)
+    return document
+
+
+def parse_args(argv: list[str] | None = None) -> Namespace:
+    """Parse paths for Compose-only or unified deployment generation."""
+
+    parser = argparse.ArgumentParser(
+        description="Generate deployment files from validated LabPulse configuration"
+    )
+    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument(
+        "--output",
+        "--compose-output",
+        required=True,
+        dest="compose_output",
+        type=Path,
+    )
+    parser.add_argument("--project-dir", required=True, type=Path)
+    parser.add_argument(
+        "--ha-config-dir",
+        type=Path,
+        help="also generate Home Assistant files from the same config load",
+    )
+    parser.add_argument(
+        "-fake_usb",
+        "--fake-usb",
+        "--fake_usb",
+        action="store_true",
+        dest="fake_usb",
+    )
+    return parser.parse_args(argv)
+
+
+def _print_result(document: ConfigDocument, compose_path: Path, image: str) -> None:
+    """Report installed output and enabled service container names."""
+
+    print(f"Generated {compose_path}")
+    print(f"LabPulse runtime image: {image}")
+    print("LabPulse service containers:")
+    for service_name, service in document.config.services.items():
+        if service.enabled:
+            print(f"  labpulse-{service_slug(service_name)} -> {service_name}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Load once and atomically install the requested generated outputs."""
+
+    args = parse_args(argv)
+    project_dir = args.project_dir.expanduser().resolve()
+    compose_output = args.compose_output.expanduser().resolve()
+    runtime_image = os.environ.get(
+        "LABPULSE_IMAGE",
+        f"ghcr.io/tommystorm-cpu/labpulse:{__version__}",
+    ).strip()
+    try:
+        if args.ha_config_dir is not None:
+            document = generate_deployment(
+                args.config,
+                compose_output,
+                project_dir,
+                args.ha_config_dir,
+                runtime_image,
+                args.fake_usb,
+            )
+        else:
+            config_path = args.config.expanduser().resolve()
+            document = load_config(config_path)
+            compose_text = build_compose(
+                document,
+                config_mount_source=_mount_source(config_path, project_dir),
+                runtime_image=runtime_image,
+                force_simulated=args.fake_usb,
+            )
+            project_dir.mkdir(parents=True, exist_ok=True)
+            (project_dir / "logs").mkdir(parents=True, exist_ok=True)
+            _replace_text(compose_output, compose_text)
+    except ConfigError as error:
+        print(format_config_error(error), file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    _print_result(document, compose_output, runtime_image)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

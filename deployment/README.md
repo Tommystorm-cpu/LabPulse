@@ -11,9 +11,13 @@ Raspberry Pi layout.
 
 - `setup_container_fs.sh` creates or refreshes the live deployment.
 - `edit_config.sh` implements the guarded workflow behind `labpulse config`.
-- `generate_compose.sh` generates the live Compose file.
+- `generate_compose.sh` is a thin launcher for the packaged Compose generator.
 - `generate_homeassistant_config.sh` invokes the packaged Home Assistant
   generator with live paths and permissions.
 
 Change these source files rather than copies under `~/labpulse-live`; rerun
 `labpulse setup` to deploy the changes.
+
+Setup and guarded editing call the packaged deployment generator directly so
+Compose and Home Assistant output are built from one validated configuration
+document before managed live files are replaced.
