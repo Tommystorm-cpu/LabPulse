@@ -1,17 +1,11 @@
 """Hardware-free tests for the standard pipe-delimited serial driver."""
 
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 from typing import Any, Callable
 
-
-
-REFACTOR_DIR = Path(__file__).resolve().parents[1]
-
 from labpulse.hardware.drivers import serial_pipe
 from labpulse.hardware.api import ConnectionLost, DriverUnavailable
-from labpulse.hardware.drivers.serial_pipe import Driver
+from labpulse.hardware.drivers.serial_pipe import Driver, SerialPipeOptions
 
 
 class FakeSerialPort:
@@ -51,9 +45,11 @@ def make_driver() -> Driver:
     """Build one serial driver with the standard fake path."""
 
     return Driver(
-        name="pressure_monitor",
-        port="/tmp/labpulse-fake-serial/pressure",
-        baud_rate=9600,
+        "pressure_monitor",
+        SerialPipeOptions(
+            port="/tmp/labpulse-fake-serial/pressure",
+            baud_rate=9600,
+        ),
     )
 
 

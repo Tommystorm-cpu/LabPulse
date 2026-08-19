@@ -1,13 +1,7 @@
 """Deterministic lifecycle tests for the central hardware runner."""
 
-from pathlib import Path
-import sys
 from typing import Callable
 from unittest.mock import Mock
-
-
-
-REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.hardware.api import (
     BaseSensorDriver,

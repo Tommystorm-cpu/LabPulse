@@ -8,7 +8,7 @@ from labpulse.hardware.api import (
     BaseSensorDriver,
     ContainerRequirements,
     ConnectionLost,
-    DriverDefinition,
+    DriverSpec,
     DriverUnavailable,
     ReadingBatch,
     TransientReadError,
@@ -58,12 +58,12 @@ class Driver(BaseSensorDriver):
     def __init__(
         self,
         name: str,
-        pin_name: str,
+        options: Dht11Options,
     ) -> None:
         """Create a DHT11 driver for one named GPIO pin."""
 
         super().__init__(name)
-        self.pin_name = pin_name
+        self.pin_name = options.pin
         self.device: Any | None = None
 
     def connect(self) -> None:
@@ -133,35 +133,12 @@ class Driver(BaseSensorDriver):
         return dht_module.DHT11(pin, use_pulseio=True)
 
 
-def build_driver(
-    service_name: str,
-    raw_options: BaseModel,
-) -> BaseSensorDriver:
-    """Construct one DHT11 driver from registry-validated options."""
-
-    if not isinstance(raw_options, Dht11Options):
-        raise TypeError(
-            "DHT11 driver expected Dht11Options, "
-            f"got {type(raw_options).__name__}"
-        )
-    return Driver(name=service_name, pin_name=raw_options.pin)
-
-
-def resources(
-    raw_options: BaseModel,
-    _force_simulated: bool,
-) -> ContainerRequirements:
-    """Expose the current Raspberry Pi GPIO devices to the DHT worker."""
-
-    if not isinstance(raw_options, Dht11Options):
-        raise TypeError("DHT11 resources require Dht11Options")
-    return ContainerRequirements(mounts=("/dev:/dev",), privileged=True)
-
-
-DRIVER = DriverDefinition(
+# DHT access is fixed for every configured pin, so declare it directly instead
+# of adding a resource function whose options would never affect the result.
+DRIVER = DriverSpec(
     driver_id="labpulse.dht11",
     options_model=Dht11Options,
-    build=build_driver,
-    resources=resources,
+    implementation=Driver,
+    resources=ContainerRequirements(mounts=("/dev:/dev",), privileged=True),
     default_read_interval_seconds=2.0,
 )

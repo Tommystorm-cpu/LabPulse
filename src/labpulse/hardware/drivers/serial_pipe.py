@@ -8,7 +8,7 @@ from labpulse.hardware.api import (
     BaseSensorDriver,
     ContainerRequirements,
     ConnectionLost,
-    DriverDefinition,
+    DriverSpec,
     DriverUnavailable,
     ReadingBatch,
 )
@@ -69,14 +69,13 @@ class Driver(BaseSensorDriver):
     def __init__(
         self,
         name: str,
-        port: str,
-        baud_rate: int,
+        options: SerialPipeOptions,
     ) -> None:
         """Store serial settings and create the parser for this service."""
 
         super().__init__(name)
-        self.port = port
-        self.baud_rate = baud_rate
+        self.port = options.port
+        self.baud_rate = options.baud_rate
         self.ser = None
         self.parser = SerialParser()
 
@@ -132,33 +131,13 @@ class Driver(BaseSensorDriver):
         self.ser = None
 
 
-def build_driver(
-    service_name: str,
-    raw_options: BaseModel,
-) -> BaseSensorDriver:
-    """Construct one serial driver from registry-validated options."""
-
-    if not isinstance(raw_options, SerialPipeOptions):
-        raise TypeError(
-            "serial driver expected SerialPipeOptions, "
-            f"got {type(raw_options).__name__}"
-        )
-    return Driver(
-        name=service_name,
-        port=raw_options.port,
-        baud_rate=raw_options.baud_rate,
-    )
-
-
 def resources(
-    raw_options: BaseModel,
+    options: SerialPipeOptions,
     force_simulated: bool,
 ) -> ContainerRequirements:
     """Return fake-PTY mounts or the established real serial access."""
 
-    if not isinstance(raw_options, SerialPipeOptions):
-        raise TypeError("serial resources require SerialPipeOptions")
-    if force_simulated or raw_options.port.startswith("/tmp/labpulse-fake-serial"):
+    if force_simulated or options.port.startswith("/tmp/labpulse-fake-serial"):
         return ContainerRequirements(
             mounts=(
                 "/tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
@@ -168,10 +147,12 @@ def resources(
     return ContainerRequirements(mounts=("/dev:/dev",), privileged=True)
 
 
-DRIVER = DriverDefinition(
+# Serial container access changes between a real /dev transport and fake PTYs,
+# so this is one of the drivers that genuinely needs a resource resolver.
+DRIVER = DriverSpec(
     driver_id="labpulse.serial_pipe",
     options_model=SerialPipeOptions,
-    build=build_driver,
+    implementation=Driver,
     resources=resources,
     default_read_interval_seconds=0.0,
 )

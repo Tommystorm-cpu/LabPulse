@@ -16,6 +16,8 @@ from typing import Any
 from pydantic import BaseModel
 
 
+# These are runner-owned service states. Drivers may add a component-specific
+# status through ComponentIssue, but they never manage service transitions.
 class ServiceStatus(StrEnum):
     """Core service-health states owned by the hardware runner."""
 
@@ -41,6 +43,8 @@ class ReadingBatch:
     issues: tuple[ComponentIssue, ...] = field(default_factory=tuple)
 
 
+# Expected hardware failures form the language between drivers and the runner.
+# Their distinctions decide whether a handle is retained, closed, or retried.
 class DriverError(Exception):
     """Base class for expected hardware lifecycle failures."""
 
@@ -66,87 +70,8 @@ class ContainerRequirements:
     privileged: bool = False
 
 
-DriverBuilder = Callable[[str, BaseModel], "BaseSensorDriver"]
-ResourceResolver = Callable[[BaseModel, bool], ContainerRequirements]
-
-
-@dataclass(frozen=True)
-class DriverDefinition:
-    """Everything LabPulse needs to validate, deploy, and run one driver."""
-
-    driver_id: str
-    options_model: type[BaseModel]
-    build: DriverBuilder
-    resources: ResourceResolver
-    default_read_interval_seconds: float
-
-    def __post_init__(self) -> None:
-        """Reject malformed definitions as soon as their module is discovered."""
-
-        if not self.driver_id or self.driver_id != self.driver_id.strip():
-            raise ValueError("driver_id must be a non-blank normalized string")
-        if self.default_read_interval_seconds < 0:
-            raise ValueError("default_read_interval_seconds must not be negative")
-
-    def validate_options(self, options: Mapping[str, Any] | BaseModel) -> BaseModel:
-        """Return the driver's typed and normalized configuration."""
-
-        if isinstance(options, self.options_model):
-            return options
-        if isinstance(options, BaseModel):
-            raise TypeError(
-                f"{self.driver_id} expected {self.options_model.__name__}, "
-                f"got {type(options).__name__}"
-            )
-        return self.options_model.model_validate(dict(options))
-
-    def resolve_resources(
-        self,
-        options: BaseModel,
-        force_simulated: bool,
-    ) -> ContainerRequirements:
-        """Return the container access needed by validated options."""
-
-        if not isinstance(options, self.options_model):
-            raise TypeError(
-                f"{self.driver_id} expected {self.options_model.__name__}, "
-                f"got {type(options).__name__}"
-            )
-        requirements = self.resources(options, force_simulated)
-        if not isinstance(requirements, ContainerRequirements):
-            raise TypeError(
-                f"{self.driver_id} resources must return ContainerRequirements"
-            )
-        return requirements
-
-    def create(self, service_name: str, options: BaseModel) -> "BaseSensorDriver":
-        """Build a driver and verify that it implements the lifecycle API."""
-
-        driver = self.build(service_name, options)
-        if not isinstance(driver, BaseSensorDriver):
-            raise TypeError(
-                f"{self.driver_id} build must return BaseSensorDriver, "
-                f"got {type(driver).__name__}"
-            )
-        return driver
-
-
-# NEW HARDWARE DRIVER:
-# Do not put device protocols or vendor-library imports in this API module.
-# Create ``drivers/<device_name>.py`` and add:
-#
-#   1. A small Pydantic options model for the device's ``driver.options``.
-#   2. ``class Driver(BaseSensorDriver)`` implementing the three methods below.
-#   3. ``build_driver(service_name, options)`` returning that Driver.
-#   4. ``resources(options, force_simulated)`` declaring container access.
-#   5. One module-level ``DRIVER = DriverDefinition(...)`` tying it together.
-#
-# ``connect()`` should translate setup failures to DriverUnavailable.
-# ``read()`` should return ReadingBatch, return None when no sample is ready,
-# raise TransientReadError for a bad sample on a usable connection, and raise
-# ConnectionLost when the hardware handle must be recreated. ``close()`` must
-# be safe to call repeatedly. The registry discovers the new module
-# automatically; copy ``driver_template.py`` for a complete starting point.
+# Every implementation exposes only the hardware lifecycle. Scheduling, MQTT,
+# status, and retry policy deliberately remain outside this class hierarchy.
 class BaseSensorDriver(ABC):
     """Provide driver identity and logging while the runner owns lifecycle state."""
 
@@ -167,3 +92,89 @@ class BaseSensorDriver(ABC):
     @abstractmethod
     def close(self) -> None:
         """Release hardware resources safely and idempotently."""
+
+
+ResourceResolver = Callable[[BaseModel, bool], ContainerRequirements]
+ResourceDeclaration = ContainerRequirements | ResourceResolver
+
+
+# DriverSpec is the only metadata layer: the registry discovers it, config uses
+# it to validate options, deployment asks it for resources, and the CLI creates
+# the implementation. A second registry/adapter abstraction is unnecessary.
+@dataclass(frozen=True)
+class DriverSpec:
+    """Describe how one driver is configured, constructed, and deployed.
+
+    The spec is the small translation layer between self-contained driver
+    modules and the generic registry, Compose generator, and hardware runner.
+    Drivers with fixed container access can declare ``ContainerRequirements``
+    directly; only option-dependent access needs a resolver function.
+    """
+
+    driver_id: str
+    options_model: type[BaseModel]
+    implementation: type[BaseSensorDriver]
+    resources: ResourceDeclaration
+    default_read_interval_seconds: float
+
+    def __post_init__(self) -> None:
+        """Reject malformed specs as soon as their module is discovered."""
+
+        if not self.driver_id or self.driver_id != self.driver_id.strip():
+            raise ValueError("driver_id must be a non-blank normalized string")
+        if not issubclass(self.options_model, BaseModel):
+            raise TypeError("options_model must extend pydantic.BaseModel")
+        if not issubclass(self.implementation, BaseSensorDriver):
+            raise TypeError("implementation must extend BaseSensorDriver")
+        if not isinstance(self.resources, ContainerRequirements) and not callable(
+            self.resources
+        ):
+            raise TypeError(
+                "resources must be ContainerRequirements or a resolver function"
+            )
+        if self.default_read_interval_seconds < 0:
+            raise ValueError("default_read_interval_seconds must not be negative")
+
+    def validate_options(self, options: Mapping[str, Any] | BaseModel) -> BaseModel:
+        """Return the driver's typed and normalized configuration."""
+
+        # Config loading normally reaches this fast path. Accepting a mapping as
+        # well keeps DriverSpec useful in tests and direct deployment tooling.
+        if isinstance(options, self.options_model):
+            return options
+        if isinstance(options, BaseModel):
+            raise TypeError(
+                f"{self.driver_id} expected {self.options_model.__name__}, "
+                f"got {type(options).__name__}"
+            )
+        return self.options_model.model_validate(dict(options))
+
+    def create(
+        self,
+        service_name: str,
+        options: Mapping[str, Any] | BaseModel,
+    ) -> BaseSensorDriver:
+        """Construct the implementation from one validated options object."""
+
+        validated = self.validate_options(options)
+        return self.implementation(service_name, validated)
+
+    def resolve_resources(
+        self,
+        options: Mapping[str, Any] | BaseModel,
+        force_simulated: bool,
+    ) -> ContainerRequirements:
+        """Return the fixed or option-dependent container access declaration."""
+
+        validated = self.validate_options(options)
+        # Most simple GPIO drivers have fixed access and need no resolver
+        # function. Dynamic drivers receive the same validated options model.
+        if isinstance(self.resources, ContainerRequirements):
+            return self.resources
+
+        requirements = self.resources(validated, force_simulated)
+        if not isinstance(requirements, ContainerRequirements):
+            raise TypeError(
+                f"{self.driver_id} resources must return ContainerRequirements"
+            )
+        return requirements

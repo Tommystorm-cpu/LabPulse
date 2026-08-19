@@ -1,10 +1,5 @@
-from pathlib import Path
 import json
-import sys
 from typing import Any
-
-
-REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import MqttConfig, ServiceConfig
 from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher

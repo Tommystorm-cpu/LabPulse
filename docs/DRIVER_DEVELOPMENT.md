@@ -43,10 +43,9 @@ src/labpulse/hardware/drivers/bme280.py
 Keep these together in that one module:
 
 1. strict Pydantic options model;
-2. `Driver` class;
-3. builder function;
-4. container-resource resolver;
-5. exported `DRIVER = DriverDefinition(...)`.
+2. `Driver` class accepting the service name and typed options;
+3. container-resource resolver, only when access depends on options;
+4. exported `DRIVER = DriverSpec(...)`.
 
 The registry discovers public modules automatically. Do not edit
 `registry.py`. `driver_template.py` is excluded; helper modules in the drivers
@@ -89,8 +88,20 @@ def close(self) -> None: ...
 
 ### Construction
 
-Store validated options but do not open hardware in `__init__`. The registry
-and tests must be able to construct a driver without the device.
+Use the same small constructor shape for every driver:
+
+```python
+def __init__(self, name: str, options: Bme280Options) -> None:
+    super().__init__(name)
+    self.bus = options.bus
+    self.address = options.address
+    self.device = None
+```
+
+Store validated options but do not open hardware in `__init__`. `DriverSpec`
+validates the raw mapping before it calls the constructor, so the driver does
+not need another `isinstance` check. The registry and tests must be able to
+construct a driver without the device.
 
 ### Connect
 
@@ -148,35 +159,23 @@ def close(self) -> None:
 
 Cleanup must also tolerate partial connection.
 
-## Builder
-
-The registry passes a validated Pydantic model:
-
-```python
-def build_driver(
-    service_name: str,
-    raw_options: BaseModel,
-) -> BaseSensorDriver:
-    if not isinstance(raw_options, Bme280Options):
-        raise TypeError("BME280 driver expected Bme280Options")
-    return Driver(service_name, raw_options.bus, raw_options.address)
-```
-
-Keep type checks explicit so broken definitions fail close to their source.
-
 ## Container resources
 
-Return the narrowest access the driver needs:
+Declare fixed access directly:
+
+```python
+resources=ContainerRequirements(mounts=("/dev:/dev",), privileged=True)
+```
+
+When access depends on options, return the narrowest resources from a resolver:
 
 ```python
 def resources(
-    raw_options: BaseModel,
+    options: Bme280Options,
     _force_simulated: bool,
 ) -> ContainerRequirements:
-    if not isinstance(raw_options, Bme280Options):
-        raise TypeError("BME280 resources require Bme280Options")
     return ContainerRequirements(
-        devices=(f"/dev/i2c-{raw_options.bus}",),
+        devices=(f"/dev/i2c-{options.bus}",),
     )
 ```
 
@@ -193,16 +192,17 @@ ContainerRequirements(
 Prefer individual devices over `/dev:/dev` and avoid `privileged=True` unless
 the hardware stack actually requires it. Never return raw Compose YAML.
 
-`force_simulated` lets a definition select fake resources during fake
-generation. A driver may also recognize a configured fake path.
+`force_simulated` lets a spec select fake resources during fake generation. A
+driver may also recognize a configured fake path. `DriverSpec` passes the same
+validated options type to the driver and its resource resolver.
 
-## Driver definition
+## Driver spec
 
 ```python
-DRIVER = DriverDefinition(
+DRIVER = DriverSpec(
     driver_id="example.bme280",
     options_model=Bme280Options,
-    build=build_driver,
+    implementation=Driver,
     resources=resources,
     default_read_interval_seconds=1.0,
 )
@@ -280,7 +280,7 @@ testing/test_deployment_generation.py
 
 A driver contribution is ready when it includes:
 
-- self-contained implementation and definition;
+- self-contained implementation and spec;
 - strict documented options;
 - least-privilege resources;
 - lazy optional imports;

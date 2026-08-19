@@ -6,7 +6,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
-from labpulse.common.config import MqttConfig, ServiceConfig
+from labpulse.common.config import MeasurementConfig, MqttConfig, ServiceConfig
 from labpulse.common.identity import entity_id, stable_id
 from labpulse.common.mqtt_contracts import (
     sensor_discovery_topic,
@@ -44,10 +44,64 @@ def measurement_icon(device_class: str | None, override: str | None) -> str:
     return DEFAULT_MEASUREMENT_ICON
 
 
+def status_discovery_payload(
+    service_name: str,
+    device_name: str,
+) -> dict[str, Any]:
+    """Build the Home Assistant discovery document for service health."""
+
+    status_id = stable_id(service_name, "status")
+    return {
+        "name": "Status",
+        "state_topic": service_status_topic(service_name),
+        "unique_id": status_id,
+        "object_id": status_id,
+        "default_entity_id": entity_id("sensor", service_name, "status"),
+        "icon": "mdi:heart-pulse",
+        "device": {
+            "identifiers": [service_name],
+            "name": device_name,
+        },
+    }
+
+
+def measurement_discovery_payload(
+    service_name: str,
+    device_name: str,
+    measurement: MeasurementConfig,
+    expire_after: int,
+) -> dict[str, Any]:
+    """Build one measurement discovery document without publishing it."""
+
+    measurement_id = stable_id(service_name, measurement.name)
+    payload: dict[str, Any] = {
+        "name": measurement.display_label,
+        "state_topic": sensor_state_topic(service_name, measurement.name),
+        "expire_after": expire_after,
+        "unique_id": measurement_id,
+        "object_id": measurement_id,
+        "default_entity_id": entity_id("sensor", service_name, measurement.name),
+        "device": {
+            "identifiers": [service_name],
+            "name": device_name,
+        },
+    }
+    if measurement.unit:
+        payload["unit_of_measurement"] = measurement.unit
+    # Home Assistant converts numeric values when a convertible device class
+    # is present. LabPulse treats the configured unit as the data contract, so
+    # discovery publishes an icon while device_class stays internal metadata.
+    payload["icon"] = measurement_icon(
+        measurement.device_class,
+        measurement.icon,
+    )
+    if measurement.state_class:
+        payload["state_class"] = measurement.state_class
+    return payload
+
+
 class HomeAssistantMqttPublisher:
-    """
-    Publishes LabPulse measurements to MQTT using Home Assistant discovery.
-    """
+    """Publish LabPulse measurements through MQTT and Home Assistant discovery."""
 
     def __init__(
         self,
@@ -60,10 +114,14 @@ class HomeAssistantMqttPublisher:
         self.service_name = service_name
         self.service_config = service_config
         self.mqtt_config = mqtt_config
+        # Index once because every driver batch is filtered against the same
+        # service contract before either discovery or state is published.
         self.measurement_configs = {
             measurement.name: measurement
             for measurement in service_config.measurements
         }
+        # Discovery is retained by MQTT, so it only needs publishing when a
+        # configured measurement first appears or the broker reconnects.
         self.discovered_measurements: set[str] = set()
         self.status_discovery_published = False
         self.current_status: str | None = None
@@ -75,6 +133,7 @@ class HomeAssistantMqttPublisher:
 
     def connect(self) -> None:
         """Connect to the MQTT broker and start the background network loop."""
+
         self.client.on_connect = self._on_connect
         self.client.will_set(
             service_status_topic(self.service_name),
@@ -91,9 +150,10 @@ class HomeAssistantMqttPublisher:
         self.client.loop_start()
 
     def publish(self, measurements: dict[str, float]) -> None:
-        """
-        Publish Home Assistant discovery for new measurements, then publish values.
-        """
+        """Publish discovery for new names, followed by their current values."""
+
+        # A typo or extra key from a driver must never create an undeclared Home
+        # Assistant entity. The warning remains visible to the operator.
         measurements = self.configured_measurements(measurements)
         undiscovered_measurements = {
             measurement_name: measurement
@@ -102,6 +162,7 @@ class HomeAssistantMqttPublisher:
         }
 
         if undiscovered_measurements:
+            # Home Assistant must know the entity before its first state arrives.
             self.publish_discovery(undiscovered_measurements)
             self.discovered_measurements.update(undiscovered_measurements)
 
@@ -110,13 +171,15 @@ class HomeAssistantMqttPublisher:
     def configured_measurements(self, measurements: dict[str, float]) -> dict[str, float]:
         """Return only measurements declared exactly in this service's config."""
 
-        configured = {}
-
-        for measurement_name, measurement in measurements.items():
+        configured: dict[str, float] = {}
+        for measurement_name, value in measurements.items():
             if measurement_name in self.measurement_configs:
-                configured[measurement_name] = measurement
+                configured[measurement_name] = value
             else:
-                self.logger.warning("Ignoring unconfigured measurement: %s", measurement_name)
+                self.logger.warning(
+                    "Ignoring unconfigured measurement: %s",
+                    measurement_name,
+                )
 
         return configured
 
@@ -179,64 +242,28 @@ class HomeAssistantMqttPublisher:
     def publish_status_discovery(self) -> None:
         """Publish Home Assistant MQTT discovery config for service status."""
 
-        status_id = stable_id(self.service_name, "status")
-        payload = {
-            "name": "Status",
-            "state_topic": service_status_topic(self.service_name),
-            "unique_id": status_id,
-            "object_id": status_id,
-            "default_entity_id": entity_id("sensor", self.service_name, "status"),
-            "icon": "mdi:heart-pulse",
-            "device": {
-                "identifiers": [self.service_name],
-                "name": self.service_config.device_name,
-            },
-        }
-
         self.client.publish(
             status_discovery_topic(self.service_name),
-            json.dumps(payload),
+            json.dumps(
+                status_discovery_payload(
+                    self.service_name,
+                    self.service_config.device_name,
+                )
+            ),
             retain=True,
         )
         self.logger.info("Published Home Assistant status discovery")
 
     def publish_discovery(self, measurements: dict[str, float]) -> None:
         """Publish Home Assistant MQTT discovery config for each measurement."""
+
         for measurement_name in measurements:
-            measurement_config = self.measurement_configs.get(measurement_name)
-            measurement_id = stable_id(self.service_name, measurement_name)
-            measurement_label = (
-                measurement_config.display_label
-                if measurement_config
-                else measurement_name.replace("_", " ").title()
+            payload = measurement_discovery_payload(
+                self.service_name,
+                self.service_config.device_name,
+                self.measurement_configs[measurement_name],
+                self._measurement_expiry_seconds(),
             )
-            payload = {
-                "name": measurement_label,
-                "state_topic": sensor_state_topic(self.service_name, measurement_name),
-                "expire_after": self._measurement_expiry_seconds(),
-                "unique_id": measurement_id,
-                "object_id": measurement_id,
-                "default_entity_id": entity_id("sensor", self.service_name, measurement_name),
-                "device": {
-                    "identifiers": [self.service_name],
-                    "name": self.service_config.device_name,
-                },
-            }
-
-            if measurement_config and measurement_config.unit:
-                payload["unit_of_measurement"] = measurement_config.unit
-
-            # Home Assistant converts values when a convertible device class is
-            # published. LabPulse instead treats the configured unit as part of
-            # the measurement contract, so publish an explicit icon and keep
-            # device_class internal for alarm grouping and config semantics.
-            payload["icon"] = measurement_icon(
-                measurement_config.device_class if measurement_config else None,
-                measurement_config.icon if measurement_config else None,
-            )
-
-            if measurement_config and measurement_config.state_class:
-                payload["state_class"] = measurement_config.state_class
 
             self.client.publish(
                 sensor_discovery_topic(self.service_name, measurement_name),
@@ -252,15 +279,18 @@ class HomeAssistantMqttPublisher:
 
     def publish_measurements(self, measurements: dict[str, float]) -> None:
         """Publish current sensor measurements to their MQTT state topics."""
+
         for measurement_name, measurement in measurements.items():
             self.client.publish(
                 sensor_state_topic(self.service_name, measurement_name),
                 measurement,
             )
-            #self.logger.info("Published %s measurement: %s", measurement_name, measurement)
 
     def disconnect(self) -> None:
         """Publish a clean offline state, then stop MQTT networking."""
+
+        # Flush the retained offline state before stopping the network loop. If
+        # the process dies unexpectedly, the broker's Last Will covers this path.
         publish_result = self.client.publish(
             service_status_topic(self.service_name),
             "offline",

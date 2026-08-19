@@ -23,6 +23,7 @@ from labpulse.hardware.api import (
     BaseSensorDriver,
     ConnectionLost,
     DriverUnavailable,
+    ReadingBatch,
     ServiceStatus,
     TransientReadError,
 )
@@ -100,7 +101,12 @@ class HardwareRunner:
         self._closed = False
 
     def step(self) -> bool:
-        """Perform one connection or read action and report measurement publication."""
+        """Perform the next due lifecycle action.
+
+        Returning ``True`` means a non-empty measurement batch was published.
+        Connection work, scheduled waits, and failed or empty reads return
+        ``False`` so ``run_forever()`` can use the same method in once mode.
+        """
 
         if self._closed:
             raise RuntimeError("HardwareRunner is closed")
@@ -116,6 +122,11 @@ class HardwareRunner:
             self._sleep(min(self.next_read_at - now, self.policy.idle_sleep_seconds))
             return False
 
+        return self._read_step()
+
+    def _read_step(self) -> bool:
+        """Read one due sample and translate its outcome into runner state."""
+
         try:
             batch = self.driver.read()
         except TransientReadError as error:
@@ -124,10 +135,7 @@ class HardwareRunner:
             completed_at = self._monotonic()
             self._record_transient_failure(error, completed_at)
             self._schedule_next_read(completed_at)
-            self._check_freshness(completed_at)
-            if self.policy.read_interval_seconds == 0:
-                self._sleep(self.policy.idle_sleep_seconds)
-            return False
+            return self._handle_missing_measurements(completed_at)
         except ConnectionLost as error:
             # A dead handle must be closed before the next scheduled connect.
             self.logger.error("Hardware connection lost: %s", error)
@@ -143,25 +151,33 @@ class HardwareRunner:
         if batch is None:
             # No complete sample is normal for non-blocking and serial reads,
             # but prolonged absence must eventually affect service health.
-            self._check_freshness(completed_at)
-            if self.policy.read_interval_seconds == 0:
-                self._sleep(self.policy.idle_sleep_seconds)
-            return False
+            return self._handle_missing_measurements(completed_at)
 
         measurements = dict(batch.measurements)
         if not measurements:
-            self._check_freshness(completed_at)
-            if self.policy.read_interval_seconds == 0:
-                self._sleep(self.policy.idle_sleep_seconds)
-            return False
+            return self._handle_missing_measurements(completed_at)
+
+        return self._publish_batch(batch, measurements, completed_at)
+
+    def _handle_missing_measurements(self, now: float) -> bool:
+        """Track freshness and avoid a busy loop after a read without data."""
+
+        self._check_freshness(now)
+        if self.policy.read_interval_seconds == 0:
+            self._sleep(self.policy.idle_sleep_seconds)
+        return False
+
+    def _publish_batch(
+        self,
+        batch: ReadingBatch,
+        measurements: dict[str, float],
+        completed_at: float,
+    ) -> bool:
+        """Publish one valid batch and then expose its resulting health state."""
 
         self.last_success_at = completed_at
         self.last_failure_log_at = None
-        batch_status = (
-            batch.issues[0].code
-            if batch.issues
-            else ServiceStatus.ONLINE.value
-        )
+        batch_status = batch.issues[0].code if batch.issues else ServiceStatus.ONLINE
 
         if self.print_measurements:
             self.logger.info("Measurements: %s", measurements)

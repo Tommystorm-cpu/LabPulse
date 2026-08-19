@@ -7,14 +7,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from labpulse.hardware.api import (
     BaseSensorDriver,
     ComponentIssue,
     ContainerRequirements,
     ConnectionLost,
-    DriverDefinition,
+    DriverSpec,
     DriverUnavailable,
     ReadingBatch,
 )
@@ -31,10 +31,19 @@ class X1200Options(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     bus: int = Field(default=1, ge=0, le=255)
-    address: int = Field(default=0x36, ge=0x36, le=0x36)
+    address: int = 0x36
     gpio_chip: str = Field(default="/dev/gpiochip0", pattern=r"^/dev/gpiochip\d+$")
     gpio_line: int = Field(default=6, ge=0, le=53)
     mains_present_active_high: bool = True
+
+    @field_validator("address")
+    @classmethod
+    def validate_address(cls, address: int) -> int:
+        """Reject addresses belonging to a different I2C device."""
+
+        if address != 0x36:
+            raise ValueError("X1200 MAX17043 fuel gauge must use address 0x36")
+        return address
 
 
 def register_word(data: list[int]) -> int:
@@ -122,26 +131,21 @@ class Driver(BaseSensorDriver):
     def __init__(
         self,
         name: str,
-        bus_number: int,
-        address: int,
-        gpio_chip: str,
-        gpio_line: int,
-        mains_present_active_high: bool,
+        options: X1200Options,
+        *,
         bus_factory: Callable[[int], Any] | None = None,
         gpio_reader: GpiodLineReader | None = None,
     ) -> None:
         """Store the verified X1200 identities and injectable dependencies."""
 
         super().__init__(name)
-        if address != 0x36:
-            raise ValueError("X1200 MAX17043 fuel gauge must use address 0x36")
-        self.bus_number = bus_number
-        self.address = address
+        self.bus_number = options.bus
+        self.address = options.address
         self._bus_factory = bus_factory or self._default_bus_factory
         self.gpio_reader = gpio_reader or GpiodLineReader(
-            gpio_chip,
-            gpio_line,
-            mains_present_active_high,
+            options.gpio_chip,
+            options.gpio_line,
+            options.mains_present_active_high,
         )
         self.bus: Any | None = None
         self._gpio_faulted = False
@@ -240,47 +244,26 @@ class Driver(BaseSensorDriver):
             raise ValueError(f"impossible X1200 state of charge: {battery_level}")
 
 
-def build_driver(
-    service_name: str,
-    raw_options: BaseModel,
-) -> BaseSensorDriver:
-    """Construct one X1200 driver from registry-validated options."""
-
-    if not isinstance(raw_options, X1200Options):
-        raise TypeError(
-            "X1200 driver expected X1200Options, "
-            f"got {type(raw_options).__name__}"
-        )
-    return Driver(
-        name=service_name,
-        bus_number=raw_options.bus,
-        address=raw_options.address,
-        gpio_chip=raw_options.gpio_chip,
-        gpio_line=raw_options.gpio_line,
-        mains_present_active_high=raw_options.mains_present_active_high,
-    )
-
-
 def resources(
-    raw_options: BaseModel,
+    options: X1200Options,
     _force_simulated: bool,
 ) -> ContainerRequirements:
     """Expose only the configured I2C bus and GPIO chip."""
 
-    if not isinstance(raw_options, X1200Options):
-        raise TypeError("X1200 resources require X1200Options")
     return ContainerRequirements(
         devices=(
-            f"/dev/i2c-{raw_options.bus}",
-            raw_options.gpio_chip,
+            f"/dev/i2c-{options.bus}",
+            options.gpio_chip,
         )
     )
 
 
-DRIVER = DriverDefinition(
+# The selected I2C bus and GPIO chip become concrete Compose device mappings,
+# which makes X1200 resources option-dependent but still declarative.
+DRIVER = DriverSpec(
     driver_id="labpulse.x1200",
     options_model=X1200Options,
-    build=build_driver,
+    implementation=Driver,
     resources=resources,
     default_read_interval_seconds=1.0,
 )

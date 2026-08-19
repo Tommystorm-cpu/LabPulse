@@ -8,6 +8,7 @@ from typing import Any, Callable, TypeVar
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import ServiceConfig
+from labpulse.hardware.api import ContainerRequirements
 from labpulse.hardware.cli import _target_summary
 from labpulse.hardware.drivers.dht11 import Driver as Dht11Driver
 from labpulse.hardware.registry import build_driver, get_driver_spec
@@ -204,6 +205,29 @@ def test_registry_validates_options_and_reports_available_ids() -> None:
     )
     if "example.unknown" not in message:
         raise AssertionError("unknown driver error omitted the requested ID")
+
+
+def test_driver_specs_declare_implementation_and_resources_directly() -> None:
+    """Keep the registry seam declarative without per-driver builder wrappers."""
+
+    serial_spec = get_driver_spec("labpulse.serial_pipe")
+    assert_equal(serial_spec.implementation, SerialDriver, "implementation")
+    assert_equal(hasattr(serial_spec, "build"), False, "legacy builder field")
+
+    dht_requirements = get_driver_spec("labpulse.dht11").resolve_resources(
+        {"pin": "D4"},
+        False,
+    )
+    assert_equal(
+        dht_requirements,
+        ContainerRequirements(mounts=("/dev:/dev",), privileged=True),
+        "fixed DHT resources",
+    )
+    assert_raises(
+        ValueError,
+        "pin",
+        lambda: get_driver_spec("labpulse.dht11").resolve_resources({}, False),
+    )
 
 
 def test_gpio_dht11_requires_pin() -> None:

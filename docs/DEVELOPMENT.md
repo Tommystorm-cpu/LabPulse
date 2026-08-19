@@ -140,7 +140,7 @@ When changing configuration:
 6. add validation and generated-output tests.
 
 Do not add hardware-specific fields to `ServiceConfig`. Put them beneath
-`driver.options` and let the driver definition own validation.
+`driver.options` and let the driver spec own validation.
 
 ## Generation model
 
@@ -254,8 +254,8 @@ Use `labpulse.serial_pipe` when firmware can emit the standard protocol. Add a
 direct driver only when the transport requires Python-owned hardware access or
 protocol logic.
 
-A direct driver keeps its options, implementation, builder, container resource
-resolver, and `DRIVER` definition together in one module. See
+A direct driver keeps its options, implementation, optional container resource
+resolver, and `DRIVER` spec together in one module. See
 [Driver development](DRIVER_DEVELOPMENT.md).
 
 ## Code quality

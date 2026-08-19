@@ -1,12 +1,6 @@
 """Hardware-free contract tests for the Raspberry Pi DHT11 driver."""
 
-from pathlib import Path
-import sys
 from typing import Callable
-
-
-
-REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.hardware.drivers import dht11
 from labpulse.hardware.api import (
@@ -14,7 +8,7 @@ from labpulse.hardware.api import (
     DriverUnavailable,
     TransientReadError,
 )
-from labpulse.hardware.drivers.dht11 import Driver
+from labpulse.hardware.drivers.dht11 import Dht11Options, Driver
 
 
 class FakeBoard:
@@ -94,7 +88,7 @@ def install_fake_modules(
 def make_driver(pin_name: str = "D4") -> Driver:
     """Build one DHT11 driver."""
 
-    return Driver(name="room_environment", pin_name=pin_name)
+    return Driver("room_environment", Dht11Options(pin=pin_name))
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:

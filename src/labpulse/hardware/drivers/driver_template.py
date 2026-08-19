@@ -16,7 +16,7 @@ from labpulse.hardware.api import (
     BaseSensorDriver,
     ConnectionLost,
     ContainerRequirements,
-    DriverDefinition,
+    DriverSpec,
     DriverUnavailable,
     ReadingBatch,
 )
@@ -33,11 +33,11 @@ class ExampleOptions(BaseModel):
 class Driver(BaseSensorDriver):
     """Adapt one example device to the LabPulse lifecycle contract."""
 
-    def __init__(self, name: str, device: str) -> None:
+    def __init__(self, name: str, options: ExampleOptions) -> None:
         """Store configuration without opening hardware."""
 
         super().__init__(name)
-        self.device_path = device
+        self.device_path = options.device
         self.device: Any | None = None
 
     def connect(self) -> None:
@@ -70,29 +70,19 @@ class Driver(BaseSensorDriver):
         self.device = None
 
 
-def build_driver(service_name: str, raw_options: BaseModel) -> BaseSensorDriver:
-    """Construct this driver from validated options."""
-
-    if not isinstance(raw_options, ExampleOptions):
-        raise TypeError("example driver expected ExampleOptions")
-    return Driver(service_name, raw_options.device)
-
-
 def resources(
-    raw_options: BaseModel,
+    options: ExampleOptions,
     _force_simulated: bool,
 ) -> ContainerRequirements:
     """Declare the narrowest device and mount access this driver requires."""
 
-    if not isinstance(raw_options, ExampleOptions):
-        raise TypeError("example resources require ExampleOptions")
-    return ContainerRequirements(devices=(raw_options.device,))
+    return ContainerRequirements(devices=(options.device,))
 
 
-DRIVER = DriverDefinition(
+DRIVER = DriverSpec(
     driver_id="example.device",
     options_model=ExampleOptions,
-    build=build_driver,
+    implementation=Driver,
     resources=resources,
     default_read_interval_seconds=1.0,
 )

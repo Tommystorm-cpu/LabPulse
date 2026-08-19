@@ -1,12 +1,7 @@
 """Hardware-independent tests for the single Geekworm X1200 UPS driver."""
 
-from pathlib import Path
 from types import SimpleNamespace
-import sys
 from typing import Any, Callable
-
-
-REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.hardware.drivers.x1200 import (
     Driver,
@@ -16,6 +11,7 @@ from labpulse.hardware.drivers.x1200 import (
     decode_state_of_charge,
     decode_voltage,
     register_word,
+    X1200Options,
 )
 from labpulse.hardware.api import ConnectionLost
 
@@ -105,12 +101,14 @@ def make_driver(
 
     default_bus = FakeBus(healthy_registers())
     return Driver(
-        name="ups_monitor",
-        bus_number=1,
-        address=address,
-        gpio_chip="/dev/gpiochip0",
-        gpio_line=6,
-        mains_present_active_high=True,
+        "ups_monitor",
+        X1200Options(
+            bus=1,
+            address=address,
+            gpio_chip="/dev/gpiochip0",
+            gpio_line=6,
+            mains_present_active_high=True,
+        ),
         bus_factory=bus_factory or (lambda _: default_bus),
         gpio_reader=reader
         or GpiodLineReader(

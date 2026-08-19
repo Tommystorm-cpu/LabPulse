@@ -12,12 +12,16 @@ class SerialParser:
 
         parsed: dict[str, float] = {}
         for part in line.strip().split("|"):
+            # One malformed field must not discard valid measurements elsewhere
+            # in the same device line.
             if ":" not in part:
                 continue
 
             label, raw_value = part.split(":", 1)
             name = self._measurement_name(label)
             value = self._finite_float(raw_value)
+            # Invalid names and non-finite values are treated as absent data;
+            # freshness remains the runner's responsibility.
             if name is not None and value is not None:
                 parsed[name] = value
 

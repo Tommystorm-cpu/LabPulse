@@ -244,7 +244,7 @@ Ownership is strict:
 | Connect, retry, poll, freshness, and cleanup | Runner |
 | Service-health transitions | Runner |
 | MQTT discovery, state, availability, and status | Publisher |
-| Devices, mounts, and privileged requirements | Driver definition |
+| Devices, mounts, and privileged requirements | Driver spec |
 | Thresholds, alarm transitions, and notifications | Home Assistant |
 
 Drivers do not publish MQTT or manage retry sleeps. The runner does not import
@@ -292,22 +292,26 @@ Home Assistant cannot interpret cached data as a recovery.
 Each public module under `src/labpulse/hardware/drivers/` exports exactly one:
 
 ```python
-DRIVER = DriverDefinition(...)
+DRIVER = DriverSpec(...)
 ```
 
 The registry imports public modules automatically. `driver_template.py` is
 excluded. Supporting modules in that directory must begin with `_`.
 
-A `DriverDefinition` contains:
+A `DriverSpec` contains:
 
 - stable driver ID;
 - strict options model;
-- builder;
-- resource resolver;
+- implementation class;
+- fixed resources or an option-dependent resource resolver;
 - default read interval.
 
-The resource resolver returns `ContainerRequirements` containing devices,
-mounts, and a privileged flag. Drivers cannot return arbitrary Compose YAML.
+The spec validates options once and constructs the implementation with the
+standard `(service_name, options)` constructor. This makes the driver itself
+the hardware-to-runner translation layer; there is no separate adapter type.
+
+Resources use `ContainerRequirements` containing devices, mounts, and a
+privileged flag. Drivers cannot return arbitrary Compose YAML.
 
 ## MQTT boundary
 
