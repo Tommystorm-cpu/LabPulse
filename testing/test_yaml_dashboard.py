@@ -12,9 +12,8 @@ import yaml
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
-from labpulse.homeassistant.generator import main as generate_homeassistant
+from labpulse.homeassistant.cli import main as generate_homeassistant
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
@@ -137,7 +136,7 @@ def generate(
     registry.write_text('{"registry_owned": true}\n', encoding="utf-8")
 
     result = generate_homeassistant(
-        ["generator", str(selected_path), str(ha_dir)]
+        [str(selected_path), str(ha_dir)]
     )
     if result != 0:
         raise AssertionError(f"generator returned {result}")
@@ -877,37 +876,3 @@ def test_starter_keeps_cryogenics_setup_measurements() -> None:
     ):
         if entity_occurrences(monitor, entity_id) != 1:
             raise AssertionError(f"global cryogenics measurement is missing: {entity_id}")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("plain YAML and registration", test_plain_yaml_and_registration),
-    ("Monitor projections", test_monitor_setup_and_subcategory_projections),
-    ("setup-grouped alarm controls", test_alarm_controls_are_grouped_by_setup),
-    ("shared setup mute warning", test_setup_mute_controls_warn_only_for_shared_measurements),
-    ("selective bulk alarm targets", test_bulk_alarm_targets_use_logical_setups),
-    ("physical Diagnostics", test_diagnostics_use_physical_ownership),
-    ("power dashboard", test_power_dashboard_remains_represented),
-    ("cryogenics setup measurements", test_starter_keeps_cryogenics_setup_measurements),
-]
-
-
-def main() -> None:
-    """Run focused YAML-dashboard tests."""
-
-    print("Running YAML dashboard tests")
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

@@ -175,23 +175,3 @@ def test_pipe_measurement_order() -> None:
             raise AssertionError(
                 f"{target} uses name fields {actual}, expected {names}"
             )
-
-
-def run() -> None:
-    """Run all firmware layout checks without external test dependencies."""
-
-    tests = (
-        test_arduino_library_metadata,
-        test_reusable_sensor_modules,
-        test_device_composition_files,
-        test_current_configuration_is_retained,
-        test_pipe_measurement_order,
-    )
-    for test in tests:
-        test()
-        print(f"[PASS] {test.__name__}")
-    print(f"Summary: {len(tests)}/{len(tests)} passed, 0 failed")
-
-
-if __name__ == "__main__":
-    run()

@@ -1,3 +1,5 @@
+{# Diagnostics shows readings beside alarm state. Use it to understand why an
+   alarm is active or why a reading is unavailable. #}
 - title: Diagnostics
   path: diagnostics
   type: sections
@@ -5,6 +7,7 @@
   dense_section_placement: false
   sections:
 [% for service in model.services %]
+{# Keep each service's health and latest readings together. #}
   - type: grid
     column_span: 1
     cards:
@@ -37,6 +40,8 @@
         name: [[ measurement.label | yaml_scalar ]]
 [% endfor %]
 [% if service.power is not none %]
+{# These power details are useful for fault finding, but too technical for the
+   main Monitor page. #}
     - type: entities
       title: Power Lifecycle
       show_header_toggle: false

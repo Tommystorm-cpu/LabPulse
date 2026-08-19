@@ -6,10 +6,8 @@ import sys
 from pydantic import ValidationError
 
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.identity import entity_id, stable_id
 from labpulse.common.config import LabPulseConfig
@@ -167,41 +165,3 @@ def test_service_health_config_contract() -> None:
         pass
     else:
         raise AssertionError("zero service-health confirmation was accepted")
-
-
-TESTS = [
-    ("stable identity contract", test_stable_identity_contract),
-    ("sensor topic contract", test_sensor_topic_contract),
-    ("SMS contract", test_sms_contract),
-    ("service health config", test_service_health_config_contract),
-]
-
-
-def main() -> None:
-    """Run shared contract regression tests."""
-
-    print("Running shared identity and MQTT contract tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed = 0
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
-            continue
-        print(f"[PASS] {name}")
-        print()
-        passed += 1
-
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

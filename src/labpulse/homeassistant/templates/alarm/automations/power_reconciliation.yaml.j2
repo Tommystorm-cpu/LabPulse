@@ -1,3 +1,5 @@
+{# Check that the saved power state still matches the latest readings. This is
+   needed after startup and after readings return. #}
   - id: labpulse_[[ service.service_id ]]_power_reconcile
     alias: LabPulse [[ service.label ]] Power Reconcile
     mode: restart
@@ -11,7 +13,14 @@
         seconds: 1
     - choose:
       - conditions: >-
-          {{ is_state('[[ entity_id('binary_sensor', service.name, 'power', 'sensor_fault') ]]', 'on') and is_state('[[ entity_id('input_boolean', service.name, 'power', 'sensor_fault_confirmed') ]]', 'on') }}
+          {{ is_state(
+               '[[ entity_id('binary_sensor', service.name, 'power', 'sensor_fault') ]]',
+               'on'
+             )
+             and is_state(
+               '[[ entity_id('input_boolean', service.name, 'power', 'sensor_fault_confirmed') ]]',
+               'on'
+             ) }}
         sequence:
         - service: input_select.select_option
           target:
@@ -19,7 +28,14 @@
           data:
             option: Sensor Fault
       - conditions: >-
-          {{ is_state('[[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]', 'on') and is_state('[[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]', 'off') }}
+          {{ is_state(
+               '[[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]',
+               'on'
+             )
+             and is_state(
+               '[[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]',
+               'off'
+             ) }}
         sequence:
         - service: input_select.select_option
           target:
@@ -27,13 +43,21 @@
           data:
             option: On Battery
       - conditions: >-
-          {{ is_state('[[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]', 'off') and is_state('[[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]', 'on') }}
+          {{ is_state(
+               '[[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]',
+               'off'
+             )
+             and is_state(
+               '[[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]',
+               'on'
+             ) }}
         sequence:
         - service: input_select.select_option
           target:
             entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
           data:
             option: Normal
+{# Catch an outage or recovery that happened while readings were unavailable. #}
   - id: labpulse_[[ service.service_id ]]_power_reconcile_outage
     alias: LabPulse [[ service.label ]] Reconcile Missed Outage
     mode: restart
@@ -83,7 +107,32 @@
             qos: 1
             retain: false
             payload: >
-              {{ {"request_id": "labpulse_[[ service.service_id ]]_power_warning_reconcile_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "warning", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "On Battery", "title": [[ sms.alerts.power_warning.title | render_fragment(service=service, power=power, model=model) ]], "message": ([[ sms.alerts.power_warning.message | render_fragment(service=service, power=power, model=model) ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'voltage') ]]')} | to_json }}
+              {{ {
+                "request_id":
+                  "labpulse_[[ service.service_id ]]_power_warning_reconcile_"
+                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                "event": "warning",
+                "service": "[[ service.name ]]",
+                "service_label": "[[ service.label ]]",
+                "measurement": "power",
+                "measurement_label": "External power",
+                "state": "On Battery",
+                "title": [[
+                  sms.alerts.power_warning.title
+                  | render_fragment(service=service, power=power, model=model)
+                ]],
+                "message": ([[
+                  sms.alerts.power_warning.message
+                  | render_fragment(service=service, power=power, model=model)
+                ]]) ~ "\n[[ power.mains_present.notification_context ]]",
+                "test_mode": is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                ),
+                "current_measurement": states(
+                  '[[ entity_id('sensor', service.name, 'voltage') ]]'
+                )
+              } | to_json }}
   - id: labpulse_[[ service.service_id ]]_power_reconcile_recovery
     alias: LabPulse [[ service.label ]] Reconcile Missed Recovery
     mode: restart
@@ -106,7 +155,10 @@
       state: 'off'
     - variables:
         outage_start: >-
-          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'power', 'outage_started') ]]'), as_timestamp(now())) }}
+          {{ as_timestamp(
+            states('[[ entity_id('input_datetime', service.name, 'power', 'outage_started') ]]'),
+            as_timestamp(now())
+          ) }}
         outage_duration: >-
           {{ [0, as_timestamp(now()) - outage_start] | max | round(0) }}
     - service: input_datetime.set_datetime
@@ -144,4 +196,29 @@
             qos: 1
             retain: false
             payload: >
-              {{ {"request_id": "labpulse_[[ service.service_id ]]_power_recovery_reconcile_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External power", "state": "Normal", "title": [[ sms.alerts.power_recovery.title | render_fragment(service=service, power=power, model=model) ]], "message": ([[ sms.alerts.power_recovery.message | render_fragment(service=service, power=power, model=model) ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'voltage') ]]')} | to_json }}
+              {{ {
+                "request_id":
+                  "labpulse_[[ service.service_id ]]_power_recovery_reconcile_"
+                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                "event": "recovery",
+                "service": "[[ service.name ]]",
+                "service_label": "[[ service.label ]]",
+                "measurement": "power",
+                "measurement_label": "External power",
+                "state": "Normal",
+                "title": [[
+                  sms.alerts.power_recovery.title
+                  | render_fragment(service=service, power=power, model=model)
+                ]],
+                "message": ([[
+                  sms.alerts.power_recovery.message
+                  | render_fragment(service=service, power=power, model=model)
+                ]]) ~ "\n[[ power.mains_present.notification_context ]]",
+                "test_mode": is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                ),
+                "current_measurement": states(
+                  '[[ entity_id('sensor', service.name, 'voltage') ]]'
+                )
+              } | to_json }}

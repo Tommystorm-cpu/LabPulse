@@ -5,30 +5,34 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import re
-import sys
 import tempfile
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 import yaml
 
-from labpulse.common.config import (
-    ConfigDocument,
-    ConfigError,
-    format_config_error,
-    load_config,
-)
+from labpulse.common.config import ConfigDocument
 from labpulse.common.identity import entity_id, slug, stable_id
 
-from .alarm import _yaml_scalar, build_template_context, render_alarm
+from .alarm import (
+    HomeAssistantRenderModel,
+    _yaml_scalar,
+    build_template_context,
+    render_alarm,
+)
 
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+# Home Assistant expects these files even when the user has not created any UI
+# automations, scripts, or scenes. LabPulse creates empty lists but never
+# replaces existing user-owned versions.
 UI_FILES = ("automations.yaml", "scripts.yaml", "scenes.yaml")
 
 
 def _environment() -> Environment:
-    """Return the strict Jinja environment shared by dashboard templates."""
+    """Prepare Jinja for LabPulse dashboard templates."""
 
+    # LabPulse and Home Assistant both use Jinja. LabPulse uses square brackets
+    # here so Home Assistant's normal ``{{ ... }}`` expressions are left alone.
     environment = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
         undefined=StrictUndefined,
@@ -45,9 +49,11 @@ def _environment() -> Environment:
     return environment
 
 
-def _render_dashboard(context: dict[str, object]) -> str:
-    """Render and validate the final-shaped dashboard template."""
+def _render_dashboard(context: HomeAssistantRenderModel) -> str:
+    """Create and check the complete dashboard."""
 
+    # Join every included template before checking the YAML. This catches
+    # indentation mistakes where two template files meet.
     rendered = _environment().get_template("dashboard.yaml.j2").render(model=context)
     dashboard = _validate_dashboard(rendered)
     return (
@@ -59,7 +65,7 @@ def _render_dashboard(context: dict[str, object]) -> str:
 
 
 def _validate_dashboard(rendered: str) -> dict[str, object]:
-    """Parse a rendered dashboard and require its public top-level shape."""
+    """Check that the dashboard contains a list of pages."""
 
     dashboard = yaml.safe_load(rendered)
     if not isinstance(dashboard, dict) or not isinstance(dashboard.get("views"), list):
@@ -68,11 +74,11 @@ def _validate_dashboard(rendered: str) -> dict[str, object]:
 
 
 def _render_configuration() -> str:
-    """Render the core config and validate its mapping shape."""
+    """Create and check the main Home Assistant configuration."""
 
     rendered = _environment().get_template("configuration.yaml.j2").render()
-    # PyYAML does not know Home Assistant's include tags. Removing only the tag
-    # token leaves ordinary scalar paths and allows the complete mapping to be checked.
+    # The YAML checker does not understand Home Assistant's ``!include`` words.
+    # Remove those words for the check, but keep them in the file we save.
     checkable = re.sub(r"!(?:include|include_dir_named)\s+", "", rendered)
     parsed = yaml.safe_load(checkable)
     if not isinstance(parsed, dict):
@@ -81,9 +87,11 @@ def _render_configuration() -> str:
 
 
 def _replace_text(path: Path, text: str) -> None:
-    """Atomically replace one managed text file on its destination filesystem."""
+    """Replace one generated file without leaving a half-written file."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Write beside the final file. The Raspberry Pi can then swap the finished
+    # file into place in one step.
     descriptor, temporary_name = tempfile.mkstemp(
         dir=path.parent,
         prefix=f".{path.name}.",
@@ -93,6 +101,8 @@ def _replace_text(path: Path, text: str) -> None:
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(text)
+        # A complete write is made visible in one operation. Home Assistant can
+        # never observe half of a generated YAML document.
         os.replace(temporary_name, path)
     except Exception:
         try:
@@ -103,10 +113,12 @@ def _replace_text(path: Path, text: str) -> None:
 
 
 def generate_homeassistant(document: ConfigDocument, ha_config_dir: Path) -> None:
-    """Render every managed document before atomically installing any of them."""
+    """Create and check every LabPulse-owned Home Assistant file."""
 
     ha_config_dir = Path(ha_config_dir).expanduser().resolve()
     context = build_template_context(document.config)
+    # Finish all three files before saving any of them. If one is broken, the
+    # existing Home Assistant setup stays unchanged.
     outputs = {
         ha_config_dir / "configuration.yaml": _render_configuration(),
         ha_config_dir / "packages" / "labpulse_generated.yaml": render_alarm(context),
@@ -117,27 +129,10 @@ def generate_homeassistant(document: ConfigDocument, ha_config_dir: Path) -> Non
     for path, text in outputs.items():
         _replace_text(path, text)
         print(f"Generated {path}")
+    # Users can edit these three files in Home Assistant. Create missing files,
+    # but never replace files that are already there.
     for filename in UI_FILES:
         path = ha_config_dir / filename
         if not path.exists():
             _replace_text(path, "[]\n")
             print(f"Created {path}")
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Load one config file and generate Home Assistant managed output."""
-
-    argv = sys.argv if argv is None else argv
-    if len(argv) != 3:
-        print(
-            "Usage: python3 -m labpulse.homeassistant CONFIG_PATH HA_CONFIG_DIR",
-            file=sys.stderr,
-        )
-        return 2
-    try:
-        document = load_config(Path(argv[1]).expanduser().resolve())
-        generate_homeassistant(document, Path(argv[2]))
-    except ConfigError as error:
-        print(format_config_error(error), file=sys.stderr)
-        return 1
-    return 0

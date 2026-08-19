@@ -1,6 +1,9 @@
+{# Each measurement has a short and detailed view for both phone and desktop.
+   All four versions use the same saved settings. #}
 [% for measurement in setup.measurements %]
 [% set service_name = measurement.service_name %]
 [% for mobile in (false, true) %]
+{# Phone and desktop layouts edit the same alarm. Only the card layout changes. #}
   - type: grid
     column_span: 3
     visibility:
@@ -24,7 +27,12 @@
       hold_action: {action: none}
       double_tap_action: {action: none}
       icon_tap_action: {action: none}
-[% for role, label, icon in (('minimum_threshold', 'Minimum', 'mdi:arrow-collapse-down'), ('maximum_threshold', 'Maximum', 'mdi:arrow-collapse-up')) %]
+[% for role, label, icon in (
+  ('minimum_threshold', 'Minimum', 'mdi:arrow-collapse-down'),
+  ('maximum_threshold', 'Maximum', 'mdi:arrow-collapse-up')
+) %]
+{# Show whether this measurement belongs only to this setup or is shared. This
+   label does not change where messages are sent. #}
     - type: tile
       entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
       name: [[ label ]]
@@ -35,7 +43,12 @@
       double_tap_action: {action: none}
       icon_tap_action: {action: none}
 [% endfor %]
-[% for muted, label, icon, action in ((false, 'Notifications active', 'mdi:bell-ring-outline', 'input_boolean.turn_on'), (true, 'Notifications muted', 'mdi:bell-off-outline', 'input_boolean.turn_off')) %]
+[% for muted, label, icon, action in (
+  (false, 'Notifications active', 'mdi:bell-ring-outline', 'input_boolean.turn_on'),
+  (true, 'Notifications muted', 'mdi:bell-off-outline', 'input_boolean.turn_off')
+) %]
+{# Muting controls delivery for this measurement; it does not clear danger
+   state or hide the reading from Monitor. #}
     - type: conditional
       conditions:
       - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
@@ -54,7 +67,11 @@
             entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
         icon_tap_action: {action: none}
 [% endfor %]
-[% for expanded, label, icon, action in ((false, 'Configure', 'mdi:tune-variant', 'input_boolean.turn_on'), (true, 'Close', 'mdi:close', 'input_boolean.turn_off')) %]
+[% for expanded, label, icon, action in (
+  (false, 'Configure', 'mdi:tune-variant', 'input_boolean.turn_on'),
+  (true, 'Close', 'mdi:close', 'input_boolean.turn_off')
+) %]
+{# Save whether the card is open so it stays the same when the page reloads. #}
     - type: conditional
       conditions:
       - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
@@ -137,6 +154,8 @@
             name: Required recovery
 [% endif %]
         - type: entities
+{# Live status is deliberately read-only. Editable thresholds remain grouped
+   above, while this section explains what the automation currently sees. #}
           title: Live status
           show_header_toggle: false
           entities:

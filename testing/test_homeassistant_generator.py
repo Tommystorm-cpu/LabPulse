@@ -10,14 +10,12 @@ import yaml
 from jinja2 import UndefinedError
 
 
-sys.dont_write_bytecode = True
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
 from labpulse.common.config import load_config
 import labpulse.homeassistant.generator as generator
-from labpulse.homeassistant.generator import main as generate_homeassistant
+from labpulse.homeassistant.cli import main as generate_homeassistant
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -78,7 +76,7 @@ def render_into(temp_dir: Path) -> SimpleNamespace:
         dashboard_path=ha_config_dir / "labpulse-dashboard.yaml",
     )
     result = generate_homeassistant(
-        ["generator", str(paths.config_path), str(paths.ha_config_dir)]
+        [str(paths.config_path), str(paths.ha_config_dir)]
     )
     assert_equal(result, 0, "generator result")
     return paths
@@ -411,37 +409,3 @@ def test_strict_and_malformed_templates_fail() -> None:
             pass
         else:
             raise AssertionError("malformed dashboard shape passed validation")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("generated package", test_generated_package),
-    ("thresholds need no defaults file", test_thresholds_need_no_defaults_file),
-    ("first installation starts globally muted once", test_first_install_starts_globally_muted_once),
-    ("invalid render preserves live files", test_invalid_render_preserves_every_live_file),
-    ("strict and malformed templates fail", test_strict_and_malformed_templates_fail),
-]
-
-
-def main() -> None:
-    """Run Home Assistant generator tests."""
-
-    print("Running Home Assistant generator tests")
-    print(f"Refactor dir: {REFACTOR_DIR}\n")
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}\n")
-        else:
-            print(f"[PASS] {name}\n")
-            passed += 1
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

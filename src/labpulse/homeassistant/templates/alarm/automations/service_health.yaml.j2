@@ -1,3 +1,6 @@
+{# Service health means the LabPulse process can provide trustworthy readings.
+   Measurement alarms are suppressed while a service is down so one hardware
+   failure produces one useful notification rather than a cascade. #}
 [% for service in model.services %]
   - alias: LabPulse [[ service.label ]] Service Fault
     mode: single
@@ -52,9 +55,19 @@
         - service: persistent_notification.create
           data:
             title: >
-              {{ ('[TEST] ' if is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] disconnected' }}
+              {{ (
+                '[TEST] '
+                if is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                )
+                else ''
+              ) ~ 'LabPulse [[ service.label ]] disconnected' }}
             message: >
-              LabPulse cannot communicate with [[ service.label ]]. All measurements from this service are temporarily unavailable. Service status: {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
+              LabPulse cannot communicate with [[ service.label ]].
+              All measurements from this service are temporarily unavailable.
+              Service status:
+              {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
             notification_id: labpulse_[[ service.service_id ]]_service_health
         - service: mqtt.publish
           data:
@@ -62,7 +75,32 @@
             qos: 1
             retain: false
             payload: >
-              {{ {"request_id": "labpulse_[[ service.service_id ]]_service_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "service_health", "measurement_label": "Sensor hub", "state": "Sensor Fault", "title": [[ sms.alerts.service_fault.title | render_fragment(service=service, model=model) ]], "message": [[ sms.alerts.service_fault.message | render_fragment(service=service, model=model) ]], "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')} | to_json }}
+              {{ {
+                "request_id": "labpulse_[[ service.service_id ]]_service_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                "event": "sensor_fault",
+                "service": "[[ service.name ]]",
+                "service_label": "[[ service.label ]]",
+                "measurement": "service_health",
+                "measurement_label": "Sensor hub",
+                "state": "Sensor Fault",
+                "title": [[
+                  sms.alerts.service_fault.title
+                  | render_fragment(service=service, model=model)
+                ]],
+                "message": [[
+                  sms.alerts.service_fault.message
+                  | render_fragment(service=service, model=model)
+                ]],
+                "test_mode": is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                ),
+                "current_measurement": states(
+                  '[[ entity_id('sensor', service.name, 'status') ]]'
+                )
+              } | to_json }}
+{# Clear the service fault before checking its measurements. The measurement
+   recovery rules only run once the service is healthy again. #}
   - alias: LabPulse [[ service.label ]] Service Restored
     mode: single
     trigger:
@@ -103,9 +141,18 @@
         - service: persistent_notification.create
           data:
             title: >
-              {{ ('[TEST] ' if is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on') else '') ~ 'LabPulse [[ service.label ]] restored' }}
+              {{ (
+                '[TEST] '
+                if is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                )
+                else ''
+              ) ~ 'LabPulse [[ service.label ]] restored' }}
             message: >
-              Communication with [[ service.label ]] has been restored. Fresh telemetry is available again. Downtime: {{ downtime_seconds }} seconds.
+              Communication with [[ service.label ]] has been restored.
+              Fresh telemetry is available again.
+              Downtime: {{ downtime_seconds }} seconds.
             notification_id: labpulse_[[ service.service_id ]]_service_health
         - service: mqtt.publish
           data:
@@ -113,5 +160,30 @@
             qos: 1
             retain: false
             payload: >
-              {{ {"request_id": "labpulse_[[ service.service_id ]]_service_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "service_health", "measurement_label": "Sensor hub", "state": "Normal", "title": [[ sms.alerts.service_recovery.title | render_fragment(service=service, model=model) ]], "message": [[ sms.alerts.service_recovery.message | render_fragment(service=service, model=model) ]], "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')} | to_json }}
+              {{ {
+                "request_id":
+                  "labpulse_[[ service.service_id ]]_service_recovery_"
+                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                "event": "recovery",
+                "service": "[[ service.name ]]",
+                "service_label": "[[ service.label ]]",
+                "measurement": "service_health",
+                "measurement_label": "Sensor hub",
+                "state": "Normal",
+                "title": [[
+                  sms.alerts.service_recovery.title
+                  | render_fragment(service=service, model=model)
+                ]],
+                "message": [[
+                  sms.alerts.service_recovery.message
+                  | render_fragment(service=service, model=model)
+                ]],
+                "test_mode": is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                ),
+                "current_measurement": states(
+                  '[[ entity_id('sensor', service.name, 'status') ]]'
+                )
+              } | to_json }}
 [% endfor %]

@@ -1,14 +1,12 @@
 from pathlib import Path
 import sys
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig
 from labpulse.common.identity import entity_id, stable_id
-from labpulse.homeassistant.alarm import build_template_context
+from labpulse.homeassistant.alarm import HomeAssistantRenderModel, build_template_context
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -60,10 +58,12 @@ def test_template_context_and_stable_entities() -> None:
     """Check the direct context and shared identity helper remain predictable."""
 
     context = build_template_context(sample_config())
-    service = context["services"][0]
+    if not isinstance(context, HomeAssistantRenderModel):
+        raise AssertionError("Home Assistant context is not an explicit render model")
+    service = context.services[0]
     flow, temperature = service["measurements"]
-    assert_equal(len(context["services"]), 1, "enabled services")
-    assert_equal(len(context["setups"]), 1, "active setups")
+    assert_equal(len(context.services), 1, "enabled services")
+    assert_equal(len(context.setups), 1, "active setups")
     assert_equal(flow["setup_ids"], ("pump_room",), "setup membership")
     assert_equal(flow["threshold"]["range_min"], 0, "flow editor minimum")
     assert_equal(temperature["threshold"]["range_min"], -20, "temperature editor minimum")
@@ -79,39 +79,3 @@ def test_template_context_and_stable_entities() -> None:
     }
     for actual, wanted in expected.items():
         assert_equal(actual, wanted, "stable entity")
-
-
-TESTS = [
-    ("stable id prefix", test_stable_id_prefix),
-    ("direct context and stable entities", test_template_context_and_stable_entities),
-]
-
-
-def main() -> None:
-    """Run Home Assistant identity/context tests."""
-
-    print("Running Home Assistant identity/context tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-    passed_count = 0
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
-            continue
-        print(f"[PASS] {name}")
-        print()
-        passed_count += 1
-
-    total = len(TESTS)
-    failed_count = total - passed_count
-    print(f"Summary: {passed_count}/{total} passed, {failed_count} failed")
-    if failed_count:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

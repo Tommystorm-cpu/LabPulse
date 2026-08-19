@@ -11,20 +11,18 @@ from uuid import uuid4
 import yaml
 
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 TEST_TMP_DIR = REFACTOR_DIR / "testing" / "tmp"
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse import __version__
 from labpulse.common.config import load_config
 from labpulse.deployment.compose import build_compose
-from labpulse.homeassistant.generator import main as generate_homeassistant
+from labpulse.homeassistant.cli import main as generate_homeassistant
 
 
 @contextmanager
-def test_directory(prefix: str) -> Iterator[Path]:
+def temporary_test_directory(prefix: str) -> Iterator[Path]:
     """Create and remove one accessible, uniquely named test directory."""
 
     root = TEST_TMP_DIR / f"{prefix}-{uuid4().hex}"
@@ -335,7 +333,7 @@ def test_offline_dashboard_generation_is_deterministic() -> None:
     """Regenerate only owned files offline while preserving UI and helper state."""
 
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
-    with test_directory("ha-offline") as root:
+    with temporary_test_directory("ha-offline") as root:
         config_path = root / "config.yaml"
         config_path.write_text(
             (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8"),
@@ -347,7 +345,7 @@ def test_offline_dashboard_generation_is_deterministic() -> None:
         restore_state.write_text('{"helper_values": "user-owned"}\n', encoding="utf-8")
 
         result = generate_homeassistant(
-            ["generator", str(config_path), str(ha_dir)]
+            [str(config_path), str(ha_dir)]
         )
         if result != 0:
             raise AssertionError("clean offline generation failed")
@@ -392,7 +390,7 @@ def test_offline_dashboard_generation_is_deterministic() -> None:
         )
 
         result = generate_homeassistant(
-            ["generator", str(config_path), str(ha_dir)]
+            [str(config_path), str(ha_dir)]
         )
         if result != 0:
             raise AssertionError("offline regeneration failed")
@@ -410,7 +408,7 @@ def test_fake_test_pi_dashboard_generation() -> None:
     """Generate the fake UPS test-Pi dashboard without hardware or Home Assistant."""
 
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
-    with test_directory("ha-test-pi") as root:
+    with temporary_test_directory("ha-test-pi") as root:
         config_path = root / "config.yaml"
         config_path.write_text(
             (REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml").read_text(
@@ -420,7 +418,7 @@ def test_fake_test_pi_dashboard_generation() -> None:
         )
         ha_dir = root / "homeassistant" / "config"
         result = generate_homeassistant(
-            ["generator", str(config_path), str(ha_dir)]
+            [str(config_path), str(ha_dir)]
         )
         if result != 0:
             raise AssertionError("fake test-Pi generation failed")
@@ -538,43 +536,3 @@ services:
             elif path.is_dir():
                 path.rmdir()
         project_dir.rmdir()
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("fake USB Compose contract", test_fake_usb_compose_contract),
-    ("real X1200 Compose least privilege", test_real_x1200_compose_is_least_privilege),
-    ("SMS delivery mode controls modem access", test_sms_delivery_mode_controls_modem_access),
-    ("setup refresh and preservation contract", test_setup_refresh_and_preservation_contract),
-    ("deterministic offline HA generation", test_offline_dashboard_generation_is_deterministic),
-    ("fake test-Pi dashboard generation", test_fake_test_pi_dashboard_generation),
-]
-
-
-def main() -> None:
-    """Run deployment generation tests without requiring Docker or physical USB."""
-
-    print("Running deployment generation tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed = 0
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
-            continue
-        print(f"[PASS] {name}")
-        print()
-        passed += 1
-
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

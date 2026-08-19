@@ -386,10 +386,9 @@ least one peer measurement remains numeric, only the missing value follows the
 individual Sensor Fault lifecycle.
 
 If measurements update but a service status remains `offline`, verify the
-worker was rebuilt with reconnect status restoration. Current workers
-republish their retained discovery and last runner status whenever MQTT
-reconnects; an older worker can resume values after a broker restart without
-replacing the broker's retained Last Will.
+worker logs and MQTT connection. Hardware workers republish retained discovery
+and the runner's current status whenever MQTT reconnects, replacing the
+broker's retained Last Will after a successful reconnection.
 
 ## SMS does not send
 

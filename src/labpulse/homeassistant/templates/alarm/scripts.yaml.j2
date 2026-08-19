@@ -1,9 +1,13 @@
+{# These scripts contain work used in more than one place, such as sending a
+   message or applying a group of alarm settings. #}
 script:
   labpulse_send_phone_book_notification:
     alias: Send LabPulse Phone Book Notification
     icon: mdi:account-multiple-check
     mode: single
     sequence:
+    # Home Assistant chooses recipients here so live phone-book edits take
+    # effect without regenerating the LabPulse package.
     - condition: state
       entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
       state: 'off'
@@ -13,8 +17,31 @@ script:
         qos: 1
         retain: false
         payload: >
-          {{ {"request_id": "labpulse_phone_book_notification_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "notification", "service": "labpulse", "service_label": "LabPulse", "measurement": "phone_book", "measurement_label": "Phone book", "state": "Notification", "title": [[ sms.notifications.phone_book.title | render_fragment(model=model) ]], "message": [[ sms.notifications.phone_book.message | render_fragment(model=model) ]], "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": none} | to_json }}
+          {{ {
+            "request_id": "labpulse_phone_book_notification_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "notification",
+            "service": "labpulse",
+            "service_label": "LabPulse",
+            "measurement": "phone_book",
+            "measurement_label": "Phone book",
+            "state": "Notification",
+            "title": [[
+              sms.notifications.phone_book.title
+              | render_fragment(model=model)
+            ]],
+            "message": [[
+              sms.notifications.phone_book.message
+              | render_fragment(model=model)
+            ]],
+            "test_mode": is_state(
+              '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+              'on'
+            ),
+            "current_measurement": none
+          } | to_json }}
 [% if model.bulk_alarm_targets %]
+  {# Clear the ticked fields when the target changes. This prevents settings for
+     the old group being applied to the new group by mistake. #}
   labpulse_clear_bulk_alarm_selection:
     alias: Clear LabPulse Bulk Alarm Selection
     mode: restart
@@ -27,20 +54,52 @@ script:
     icon: mdi:timer-sync-outline
     mode: single
     sequence:
+    {# Read all choices before making changes. If the dashboard changes while
+       this script is running, the current update still uses one set of choices. #}
     - variables:
         selected_target: "{{ states('input_select.labpulse_bulk_alarm_timing_target') }}"
-        apply_required_danger: "{{ is_state('input_boolean.labpulse_bulk_apply_required_danger_percent', 'on') }}"
-        apply_observation_window: "{{ is_state('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'on') }}"
-        apply_required_recovery: "{{ is_state('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'on') }}"
-        required_danger_value: "{{ states('input_number.labpulse_bulk_required_danger_percent') | float(70) }}"
-        observation_window_value: "{{ states('input_number.labpulse_bulk_observation_window_seconds') | int(120) }}"
-        required_recovery_value: "{{ states('input_number.labpulse_bulk_required_recovery_seconds') | int(120) }}"
+        apply_required_danger: >-
+          {{ is_state(
+            'input_boolean.labpulse_bulk_apply_required_danger_percent',
+            'on'
+          ) }}
+        apply_observation_window: >-
+          {{ is_state(
+            'input_boolean.labpulse_bulk_apply_observation_window_seconds',
+            'on'
+          ) }}
+        apply_required_recovery: >-
+          {{ is_state(
+            'input_boolean.labpulse_bulk_apply_required_recovery_seconds',
+            'on'
+          ) }}
+        required_danger_value: >-
+          {{ states(
+            'input_number.labpulse_bulk_required_danger_percent'
+          ) | float(70) }}
+        observation_window_value: >-
+          {{ states(
+            'input_number.labpulse_bulk_observation_window_seconds'
+          ) | int(120) }}
+        required_recovery_value: >-
+          {{ states(
+            'input_number.labpulse_bulk_required_recovery_seconds'
+          ) | int(120) }}
 [% for group in model.bulk_deadband_groups %]
         apply_deadband_[[ group.helper_slug ]]: "{{ is_state('[[ group.apply_entity ]]', 'on') }}"
         deadband_[[ group.helper_slug ]]_value: "{{ states('[[ group.value_entity ]]') | float(0) }}"
 [% endfor %]
     - condition: template
-      value_template: "{{ apply_required_danger or apply_observation_window or apply_required_recovery[% for group in model.bulk_deadband_groups %] or apply_deadband_[[ group.helper_slug ]][% endfor %] }}"
+      value_template: >-
+        {{ apply_required_danger
+           or apply_observation_window
+           or apply_required_recovery
+[% for group in model.bulk_deadband_groups %]
+           or apply_deadband_[[ group.helper_slug ]]
+[% endfor %]
+        }}
+    {# Each target has its own list of alarms. Home Assistant chooses the list
+       that matches the target selected on the dashboard. #}
     - choose:
 [% for target in model.bulk_alarm_targets %]
       - conditions:
@@ -80,15 +139,25 @@ script:
         message: |-
           {% set measurement_count = [[ model.bulk_target_counts | json ]].get(selected_target, 0) %}
           Applied bulk alarm settings to {{ selected_target }}:
-          {% if apply_required_danger %}- Required danger: {{ required_danger_value }}% → {{ measurement_count }} measurements{% endif %}
-          {% if apply_observation_window %}- Observation window: {{ observation_window_value }} s → {{ measurement_count }} measurements{% endif %}
-          {% if apply_required_recovery %}- Required recovery: {{ required_recovery_value }} s → {{ measurement_count }} measurements{% endif %}
+          {% if apply_required_danger %}
+          - Required danger: {{ required_danger_value }}% → {{ measurement_count }} measurements
+          {% endif %}
+          {% if apply_observation_window %}
+          - Observation window: {{ observation_window_value }} s → {{ measurement_count }} measurements
+          {% endif %}
+          {% if apply_required_recovery %}
+          - Required recovery: {{ required_recovery_value }} s → {{ measurement_count }} measurements
+          {% endif %}
 [% for target in model.bulk_alarm_targets %]
 [% for group in target.deadband_groups %]
-          {% if selected_target == [[ target.option | tojson ]] and apply_deadband_[[ group.helper_slug ]] %}- [[ group.label ]] deadband: {{ deadband_[[ group.helper_slug ]]_value }}[[ (' ' ~ group.unit) if group.unit else '' ]] → [[ group.measurement_keys | length ]] measurements{% endif %}
+          {% if selected_target == [[ target.option | tojson ]]
+                and apply_deadband_[[ group.helper_slug ]] %}
+          - [[ group.label ]] deadband:
+            {{ deadband_[[ group.helper_slug ]]_value }}[[ (' ' ~ group.unit) if group.unit else '' ]]
+            → [[ group.measurement_keys | length ]] measurements
+          {% endif %}
 [% endfor %]
 [% endfor %]
         notification_id: labpulse_bulk_alarm_settings_result
     - service: script.labpulse_clear_bulk_alarm_selection
 [% endif %]
-

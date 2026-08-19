@@ -9,7 +9,6 @@ import yaml
 from pydantic import ValidationError
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig, ServiceConfig, load_config
 from labpulse.common.identity import stable_id
@@ -17,7 +16,7 @@ from labpulse.common.fake_config import (
     convert_power_service_to_fake_serial,
     derive_fake_config,
 )
-from labpulse.homeassistant.generator import main as generate_homeassistant
+from labpulse.homeassistant.cli import main as generate_homeassistant
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
@@ -173,7 +172,7 @@ def render_power() -> tuple[dict, dict, str]:
 
     temp = REFACTOR_DIR / "testing" / "tmp" / f"power-{uuid4().hex}"
     ha_dir = temp / "homeassistant" / "config"
-    result = generate_homeassistant(["generator", str(SIM_CONFIG), str(ha_dir)])
+    result = generate_homeassistant([str(SIM_CONFIG), str(ha_dir)])
     if result != 0:
         raise AssertionError(f"generator returned {result}")
     package_text = (ha_dir / "packages" / "labpulse_generated.yaml").read_text(
@@ -299,14 +298,13 @@ def test_fault_reconciliation_and_sms_contract() -> None:
             raise AssertionError(f"{rule['alias']} bypasses global mute")
         if "input_boolean.labpulse_notification_test_mode" not in rendered:
             raise AssertionError(f"{rule['alias']} bypasses test-mode routing")
-        if '"test_mode"' not in rendered:
+        if '"test_mode"' not in str(rule):
             raise AssertionError(f"{rule['alias']} omits SMS test_mode")
         if "Monitoring context: Dedicated power monitoring." not in str(rule):
             raise AssertionError(f"{rule['alias']} omits setup notification context")
 
-    sensor_recovery = yaml.safe_dump(
-        automation["LabPulse UPS Monitor Power Sensor Recovery"],
-        sort_keys=False,
+    sensor_recovery = str(
+        automation["LabPulse UPS Monitor Power Sensor Recovery"]
     )
     for fragment in (
         "persistent_notification.create",
@@ -318,6 +316,7 @@ def test_fault_reconciliation_and_sms_contract() -> None:
             raise AssertionError(
                 f"power sensor recovery notification missing: {fragment}"
             )
+    notification_text = "\n".join(str(rule) for rule in notification_rules)
     for field in (
         "request_id",
         "event",
@@ -329,7 +328,7 @@ def test_fault_reconciliation_and_sms_contract() -> None:
         "test_mode",
         "current_measurement",
     ):
-        if f'"{field}"' not in text:
+        if f'"{field}"' not in notification_text:
             raise AssertionError(f"SMS payload missing field: {field}")
 
 
@@ -351,35 +350,3 @@ def test_power_dashboard_rendering() -> None:
     ):
         if required not in rendered:
             raise AssertionError(f"direct power dashboard entity missing: {required}")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("configuration and identity", test_config_validation_and_stable_identity),
-    ("fake conversion", test_fake_usb_conversion_preserves_power_identity_and_metadata),
-    ("starter fake UPS", test_fake_usb_converts_starter_power_service),
-    ("complete fake derivation", test_fake_usb_derivation_converts_direct_hardware),
-    ("direct lifecycle", test_direct_lifecycle_and_confirmation_semantics),
-    ("fault/restart/SMS", test_fault_reconciliation_and_sms_contract),
-    ("dashboard", test_power_dashboard_rendering),
-]
-
-
-def main() -> None:
-    """Run the standalone direct-power generation tests."""
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

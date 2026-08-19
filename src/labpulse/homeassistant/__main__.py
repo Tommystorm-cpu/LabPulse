@@ -2,7 +2,10 @@
 
 import sys
 
-from .generator import main
+from .cli import main
 
 
-sys.exit(main(sys.argv))
+# Keep this file small. cli.py contains the real command so it can be tested
+# without starting another Python process.
+if __name__ == "__main__":
+    sys.exit(main())

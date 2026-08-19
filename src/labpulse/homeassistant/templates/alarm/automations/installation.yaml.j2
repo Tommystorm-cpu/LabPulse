@@ -1,3 +1,5 @@
+{# Copy the default settings into Home Assistant on the first install only.
+   Later regeneration must keep the user's saved choices. #}
   - alias: LabPulse Initialize First Installation
     mode: single
     trigger:
@@ -16,6 +18,8 @@
         - [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
         - input_boolean.labpulse_first_install_initialized
 [% if model.bulk_alarm_targets %]
+{# A new target has different valid deadbands, so discard field selections
+   before the user reviews and applies values to it. #}
   - id: labpulse_clear_bulk_alarm_selection_on_target_change
     alias: LabPulse Clear Bulk Alarm Selection On Target Change
     mode: restart

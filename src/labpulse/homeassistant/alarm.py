@@ -1,6 +1,7 @@
 """Render the final Home Assistant alarm package from one template."""
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,9 @@ from labpulse.common.mqtt_contracts import SMS_SEND_TOPIC
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "alarm"
 
+# These are editor limits rather than validation limits. They keep Home
+# Assistant controls useful while still allowing an explicitly configured unit
+# to replace the familiar default for a measurement type.
 THRESHOLD_RANGES = {
     "temp": {"unit": "°C", "range_min": -20, "range_max": 80, "step": 0.1},
     "hum": {"unit": "%", "range_min": 0, "range_max": 100, "step": 1},
@@ -24,9 +28,36 @@ THRESHOLD_RANGES = {
 }
 
 
+@dataclass(frozen=True)
+class HomeAssistantRenderModel:
+    """All data made available to the Home Assistant templates.
+
+    Measurements, services, setups, and group-editing targets contain different
+    fields, so their inner records remain dictionaries. This one top-level
+    class still gives the templates a clear list of everything they can use,
+    without adding a separate class for every small piece of generated YAML.
+    """
+
+    config: LabPulseConfig
+    services: tuple[dict[str, Any], ...]
+    setups: tuple[dict[str, Any], ...]
+    monitor_setups: tuple[dict[str, Any], ...]
+    measurements: tuple[dict[str, Any], ...]
+    alarm_measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
+    measurements_by_setup: dict[str, list[dict[str, Any]]]
+    sms_send_topic: str
+    bulk_alarm_targets: tuple[dict[str, Any], ...]
+    bulk_alarm_target_options: tuple[str, ...]
+    bulk_target_counts: dict[str, int]
+    bulk_deadband_groups: tuple[dict[str, Any], ...]
+    bulk_apply_entities: tuple[str, ...]
+
+
 def _threshold(measurement: MeasurementConfig) -> dict[str, object]:
     """Return the threshold editor bounds used by Home Assistant."""
 
+    # Measurement names are the only reliable hint available here. Device class
+    # is optional and custom installations are allowed to omit it.
     name = slug(measurement.name)
     kind = (
         "temp" if "temp" in name else
@@ -40,9 +71,11 @@ def _threshold(measurement: MeasurementConfig) -> dict[str, object]:
     return values
 
 
-def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
-    """Project validated config once into the few relationships templates need."""
+def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
+    """Build all values used by the Home Assistant templates."""
 
+    # Sort once and reuse the same order everywhere. Otherwise a setup can move
+    # between the monitor, alarm editor, and notification text after a render.
     setup_ids = [
         setup_id for setup_id, _setup in sorted(
             config.setups.items(), key=lambda item: (item[1].order, item[0])
@@ -56,12 +89,16 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
     for service_name, service_config in config.services.items():
         if not service_config.enabled:
             continue
+        # Build each measurement once, then reuse it everywhere. This keeps its
+        # name and entity ID the same on every page and in every alarm.
         service_measurements: list[dict[str, Any]] = []
         for measurement_config in service_config.measurements:
             name = slug(measurement_config.name)
             selected_setups = () if measurement_config.setups is None else tuple(
                 sorted(measurement_config.setups.setup_ids, key=setup_order.__getitem__)
             )
+            # A shared measurement stays audible while any affected setup is
+            # unmuted. Muting one setup must not hide a fault from another lab.
             setup_mutes = tuple(
                 entity_id("input_boolean", "setup", setup_id, "notifications_muted")
                 for setup_id in selected_setups
@@ -71,6 +108,8 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
             )
             labels = [config.setups[key].display_label(key) for key in selected_setups]
             if measurement_config.setups is None:
+                # Power monitoring covers the whole installation, so it is not
+                # assigned to one lab setup.
                 notification_context = "Monitoring context: Dedicated power monitoring."
             else:
                 prefix = "Affected setup" if len(labels) == 1 else "Affected setups"
@@ -105,6 +144,9 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
             "measurements": service_measurements,
             "power": None,
         }
+        # Service health is separate from individual sensor health. This
+        # template tells Home Assistant when every reading from a live process
+        # is unusable, which is a stronger signal than one bad measurement.
         checks = [
             f"not is_number(states('{entity_id('sensor', service_name, item['name'])}'))"
             for item in service_measurements
@@ -119,6 +161,8 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
                 for item in service_measurements
             ]
         else:
+            # Voltage, battery level, and mains presence describe one power
+            # event. Separate alarms could send conflicting messages.
             by_name = {item["name"]: item for item in service_measurements}
             service["power"] = {
                 "voltage": by_name["voltage"],
@@ -132,13 +176,18 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
             ]
         services.append(service)
 
+    # Only setups with alarm-capable measurements need mute helpers. Empty
+    # setups still appear in monitor_setups below so configured lab structure
+    # remains visible even before sensors are assigned.
     setups = []
     for setup_id in setup_ids:
         items = by_setup[setup_id]
         if not items:
             continue
         label = config.setups[setup_id].display_label(setup_id)
-        shared_labels = tuple(item["label"] for item in items if len(item["setup_ids"]) > 1)
+        shared_labels = tuple(
+            item["label"] for item in items if len(item["setup_ids"]) > 1
+        )
         muted = entity_id("input_boolean", "setup", setup_id, "notifications_muted")
         setups.append({
             "setup_id": setup_id,
@@ -162,6 +211,8 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
         for service in services if service["power"] is None
         for measurement in service["measurements"]
     ]
+    # Bulk controls only cover normal high/low alarms. Power alarms work
+    # differently and have their own settings page.
     targets = _bulk_targets(config, alarm_measurements, by_setup)
     groups = targets[0]["deadband_groups"] if targets else ()
     active_setups = {setup["setup_id"]: setup for setup in setups}
@@ -178,29 +229,28 @@ def build_template_context(config: LabPulseConfig) -> dict[str, Any]:
             "measurements": (),
             "measurement_groups": (),
         })
-    context = {
-        "config": config,
-        "services": services,
-        "setups": tuple(setups),
-        "monitor_setups": tuple(monitor_setups),
-        "measurements": measurements,
-        "alarm_measurements": alarm_measurements,
-        "measurements_by_setup": by_setup,
-        "sms_send_topic": SMS_SEND_TOPIC,
-        "bulk_alarm_targets": targets,
-        "bulk_alarm_target_options": [target["option"] for target in targets],
-        "bulk_target_counts": {
+    return HomeAssistantRenderModel(
+        config=config,
+        services=tuple(services),
+        setups=tuple(setups),
+        monitor_setups=tuple(monitor_setups),
+        measurements=tuple(measurements),
+        alarm_measurements=tuple(alarm_measurements),
+        measurements_by_setup=by_setup,
+        sms_send_topic=SMS_SEND_TOPIC,
+        bulk_alarm_targets=targets,
+        bulk_alarm_target_options=tuple(target["option"] for target in targets),
+        bulk_target_counts={
             target["option"]: len(target["measurement_keys"]) for target in targets
         },
-        "bulk_deadband_groups": groups,
-    }
-    context["bulk_apply_entities"] = (
-        entity_id("input_boolean", "bulk", "apply", "required_danger_percent"),
-        entity_id("input_boolean", "bulk", "apply", "observation_window_seconds"),
-        entity_id("input_boolean", "bulk", "apply", "required_recovery_seconds"),
-        *(group["apply_entity"] for group in groups),
+        bulk_deadband_groups=groups,
+        bulk_apply_entities=(
+            entity_id("input_boolean", "bulk", "apply", "required_danger_percent"),
+            entity_id("input_boolean", "bulk", "apply", "observation_window_seconds"),
+            entity_id("input_boolean", "bulk", "apply", "required_recovery_seconds"),
+            *(group["apply_entity"] for group in groups),
+        ),
     )
-    return context
 
 
 def _measurement_groups(
@@ -208,6 +258,8 @@ def _measurement_groups(
 ) -> tuple[tuple[str, tuple[dict[str, Any], ...]], ...]:
     """Group one setup's measurements by first-seen subcategory."""
 
+    # Keep the order from config.yaml so the dashboard follows the order chosen
+    # by the person who wrote the configuration.
     grouped: dict[str, list[dict[str, Any]]] = {}
     for measurement in measurements:
         grouped.setdefault(measurement["subcategory"] or "Other Measurements", []).append(measurement)
@@ -219,25 +271,29 @@ def _bulk_targets(
     alarm_measurements: list[tuple[dict[str, Any], dict[str, Any]]],
     by_setup: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, Any], ...]:
-    """Calculate the genuinely derived bulk target and deadband relationships."""
+    """Build the targets and deadband groups used by the bulk editor."""
 
+    # Power readings can appear on setup pages, but the bulk alarm editor must
+    # not change them. This list contains only normal high/low alarms.
     by_key = {
         (service["name"], measurement["name"]): measurement
         for service, measurement in alarm_measurements
     }
-    projections = [("all", "All measurements", list(by_key.values()))]
-    projections.extend(
+    target_groups = [("all", "All measurements", list(by_key.values()))]
+    target_groups.extend(
         (setup_id, f"{config.setups[setup_id].display_label(setup_id)} ({setup_id})", items)
         for setup_id, items in by_setup.items()
     )
     targets = []
-    for target_id, option, candidates in projections:
+    for target_id, option, candidates in target_groups:
         selected = [
             item for item in candidates
             if (item["service_name"], item["name"]) in by_key
         ]
         if not selected:
             continue
+        # Share one deadband setting only when the readings mean the same thing
+        # and use the same unit. A temperature setting must not change pressure.
         grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for item in selected:
             device_class = item["device_class"] or f"measurement:{stable_id(item['service_name'], item['name'])}"
@@ -250,7 +306,11 @@ def _bulk_targets(
             else:
                 helper_slug = slug(f"{device_class}_{unit or 'unitless'}")
                 label = device_class.replace("_", " ").title()
-            range_min = max(0, *(item["threshold"]["range_min"] for item in members))
+            # Limit the editor to values accepted by every measurement in this
+            # group.
+            range_min = max(
+                0, *(item["threshold"]["range_min"] for item in members)
+            )
             range_max = min(item["threshold"]["range_max"] for item in members)
             if range_min > range_max:
                 raise ValueError(f"empty deadband range for {device_class} ({unit})")
@@ -290,9 +350,11 @@ def _bulk_targets(
         })
     return tuple(targets)
 
-def render_alarm(render_model: dict[str, Any]) -> str:
-    """Render and validate the final-shaped Home Assistant alarm template."""
+def render_alarm(render_model: HomeAssistantRenderModel) -> str:
+    """Create and check the complete Home Assistant alarm package."""
 
+    # Square brackets belong to the LabPulse render pass. Standard braces are
+    # left untouched because Home Assistant evaluates those expressions later.
     environment = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
         undefined=StrictUndefined,
@@ -323,16 +385,18 @@ def render_alarm(render_model: dict[str, Any]) -> str:
 
     environment.filters["render_fragment"] = render_fragment
 
+    # Build these expressions now, but leave them for Home Assistant to run.
+    # They depend on settings that a user can change from the dashboard.
     selected_expression = "{{ " + " or ".join(
         f"is_state('{entity}', 'on')"
-        for entity in render_model["bulk_apply_entities"]
+        for entity in render_model.bulk_apply_entities
     ) + " }}"
     target_lines = [
         "{% set selected = states('"
         + entity_id("input_select", "bulk", "alarm", "timing", "target")
         + "') %}"
     ]
-    for index, target in enumerate(render_model["bulk_alarm_targets"]):
+    for index, target in enumerate(render_model.bulk_alarm_targets):
         keyword = "if" if index == 0 else "elif"
         target_lines.append(
             f"{{% {keyword} selected == {json.dumps(target["option"])} %}}"
@@ -350,6 +414,8 @@ def render_alarm(render_model: dict[str, Any]) -> str:
         bulk_selected_expression=selected_expression,
         bulk_target_count_template="\n".join(target_lines),
     )
+    # Parse the generated YAML before saving it. This catches broken indentation
+    # or invalid values, then writes the result in one consistent style.
     package = yaml.safe_load(rendered)
     if not isinstance(package, dict):
         raise ValueError("rendered Home Assistant alarm package must be a mapping")

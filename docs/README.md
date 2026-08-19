@@ -1,52 +1,79 @@
 # LabPulse documentation
 
-This documentation describes the current implementation. Files under
-`legacy/` describe superseded prototypes and are not installation guidance.
+These guides describe the current LabPulse package, generated deployment, and
+supported workflows.
 
-## I want to operate LabPulse
+## Operator path
 
-1. [Install LabPulse](INSTALLATION.md)
-2. [Understand the product scope and safety boundary](PRODUCT_SCOPE.md)
-3. [Check supported environments and pre-1.0 boundaries](SUPPORT.md)
-4. [Configure sensors and services](CONFIGURATION.md)
-5. [Start, stop, inspect, and update the system](OPERATIONS.md)
-6. [Use the Home Assistant dashboard and alarms](HOME_ASSISTANT.md)
-7. [Configure SMS notifications](SMS.md)
-8. [Troubleshoot a problem](TROUBLESHOOTING.md)
+Read in this order for a new installation:
 
-## I want to develop LabPulse
+1. [Product scope and safety boundary](PRODUCT_SCOPE.md)
+2. [Supported environments](SUPPORT.md)
+3. [Installation](INSTALLATION.md)
+4. [Configuration reference](CONFIGURATION.md)
+5. [Operations](OPERATIONS.md)
+6. [Home Assistant and alarms](HOME_ASSISTANT.md)
+7. [SMS notifications](SMS.md)
+8. [Troubleshooting](TROUBLESHOOTING.md)
 
-1. [Understand the architecture](ARCHITECTURE.md)
-2. [Set up a development environment and run tests](DEVELOPMENT.md)
-3. [Add a sensor or hardware driver](DRIVER_DEVELOPMENT.md)
-4. [Implement the standard serial protocol](SERIAL_PROTOCOL.md)
-5. [Build or adapt Arduino firmware](../firmware/README.md)
-6. [Understand the project direction](../ROADMAP.md)
+The normal operator surface is the unified `labpulse` command. The installed
+configuration source is always `~/labpulse-live/config.yaml`.
 
-## Project information
+## Contributor path
 
-- [Contributing](../CONTRIBUTING.md)
-- [Changelog](../CHANGELOG.md)
-- [Product scope and safety boundary](PRODUCT_SCOPE.md)
-- [Supported environments](SUPPORT.md)
+1. [Architecture](ARCHITECTURE.md)
+2. [Development](DEVELOPMENT.md)
+3. [Driver development](DRIVER_DEVELOPMENT.md)
+4. [Standard serial protocol](SERIAL_PROTOCOL.md)
+5. [Firmware](../firmware/README.md)
+6. [Contributing](../CONTRIBUTING.md)
+7. [Roadmap](../ROADMAP.md)
 
 ## Sources of truth
 
-| Subject | Source of truth |
+| Subject | Current source of truth |
 |---|---|
-| Installed sensors and services | `~/labpulse-live/config.yaml` |
-| New-install defaults | repository `config.yaml` |
-| Python configuration rules | `src/labpulse/common/config.py` |
-| Driver contract | `src/labpulse/hardware/api.py` |
+| Installed sensor configuration | `~/labpulse-live/config.yaml` |
+| New-install template | repository `config.yaml` |
+| Config schema and loading | `src/labpulse/common/config.py` |
+| Fake runtime derivation | `src/labpulse/common/fake_config.py` |
+| Stable IDs | `src/labpulse/common/identity.py` |
+| MQTT and SMS request contracts | `src/labpulse/common/mqtt_contracts.py` |
+| Operator commands | `src/labpulse/control.py` |
+| Backup archive behavior | `src/labpulse/backup.py` |
+| Diagnostics | `src/labpulse/doctor.py` |
+| Compose rendering | `src/labpulse/deployment/compose.py` |
+| Atomic deployment installation | `src/labpulse/deployment/generate.py` |
+| Driver API | `src/labpulse/hardware/api.py` |
 | Driver discovery | `src/labpulse/hardware/registry.py` |
+| Hardware lifecycle | `src/labpulse/hardware/runner.py` |
 | Serial parsing | `src/labpulse/hardware/serial_parser.py` |
-| Compose generation | `deployment/generate_compose.sh` |
-| Home Assistant generation | `src/labpulse/homeassistant/` |
-| SMS payloads and topics | `src/labpulse/common/mqtt_contracts.py` |
-| Operator command behavior | `src/labpulse/control.py` |
-| Product scope and safety boundary | `docs/PRODUCT_SCOPE.md` |
-| Supported platforms and compatibility | `docs/SUPPORT.md` |
-| Current project direction | `ROADMAP.md` |
+| MQTT discovery/state publication | `src/labpulse/hardware/homeassistant_publisher.py` |
+| Home Assistant CLI | `src/labpulse/homeassistant/cli.py` |
+| Home Assistant file generation | `src/labpulse/homeassistant/generator.py` |
+| Alarm/render context | `src/labpulse/homeassistant/alarm.py` |
+| Dashboard and alarm behavior | `src/labpulse/homeassistant/templates/` |
+| SMS process composition | `src/labpulse/sms/cli.py` |
+| SMS intake and deduplication | `src/labpulse/sms/subscriber.py` |
+| SMS delivery | `src/labpulse/sms/sender.py` |
+| SMS subscription commands | `src/labpulse/sms/subscriptions.py` |
 
-Generated Compose and Home Assistant YAML are outputs. Do not document or edit
-them as independent sources of truth.
+`compose.yaml`, `config.fake.yaml`, and generated Home Assistant YAML are
+outputs. Change their owning source and regenerate rather than editing them as
+independent configuration.
+
+## Where changes belong
+
+| Change | Documentation owner |
+|---|---|
+| Host prerequisites or first installation | `INSTALLATION.md` |
+| YAML field or built-in driver option | `CONFIGURATION.md` |
+| Operator command or maintenance workflow | `OPERATIONS.md` |
+| Home Assistant entity, dashboard, or alarm behavior | `HOME_ASSISTANT.md` |
+| SMS routing, delivery, or subscription behavior | `SMS.md` |
+| Cross-process ownership or contract | `ARCHITECTURE.md` |
+| Contributor workflow or package structure | `DEVELOPMENT.md` |
+| Hardware extension contract | `DRIVER_DEVELOPMENT.md` |
+| Serial wire format | `SERIAL_PROTOCOL.md` |
+| Symptom and recovery action | `TROUBLESHOOTING.md` |
+| Work not implemented in current code | `ROADMAP.md` |

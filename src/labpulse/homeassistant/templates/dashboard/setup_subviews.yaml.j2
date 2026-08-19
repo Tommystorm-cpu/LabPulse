@@ -1,3 +1,5 @@
+{# Only create a settings page for setups that have measurements. Empty setups
+   still appear on Monitor. #}
 [% for setup in model.setups if setup.measurements %]
 - title: [[ setup.label | yaml_scalar ]]
   path: alarm-setup-[[ setup.setup_id ]]

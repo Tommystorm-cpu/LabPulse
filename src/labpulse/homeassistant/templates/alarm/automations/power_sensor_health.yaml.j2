@@ -1,3 +1,5 @@
+{# A power sensor fault is distinct from a confirmed mains outage. Retaining
+   that distinction avoids reporting an outage when the monitor itself is lost. #}
   - id: labpulse_[[ service.service_id ]]_power_sensor_fault
     alias: LabPulse [[ service.label ]] Power Sensor Fault
     mode: restart
@@ -38,9 +40,22 @@
         - service: persistent_notification.create
           data:
             title: >
-              {{ ('[TEST] ' if is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on') else '') ~ 'LabPulse external-power sensor fault' }}
+              {{ (
+                '[TEST] '
+                if is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                )
+                else ''
+              ) ~ 'LabPulse external-power sensor fault' }}
             message: >
-              [[ service.label ]] cannot read the X1200 external-power signal. Raw mains state: {{ states('[[ entity_id('sensor', service.name, 'mains_present') ]]') }}. Service status: {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}. This is not being treated as an outage. [[ power.mains_present.notification_context ]]
+              [[ service.label ]] cannot read the X1200 external-power signal.
+              Raw mains state:
+              {{ states('[[ entity_id('sensor', service.name, 'mains_present') ]]') }}.
+              Service status:
+              {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
+              This is not being treated as an outage.
+              [[ power.mains_present.notification_context ]]
             notification_id: labpulse_[[ service.service_id ]]_power
         - service: mqtt.publish
           data:
@@ -48,7 +63,34 @@
             qos: 1
             retain: false
             payload: >
-              {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "sensor_fault", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External-power GPIO", "state": "Sensor Fault", "title": [[ sms.alerts.power_sensor_fault.title | render_fragment(service=service, power=power, model=model) ]], "message": ([[ sms.alerts.power_sensor_fault.message | render_fragment(service=service, power=power, model=model) ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'mains_present') ]]')} | to_json }}
+              {{ {
+                "request_id":
+                  "labpulse_[[ service.service_id ]]_power_sensor_fault_"
+                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                "event": "sensor_fault",
+                "service": "[[ service.name ]]",
+                "service_label": "[[ service.label ]]",
+                "measurement": "power",
+                "measurement_label": "External-power GPIO",
+                "state": "Sensor Fault",
+                "title": [[
+                  sms.alerts.power_sensor_fault.title
+                  | render_fragment(service=service, power=power, model=model)
+                ]],
+                "message": ([[
+                  sms.alerts.power_sensor_fault.message
+                  | render_fragment(service=service, power=power, model=model)
+                ]]) ~ "\n[[ power.mains_present.notification_context ]]",
+                "test_mode": is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                ),
+                "current_measurement": states(
+                  '[[ entity_id('sensor', service.name, 'mains_present') ]]'
+                )
+              } | to_json }}
+{# Sensor recovery chooses the current mains state before clearing the fault.
+   The physical outage may have started or ended while readings were missing. #}
   - id: labpulse_[[ service.service_id ]]_power_sensor_recovery
     alias: LabPulse [[ service.label ]] Power Sensor Recovery
     mode: single
@@ -92,9 +134,21 @@
         - service: persistent_notification.create
           data:
             title: >
-              {{ ('[TEST] ' if is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on') else '') ~ 'LabPulse external-power sensor restored' }}
+              {{ (
+                '[TEST] '
+                if is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                )
+                else ''
+              ) ~ 'LabPulse external-power sensor restored' }}
             message: >
-              [[ service.label ]] can read the X1200 external-power signal again. Current mains state: {{ states('[[ entity_id('sensor', service.name, 'mains_present') ]]') }}. Service status: {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}. [[ power.mains_present.notification_context ]]
+              [[ service.label ]] can read the X1200 external-power signal again.
+              Current mains state:
+              {{ states('[[ entity_id('sensor', service.name, 'mains_present') ]]') }}.
+              Service status:
+              {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
+              [[ power.mains_present.notification_context ]]
             notification_id: labpulse_[[ service.service_id ]]_power
         - service: mqtt.publish
           data:
@@ -102,4 +156,31 @@
             qos: 1
             retain: false
             payload: >
-              {{ {"request_id": "labpulse_[[ service.service_id ]]_power_sensor_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'), "event": "recovery", "service": "[[ service.name ]]", "service_label": "[[ service.label ]]", "measurement": "power", "measurement_label": "External-power GPIO", "state": states('[[ entity_id('input_select', service.name, 'power', 'state') ]]'), "title": [[ sms.alerts.power_sensor_recovery.title | render_fragment(service=service, power=power, model=model) ]], "message": ([[ sms.alerts.power_sensor_recovery.message | render_fragment(service=service, power=power, model=model) ]]) ~ "\n[[ power.mains_present.notification_context ]]", "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'), "current_measurement": states('[[ entity_id('sensor', service.name, 'mains_present') ]]')} | to_json }}
+              {{ {
+                "request_id":
+                  "labpulse_[[ service.service_id ]]_power_sensor_recovery_"
+                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
+                "event": "recovery",
+                "service": "[[ service.name ]]",
+                "service_label": "[[ service.label ]]",
+                "measurement": "power",
+                "measurement_label": "External-power GPIO",
+                "state": states(
+                  '[[ entity_id('input_select', service.name, 'power', 'state') ]]'
+                ),
+                "title": [[
+                  sms.alerts.power_sensor_recovery.title
+                  | render_fragment(service=service, power=power, model=model)
+                ]],
+                "message": ([[
+                  sms.alerts.power_sensor_recovery.message
+                  | render_fragment(service=service, power=power, model=model)
+                ]]) ~ "\n[[ power.mains_present.notification_context ]]",
+                "test_mode": is_state(
+                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
+                  'on'
+                ),
+                "current_measurement": states(
+                  '[[ entity_id('sensor', service.name, 'mains_present') ]]'
+                )
+              } | to_json }}

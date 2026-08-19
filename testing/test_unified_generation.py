@@ -10,7 +10,6 @@ from uuid import uuid4
 REPOSITORY = Path(__file__).resolve().parents[1]
 TEST_TMP = REPOSITORY / "testing" / "tmp"
 TEST_TMP.mkdir(parents=True, exist_ok=True)
-sys.path.insert(0, str(REPOSITORY / "src"))
 
 import labpulse.deployment.generate as generation
 
@@ -124,30 +123,3 @@ def test_failed_build_leaves_live_outputs_unchanged() -> None:
     finally:
         generation.generate_homeassistant = original_generator
         shutil.rmtree(root)
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("one load and UI preservation", test_generation_loads_once_and_preserves_ui_files),
-    ("failed build preserves outputs", test_failed_build_leaves_live_outputs_unchanged),
-]
-
-
-def main() -> None:
-    """Run unified generation integration checks."""
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-            continue
-        print(f"[PASS] {name}")
-        passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

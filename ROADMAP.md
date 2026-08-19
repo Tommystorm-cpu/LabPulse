@@ -251,9 +251,10 @@ Status: baseline completed on 28 July 2026.
   that release changes live-state or hardware behavior.
 - [ ] Publish to production PyPI only when external installation is genuinely
   useful.
-- [ ] Convert tests to a conventional runner, add broad formatting and type
-  gates, and test multiple Python versions when that improves maintenance
-  rather than merely changing tooling.
+- [x] Convert hardware-free tests to pytest and run them on Python 3.11 and
+  3.12 for pushes, pull requests, and releases.
+- [ ] Add broad formatting and type gates when they improve maintenance
+  confidence without obscuring the runtime code.
 
 Acceptance met: the `v0.1.1` release produced clean-installable TestPyPI
 artifacts and matching multi-architecture GHCR images, and a release artifact

@@ -5,10 +5,8 @@ import sys
 from typing import Callable
 
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.hardware.drivers import dht11
 from labpulse.hardware.api import (
@@ -198,41 +196,3 @@ def test_close_is_idempotent() -> None:
     driver.close()
     assert_equal(device.exited, True, "device released")
     assert_equal(driver.device, None, "handle cleared")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("connect and read", test_connect_and_read_returns_rounded_batch),
-    ("timing error", test_timing_error_is_transient),
-    ("incomplete sample", test_incomplete_sample_is_transient),
-    ("unexpected read error", test_unexpected_read_error_loses_connection),
-    ("unknown pin", test_unknown_pin_is_unavailable),
-    ("missing dependencies", test_missing_dependencies_are_unavailable),
-    ("idempotent close", test_close_is_idempotent),
-]
-
-
-def main() -> None:
-    """Run all DHT11 driver contract tests."""
-
-    print("Running DHT11 driver tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

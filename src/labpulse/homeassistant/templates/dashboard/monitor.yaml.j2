@@ -1,13 +1,19 @@
+{# Monitor is the page used for quick checks. Show power first, then each setup
+   in the order used in config.yaml. #}
 - title: Monitor
   path: monitor
   cards:
 [% set power_services = model.services | selectattr('power', 'ne', none) | list %]
 [% if not power_services and not model.monitor_setups %]
+{# Even an empty installation needs the status controls; otherwise mute and
+   test-mode state would disappear until the first service is configured. #}
   - type: vertical-stack
     cards:
 [% include "dashboard/monitor_status.yaml.j2" %]
 [% endif %]
 [% for service in power_services %]
+{# Put status cards in the first section. A separate section would leave too
+   much empty space at the top of the page. #}
   - type: vertical-stack
     cards:
 [% if loop.first %]
@@ -51,6 +57,8 @@
       heading_style: title
       icon: [[ setup.icon ]]
 [% if not setup.measurements %]
+{# Show empty setups as well. This makes it clear that the setup exists but does
+   not have any enabled measurements yet. #}
     - type: markdown
       content: No measurements are currently assigned to this setup.
 [% endif %]

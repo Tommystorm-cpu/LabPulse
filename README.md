@@ -1,54 +1,54 @@
 # LabPulse
 
-NOTE: This fork is the most up to date version of LabPulse (as of 07/2026). It will eventually be merged into the main branch.
-
 LabPulse is a Raspberry Pi monitoring platform for laboratory infrastructure.
-It reads Arduino, GPIO, I2C, and simulated sensors; publishes measurements and
-device health over MQTT; presents them in Home Assistant; and can deliver alarm
-notifications through an SMS modem.
+It reads Arduino serial, GPIO, I2C, and simulated sensors; publishes numeric
+measurements and service health over MQTT; generates a Home Assistant dashboard
+and alarm package; and can deliver notification requests through an SMS modem.
 
-LabPulse is currently pre-release software. Released installations use a
-pipx-installed Python package for operator commands and matching versioned
-container images for sensor and SMS services.
+LabPulse is a monitoring and best-effort alerting aid. It is not a safety-rated
+controller, protective interlock, emergency shutdown system, or guaranteed
+notification channel. See [Product scope and safety boundary](docs/PRODUCT_SCOPE.md).
 
-LabPulse is a monitoring and best-effort alerting aid, not a safety-rated
-controller, emergency shutdown system, or protective interlock. See
-[Product scope and safety boundary](docs/PRODUCT_SCOPE.md).
+## Current system
 
-## How it works
-
-Each enabled sensor service runs in its own container. A shared hardware runner
-connects to the configured driver, normalizes numeric readings, and publishes
-Home Assistant MQTT discovery and state. Home Assistant owns thresholds,
-alarm timing, dashboards, notification muting, and alarm transitions. A
-separate SMS container validates and delivers notification requests.
-
-The live Raspberry Pi installation is generated at:
+An installed deployment contains:
 
 ```text
-~/labpulse-live/
+Raspberry Pi host
+  ~/labpulse-live/config.yaml         operator-owned source of truth
+  ~/labpulse-live/compose.yaml        generated deployment
+
+Docker Compose
+  homeassistant
+  mosquitto
+  labpulse-sms
+  labpulse-<service>                  one per enabled sensor service
 ```
 
-The only sensor configuration that operators edit is:
+Each hardware container selects one configured driver, normalizes readings,
+and publishes MQTT discovery, state, and health. Home Assistant owns threshold
+interpretation, alarm timing, persistent alarm state, dashboard presentation,
+mutes, Test mode, and notification creation. The SMS worker independently
+validates, routes, deduplicates, queues, and delivers requests.
+
+The repository `config.yaml` is a new-install template. An installed Pi always
+uses:
 
 ```text
 ~/labpulse-live/config.yaml
 ```
 
-The repository `config.yaml` is a starter template, not the configuration used
-by an installed system.
+## Install
 
-## Quick start
-
-Install Docker Engine with the Compose plugin, Python with virtual-environment
-support, and pipx. The current `0.1.1` release is on TestPyPI rather than
-production PyPI, so both package indexes are supplied explicitly:
+The current published release is `0.1.1` on TestPyPI with a matching public
+runtime image on GHCR:
 
 ```bash
 pipx install \
   --index-url https://test.pypi.org/simple/ \
   --pip-args="--extra-index-url https://pypi.org/simple/" \
   "labpulse==0.1.1"
+
 labpulse version
 labpulse setup
 labpulse config
@@ -57,86 +57,88 @@ labpulse doctor
 labpulse open
 ```
 
-TestPyPI supplies LabPulse; production PyPI supplies its dependencies. The
-installed package automatically selects and pulls the matching public
-`ghcr.io/tommystorm-cpu/labpulse:0.1.1` image. No repository clone or local
-container build is part of an installed deployment.
-
-For a hardware-free installation:
+For a hardware-free deployment:
 
 ```bash
 labpulse setup --fake-usb
 cd ~/labpulse-live
 ./simulate_serial.py start
 labpulse up
+labpulse doctor
 ```
 
-See [Installation](docs/INSTALLATION.md) for prerequisites, real-hardware
-setup, development installs, and updates.
+See [Installation](docs/INSTALLATION.md) for prerequisites, real hardware,
+Home Assistant onboarding, updates, and backup acceptance.
 
-## Main commands
+## Operator commands
 
 ```text
-labpulse setup       create or refresh ~/labpulse-live
-labpulse config      safely edit, validate, generate, and apply config
-labpulse backup      create a consistent state archive
-labpulse restore     reconstruct, regenerate, start, and diagnose from an archive
-labpulse up          start the stack
-labpulse down        stop all or selected services without deleting persistent data
+labpulse setup       create or refresh the live installation
+labpulse config      edit, validate, generate, check, and apply configuration
+labpulse up          start all or selected services
+labpulse down        stop containers without deleting persistent state
 labpulse restart     restart all or selected services
 labpulse ps          show container status
-labpulse logs        inspect container logs
-labpulse doctor      run read-only installation and runtime diagnostics
-labpulse version     show the installed package version
+labpulse logs        inspect container output
+labpulse doctor      run read-only host and deployment diagnostics
+labpulse backup      create a checksummed state archive
+labpulse restore     reconstruct an installation from an archive
 labpulse open        open Home Assistant
-labpulse firmware    show firmware download information
-labpulse help        show command help
+labpulse version     show the installed package version
+labpulse firmware    show firmware source/download information
+labpulse help        show general or command-specific help
 ```
 
-The complete command reference is in [Operations](docs/OPERATIONS.md).
+Use `labpulse help COMMAND` for exact syntax. See
+[Operations](docs/OPERATIONS.md) for workflow details.
+
+## Code organization
+
+```text
+src/labpulse/
+  control.py         operator CLI and installed workflows
+  installer.py       setup asset launcher
+  backup.py          backup and restore primitives
+  doctor.py          read-only diagnostics
+  common/            validated config, stable IDs, MQTT contracts
+  deployment/        Compose rendering and atomic unified generation
+  hardware/          driver API, registry, runner, parser, MQTT publisher
+  homeassistant/     CLI, render context, generators, YAML templates
+  sms/               CLI, subscriber, delivery, subscriptions
+
+deployment/          packaged Linux setup/config workflow scripts
+testing/             hardware-free contract and integration tests
+firmware/            Arduino library and device examples
+hardware/            PCB and enclosure assets
+docs/                current operator and contributor documentation
+```
+
+Standalone process packages use `__main__.py → cli.py → domain modules`. The
+complete ownership and data-flow description is in
+[Architecture](docs/ARCHITECTURE.md).
 
 ## Documentation
 
 - [Documentation index](docs/README.md)
 - [Installation](docs/INSTALLATION.md)
-- [Supported environments](docs/SUPPORT.md)
-- [Product scope and safety boundary](docs/PRODUCT_SCOPE.md)
-- [Configuration reference](docs/CONFIGURATION.md)
+- [Configuration](docs/CONFIGURATION.md)
 - [Operations](docs/OPERATIONS.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Home Assistant and alarms](docs/HOME_ASSISTANT.md)
 - [SMS notifications](docs/SMS.md)
+- [Supported environments](docs/SUPPORT.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Development](docs/DEVELOPMENT.md)
-- [Adding hardware drivers](docs/DRIVER_DEVELOPMENT.md)
+- [Driver development](docs/DRIVER_DEVELOPMENT.md)
 - [Serial protocol](docs/SERIAL_PROTOCOL.md)
 - [Firmware](firmware/README.md)
 - [Roadmap](ROADMAP.md)
 
-## Repository layout
-
-```text
-config.yaml          new-install configuration template
-deployment/          packaged Linux setup and generation scripts
-docs/                operator and contributor documentation
-firmware/            Arduino library and example device firmware
-hardware/            PCB and 3D design files
-src/labpulse/        Python application package
-testing/             hardware-free contract and integration tests
-legacy/              superseded implementations retained for reference
-```
-
 ## Contributing
 
-LabPulse welcomes fixes, documentation improvements, simulator scenarios, and
-new hardware support. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting.
-For sensors that can emit the standard serial protocol, new Python code is
-usually unnecessary.
-
-## Project status
-
-The project is pre-1.0 and its public compatibility policy is still being
-defined. See [ROADMAP.md](ROADMAP.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code. New sensors that
+can emit the standard pipe-delimited serial protocol usually require firmware,
+configuration, and tests rather than a new Python driver.
 
 ## Licence
 

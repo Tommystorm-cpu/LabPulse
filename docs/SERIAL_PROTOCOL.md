@@ -196,5 +196,5 @@ A protocol change must update together:
 - this document;
 - any affected identity assumptions.
 
-Do not add per-device parser selections or legacy unit-bearing formats. Keep
-one simple current protocol.
+Do not add per-device parser selections or unit-bearing variants. Keep one
+simple protocol.

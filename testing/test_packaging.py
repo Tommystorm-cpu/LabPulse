@@ -1,114 +1,118 @@
 """Contract checks for the pipx-installable LabPulse distribution."""
 
 from pathlib import Path
-import sys
 import tomllib
 
-
-REPOSITORY = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY / "src"))
+import pytest
 
 import labpulse
 from labpulse.installer import ASSET_NAMES, find_install_assets
 
 
-def main() -> None:
-    """Validate package metadata, resources, command, and live-directory naming."""
+REPOSITORY = Path(__file__).resolve().parents[1]
 
-    metadata = tomllib.loads(
-        (REPOSITORY / "pyproject.toml").read_text(encoding="utf-8")
-    )
-    project = metadata["project"]
-    if project["name"] != "labpulse":
-        raise AssertionError("distribution name must be labpulse")
-    if "version" in project:
-        raise AssertionError("package version must not be hard-coded")
-    if "version" not in project.get("dynamic", []):
-        raise AssertionError("package version must be dynamically derived")
-    build_requirements = metadata["build-system"]["requires"]
-    if not any(requirement.startswith("setuptools-scm") for requirement in build_requirements):
-        raise AssertionError("setuptools-scm must provide the package version")
-    if "tool" not in metadata or "setuptools_scm" not in metadata["tool"]:
-        raise AssertionError("setuptools-scm must be explicitly enabled")
-    init_source = (REPOSITORY / "src" / "labpulse" / "__init__.py").read_text(
-        encoding="utf-8"
-    )
-    if 'version("labpulse")' not in init_source:
-        raise AssertionError("runtime version must come from installed metadata")
-    if not labpulse.__version__:
-        raise AssertionError("runtime package version is empty")
-    if project.get("license") != "MIT":
-        raise AssertionError("package metadata must declare the MIT SPDX licence")
-    if project.get("license-files") != ["LICENSE"]:
-        raise AssertionError("package metadata must include the root licence")
-    licence = (REPOSITORY / "LICENSE").read_text(encoding="utf-8")
-    for fragment in (
-        "MIT License",
-        "Copyright (c) 2026 LabPulse contributors",
-        'THE SOFTWARE IS PROVIDED "AS IS"',
-    ):
-        if fragment not in licence:
-            raise AssertionError(f"MIT licence text is incomplete: {fragment}")
-    expected_commands = {
-        "labpulse": "labpulse.control:main",
-        "labpulse-up": "labpulse.control:up_main",
-        "labpulse-down": "labpulse.control:down_main",
-        "labpulse-restart": "labpulse.control:restart_main",
-        "labpulse-ps": "labpulse.control:ps_main",
-        "labpulse-logs": "labpulse.control:logs_main",
-        "labpulse-config": "labpulse.control:config_main",
-        "labpulse-open": "labpulse.control:open_main",
-        "labpulse-setup": "labpulse.installer:main",
-    }
-    for command, target in expected_commands.items():
-        if project["scripts"].get(command) != target:
-            raise AssertionError(f"pipx command is not declared: {command}")
+
+def metadata() -> dict[str, object]:
+    """Return the decoded project metadata."""
+
+    return tomllib.loads((REPOSITORY / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+def test_package_version_comes_from_installed_metadata() -> None:
+    """Require one dynamic version source for builds and runtime reporting."""
+
+    data = metadata()
+    project = data["project"]
+    assert isinstance(project, dict)
+    assert project["name"] == "labpulse"
+    assert "version" not in project
+    assert "version" in project.get("dynamic", [])
+    build_system = data["build-system"]
+    assert isinstance(build_system, dict)
+    build_requirements = build_system["requires"]
+    assert any(item.startswith("setuptools-scm") for item in build_requirements)
+    tool = data.get("tool")
+    assert isinstance(tool, dict) and "setuptools_scm" in tool
+    init_source = (REPOSITORY / "src/labpulse/__init__.py").read_text(encoding="utf-8")
+    assert 'version("labpulse")' in init_source
+    assert labpulse.__version__
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    ("MIT License", "Copyright (c) 2026 LabPulse contributors", 'THE SOFTWARE IS PROVIDED "AS IS"'),
+)
+def test_mit_license_metadata_and_text(fragment: str) -> None:
+    """Require valid MIT metadata and one canonical licence fragment."""
+
+    project = metadata()["project"]
+    assert project["license"] == "MIT"
+    assert project["license-files"] == ["LICENSE"]
+    assert fragment in (REPOSITORY / "LICENSE").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("command", "target"),
+    (
+        ("labpulse", "labpulse.control:main"),
+        ("labpulse-up", "labpulse.control:up_main"),
+        ("labpulse-down", "labpulse.control:down_main"),
+        ("labpulse-restart", "labpulse.control:restart_main"),
+        ("labpulse-ps", "labpulse.control:ps_main"),
+        ("labpulse-logs", "labpulse.control:logs_main"),
+        ("labpulse-config", "labpulse.control:config_main"),
+        ("labpulse-open", "labpulse.control:open_main"),
+        ("labpulse-setup", "labpulse.installer:main"),
+    ),
+)
+def test_console_entry_point(command: str, target: str) -> None:
+    """Require one installed command to resolve to its public entry point."""
+
+    project = metadata()["project"]
+    assert project["scripts"].get(command) == target
+
+
+def test_packaged_installer_assets_exist() -> None:
+    """Require every declared installer asset to exist in the source tree."""
 
     assets = find_install_assets()
-    missing = [name for name in ASSET_NAMES if not (assets / name).is_file()]
-    if missing:
-        raise AssertionError(f"installer assets are missing: {missing}")
+    assert [name for name in ASSET_NAMES if not (assets / name).is_file()] == []
 
-    homeassistant_data = metadata["tool"]["setuptools"]["package-data"][
-        "labpulse.homeassistant"
-    ]
-    if "templates/*/*/*.j2" not in homeassistant_data:
-        raise AssertionError("nested Home Assistant templates are not packaged")
-    nested_templates = (
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
         "alarm/automations/measurement.yaml.j2",
         "alarm/automations/power_reconciliation.yaml.j2",
         "dashboard/alarm_setup/bulk_editor.yaml.j2",
         "dashboard/setup_subviews/measurement_cards.yaml.j2",
-    )
-    template_root = REPOSITORY / "src" / "labpulse" / "homeassistant" / "templates"
-    for relative_path in nested_templates:
-        if not (template_root / relative_path).is_file():
-            raise AssertionError(f"nested Home Assistant template is missing: {relative_path}")
+    ),
+)
+def test_nested_homeassistant_template_is_packaged(relative_path: str) -> None:
+    """Require nested template globs and one representative source file."""
 
-    setup_source = (REPOSITORY / "deployment" / "setup_container_fs.sh").read_text(
-        encoding="utf-8"
-    )
-    for fragment in (
-        '$HOME/labpulse-live',
-        "LABPULSE_SETUP_ASSET_DIR",
-        "LABPULSE_PACKAGE_PARENT",
-        "labpulse-installed-package.pth",
-    ):
-        if fragment not in setup_source:
-            raise AssertionError(f"packaged setup contract missing: {fragment}")
-    for forbidden in ("LABPULSE_PACKAGE_SOURCE", "labpulse-python"):
-        if forbidden in setup_source:
-            raise AssertionError(f"obsolete packaged setup path remains: {forbidden}")
-    if "labpulse-" + "ha" in setup_source:
-        raise AssertionError("old live-directory name remains in setup")
-
-    print("[PASS] tag-derived package and runtime version")
-    print("[PASS] MIT licence metadata and text")
-    print("[PASS] pipx console entry points")
-    print("[PASS] packaged setup assets")
-    print("[PASS] nested Home Assistant templates")
-    print("[PASS] labpulse-live deployment contract")
+    tool = metadata()["tool"]
+    package_data = tool["setuptools"]["package-data"]["labpulse.homeassistant"]
+    assert "templates/*/*/*.j2" in package_data
+    template_root = REPOSITORY / "src/labpulse/homeassistant/templates"
+    assert (template_root / relative_path).is_file()
 
 
-if __name__ == "__main__":
-    main()
+@pytest.mark.parametrize(
+    "fragment",
+    ("$HOME/labpulse-live", "LABPULSE_SETUP_ASSET_DIR", "LABPULSE_PACKAGE_PARENT", "labpulse-installed-package.pth"),
+)
+def test_live_setup_contract(fragment: str) -> None:
+    """Require one supported live-installation setup fragment."""
+
+    setup_source = (REPOSITORY / "deployment/setup_container_fs.sh").read_text(encoding="utf-8")
+    assert fragment in setup_source
+
+
+@pytest.mark.parametrize("fragment", ("LABPULSE_PACKAGE_SOURCE", "labpulse-python"))
+def test_live_setup_has_no_obsolete_source_copy(fragment: str) -> None:
+    """Reject obsolete live-installation source paths."""
+
+    setup_source = (REPOSITORY / "deployment/setup_container_fs.sh").read_text(encoding="utf-8")
+    assert fragment not in setup_source
+    assert "labpulse-" + "ha" not in setup_source

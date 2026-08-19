@@ -1,20 +1,20 @@
 # Supported environments
 
-This document defines the initial LabPulse reference environment and the
-support boundaries that apply before version 1.0. A platform is supported only
+This document defines the LabPulse reference environment and the support
+boundaries that apply before version 1.0. A platform is supported only
 when it appears in the reference matrix below. Other platforms may work, but
 they are not release-qualified until their status is changed here.
 
 ## Verified reference deployment
 
-The initial production-like deployment was inventoried on 24 July 2026:
+The reference deployment was inventoried on 24 July 2026:
 
 | Component | Verified environment |
 |---|---|
 | Computer | Raspberry Pi 5 Model B Rev 1.1 with 8 GB RAM |
 | Architecture | 64-bit ARM (`aarch64`; Debian `arm64`) |
 | Storage | 238.3 GiB MMC block device, approximately 256 GB marketed capacity |
-| Operating system | Raspberry Pi OS 64-bit, Debian 12 (Bookworm), reference build 2025-05-13 generated with `pi-gen` stage 4 |
+| Operating system | Raspberry Pi OS 64-bit, Debian 12 (Bookworm) |
 | Host Python | CPython 3.11.2 |
 | LabPulse containers | Python 3.12 on the generated Debian slim image |
 | Container engine | Docker Engine 29.6.1 |
@@ -28,6 +28,8 @@ compatibility claims. Minimum RAM, storage, Docker Engine, and Compose versions
 have not yet been established. A new environment is release-qualified only
 after it passes the relevant installation, generation, runtime, and
 real-hardware checks.
+
+The recorded Raspberry Pi OS image was the 2025-05-13 `pi-gen` stage 4 build.
 
 ## Hardware support
 
@@ -67,8 +69,7 @@ require reproduction on the reference deployment.
 - Raspberry Pi 3, Zero, Zero 2, Compute Module, or non-Raspberry-Pi hosts;
 - third-party GPIO, I2C, SPI, or vendor hardware without a LabPulse driver;
 - arbitrary `/dev/ttyUSB0` or `/dev/ttyACM0` identities as permanent
-  production configuration;
-- hardware or drivers located under `legacy/`.
+  production configuration.
 
 Unsupported means that the project does not promise installation,
 compatibility, diagnosis, or fixes for that environment. It does not mean that
@@ -88,9 +89,8 @@ package tests. Python 3.10 and older are unsupported.
 ### Docker and Compose
 
 The reference Pi uses Docker Engine 29.6.1 and Docker Compose 5.3.1. LabPulse
-requires the plugin-style `docker compose` command. The old standalone
-`docker-compose` v1 command is unsupported. Minimum compatible Engine and
-Compose versions have not yet been established.
+requires the plugin-style `docker compose` command. Minimum compatible Engine
+and Compose versions have not yet been established.
 
 Docker Desktop, rootless Docker, Podman, Kubernetes, Home Assistant OS, and
 Home Assistant Supervised are outside the current deployment model. LabPulse
@@ -144,7 +144,7 @@ These capabilities remain experimental:
 Experimental capabilities may be exercised and reported on, but they do not
 carry the same compatibility or recovery expectations as the supported core.
 
-## Pre-1.0 compatibility policy
+## Version compatibility
 
 LabPulse is alpha software until the roadmap declares otherwise.
 
@@ -153,9 +153,8 @@ LabPulse is alpha software until the roadmap declares otherwise.
 - Patch releases should avoid intentional breaking changes.
 - Every intentional user-visible break must be documented in the changelog and
   release notes.
-- Compatibility and migrations are required only between published releases,
-  not between historical prototypes, `legacy/` code, or arbitrary development
-  commits.
+- Compatibility and migrations apply to published releases, not arbitrary
+  development commits.
 - Live `config.yaml` and Home Assistant state must not be silently discarded,
   even when an automatic migration is unavailable.
 - The external driver API, extension installation command, and equipment

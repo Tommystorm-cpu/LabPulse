@@ -1,12 +1,8 @@
 """Check the single supported pipe-delimited serial format."""
 
-from pathlib import Path
-import sys
 from typing import Optional
 
-
-REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
+import pytest
 
 from labpulse.hardware.serial_parser import SerialParser
 
@@ -59,26 +55,16 @@ TEST_CASES: tuple[tuple[str, str, Optional[dict[str, float]]], ...] = (
 )
 
 
-def main() -> None:
-    """Run every standard serial parser case."""
+@pytest.mark.parametrize(
+    ("_description", "line", "expected"),
+    TEST_CASES,
+    ids=[case[0] for case in TEST_CASES],
+)
+def test_standard_serial_parser_cases(
+    _description: str,
+    line: str,
+    expected: Optional[dict[str, float]],
+) -> None:
+    """Parse one named standard-protocol example."""
 
-    parser = SerialParser()
-    failures = 0
-    for name, line, expected in TEST_CASES:
-        actual = parser.parse(line)
-        if actual != expected:
-            failures += 1
-            print(f"[FAIL] {name}: expected {expected!r}, got {actual!r}")
-        else:
-            print(f"[PASS] {name}")
-
-    print(
-        f"Summary: {len(TEST_CASES) - failures}/{len(TEST_CASES)} passed, "
-        f"{failures} failed"
-    )
-    if failures:
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()
+    assert SerialParser().parse(line) == expected

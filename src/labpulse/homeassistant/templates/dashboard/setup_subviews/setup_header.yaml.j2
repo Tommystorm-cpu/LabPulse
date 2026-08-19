@@ -1,3 +1,5 @@
+{# Use separate phone and desktop layouts. Home Assistant shows the one that
+   matches the current screen width. #}
 [% for mobile in (false, true) %]
 [% set width = 'full' if mobile else 12 %]
   - type: grid
@@ -11,7 +13,11 @@
       heading_style: title
       icon: [[ setup.icon ]]
       grid_options: {columns: [[ width ]]}
-[% for muted, name, icon in ((false, 'Notifications active', 'mdi:bell-ring-outline'), (true, 'Notifications muted', 'mdi:bell-off-outline')) %]
+[% for muted, name, icon in (
+  (false, 'Notifications active', 'mdi:bell-ring-outline'),
+  (true, 'Notifications muted', 'mdi:bell-off-outline')
+) %]
+{# Show either Mute or Unmute. The visible button always names its next action. #}
     - type: conditional
       conditions:
       - entity: [[ setup.muted_entity ]]
@@ -44,6 +50,8 @@
           perform_action: input_boolean.turn_on
           target: {entity_id: [[ setup.muted_entity ]]}
 [% if setup.shared_measurement_labels %]
+{# Keep this warning at the action point. A general note elsewhere is too easy
+   to miss when muting a setup during an incident. #}
           confirmation:
             text: [[ setup.shared_measurement_warning | yaml_scalar ]]
 [% endif %]

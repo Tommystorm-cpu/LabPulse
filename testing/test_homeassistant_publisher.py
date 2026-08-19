@@ -3,10 +3,8 @@ import json
 import sys
 from typing import Any
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import MqttConfig, ServiceConfig
 from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher
@@ -423,50 +421,3 @@ def test_power_discovery_uses_power_message_expiry() -> None:
     payload = json.loads(str(publisher.client.published[0]["payload"]))
     assert_equal(payload["expire_after"], 15, "power measurement expiry")
     assert_equal("force_update" in payload, False, "power force update omitted")
-
-
-TESTS = [
-    ("connect and disconnect", test_connect_and_disconnect),
-    ("publish discovery once then measurements", test_publish_discovery_once_then_measurements),
-    ("publish status discovery once then status", test_publish_status_discovery_once_then_status),
-    ("reconnect restores status and discovery", test_reconnect_republishes_current_status_and_discovery),
-    ("publish discovery for new measurements", test_publish_discovery_for_new_measurements),
-    ("ignore unconfigured measurements", test_ignore_unconfigured_measurements),
-    ("configured message expiry", test_discovery_uses_configured_message_expiry),
-    ("power-specific message expiry", test_power_discovery_uses_power_message_expiry),
-]
-
-
-def main() -> None:
-    """Run all HomeAssistantMqttPublisher test cases."""
-
-    print("Running HomeAssistantMqttPublisher tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed_count = 0
-
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
-            continue
-
-        print(f"[PASS] {name}")
-        print()
-        passed_count += 1
-
-    total = len(TESTS)
-    failed_count = total - passed_count
-
-    print(f"Summary: {passed_count}/{total} passed, {failed_count} failed")
-
-    if failed_count:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

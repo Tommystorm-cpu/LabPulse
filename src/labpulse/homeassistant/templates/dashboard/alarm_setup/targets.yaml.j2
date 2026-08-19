@@ -1,3 +1,5 @@
+{# Target tiles link to the detailed setup or power subview. Setup mute state is
+   shown here because it affects every alarm belonging to that lab area. #}
 [% if model.setups or power_services %]
   - type: grid
     column_span: 3
@@ -7,6 +9,8 @@
       heading_style: title
       icon: mdi:tune-variant
 [% for setup in model.setups %]
+{# Show either Mute or Unmute in the same place. The button always says what it
+   will do when pressed. #}
     - type: grid
       columns: 3
       square: false
@@ -40,6 +44,8 @@
               perform_action: input_boolean.turn_on
               target: {entity_id: [[ setup.muted_entity ]]}
 [% if setup.shared_measurement_labels %]
+{# A sensor shared with another setup may still send messages after this setup
+   is muted. Warn the user before applying the mute. #}
               confirmation:
                 text: [[ setup.shared_measurement_warning | yaml_scalar ]]
 [% endif %]
@@ -71,6 +77,8 @@
           navigation_path: /labpulse-monitor/alarm-setup-[[ setup.setup_id ]]
 [% endfor %]
 [% for service in power_services %]
+{# Power covers the whole installation, so its mute control is not placed under
+   one lab setup. #}
     - type: tile
       entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
       name: Power Monitoring

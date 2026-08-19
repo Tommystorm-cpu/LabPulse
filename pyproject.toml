@@ -40,6 +40,7 @@ dht11 = [
 ]
 dev = [
   "build>=1,<2",
+  "pytest>=8,<9",
 ]
 
 [project.scripts]
@@ -92,3 +93,9 @@ include = ["labpulse*"]
   "testing/real_hardware/test_dht11_fault.sh",
   "testing/real_hardware/test_x1200_faults.sh",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["testing"]
+pythonpath = ["src", "."]
+norecursedirs = ["testing/tmp"]
+addopts = "--strict-markers -ra -p no:cacheprovider"

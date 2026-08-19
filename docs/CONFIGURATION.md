@@ -15,6 +15,26 @@ For a real-hardware installation, use the guarded editor:
 labpulse config
 ```
 
+## Source and runtime configuration
+
+There is one operator-owned source and, in fake mode, one derived runtime
+projection:
+
+| Path | Ownership | Purpose |
+|---|---|---|
+| `~/labpulse-live/config.yaml` | Operator | Permanent service, measurement, setup, MQTT, and SMS configuration |
+| `~/labpulse-live/config.fake.yaml` | Generated | Fake-USB transport substitutions used by simulated containers |
+| repository `config.yaml` | Package | Starter copied only when a live source does not exist |
+
+Real Compose mounts `config.yaml` into Python containers as
+`/app/config.yaml`. Fake Compose mounts `config.fake.yaml` at that same
+container path. Hardware and SMS processes therefore use one stable internal
+path regardless of runtime mode.
+
+Home Assistant generation uses the active runtime document. Fake derivation
+preserves service and measurement names, so both modes produce the same public
+entity and alarm identities.
+
 ## Top-level structure
 
 ```yaml
@@ -44,6 +64,16 @@ that includes the source path and field location.
 Each command or service validates its selected configuration once at startup.
 Driver options are typed as part of that load; Compose, Home Assistant,
 hardware, SMS, and diagnostics do not validate or reinterpret them again.
+
+The same validated document is consumed differently:
+
+| Consumer | Reads from the document |
+|---|---|
+| Compose generator | enabled services, runtime image inputs, driver resources, SMS mode |
+| Hardware CLI | one selected service, its typed driver options, MQTT settings |
+| Home Assistant generator | enabled services, setups, measurements, health and power timing |
+| SMS CLI | MQTT settings, delivery mode, normal and test recipients |
+| Doctor | source/runtime agreement, enabled services, declared host resources |
 
 ## MQTT
 
@@ -169,6 +199,8 @@ after collecting history unless a new identity is intended.
 | `power_detection` | absent | Dedicated power-outage confirmation |
 
 Each enabled service becomes `labpulse-<service-slug>` in Compose.
+Deployment generation requires at least one enabled hardware service.
+Service keys that normalize to the same Compose slug are rejected.
 
 ## Measurements
 

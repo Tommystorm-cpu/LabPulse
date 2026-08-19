@@ -6,7 +6,6 @@ from typing import Any, Callable, TypeVar
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import ServiceConfig
 from labpulse.hardware.cli import _target_summary
@@ -247,57 +246,3 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
     assert_equal(driver.address, 0x36, "I2C address")
     assert_equal(driver.gpio_reader.chip, "/dev/gpiochip0", "GPIO chip")
     assert_equal(driver.gpio_reader.line, 6, "GPIO line")
-
-
-TESTS = [
-    ("serial driver builds", test_serial_driver_builds),
-    ("operator target summary", test_operator_target_summary_uses_hardware_identity),
-    (
-        "serial factory keeps GPIO dependencies unloaded",
-        test_serial_factory_keeps_gpio_dependencies_unloaded,
-    ),
-    ("serial config requires port", test_serial_config_requires_port),
-    ("parser config is rejected", test_parser_config_is_rejected),
-    (
-        "registry validates options and reports IDs",
-        test_registry_validates_options_and_reports_available_ids,
-    ),
-    ("gpio DHT11 driver builds", test_gpio_dht11_driver_builds),
-    ("gpio DHT11 requires pin", test_gpio_dht11_requires_pin),
-    ("X1200 I2C/GPIO driver builds", test_x1200_i2c_gpio_driver_builds),
-]
-
-
-def main() -> None:
-    """Run all driver factory test cases."""
-
-    print("Running driver factory tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed_count = 0
-
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
-            continue
-
-        print(f"[PASS] {name}")
-        print()
-        passed_count += 1
-
-    total = len(TESTS)
-    failed_count = total - passed_count
-
-    print(f"Summary: {passed_count}/{total} passed, {failed_count} failed")
-
-    if failed_count:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

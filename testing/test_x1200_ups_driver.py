@@ -7,7 +7,6 @@ from typing import Any, Callable
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.hardware.drivers.x1200 import (
     Driver,
@@ -285,36 +284,3 @@ def test_gpio_fault_omits_only_mains_measurement() -> None:
         raise AssertionError(f"GPIO fault discarded battery telemetry: {measurements!r}")
     if not batch.issues or batch.issues[0].code != "gpio_fault":
         raise AssertionError("GPIO failure did not return a distinct component issue")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("active-high values", test_active_high_gpio_values),
-    ("configurable polarity", test_configurable_polarity),
-    ("libgpiod CLI versions", test_libgpiod_cli_versions),
-    ("read-only register conversion", test_register_conversion_is_read_only),
-    ("full-charge SOC cap", test_full_charge_soc_is_capped),
-    ("invalid gauge configuration", test_rejects_invalid_gauge_configuration),
-    ("I2C fault classification", test_i2c_fault_is_classified_for_runner_cleanup),
-    ("GPIO fault", test_gpio_fault_omits_only_mains_measurement),
-]
-
-
-def main() -> None:
-    """Run the complete X1200 driver tests."""
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

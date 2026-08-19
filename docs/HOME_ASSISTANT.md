@@ -41,6 +41,15 @@ homeassistant/config/labpulse-dashboard.yaml
 Generation also creates empty `automations.yaml`, `scripts.yaml`, and
 `scenes.yaml` when they do not exist.
 
+The generation code is split by responsibility:
+
+| Module | Responsibility |
+|---|---|
+| `src/labpulse/homeassistant/cli.py` | Standalone arguments, config loading, config-error output |
+| `src/labpulse/homeassistant/generator.py` | Core configuration/dashboard rendering, validation, file installation |
+| `src/labpulse/homeassistant/alarm.py` | Typed `HomeAssistantRenderModel`, derived relationships, and alarm rendering |
+| `src/labpulse/homeassistant/templates/` | Final dashboard, helper, script, and automation YAML |
+
 Do not make permanent UI edits to the LabPulse YAML dashboard and do not
 hand-edit the generated package. Change:
 
@@ -53,10 +62,15 @@ hand-edit the generated package. Change:
 - genuinely derived setup, threshold and bulk-group calculations in
   `src/labpulse/homeassistant/alarm.py`.
 
-`generator.py` constructs the shared context once, renders and parses all
-three managed YAML documents in memory, and only then atomically replaces the
-managed files. Existing UI-owned `automations.yaml`, `scripts.yaml` and
-`scenes.yaml` are never overwritten.
+The generator builds the shared context once, renders and parses all managed
+YAML before replacing any live output, and atomically replaces each managed
+file. The unified deployment generator stages the complete Home Assistant set
+before installing it beside Compose. Existing UI-owned `automations.yaml`,
+`scripts.yaml`, and `scenes.yaml` are never overwritten.
+
+LabPulse templates use `[% ... %]` for generator blocks and `[[ ... ]]` for
+generator values. Home Assistant's `{% ... %}` and `{{ ... }}` expressions are
+preserved in the generated package and evaluated by Home Assistant.
 
 Apply ordinary changes with:
 
@@ -269,6 +283,18 @@ cd ~/labpulse-live
 ./generate_homeassistant_config.sh
 labpulse restart homeassistant
 ```
+
+The wrapper invokes the package CLI with the live paths. For an isolated
+developer render, the equivalent interface is:
+
+```bash
+python -m labpulse.homeassistant CONFIG_PATH HA_CONFIG_DIR
+```
+
+This standalone command generates only Home Assistant files. Normal config
+application should use `labpulse config`, which validates and installs Compose
+and Home Assistant output from one configuration load before checking and
+recreating the stack.
 
 Refresh the browser after Home Assistant has restarted.
 

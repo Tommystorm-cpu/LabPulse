@@ -1,3 +1,5 @@
+{# Include this once at the top of Monitor so mute warnings, test mode, and
+   active problems appear before normal readings. #}
     - type: conditional
       conditions:
       - condition: state
@@ -24,6 +26,8 @@
           Notifications are routed only to the configured test recipients.
 
           [Review notification controls](/labpulse-monitor/alarm-setup)
+{# Hide healthy rows. Active Problems should contain only faults and alarms that
+   need attention. #}
     - type: entity-filter
       entities:
 [% for service in model.services %]

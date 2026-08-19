@@ -9,6 +9,23 @@ delivery, receipt, reading, or response, and SMS must not be the sole alert for
 a hazardous condition. See
 [Product scope and safety boundary](PRODUCT_SCOPE.md).
 
+The container runs:
+
+```text
+python -m labpulse.sms --config /app/config.yaml
+```
+
+Code ownership is split as follows:
+
+| Module | Responsibility |
+|---|---|
+| `src/labpulse/sms/cli.py` | Arguments, config loading, logging, worker composition, signal handling |
+| `src/labpulse/sms/subscriber.py` | MQTT connection, payload validation, recent-request cache, status/results |
+| `src/labpulse/sms/sender.py` | Formatting, routing, queueing, retry, dry-run and `mmcli` delivery |
+| `src/labpulse/sms/subscriptions.py` | Persistent recipient choices and inbound commands |
+| `src/labpulse/common/mqtt_contracts.py` | Topics and strict `SmsRequest` schema |
+| `src/labpulse/common/sms_templates.yaml` | User-facing SMS copy |
+
 ## Safe modes
 
 ### Dry run
@@ -94,7 +111,16 @@ Use a new request ID every time:
 cd ~/labpulse-live
 sudo docker compose exec mosquitto mosquitto_pub \
   -h mosquitto -q 1 -t labpulse/sms/send \
-  -m '{"request_id":"manual-test-001","event":"test","service":"manual","measurement":"sms","state":"Test","title":"[TEST] LabPulse SMS test","message":"Manual test from LabPulse","test_mode":true}'
+  -m '{
+    "request_id": "manual-test-001",
+    "event": "test",
+    "service": "manual",
+    "measurement": "sms",
+    "state": "Test",
+    "title": "[TEST] LabPulse SMS test",
+    "message": "Manual test from LabPulse",
+    "test_mode": true
+  }'
 ```
 
 Watch:

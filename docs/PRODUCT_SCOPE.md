@@ -24,9 +24,13 @@ LabPulse is not:
 - a machine guard or protective device;
 - a fire, gas, oxygen-deficiency, pressure, temperature, or water-flow
   interlock;
-- the sole means of detecting a hazardous condition;
+- the sole means of detecting a hazardous condition.
 
-Please note that LabPulse is still pre-release, it has not been robustly tested. It may still be vunerable to raspberry pi crashes, USB hub failure, etc. As this software matures, it will become increasingly more reliable. For now, ensure that LabPulse is not the sole source of monitoring for any system failure that could cause harm to human life, or extensive financial damage.
+LabPulse remains pre-release software. Host crashes, sensor faults, USB or
+network failure, broker or Home Assistant failure, configuration mistakes,
+mutes, and notification-delivery failures can make monitoring incomplete.
+Never rely on LabPulse as the sole detector for a condition that could cause
+injury, environmental harm, equipment damage, or substantial financial loss.
 
 ## Meaning of monitoring
 
@@ -64,12 +68,12 @@ Operators remain responsible for:
 
 ## Equipment control
 
-The initial LabPulse product does not command monitored equipment. Drivers read
+The current LabPulse product does not command monitored equipment. Drivers read
 hardware; Home Assistant evaluates and displays state; the SMS worker delivers
 notification requests.
 
-Potential future outputs such as changing a setpoint, acknowledging a device,
-starting or stopping equipment, or actuating a relay are outside the initial
+Outputs such as changing a setpoint, acknowledging a device,
+starting or stopping equipment, or actuating a relay are outside the current
 product scope. They must not be added by extending the measurement driver
 contract or by treating an ordinary MQTT publication as a control command.
 

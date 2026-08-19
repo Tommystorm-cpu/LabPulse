@@ -1,4 +1,8 @@
+{# Helpers store the settings chosen in Home Assistant. Their entity IDs must
+   stay the same or saved thresholds and timing settings will appear to reset. #}
 input_number:
+{# These values are only a preview. They are not copied to any alarms until the
+   user presses Apply. #}
 [% if model.bulk_alarm_targets %]
   labpulse_bulk_required_danger_percent:
     name: Bulk Required Danger
@@ -34,6 +38,7 @@ input_number:
     mode: box
 [% endfor %]
 [% endif %]
+{# Each measurement keeps its own thresholds and timing settings here. #}
 [% for service, measurement in model.alarm_measurements %]
   labpulse_[[ measurement.measurement_id ]]_required_danger_percent:
     name: '[[ measurement.label ]] Required Danger'
@@ -121,6 +126,8 @@ input_select:
 [% endfor %]
 
 input_boolean:
+{# These on/off helpers remember global mute, local mute, and whether a fault or
+   alarm is currently active. #}
   labpulse_global_notifications_muted:
     name: LabPulse Global Notifications Muted
   labpulse_first_install_initialized:
@@ -170,6 +177,7 @@ input_boolean:
 [% endfor %]
 
 input_datetime:
+{# Store when a fault started so later messages can report how long it lasted. #}
 [% for service in model.services %]
   labpulse_[[ service.service_id ]]_service_fault_started:
     name: '[[ service.label ]] Service Fault Started'
@@ -187,4 +195,3 @@ input_datetime:
     has_date: true
     has_time: true
 [% endfor %]
-

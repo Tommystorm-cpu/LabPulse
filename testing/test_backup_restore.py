@@ -16,7 +16,6 @@ from uuid import uuid4
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY / "src"))
 
 from labpulse.backup import (
     BackupError,
@@ -268,31 +267,3 @@ def test_checksum_and_traversal_protection() -> None:
                 raise
         else:
             raise AssertionError("path-traversal backup was accepted")
-
-
-TESTS = [
-    ("complete backup/restore round trip", test_complete_round_trip),
-    ("overwrite and output guards", test_refuses_overwrite_and_live_directory_output),
-    ("checksum and traversal protection", test_checksum_and_traversal_protection),
-]
-
-
-def main() -> None:
-    """Run all backup and restore contract tests."""
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

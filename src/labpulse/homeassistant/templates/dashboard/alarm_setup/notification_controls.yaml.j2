@@ -1,3 +1,5 @@
+{# Muting stops messages but does not stop alarms from being checked or shown on
+   the dashboard. #}
   - type: grid
     column_span: 1
     cards:
@@ -23,4 +25,6 @@
         perform_action: script.labpulse_send_phone_book_notification
         confirmation:
           text: >-
-            Send the phone book notification to the active recipient list? Test mode uses only test recipients; live mode uses normal recipients. Nothing is sent while all notifications are muted.
+            Send the phone book notification to the active recipient list?
+            Test mode uses only test recipients; live mode uses normal recipients.
+            Nothing is sent while all notifications are muted.

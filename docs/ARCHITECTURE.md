@@ -1,171 +1,258 @@
 # Architecture
 
-LabPulse separates hardware acquisition, transport, alarm decisions,
-presentation, and notification delivery so each can fail and be tested
-independently.
+This document describes the current LabPulse implementation. It is organized
+around ownership boundaries: which process owns each decision, which module is
+the source of truth, and which files are user-owned or generated.
 
 ## Product boundary
 
-LabPulse monitors infrastructure and produces best-effort alerts. It does not
-command equipment and must not be used as a safety-rated controller, emergency
-shutdown system, certified alarm, or protective interlock. Independent
-protective systems remain necessary wherever a missed or delayed measurement
-or notification could cause harm or loss.
+LabPulse monitors laboratory infrastructure and produces best-effort alerts.
+It does not control equipment and is not a safety-rated alarm, emergency
+shutdown system, or protective interlock. Independent protection remains
+necessary wherever delayed, missing, or incorrect telemetry could cause harm
+or loss. See [Product scope and safety boundary](PRODUCT_SCOPE.md).
 
-The authoritative boundary, terminology, and requirements for any future
-control work are in [Product scope and safety boundary](PRODUCT_SCOPE.md).
-
-## System overview
+## Runtime topology
 
 ```text
 physical or simulated sensors
             │
             ▼
-labpulse-<service> containers
-  driver → runner → MQTT publisher
+one labpulse-<service> container per enabled service
+  hardware CLI → driver → runner → MQTT publisher
             │
             ▼
         Mosquitto
          │      │
          ▼      ▼
 Home Assistant  labpulse-sms
-  dashboard       │
-  alarm logic     ▼
-  MQTT requests  modem or dry-run log
+  discovery       request validation
+  dashboard       routing and deduplication
+  alarm state     modem delivery or dry-run logging
+  MQTT requests
 ```
 
-The generated Compose project contains:
+Generated Compose always contains:
 
 - `homeassistant`;
 - `mosquitto`;
 - `labpulse-sms`;
-- one `labpulse-<service-slug>` container per enabled hardware service.
+- one `labpulse-<service-slug>` container for every enabled service.
 
-One-service-per-container isolates device failures and makes Docker restart
-behavior simple.
+Hardware services do not share a Python process. A blocked or failed device
+therefore does not stop another sensor service, and Docker can restart workers
+independently.
 
-## Installation and live state
+## Installed host layout
 
-The pipx environment provides the operator CLI and packaged deployment assets.
-`labpulse setup` generates:
+The pipx-installed package provides the operator command and packaged setup
+assets. `labpulse setup` creates or refreshes:
 
 ```text
 ~/labpulse-live/
-  config.yaml
-  compose.yaml
-  .venv/
-  generate_compose.sh
-  generate_homeassistant_config.sh
-  edit_config.sh
-  simulate_serial.py
-  setup_usb_devices.py
-  homeassistant/config/
-  mosquitto/
-  logs/
+  config.yaml                         user-owned source configuration
+  config.fake.yaml                    derived only in fake-USB mode
+  compose.yaml                        generated
+  .venv/                              managed host generation environment
+  edit_config.sh                      package-managed workflow helper
+  generate_compose.sh                 package-managed low-level wrapper
+  generate_homeassistant_config.sh    package-managed low-level wrapper
+  setup_usb_devices.py                package-managed USB mapper
+  simulate_serial.py                  package-managed simulator
+  test_dht11_fault.sh                 package-managed acceptance helper
+  test_x1200_faults.sh                package-managed acceptance helper
+  homeassistant/config/               Home Assistant live state and generated YAML
+  mosquitto/                           broker configuration and retained data
+  logs/                                Python logs and SMS worker state
 ```
 
-The host `.venv` contains generation/configuration dependencies plus a `.pth`
-link to the pipx-installed LabPulse package. Operators do not activate it;
-live wrappers select it automatically. The link lets generators use the exact
-installed driver manifests without copying application source.
+The managed `.venv` contains host-only generation dependencies and a `.pth`
+link to the exact pipx-installed `labpulse` package. Operators do not activate
+it. The live wrappers select it automatically.
 
-Sensor and SMS services use
-`ghcr.io/tommystorm-cpu/labpulse:<package-version>`. The package version,
-generated Compose image tag, wheel, and image label are released together.
+Runtime Python services use the image selected during generation. A released
+installation defaults to:
 
-## Sources of truth and generated output
+```text
+ghcr.io/tommystorm-cpu/labpulse:<installed-package-version>
+```
 
-User-owned state:
+## User-owned and generated state
+
+User-owned state includes:
 
 - `~/labpulse-live/config.yaml`;
-- Home Assistant accounts, integrations, recorder, and private state;
-- persisted SMS subscription choices;
-- local secrets and modem provisioning.
+- Home Assistant accounts, integrations, recorder data, and private storage;
+- Mosquitto retained data;
+- SMS subscription and processed-request state;
+- local modem, operating-system, timezone, watchdog, and hardware setup.
 
-Generated or package-managed state:
+Generated or package-managed state includes:
 
 - `compose.yaml`;
-- the managed Python-environment link to the installed package;
-- Mosquitto's generated config;
-- `configuration.yaml`;
-- `packages/labpulse_generated.yaml`;
-- `labpulse-dashboard.yaml`;
-- copied live helper scripts.
+- `config.fake.yaml`;
+- `homeassistant/config/configuration.yaml`;
+- `homeassistant/config/packages/labpulse_generated.yaml`;
+- `homeassistant/config/labpulse-dashboard.yaml`;
+- copied deployment and test helpers;
+- local Mosquitto configuration;
+- the managed host `.venv` and its package link.
 
-Generators must preserve user-owned state and deterministically replace only
-their outputs.
+Generated files are replaceable projections of the live configuration and
+package code. They are not independent configuration sources.
 
-## Configuration flow
+## Command surfaces
+
+LabPulse has one public operator CLI and four package-level process entry
+points.
+
+### Operator CLI
+
+`src/labpulse/control.py` owns the `labpulse` command:
 
 ```text
-config.yaml → common.config.load_config()
-  │              │
-  │              ├── source-aware ConfigDocument
-  │              ├── common schema validation
-  │              └── typed selected-driver options
+labpulse setup
+labpulse config
+labpulse up | down | restart
+labpulse ps | logs
+labpulse backup | restore
+labpulse doctor
+labpulse open | firmware | version | help
+```
+
+It resolves the live directory, selects the Docker command, delegates setup,
+controls Compose, coordinates backup and restore, and exposes diagnostics.
+Operator documentation should use this interface.
+
+`src/labpulse/installer.py` locates package data and launches
+`deployment/setup_container_fs.sh`. The shell script owns Linux filesystem
+scaffolding; it does not own configuration schema or generated Compose logic.
+
+### Package process entry points
+
+Each package with a standalone process follows the same boundary:
+
+```text
+package/__main__.py → package/cli.py → domain modules
+```
+
+| Command | CLI responsibility | Domain owner |
+|---|---|---|
+| `python -m labpulse.hardware` | Compose one hardware worker | `src/labpulse/hardware/` |
+| `python -m labpulse.sms` | Load config and compose the SMS worker | subscriber, sender, subscriptions |
+| `python -m labpulse.homeassistant` | Generate Home Assistant files | `src/labpulse/homeassistant/` |
+| `python -m labpulse.deployment` | Generate deployment files | `src/labpulse/deployment/` |
+
+`cli.py` modules own argument parsing and process composition. Importable
+domain modules do not inspect `sys.argv` or exit the interpreter.
+
+## Configuration model and flow
+
+`src/labpulse/common/config.py` is the only production LabPulse YAML loader.
+It returns a `ConfigDocument` containing:
+
+- the resolved source path;
+- a fully validated `LabPulseConfig`;
+- driver options already converted to the selected driver's Pydantic model.
+
+```text
+config.yaml
+  │
+  ▼
+common.config.load_config()
   │
   ├── deployment generation
-  │     └── driver container requirements
-  │
   ├── Home Assistant generation
-  │     └── canonical measurement/render model
-  │
-  ├── hardware services
-  │     └── driver selection and measurement allow-list
-  │
-  └── SMS service
-        └── recipients and delivery mode
+  ├── one hardware process per service
+  ├── SMS worker
+  └── diagnostics
 ```
 
-`src/labpulse/common/config.py` is the only production reader for LabPulse
-configuration. It returns a `ConfigDocument` containing the resolved source
-path and fully validated model. Drivers own the schema beneath
-`driver.options`; the loader selects and applies that schema once, so consumers
-receive typed options and do not reinterpret raw dictionaries.
+Each independent process loads once at startup. Consumers receive typed data
+and do not parse YAML or revalidate driver dictionaries. File, YAML, schema,
+driver, option, and service-selection failures use the shared `ConfigError`
+model with source and field locations.
 
-Every independent process still loads and validates once at startup. Within a
-process, the same document is passed to Compose, Home Assistant, hardware, SMS,
-or diagnostic consumers. File, YAML, schema, driver, and option failures use
-the same structured configuration error model.
+Cross-component values are centralized:
 
-`src/labpulse/deployment/compose.py` is the importable Compose renderer.
-`generate_compose.sh` is only a launcher. Setup and guarded editing use the
-unified deployment entry point, which loads once, builds Compose and Home
-Assistant outputs in staging, and only then replaces managed live files.
+- stable IDs: `common/identity.py`;
+- MQTT topics and SMS request schema: `common/mqtt_contracts.py`;
+- message copy: `common/sms_templates.yaml` through `sms_templates.py`;
+- fake-runtime derivation: `common/fake_config.py`.
 
-Fake setup derives `config.fake.yaml` from the live source config and mounts it
-as `/app/config.yaml`. The real source remains unchanged.
+## Deployment generation
 
-## Hardware service flow
+`src/labpulse/deployment/compose.py` renders deterministic Compose text from a
+validated document and driver resource declarations.
+
+`src/labpulse/deployment/generate.py` owns installation of generated output:
 
 ```text
-python -m labpulse.hardware --service NAME
-  → load and validate config
-  → select service
-  → discover DriverDefinition
-  → construct driver from already-typed options and MQTT publisher
-  → HardwareRunner.connect/read/retry
-  → publish discovery, readings, and service status
+load one ConfigDocument
+  ├── render Compose in memory
+  └── render Home Assistant into a staging directory
+          │
+          ▼
+replace managed live files only after every render succeeds
 ```
 
-Ownership:
+This prevents a valid Compose file from being installed alongside invalid or
+partially rendered Home Assistant files. Setup and `labpulse config` use the
+unified path with `--ha-config-dir`.
+
+The shell files `generate_compose.sh` and
+`generate_homeassistant_config.sh` are live-directory wrappers around Python
+entry points. They are operational conveniences, not generation logic.
+
+### Fake-USB mode
+
+The source of truth remains `config.yaml`. Fake mode derives
+`config.fake.yaml` by replacing real transports with supported pseudo-serial
+drivers while preserving service names, measurement names, and Home Assistant
+identity.
+
+Compose mounts the derived file as `/app/config.yaml`. `labpulse config`
+detects that runtime mode, regenerates the derived file, validates it, and
+keeps the deployment simulated.
+
+## Hardware process
+
+The container command is equivalent to:
+
+```text
+python -m labpulse.hardware --config /app/config.yaml --service NAME
+```
+
+The flow is:
+
+```text
+hardware/cli.py
+  → load ConfigDocument
+  → select ServiceConfig
+  → registry.get_driver_spec(driver.type)
+  → construct driver from typed options
+  → construct HomeAssistantMqttPublisher
+  → HardwareRunner.run_forever()
+```
+
+Ownership is strict:
 
 | Concern | Owner |
 |---|---|
-| Open hardware and convert raw values | Driver |
+| Open hardware and normalize raw values | Driver |
 | Classify expected hardware failures | Driver |
-| Retry, reconnect, polling, and freshness | Hardware runner |
-| Service status transitions | Hardware runner |
-| MQTT discovery and state | Publisher |
-| Driver devices, mounts, and privilege | Driver definition |
-| Thresholds and alarm decisions | Home Assistant |
+| Connect, retry, poll, freshness, and cleanup | Runner |
+| Service-health transitions | Runner |
+| MQTT discovery, state, availability, and status | Publisher |
+| Devices, mounts, and privileged requirements | Driver definition |
+| Thresholds, alarm transitions, and notifications | Home Assistant |
 
-Drivers never publish MQTT or implement retry sleeps. The runner never imports
-vendor hardware libraries or understands device protocols.
+Drivers do not publish MQTT or manage retry sleeps. The runner does not import
+vendor hardware libraries or understand device protocols.
 
 ## Driver contract
 
-Every driver implements:
+Every driver extends `BaseSensorDriver` and implements:
 
 ```text
 connect() -> None
@@ -173,19 +260,17 @@ read() -> ReadingBatch | None
 close() -> None
 ```
 
-`ReadingBatch.measurements` maps stable configured names to numeric values.
-`None` means no complete sample is currently ready.
+`ReadingBatch.measurements` maps configured measurement names to finite numeric
+values. `None` means no complete sample is ready. `ComponentIssue` can accompany
+valid measurements when one part of a multi-function device is degraded.
 
 Expected failure classes are:
 
 - `DriverUnavailable`: connection or initialization failed;
 - `ConnectionLost`: an established handle must be recreated;
-- `TransientReadError`: one sample failed but the connection remains usable.
+- `TransientReadError`: one read failed but the connection remains usable.
 
-`ComponentIssue` accompanies valid readings when only one part of a device is
-degraded, such as an X1200 GPIO fault while battery telemetry remains readable.
-
-The runner owns states:
+The runner publishes these service states:
 
 ```text
 disconnected
@@ -194,117 +279,110 @@ online
 error
 ```
 
-If valid readings remain absent beyond
-`maximum_measurement_age_seconds`, the runner publishes `error`, closes the
-driver, and reinitializes it through the bounded reconnect path. Opening a
-hardware handle reports `reconnecting`; only a valid batch restores `online`.
-The batch is published before the healthy status transition so Home Assistant
-cannot classify a cached pre-restart value as recovered data.
+The MQTT Last Will publishes `offline` if the process loses its broker
+connection unexpectedly.
 
-Home Assistant also classifies total expiry of every measurement belonging to
-one service as a whole-service fault. This is the liveness fallback for a
-hardware call that blocks the runner before it can publish `error`. Partial
-telemetry loss remains an individual sensor fault.
+When no valid batch arrives before `maximum_measurement_age_seconds`, the
+runner publishes `error`, closes the driver, and returns to bounded reconnect.
+A valid batch is published before the service transitions to `online`, so
+Home Assistant cannot interpret cached data as a recovery.
 
-The MQTT publisher remembers the runner's current service status. Every broker
-connection or reconnection republishes retained discovery and that status. This
-prevents a broker restart from leaving a retained Last Will state of `offline`
-while the same worker has already resumed measurement publication.
+## Driver discovery and container resources
 
-## Driver discovery and deployment
-
-Each public module under `src/labpulse/hardware/drivers/` exports one:
+Each public module under `src/labpulse/hardware/drivers/` exports exactly one:
 
 ```python
 DRIVER = DriverDefinition(...)
 ```
 
-The registry imports and validates modules automatically. `driver_template.py`
-is deliberately excluded. Helper modules inside that directory must begin with
-an underscore or they will be treated as drivers.
+The registry imports public modules automatically. `driver_template.py` is
+excluded. Supporting modules in that directory must begin with `_`.
 
-A definition contains:
+A `DriverDefinition` contains:
 
 - stable driver ID;
-- Pydantic options model;
-- driver builder;
-- declarative resource resolver;
+- strict options model;
+- builder;
+- resource resolver;
 - default read interval.
 
-Compose generation asks the selected definition for `ContainerRequirements`
-containing devices, mounts, and privileged status. Drivers cannot emit arbitrary
-Compose YAML.
+The resource resolver returns `ContainerRequirements` containing devices,
+mounts, and a privileged flag. Drivers cannot return arbitrary Compose YAML.
 
 ## MQTT boundary
 
-Measurement state:
+Hardware publication uses:
 
 ```text
-home/sensor/<service>/<measurement>/state
+Measurement state:  home/sensor/<service>/<measurement>/state
+Service status:     home/sensor/<service>/status
+Sensor discovery:   homeassistant/sensor/<service>_<measurement>/config
+Status discovery:   homeassistant/sensor/<service>_status/config
 ```
 
-Service status:
+Discovery and service status are retained. Numeric measurement state is not.
+Home Assistant discovery contains `expire_after`, so freshness depends on
+continued valid publication rather than whether a numeric value changes.
 
-```text
-home/sensor/<service>/status
-```
-
-Home Assistant discovery uses:
-
-```text
-homeassistant/sensor/<service>_<measurement>/config
-homeassistant/sensor/<service>_status/config
-```
-
-Discovery and service status are retained. Numeric measurement state is not
-retained. Measurements expire when valid publication stops, not when their
-numeric value remains unchanged.
-
-Hardware publishers ignore reading names not declared in the service config.
+The publisher accepts only names declared in the selected service's
+`measurements` list. Unexpected driver keys are ignored.
 
 ## Stable identity
 
-Service keys and measurement names form the cross-component identity used by:
+Service keys and measurement names define identity across:
 
 - MQTT topics;
 - Home Assistant unique IDs and entity IDs;
 - alarm helpers and automations;
 - dashboard references;
-- notification identities.
+- notification request IDs.
 
-Labels, setup projection, and subcategories are presentation metadata. Renaming
-them does not create new sensor identities.
+Labels, subcategories, icons, units, and setup projection are presentation
+metadata. A measurement may appear in several setup views while remaining one
+MQTT entity and one alarm state.
 
-Logical setups are separate from physical services. A measurement can appear
-in several setup views while retaining one MQTT entity and alarm state.
+## Home Assistant generation and ownership
 
-## Home Assistant ownership
+The standalone entry point is:
 
-The Home Assistant generator receives the already-validated `ConfigDocument`,
-builds one small context of enabled services, setup membership and bulk-alarm
-groups, then renders final-shaped Jinja YAML. There is no separate Home
-Assistant model or card-builder hierarchy. The generator writes:
+```text
+python -m labpulse.homeassistant CONFIG_PATH HA_CONFIG_DIR
+```
 
-- core configuration and dashboard registration;
-- alarm helpers and transition automations;
-- native YAML dashboard views.
+Its modules have separate roles:
+
+| Module | Responsibility |
+|---|---|
+| `homeassistant/cli.py` | Arguments, config load, user-facing config errors |
+| `homeassistant/generator.py` | Core configuration/dashboard rendering, validation, atomic file replacement |
+| `homeassistant/alarm.py` | Typed render model, threshold metadata, alarm package rendering |
+| `homeassistant/templates/` | Final-shaped YAML behavior and layout |
+
+LabPulse Jinja uses `[% ... %]` and `[[ ... ]]`, leaving Home Assistant's
+`{% ... %}` and `{{ ... }}` expressions intact in generated YAML.
 
 Home Assistant owns:
 
-- threshold modes and values;
-- observation percentage and duration;
+- threshold mode and values;
+- danger observation percentage and window;
 - recovery duration and deadband;
-- Normal, Danger, and Sensor Fault state;
-- global, setup, measurement, and power delivery mutes;
+- `Normal`, `Danger`, and `Sensor Fault` states;
+- whole-service fault and recovery confirmation;
+- direct power loss, restoration, and power-sensor faults;
+- global, setup, measurement, and power mutes;
 - Test mode;
-- confirmed service fault/recovery;
-- confirmed power outage/recovery;
-- notification and SMS request creation.
+- persistent notification and SMS request creation.
 
-Python publishes facts and health. It does not decide whether a measurement is
-dangerous.
+Python publishes measurements and health facts. It does not decide whether a
+measurement is dangerous.
 
-## SMS boundary
+## SMS process
+
+The SMS container command is equivalent to:
+
+```text
+python -m labpulse.sms --config /app/config.yaml
+```
 
 Home Assistant publishes strict JSON requests to:
 
@@ -312,33 +390,69 @@ Home Assistant publishes strict JSON requests to:
 labpulse/sms/send
 ```
 
-The independent SMS worker validates, deduplicates, rate-limits, routes,
-queues, retries, sends or logs, and publishes delivery results. This keeps
-modem access outside Home Assistant and hardware services.
+The worker then:
 
-## Package boundaries
+```text
+subscriber
+  → validate SmsRequest
+  → reject duplicate/recent requests
+  → select test or normal recipients
+  → apply subscription choices and cooldown
+  → queue sequential delivery
+  → send through mmcli or log a dry run
+  → publish status and per-request result
+```
+
+`subscriber.py` owns MQTT intake and request caching. `sender.py` owns message
+formatting, recipient routing, queueing, retries, and ModemManager calls.
+`subscriptions.py` owns inbound `SUBSCRIBE` and `UNSUBSCRIBE` processing.
+
+## Backup, restore, and diagnostics
+
+`backup.py` owns the checksummed archive format and safe extraction. Backups
+capture user-owned runtime state, not generated files as independent sources.
+
+`control.py` coordinates quiescing services, creating archives, scaffolding a
+missing live installation, restoring state, regenerating output, starting the
+stack, and attempting rollback if recovery fails.
+
+`doctor.py` is read-only. It checks filesystem state, source/runtime config,
+runtime mode, host clock, watchdog, driver resource paths, Docker and Compose,
+defined/running services, MQTT, and Home Assistant reachability.
+
+## Source tree ownership
 
 ```text
 src/labpulse/
-  common/          config, identity, MQTT contracts, shared logging
-  deployment/      Compose rendering and atomic deployment generation
-  hardware/        driver API, registry, runner, parsing, MQTT publishing
-  homeassistant/   one generator, derived alarm context, final YAML templates
-  sms/             request subscription, routing, modem delivery
-  control.py       operator CLI
-  doctor.py        read-only deployment diagnostics
-  installer.py     packaged setup launcher
+  control.py         public operator CLI and workflow orchestration
+  installer.py       package-data lookup and setup launcher
+  backup.py          archive creation, validation, extraction, restore
+  doctor.py          read-only installation/runtime diagnostics
+  common/            configuration, IDs, MQTT contracts, shared logging/copy
+  deployment/        Compose renderer and atomic unified generation
+  hardware/          CLI, driver API/registry, runner, parser, MQTT publisher
+  homeassistant/     CLI, render context, generators, final YAML templates
+  sms/               CLI, MQTT subscriber, delivery, subscriptions
+
+deployment/          Linux setup and guarded-edit workflow assets
+testing/             executable hardware-free contract/integration tests
+firmware/            Arduino library and device examples
+hardware/            PCB and enclosure assets
+docs/                current operator and contributor documentation
 ```
 
-Cross-component identity, topics, and raw configuration must not be redefined
-inside service packages.
+New behavior belongs in the package that owns the decision. `common` is only
+for contracts genuinely shared by multiple packages.
 
 ## Security boundary
 
-The current deployment assumes a trusted lab network. Mosquitto allows
-anonymous access inside the deployment and binds its host port only to
-`127.0.0.1`. Home Assistant is the user-facing network service.
+The generated deployment assumes a trusted local network. Mosquitto allows
+anonymous access but binds its host port to `127.0.0.1`. Home Assistant is the
+user-facing network service.
 
-Some drivers require privileged or device access. Driver code and container
-images must therefore be trusted. Do not expose Mosquitto outside the host
-without first adding authentication, authorization, and transport security.
+Real SMS mode receives `/dev` and D-Bus access. DHT11 currently requires a
+privileged hardware container. Other drivers declare narrower device access
+where possible. Driver code and runtime images must therefore be trusted.
+
+Do not expose Mosquitto outside the host without authentication,
+authorization, and transport security.

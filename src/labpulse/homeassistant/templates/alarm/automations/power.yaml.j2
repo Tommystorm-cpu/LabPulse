@@ -1,3 +1,5 @@
+{# Voltage, battery level, and mains presence describe one power event. Treating
+   them as three separate alarms would produce confusing messages. #}
 [% for service in model.services if service.power is not none %]
 [% set power = service.power %]
 [% include "automations/power_state.yaml.j2" %]

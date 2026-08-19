@@ -29,8 +29,8 @@ Read:
 - Keep optional hardware libraries lazy so unrelated drivers and host-side
   generation do not require them.
 - Make important behavior testable without Raspberry Pi hardware.
-- Do not add compatibility layers for prototype or `legacy/` behavior unless a
-  real released version requires migration.
+- Add compatibility or migration logic only for a concrete published-release
+  requirement.
 - Do not commit phone numbers, credentials, Home Assistant state, logs, or
   locally generated deployment files.
 
@@ -42,7 +42,7 @@ Read:
 3. Make the smallest coherent change.
 4. Add or update automated tests.
 5. Update the authoritative documentation for changed behavior.
-6. Run the complete hardware-free test suite.
+6. Run the complete hardware-free suite with `python -m pytest`.
 7. Describe any real-Pi checks that are still required.
 
 By submitting a contribution, you agree that it may be distributed under the

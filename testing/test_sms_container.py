@@ -7,10 +7,8 @@ import sys
 
 from pydantic import ValidationError
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import MqttConfig, SmsConfig
 from labpulse.common.mqtt_contracts import (
@@ -760,52 +758,3 @@ def test_shared_sms_template_catalogue() -> None:
         "triggered manually from the LabPulse dashboard",
     ):
         assert_contains(phone_book["message"], expected, "phone book notification")
-
-
-TESTS = [
-    ("setup and Compose contract", test_setup_and_compose_contract),
-    ("SMS entry accepts explicit argv", test_sms_entry_accepts_explicit_argv),
-    ("SMS config validates recipients", test_sms_config_validates_recipients),
-    ("test mode routes only to test recipients", test_test_mode_routes_only_to_test_recipients),
-    ("unsubscribed numbers filtered in both modes", test_unsubscribed_numbers_are_filtered_in_both_modes),
-    ("subscription registry persists", test_subscription_registry_persists_and_rejects_outsiders),
-    ("inbound commands are allow-listed", test_inbound_subscription_commands_are_allow_listed),
-    ("mmcli received SMS parsing", test_mmcli_received_sms_parsing),
-    ("test requests do not rate limit live alerts", test_test_requests_do_not_rate_limit_live_alerts),
-    ("subscriber uses persistent QoS 1 session", test_subscriber_uses_persistent_qos_one_session),
-    ("payload parser is strict", test_payload_parser_is_strict),
-    ("subscriber deduplicates and rate limits", test_subscriber_deduplicates_and_rate_limits),
-    ("recent request cache persists", test_recent_request_cache_persists),
-    ("delivery results are published", test_delivery_results_are_published),
-    ("subscriber closes gracefully", test_subscriber_closes_gracefully),
-    ("queue fans out and stops cleanly", test_queue_fans_out_and_stops_cleanly),
-    ("dry run reports logged not sent", test_dry_run_reports_logged_not_sent),
-    ("mmcli sends and deletes created object", test_mmcli_sends_and_deletes_created_object),
-    ("retry does not sleep after final failure", test_retry_does_not_sleep_after_final_failure),
-    ("message formatting and privacy helpers", test_message_formatting_and_privacy_helpers),
-    ("shared SMS template catalogue", test_shared_sms_template_catalogue),
-]
-
-
-def main() -> None:
-    """Run SMS container and service tests."""
-
-    print("Running SMS container tests")
-    print(f"Refactor dir: {REFACTOR_DIR}\n")
-    passed = 0
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}\n  error: {type(error).__name__}: {error}\n")
-            continue
-        print(f"[PASS] {name}\n")
-        passed += 1
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

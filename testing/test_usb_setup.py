@@ -7,8 +7,6 @@ from uuid import uuid4
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
-sys.path.insert(0, str(REFACTOR_DIR))
 TEST_TMP = REFACTOR_DIR / "testing" / "tmp"
 TEST_TMP.mkdir(parents=True, exist_ok=True)
 
@@ -167,34 +165,3 @@ def test_cli_modes() -> None:
     real = parser.parse_args(["--config", "config.yaml", "--yes"])
     if real.fake_usb or not real.yes:
         raise AssertionError(f"real apply options were not parsed: {real!r}")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("loads enabled serial services", test_loads_only_enabled_serial_services),
-    ("identifies unplug/replug devices", test_identifies_unplugged_then_replugged_devices),
-    ("rejects ambiguous unplug", test_rejects_ambiguous_unplug),
-    ("surgical config update and backup", test_surgical_config_update_and_backup),
-    ("CLI modes", test_cli_modes),
-]
-
-
-def main() -> None:
-    """Run USB setup tests without requiring real hardware or pseudo-terminals."""
-
-    print("Running USB setup helper tests")
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-            continue
-        print(f"[PASS] {name}")
-        passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

@@ -2,6 +2,8 @@
 # Square-bracket directives run during LabPulse generation.
 # {% ... %} and {{ ... }} are preserved for Home Assistant.
 
+{# Home Assistant receives one package, but the source is split into smaller
+   files so helpers, sensors, scripts, and automations are easier to find. #}
 [% include "helpers.yaml.j2" %]
 [% include "derived_entities.yaml.j2" %]
 [% include "scripts.yaml.j2" %]

@@ -10,7 +10,6 @@ import yaml
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY / "src"))
 
 from labpulse.common.config import (
     ConfigError,
@@ -113,31 +112,3 @@ def test_file_failures_use_the_same_error_model() -> None:
             raise AssertionError("malformed YAML was accepted")
     finally:
         shutil.rmtree(root)
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("valid document and typed options", test_valid_document_and_typed_driver_options),
-    ("structured root and schema errors", test_root_and_schema_errors_are_structured),
-    ("structured file errors", test_file_failures_use_the_same_error_model),
-]
-
-
-def main() -> None:
-    """Run the configuration pipeline checks as a lightweight script."""
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-            continue
-        print(f"[PASS] {name}")
-        passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

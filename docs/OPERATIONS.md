@@ -352,6 +352,25 @@ Normal operators should prefer `labpulse config`, which validates, generates,
 checks, and applies changes as one guarded workflow. Direct generator use is
 primarily for development or recovery.
 
+The wrappers delegate to package entry points. Their developer-facing
+interfaces are:
+
+```bash
+python -m labpulse.deployment \
+  --config CONFIG_PATH \
+  --compose-output COMPOSE_PATH \
+  --project-dir PROJECT_DIR \
+  --ha-config-dir HA_CONFIG_DIR
+
+python -m labpulse.homeassistant CONFIG_PATH HA_CONFIG_DIR
+```
+
+The deployment entry point is the complete generation transaction. It loads
+one validated configuration, renders Compose, stages Home Assistant output,
+and installs managed files only when the full render succeeds. The standalone
+Home Assistant entry point is useful for isolated rendering but does not
+generate Compose or apply/restart the live stack.
+
 Generated files include:
 
 ```text
@@ -372,7 +391,7 @@ labpulse firmware
 The current command prints repository and ZIP links. It does not download or
 flash firmware. See [Firmware](../firmware/README.md).
 
-## Standalone aliases
+## Console aliases
 
 Pipx also installs:
 
@@ -384,8 +403,9 @@ labpulse-ps
 labpulse-logs
 labpulse-config
 labpulse-open
+labpulse-setup
 ```
 
-The unified `labpulse` command is the documented interface. The older
-`labpulse-setup` alias remains temporarily available, but new instructions use
-`labpulse setup`.
+These delegate to the corresponding unified command. Operator procedures use
+`labpulse COMMAND` so global options such as `--live-dir` remain explicit and
+all command help is available through one interface.

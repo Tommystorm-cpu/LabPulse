@@ -8,7 +8,6 @@ import yaml
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig
 from labpulse.common.identity import entity_id, stable_id
@@ -141,8 +140,8 @@ def test_membership_does_not_change_alarm_identity() -> None:
     ]
     first = build_template_context(LabPulseConfig.model_validate(first_data))
     second = build_template_context(LabPulseConfig.model_validate(second_data))
-    first_measurement = first["services"][0]["measurements"][1]
-    second_measurement = second["services"][0]["measurements"][1]
+    first_measurement = first.services[0]["measurements"][1]
+    second_measurement = second.services[0]["measurements"][1]
     first_identity = (
         stable_id("shared_hub", first_measurement["name"]),
         entity_id("sensor", "shared_hub", first_measurement["name"]),
@@ -198,7 +197,7 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
 
     measurements = {
         measurement["label"]: measurement
-        for service in model["services"]
+        for service in model.services
         for measurement in service["measurements"]
     }
     shared_gate = measurements["Shared Measurement"]["setup_notifications_unmuted_template"]
@@ -257,33 +256,3 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
     ]
     if any(helper in yaml.safe_dump(service_health) for helper in setup_helpers):
         raise AssertionError("setup mute leaked into physical service-health alarms")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("context without duplicate events", test_context_for_every_scope_without_duplicate_events),
-    ("membership preserves identity", test_membership_does_not_change_alarm_identity),
-    ("service faults stay hub-level", test_service_faults_remain_hub_level),
-    ("independent setup mute gates", test_setup_mutes_are_independent_delivery_gates),
-]
-
-
-def main() -> None:
-    """Run focused notification-context tests."""
-
-    print("Running setup notification-context tests")
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

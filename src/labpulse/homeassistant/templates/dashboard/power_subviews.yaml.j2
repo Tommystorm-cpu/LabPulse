@@ -1,3 +1,5 @@
+{# Give each power monitor its own settings page. Its controls apply to mains,
+   voltage, and battery readings together. #}
 [% for service in model.services if service.power is not none %]
 - title: Power Monitoring
   path: alarm-power-[[ service.service_id ]]

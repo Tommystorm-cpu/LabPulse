@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.common.config import LabPulseConfig, SetupConfig
 from labpulse.common.identity import stable_id
@@ -210,7 +209,7 @@ def test_canonical_catalog_and_projections() -> None:
     """Project the same measurement dictionaries by setup and physical service."""
 
     context = build_template_context(LabPulseConfig.model_validate(config_data()))
-    measurements = context["measurements"]
+    measurements = context.measurements
     if [item["service_name"] for item in measurements] != [
         "pump_room",
         "pump_room",
@@ -218,7 +217,7 @@ def test_canonical_catalog_and_projections() -> None:
         "room_environment",
     ]:
         raise AssertionError("catalog did not follow YAML service order")
-    if any(service["name"] == "disabled" for service in context["services"]):
+    if any(service["name"] == "disabled" for service in context.services):
         raise AssertionError("disabled service entered the measurement catalog")
 
     by_key = {(item["service_name"], item["name"]): item for item in measurements}
@@ -233,13 +232,13 @@ def test_canonical_catalog_and_projections() -> None:
         raise AssertionError("selected setups did not follow configured setup order")
     if global_measurement["setup_ids"] != ("cryostat",):
         raise AssertionError("single setup membership is incorrect")
-    if context["measurements_by_setup"]["cryostat"] != [cryostat_only, shared, global_measurement]:
+    if context.measurements_by_setup["cryostat"] != [cryostat_only, shared, global_measurement]:
         raise AssertionError("cryostat projection is incorrect")
-    if context["measurements_by_setup"]["turbo_pump"] != [turbo, shared]:
+    if context.measurements_by_setup["turbo_pump"] != [turbo, shared]:
         raise AssertionError("turbo projection is incorrect")
-    if context["services"][0]["measurements"] != [cryostat_only, turbo, shared]:
+    if context.services[0]["measurements"] != [cryostat_only, turbo, shared]:
         raise AssertionError("physical service projection is incorrect")
-    if context["measurements_by_setup"]["turbo_pump"][0] is not turbo:
+    if context.measurements_by_setup["turbo_pump"][0] is not turbo:
         raise AssertionError("setup projection copied a canonical measurement")
     if stable_id("pump_room", turbo["name"]) != "labpulse_pump_room_turbo":
         raise AssertionError("setup membership changed physical stable identity")
@@ -250,7 +249,7 @@ def test_bulk_deadband_compatibility_groups() -> None:
 
     config = LabPulseConfig.model_validate(config_data())
     model = build_template_context(config)
-    all_target = model["bulk_alarm_targets"][0]
+    all_target = model.bulk_alarm_targets[0]
     groups = {
         (group["device_class"], group["unit"]): group
         for group in all_target["deadband_groups"]
@@ -276,34 +275,3 @@ def test_bulk_deadband_compatibility_groups() -> None:
         raise AssertionError("missing device class was not isolated")
     if len(all_target["measurement_keys"]) != len(set(all_target["measurement_keys"])):
         raise AssertionError("all-measurements target duplicated a shared measurement")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("scope normalization and validation", test_scope_normalization_and_validation),
-    ("setup metadata validation", test_setup_metadata_validation),
-    ("dedicated power membership", test_dedicated_power_omits_setup_membership),
-    ("canonical catalog and projections", test_canonical_catalog_and_projections),
-    ("bulk deadband compatibility", test_bulk_deadband_compatibility_groups),
-]
-
-
-def main() -> None:
-    """Run all setup grouping tests."""
-
-    print("Running setup grouping tests")
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-    print(f"Summary: {passed}/{len(TESTS)} passed")
-    if passed != len(TESTS):
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

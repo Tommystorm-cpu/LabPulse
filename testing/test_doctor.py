@@ -3,15 +3,12 @@
 from contextlib import contextmanager
 from pathlib import Path
 import shutil
-import socket
 import subprocess
-import sys
 from typing import Iterator
 from uuid import uuid4
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY / "src"))
 
 from labpulse import __version__
 from labpulse.doctor import CheckStatus, diagnose
@@ -112,8 +109,8 @@ def healthy_connector(
     return Connection()
 
 
-def main() -> None:
-    """Verify success, failure, runtime-config detection, and read-only behavior."""
+def test_healthy_diagnostics_are_read_only_and_report_runtime_mode() -> None:
+    """Report a healthy fake installation without changing its files."""
 
     with live_install() as live_dir:
         before = {
@@ -167,6 +164,11 @@ def main() -> None:
         if after != before:
             raise AssertionError("doctor modified the live installation")
 
+
+def test_service_and_endpoint_failures_include_corrective_actions() -> None:
+    """Explain missing outputs, stopped services, and refused endpoints."""
+
+    with live_install() as live_dir:
         (live_dir / "homeassistant" / "config" / "labpulse-dashboard.yaml").unlink()
 
         def stopped_runner(
@@ -220,6 +222,11 @@ def main() -> None:
             if action not in failure_details.get(name, ""):
                 raise AssertionError(f"{name} lacks corrective action {action!r}")
 
+
+def test_docker_permission_failure_is_actionable() -> None:
+    """Explain how to resolve an inaccessible Docker daemon."""
+
+    with live_install() as live_dir:
         def denied_docker_runner(
             command: list[str],
             **kwargs: object,
@@ -251,6 +258,10 @@ def main() -> None:
         ):
             raise AssertionError("doctor did not explain Docker permission failure")
 
+
+def test_missing_installation_stops_after_the_installation_check() -> None:
+    """Return one focused failure when the live directory does not exist."""
+
     missing = REPOSITORY / "testing" / "definitely-not-a-doctor-install"
     missing_report = diagnose(
         missing,
@@ -260,13 +271,3 @@ def main() -> None:
     )
     if missing_report.exit_code != 1 or len(missing_report.checks) != 1:
         raise AssertionError(missing_report.render())
-
-    print("[PASS] healthy installation diagnostics")
-    print("[PASS] fake runtime configuration detection")
-    print("[PASS] read-only diagnostic behavior")
-    print("[PASS] actionable service and endpoint failures")
-    print("[PASS] missing installation handling")
-
-
-if __name__ == "__main__":
-    main()

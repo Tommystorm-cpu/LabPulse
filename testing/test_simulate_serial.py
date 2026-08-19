@@ -7,8 +7,6 @@ from unittest.mock import patch
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
-sys.path.insert(0, str(REFACTOR_DIR))
 
 from labpulse.common.config import load_config
 from labpulse.hardware.serial_parser import SerialParser
@@ -223,43 +221,3 @@ def test_cli_and_transport_contract() -> None:
             raise AssertionError(f"missing simulator contract: {fragment}")
     if "scenarios.txt" in source or "socat" in source or "_writer" in source:
         raise AssertionError("old file/socat control mechanism remains")
-
-
-TESTS: list[tuple[str, Callable[[], None]]] = [
-    ("generated payloads match parsers", test_generated_payloads_match_parsers),
-    ("scenarios change generated values", test_scenarios_change_generated_values),
-    ("UPS power scenarios and stale suppression", test_ups_power_scenarios_and_stale_suppression),
-    ("control commands keep state in memory", test_control_commands_keep_state_in_memory),
-    ("device disconnect control", test_device_disconnect_control),
-    ("CLI and transport contract", test_cli_and_transport_contract),
-]
-
-
-def main() -> None:
-    """Run simulator tests without requiring Linux pseudo-terminals."""
-
-    print("Running pseudo-serial simulator tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed = 0
-    for name, test_func in TESTS:
-        try:
-            test_func()
-        except Exception as error:
-            print(f"[FAIL] {name}")
-            print(f"  error: {type(error).__name__}: {error}")
-            print()
-            continue
-        print(f"[PASS] {name}")
-        print()
-        passed += 1
-
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

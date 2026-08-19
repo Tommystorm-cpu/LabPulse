@@ -1,3 +1,5 @@
+{# Group editing requires the user to choose both a target and the fields to
+   change. Unticked settings are left alone. #}
 [% if model.bulk_alarm_targets %]
   - type: grid
     column_span: 2
@@ -7,6 +9,8 @@
       heading_style: title
       icon: mdi:tune-vertical
 [% for expanded in (false, true) %]
+{# Show either the Open or Close button in the same place, depending on whether
+   the editor is currently open. #}
     - type: conditional
       conditions:
       - entity: input_boolean.labpulse_bulk_alarm_editor_expanded
@@ -33,7 +37,9 @@
         type: vertical-stack
         cards:
         - type: markdown
-          content: Choose where the changes should go, then switch on only the settings you want to replace. Review the result before applying.
+          content: >-
+            Choose where the changes should go, then switch on only the settings
+            you want to replace. Review the result before applying.
           grid_options: {columns: full}
         - type: entities
           title: 1. Choose target
@@ -45,6 +51,8 @@
           - entity: sensor.labpulse_bulk_alarm_target_count
             name: Measurements affected
         - type: entities
+{# Each value is paired with an apply toggle. The script ignores unticked rows,
+   which makes partial group edits safe and reviewable. #}
           title: 2. Choose settings and values
           show_header_toggle: false
           grid_options: {columns: full}
@@ -52,9 +60,24 @@
           - type: section
             label: Only switched-on settings will be applied
 [% for apply_entity, value_entity, change_name, value_name in (
-  ('input_boolean.labpulse_bulk_apply_required_danger_percent', 'input_number.labpulse_bulk_required_danger_percent', 'Change required danger', 'New required danger'),
-  ('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'input_number.labpulse_bulk_observation_window_seconds', 'Change observation window', 'New observation window'),
-  ('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'input_number.labpulse_bulk_required_recovery_seconds', 'Change required recovery', 'New required recovery')
+  (
+    'input_boolean.labpulse_bulk_apply_required_danger_percent',
+    'input_number.labpulse_bulk_required_danger_percent',
+    'Change required danger',
+    'New required danger'
+  ),
+  (
+    'input_boolean.labpulse_bulk_apply_observation_window_seconds',
+    'input_number.labpulse_bulk_observation_window_seconds',
+    'Change observation window',
+    'New observation window'
+  ),
+  (
+    'input_boolean.labpulse_bulk_apply_required_recovery_seconds',
+    'input_number.labpulse_bulk_required_recovery_seconds',
+    'Change required recovery',
+    'New required recovery'
+  )
 ) %]
           - entity: [[ apply_entity ]]
             name: [[ change_name | yaml_scalar ]]
@@ -67,6 +90,8 @@
               name: [[ value_name | yaml_scalar ]]
 [% endfor %]
 [% for target in model.bulk_alarm_targets %]
+{# Only show deadband settings that make sense for the selected group. For
+   example, temperature and pressure cannot share one deadband value. #}
         - type: conditional
           conditions:
           - entity: input_select.labpulse_bulk_alarm_timing_target
@@ -80,28 +105,64 @@
               label: Deadbands available for this target
 [% for group in target.deadband_groups %]
             - entity: [[ group.apply_entity ]]
-              name: [[ ('Change ' ~ (group.label | lower) ~ ' deadband (' ~ (group.measurement_keys | length) ~ ' ' ~ ('measurement' if group.measurement_keys | length == 1 else 'measurements') ~ ')') | yaml_scalar ]]
+              name: [[
+                (
+                  'Change ' ~ (group.label | lower) ~ ' deadband ('
+                  ~ (group.measurement_keys | length) ~ ' '
+                  ~ (
+                    'measurement'
+                    if group.measurement_keys | length == 1
+                    else 'measurements'
+                  )
+                  ~ ')'
+                )
+                | yaml_scalar
+              ]]
             - type: conditional
               conditions:
               - entity: [[ group.apply_entity ]]
                 state: 'on'
               row:
                 entity: [[ group.value_entity ]]
-                name: [[ ('New ' ~ (group.label | lower) ~ ' deadband' ~ (' (' ~ group.unit ~ ')' if group.unit else '')) | yaml_scalar ]]
+                name: [[
+                  (
+                    'New ' ~ (group.label | lower) ~ ' deadband'
+                    ~ (' (' ~ group.unit ~ ')' if group.unit else '')
+                  )
+                  | yaml_scalar
+                ]]
 [% endfor %]
 [% endfor %]
+{# Summarize exactly what will change before the Apply button. #}
         - type: markdown
           content: |-
             ## 3. Review changes
             {% set target = states('input_select.labpulse_bulk_alarm_timing_target') %}
             **Target:** {{ target }} ({{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements)
 
-            {% if is_state('input_boolean.labpulse_bulk_apply_required_danger_percent', 'on') %}- Required danger: **{{ states('input_number.labpulse_bulk_required_danger_percent') }}%** → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements{% endif %}
-            {% if is_state('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'on') %}- Observation window: **{{ states('input_number.labpulse_bulk_observation_window_seconds') }} s** → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements{% endif %}
-            {% if is_state('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'on') %}- Required recovery: **{{ states('input_number.labpulse_bulk_required_recovery_seconds') }} s** → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements{% endif %}
+            {% if is_state('input_boolean.labpulse_bulk_apply_required_danger_percent', 'on') %}
+            - Required danger:
+              **{{ states('input_number.labpulse_bulk_required_danger_percent') }}%**
+              → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements
+            {% endif %}
+            {% if is_state('input_boolean.labpulse_bulk_apply_observation_window_seconds', 'on') %}
+            - Observation window:
+              **{{ states('input_number.labpulse_bulk_observation_window_seconds') }} s**
+              → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements
+            {% endif %}
+            {% if is_state('input_boolean.labpulse_bulk_apply_required_recovery_seconds', 'on') %}
+            - Required recovery:
+              **{{ states('input_number.labpulse_bulk_required_recovery_seconds') }} s**
+              → {{ states('sensor.labpulse_bulk_alarm_target_count') }} measurements
+            {% endif %}
 [%- for target in model.bulk_alarm_targets %]
 [%- for group in target.deadband_groups %]
-            {% if target == [[ target.option | pyrepr ]] and is_state('[[ group.apply_entity ]]', 'on') %}- [[ group.label ]] deadband: **{{ states('[[ group.value_entity ]]') }}[[ (' ' ~ group.unit) if group.unit else '' ]]** → [[ group.measurement_keys | length ]] measurements{% endif %}
+            {% if target == [[ target.option | pyrepr ]]
+                  and is_state('[[ group.apply_entity ]]', 'on') %}
+            - [[ group.label ]] deadband:
+              **{{ states('[[ group.value_entity ]]') }}[[ (' ' ~ group.unit) if group.unit else '' ]]**
+              → [[ group.measurement_keys | length ]] measurements
+            {% endif %}
 [%- endfor %]
 [%- endfor %]
             {% if is_state('binary_sensor.labpulse_bulk_alarm_changes_selected', 'off') %}

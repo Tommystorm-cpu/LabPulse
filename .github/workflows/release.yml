@@ -41,13 +41,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install LabPulse
-        run: python -m pip install --editable .
+        run: python -m pip install --editable ".[dev]"
 
       - name: Run hardware-free tests
-        run: |
-          for test in testing/test_*.py; do
-            python "$test"
-          done
+        run: python -m pytest
 
       - name: Build and check distributions
         run: |

@@ -1,16 +1,15 @@
 # Installation
 
-During pre-production testing, LabPulse installs its operator command from
-TestPyPI with pipx and runs matching versioned containers from GitHub Container
-Registry. It creates a self-contained live deployment under
-`~/labpulse-live`; a repository checkout is required only for development.
+LabPulse installs its operator command from TestPyPI with pipx and runs a
+matching versioned container image from GitHub Container Registry. It creates
+a self-contained live deployment under `~/labpulse-live`; a repository
+checkout is required only for development.
 
-## Current distribution status
+## Distribution
 
-The current published release is `0.1.1`. It is intentionally hosted on
-TestPyPI while the installation and release process is being qualified.
-LabPulse is not yet published on production PyPI, so plain
-`pipx install labpulse` is not the supported installation command yet.
+The current published release is `0.1.1`. Install it from TestPyPI with the
+production PyPI index available for dependencies. The required command is in
+[Install the command](#install-the-command).
 
 The matching public runtime image is:
 
@@ -149,7 +148,9 @@ Setup:
 
 Setup does not start the stack.
 
-Edit the live configuration with `labpulse config`. For instructions on how to properly set up your config file, see [configuration](CONFIGURATION.md).
+Edit the live configuration with `labpulse config`. The complete schema and
+built-in driver examples are in the
+[Configuration reference](CONFIGURATION.md).
 
 ```bash
 labpulse config
@@ -286,8 +287,8 @@ See [Development](DEVELOPMENT.md).
 
 ## Updating
 
-Until LabPulse moves to production PyPI, select the desired TestPyPI version
-explicitly. To install or replace the current release:
+Select the desired TestPyPI version explicitly. To install or replace the
+current release:
 
 ```bash
 pipx install --force \
@@ -302,16 +303,14 @@ labpulse doctor
 
 `--force` replaces the existing pipx environment with the requested version.
 `labpulse setup --backup` then refreshes package-managed deployment assets
-while preserving the live configuration and state. When production PyPI
-publishing is enabled, the installation and update commands can be simplified
-to ordinary `pipx install labpulse` and `pipx upgrade labpulse`.
+while preserving the live configuration and state.
 
 `--backup` creates timestamped copies of package-managed files before setup
 replaces them. The live `config.yaml` and existing Home Assistant configuration
 directory are preserved regardless.
 
-Review changes before updating a production Pi. A formally tested upgrade and
-rollback workflow remains roadmap work.
+Create a state backup and review the release notes before updating an installed
+Pi.
 
 ## Backup and blank-Pi reconstruction
 

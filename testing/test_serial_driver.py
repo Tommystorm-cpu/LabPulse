@@ -6,10 +6,8 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 
-sys.dont_write_bytecode = True
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REFACTOR_DIR / "src"))
 
 from labpulse.hardware.drivers import serial_pipe
 from labpulse.hardware.api import ConnectionLost, DriverUnavailable
@@ -166,40 +164,3 @@ def test_close_is_idempotent() -> None:
     driver.close()
     driver.close()
     assert_equal(port.closed, True, "closed")
-
-
-TESTS = [
-    ("connect and read batch", test_connect_and_read_batch),
-    ("connect failure classification", test_connect_failure_is_classified),
-    ("read requires connection", test_read_requires_connection),
-    ("blank and invalid lines", test_blank_and_invalid_lines_are_not_batches),
-    ("read failure classification", test_read_failure_is_classified_for_runner_cleanup),
-    ("idempotent close", test_close_is_idempotent),
-]
-
-
-def main() -> None:
-    """Run all serial-driver contract tests."""
-
-    print("Running serial driver tests")
-    print(f"Refactor dir: {REFACTOR_DIR}")
-    print()
-
-    passed = 0
-    for name, test in TESTS:
-        try:
-            test()
-        except Exception as error:
-            print(f"[FAIL] {name}: {type(error).__name__}: {error}")
-        else:
-            print(f"[PASS] {name}")
-            passed += 1
-
-    failed = len(TESTS) - passed
-    print(f"Summary: {passed}/{len(TESTS)} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

@@ -1,3 +1,5 @@
+{# A measurement can have a dangerous value or stop producing valid readings.
+   Generate alarms for both cases. #}
 [% for service, measurement in model.alarm_measurements %]
 [% include "automations/measurement_state.yaml.j2" %]
 [% include "automations/measurement_sensor_health.yaml.j2" %]
