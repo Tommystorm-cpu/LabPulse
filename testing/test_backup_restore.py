@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 from typing import Iterator
+from unittest.mock import patch
 from uuid import uuid4
 
 
@@ -48,6 +49,11 @@ def state_tree() -> Iterator[tuple[Path, Path]]:
     )
     (live / "homeassistant" / "config" / ".storage" / "core.config").write_text(
         '{"latitude": 1}\n',
+        encoding="utf-8",
+    )
+    (live / "homeassistant" / "config" / ".cloud").mkdir()
+    (live / "homeassistant" / "config" / ".cloud" / "production_auth.json").write_text(
+        '{"token": "private"}\n',
         encoding="utf-8",
     )
     (live / "homeassistant" / "config" / "home-assistant_v2.db").write_bytes(
@@ -88,6 +94,32 @@ class ComposeRunner:
         if command[-4:] == ["ps", "--status", "running", "--services"]:
             stdout = "homeassistant\nlabpulse-sms\nmosquitto\n"
         return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+
+class ContainerCopyRunner(ComposeRunner):
+    """Emulate Compose copying unreadable Home Assistant state as the host user."""
+
+    def __call__(
+        self,
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        """Create the expected local state when Compose cp is requested."""
+
+        if len(command) >= 3 and command[-3] == "cp":
+            self.commands.append(command)
+            destination = Path(command[-1])
+            (destination / ".cloud").mkdir(parents=True, exist_ok=True)
+            (destination / ".cloud" / "production_auth.json").write_text(
+                '{"token": "private"}\n',
+                encoding="utf-8",
+            )
+            (destination / "configuration.yaml").write_text(
+                "homeassistant:\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return super().__call__(command, **kwargs)
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -213,6 +245,36 @@ def test_refuses_overwrite_and_live_directory_output() -> None:
                 raise
         else:
             raise AssertionError("backup inside live state was accepted")
+
+
+def test_container_copy_fallback_for_unreadable_homeassistant_state() -> None:
+    """Use Compose cp when Home Assistant has created host-unreadable secrets."""
+
+    with state_tree() as (live, archive):
+        runner = ContainerCopyRunner()
+        original_copy2 = shutil.copy2
+
+        def permission_denied(source: Path, destination: Path) -> str:
+            """Simulate Home Assistant's root-owned private cloud token."""
+
+            if Path(source).name == "production_auth.json":
+                raise PermissionError(13, "Permission denied", str(source))
+            return str(original_copy2(source, destination))
+
+        with patch("labpulse.backup.shutil.copy2", side_effect=permission_denied):
+            create_backup(live, archive, ["docker"], quiesce=False, runner=runner)
+
+        manifest = inspect_backup(archive)
+        private_token = "payload/homeassistant/config/.cloud/production_auth.json"
+        if private_token not in manifest["files"]:
+            raise AssertionError(
+                "container-assisted backup omitted private Home Assistant state"
+            )
+        if not any(
+            command[-3:-1] == ["cp", "homeassistant:/config/."]
+            for command in runner.commands
+        ):
+            raise AssertionError("backup did not use Compose cp for unreadable state")
 
 
 def _write_member(

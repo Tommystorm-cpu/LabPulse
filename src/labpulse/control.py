@@ -190,7 +190,7 @@ def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
             docker_command(),
             force=force,
         )
-    except (BackupError, ValueError) as error:
+    except (BackupError, OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(f"Backup created: {result.archive_path}")

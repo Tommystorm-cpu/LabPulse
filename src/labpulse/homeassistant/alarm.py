@@ -399,8 +399,8 @@ def render_alarm(render_model: HomeAssistantRenderModel) -> str:
     for index, target in enumerate(render_model.bulk_alarm_targets):
         keyword = "if" if index == 0 else "elif"
         target_lines.append(
-            f"{{% {keyword} selected == {json.dumps(target["option"])} %}}"
-            f"{len(target["measurement_keys"])}"
+            f"{{% {keyword} selected == {json.dumps(target['option'])} %}}"
+            f"{len(target['measurement_keys'])}"
         )
     target_lines.extend(["{% else %}0", "{% endif %}"])
     rendered = environment.get_template("alarm_package.yaml.j2").render(

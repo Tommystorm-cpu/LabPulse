@@ -38,6 +38,9 @@ source configuration, complete Home Assistant configuration and private state,
 retained Mosquitto data, and SMS subscription/request state, then restarts
 exactly those services. The archive contains a manifest and SHA-256 checksum
 for every file. Existing output is never replaced unless `--force` is given.
+State files created with container-only permissions are copied through the
+stopped Home Assistant or Mosquitto container, so do not run the command with
+`sudo` merely because a bind-mounted state file is not readable on the host.
 
 The archive is created with owner-only permissions on Linux, but it is not
 encrypted. It contains Home Assistant credentials and tokens, alarm state,

@@ -30,6 +30,10 @@ SNAPSHOT_PATHS = (
     "logs/sms_processed_requests.json",
 )
 MANDATORY_PATHS = ("config.yaml", "homeassistant/config")
+CONTAINER_SNAPSHOT_PATHS = {
+    "homeassistant/config": ("homeassistant", "/config"),
+    "mosquitto/data": ("mosquitto", "/mosquitto/data"),
+}
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -215,6 +219,46 @@ def _copy_snapshot_path(source: Path, destination: Path) -> None:
             raise BackupError(f"Unsupported state path type: {child}")
 
 
+def _validate_snapshot_path(path: Path) -> None:
+    """Reject links and special files in a container-assisted snapshot copy."""
+
+    if path.is_symlink():
+        raise BackupError(f"Refusing to archive state symlink: {path}")
+    if path.is_file():
+        return
+    if not path.is_dir():
+        raise BackupError(f"Unsupported state path type: {path}")
+    for child in sorted(path.iterdir(), key=lambda item: item.name):
+        _validate_snapshot_path(child)
+
+
+def _copy_snapshot_from_container(
+    live_dir: Path,
+    relative: str,
+    destination: Path,
+    docker_prefix: Sequence[str],
+    runner: CommandRunner,
+) -> None:
+    """Copy container-owned bind-mount state through its stopped service."""
+
+    service, container_path = CONTAINER_SNAPSHOT_PATHS[relative]
+    shutil.rmtree(destination, ignore_errors=False)
+    destination.mkdir(parents=True)
+    try:
+        _compose(
+            live_dir,
+            docker_prefix,
+            ("cp", f"{service}:{container_path}/.", str(destination)),
+            runner,
+        )
+    except BackupError as error:
+        raise BackupError(
+            f"Cannot read {live_dir / relative} as the current user and "
+            f"could not copy it through the {service} container: {error}"
+        ) from error
+    _validate_snapshot_path(destination)
+
+
 def _runtime_mode(live_dir: Path) -> str:
     """Infer whether generated Compose currently mounts the fake runtime config."""
 
@@ -230,6 +274,7 @@ def _assemble_snapshot(
     live_dir: Path,
     staging_root: Path,
     docker_prefix: Sequence[str],
+    runner: CommandRunner,
 ) -> dict[str, Any]:
     """Copy selected state and write its checksum manifest."""
 
@@ -241,7 +286,19 @@ def _assemble_snapshot(
             if relative in MANDATORY_PATHS:
                 raise BackupError(f"Required backup state is missing: {source}")
             continue
-        _copy_snapshot_path(source, payload_root / relative)
+        destination = payload_root / relative
+        try:
+            _copy_snapshot_path(source, destination)
+        except PermissionError as error:
+            if relative not in CONTAINER_SNAPSHOT_PATHS:
+                raise BackupError(f"Cannot read backup state: {error.filename}") from error
+            _copy_snapshot_from_container(
+                live_dir,
+                relative,
+                destination,
+                docker_prefix,
+                runner,
+            )
         included.append(relative)
 
     checksums = {
@@ -313,7 +370,12 @@ def create_backup(
             archive_path.parent,
             "labpulse-backup-",
         ) as staging_root:
-            manifest = _assemble_snapshot(live_dir, staging_root, docker_prefix)
+            manifest = _assemble_snapshot(
+                live_dir,
+                staging_root,
+                docker_prefix,
+                runner,
+            )
             with tarfile.open(temporary_archive, "w:gz") as archive:
                 archive.add(staging_root / MANIFEST_NAME, arcname=MANIFEST_NAME)
                 archive.add(staging_root / PAYLOAD_DIRECTORY, arcname=PAYLOAD_DIRECTORY)
