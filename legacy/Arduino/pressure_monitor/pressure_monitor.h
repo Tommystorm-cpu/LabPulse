@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <LinearPressureSensor.h>
 #include <PinMeasurement.h>
-#include <Sht40Sensor.h>
 
 namespace PressureMonitorFirmware {
 
@@ -12,19 +11,10 @@ namespace PressureMonitorFirmware {
 constexpr unsigned long SAMPLE_INTERVAL_MS = 1000UL;
 constexpr uint16_t SERIAL_BAUD_RATE = 9600;
 constexpr uint8_t PRESSURE_DECIMAL_PLACES = 2;
-constexpr uint8_t ENVIRONMENT_DECIMAL_PLACES = 2;
 
 // Authoritative pin-to-name mapping. Edit this one record to change either the
 // Arduino input or the serial measurement name.
 constexpr LabPulse::PinMeasurement PRESSURE = {A0, "pressure"};
-
-// The SHT40 uses the Arduino's fixed I2C SDA/SCL pins and produces two named
-// measurements from its fixed 0x44 address.
-struct Sht40Measurements {
-  const char *temperatureName;
-  const char *humidityName;
-};
-constexpr Sht40Measurements ENVIRONMENT = {"temperature", "humidity"};
 
 constexpr LabPulse::LinearPressureConfig PRESSURE_CONFIG = {
     PRESSURE.pin,
@@ -40,13 +30,6 @@ constexpr LabPulse::LinearPressureConfig PRESSURE_CONFIG = {
     -0.25F,  // minimum valid output in bar
     16.5F,   // maximum valid output in bar
     false,   // preserve legacy negative readings above the validity floor
-};
-
-constexpr LabPulse::Sht40Config SHT40_CONFIG = {
-    -40.0F,  // minimum valid temperature in degrees C
-    85.0F,   // maximum valid temperature in degrees C
-    0.0F,    // minimum valid relative humidity percentage
-    100.0F,  // maximum valid relative humidity percentage
 };
 
 void setup();

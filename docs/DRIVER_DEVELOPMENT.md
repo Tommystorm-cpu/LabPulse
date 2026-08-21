@@ -238,9 +238,12 @@ These remain shared configuration and platform concerns.
 
 ## Dependencies
 
-Add the optional Python library to an appropriate `pyproject.toml` extra for
-development, package users, and the released runtime image. The root
-`Dockerfile` installs all supported driver extras from the release wheel.
+Reuse the optional dependency extra for the driver's physical transport. The
+currently supported extras are `serial`, `i2c`, and `gpio`; drivers using those
+existing transports need no packaging edit. Add a library to the shared
+transport extra only when the transport implementation genuinely requires a
+new dependency. The root `Dockerfile` installs every supported transport extra
+from the release wheel.
 
 System packages belong in the root `Dockerfile` only when required at runtime.
 Keep AMD64 and ARM64 support in mind.

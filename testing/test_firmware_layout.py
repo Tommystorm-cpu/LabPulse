@@ -39,6 +39,7 @@ def test_reusable_sensor_modules() -> None:
         "PulseFlowSensor",
         "ThermistorSensor",
         "LinearPressureSensor",
+        "Sht40Sensor",
     ):
         if not (source_dir / f"{stem}.h").is_file():
             raise AssertionError(f"Missing reusable header: {stem}.h")
@@ -59,6 +60,16 @@ def test_reusable_sensor_modules() -> None:
             "Numeric zero and invalid are different",
         ),
     )
+    assert_contains(
+        source_dir / "Sht40Sensor.cpp",
+        (
+            "sensor_.begin()",
+            "SHT4X_HIGH_PRECISION",
+            "SHT4X_NO_HEATER",
+            "sensor_.getEvent(&humidityEvent, &temperatureEvent)",
+            "initialized_ = false",
+        ),
+    )
 
 
 def test_arduino_library_metadata() -> None:
@@ -72,6 +83,7 @@ def test_arduino_library_metadata() -> None:
             "url=https://github.com/Tommystorm-cpu/LabPulse",
             "architectures=*",
             "depends=DHT sensor library",
+            "Adafruit SHT4x Library",
         ),
     )
 
@@ -95,6 +107,7 @@ def test_current_configuration_is_retained() -> None:
         (
             "SAMPLE_INTERVAL_MS = 1000UL",
             'PRESSURE = {A0, "pressure"}',
+            'ENVIRONMENT = {"temperature", "humidity"}',
             "PRESSURE.pin,",
             "0.48F",
             "4.5F",
@@ -102,6 +115,18 @@ def test_current_configuration_is_retained() -> None:
             "10000.0F",
             "-0.25F",
             "16.5F",
+            "SHT40_CONFIG",
+            "-40.0F",
+            "85.0F",
+        ),
+    )
+    assert_contains(
+        FIRMWARE_DIR / "examples" / "pressure_monitor" / "pressure_monitor.cpp",
+        (
+            "environmentSensor.begin();",
+            "environmentSensor.read();",
+            "environment.temperature",
+            "environment.humidity",
         ),
     )
     assert_contains(
@@ -145,7 +170,11 @@ def test_pipe_measurement_order() -> None:
     """Require output names to come from header mappings in the current order."""
 
     expected = {
-        "pressure_monitor": ["PRESSURE.name"],
+        "pressure_monitor": [
+            "PRESSURE.name",
+            "ENVIRONMENT.temperatureName",
+            "ENVIRONMENT.humidityName",
+        ],
         "pump_room": [
             "FLOW1.name",
             "FLOW2.name",
@@ -175,3 +204,37 @@ def test_pipe_measurement_order() -> None:
             raise AssertionError(
                 f"{target} uses name fields {actual}, expected {names}"
             )
+
+
+def test_pressure_only_firmware_is_retained_as_legacy() -> None:
+    """Keep the superseded pressure-only sketch available for reference."""
+
+    legacy_dir = REFACTOR_DIR / "legacy" / "Arduino" / "pressure_monitor"
+    for suffix in (".h", ".cpp", ".ino"):
+        path = legacy_dir / f"pressure_monitor{suffix}"
+        if not path.is_file():
+            raise AssertionError(f"Missing legacy pressure firmware file: {path}")
+    assert_contains(
+        legacy_dir / "pressure_monitor.h",
+        (
+            'PRESSURE = {A0, "pressure"}',
+            "0.48F",
+            "4.5F",
+            "1.6F",
+            "10000.0F",
+            "-0.25F",
+            "16.5F",
+        ),
+    )
+    assert_contains(
+        legacy_dir / "pressure_monitor.cpp",
+        (
+            "sample.value(PRESSURE.name",
+            "sample.end();",
+        ),
+    )
+    legacy_source = (legacy_dir / "pressure_monitor.cpp").read_text(
+        encoding="utf-8"
+    )
+    if "Sht40" in legacy_source or "temperatureName" in legacy_source:
+        raise AssertionError("legacy pressure-only firmware was modified for SHT40")

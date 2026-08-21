@@ -172,13 +172,25 @@ services:
       options:
         port: /dev/serial/by-id/usb-example
         baud_rate: 9600
-    device_name: "Air Pressure Sensor Hub"
+    device_name: "Compressed Air and Environment Sensor Hub"
     measurements:
       - name: pressure
         label: "Pressure"
         setups: [compressed_air]
         unit: bar
         device_class: pressure
+      - name: temperature
+        label: "Main Lab Temperature"
+        subcategory: "Environment"
+        setups: [compressed_air]
+        unit: "°C"
+        device_class: temperature
+      - name: humidity
+        label: "Main Lab Humidity"
+        subcategory: "Environment"
+        setups: [compressed_air]
+        unit: "%"
+        device_class: humidity
     reconnect_interval_seconds: 5
     maximum_measurement_age_seconds: 300
 ```
@@ -201,6 +213,12 @@ after collecting history unless a new identity is intended.
 Each enabled service becomes `labpulse-<service-slug>` in Compose.
 Deployment generation requires at least one enabled hardware service.
 Service keys that normalize to the same Compose slug are rejected.
+
+The starter `pressure_monitor` represents one Arduino reading the compressed-
+air pressure transducer and an SHT40. Its firmware emits `pressure`,
+`temperature`, and `humidity` together through the standard serial pipe. The
+separate `room_environment` starter service represents the other SHT40 wired
+directly to the Raspberry Pi over I2C.
 
 ## Measurements
 
@@ -289,10 +307,34 @@ driver:
 
 `pin` is a required Blinka board-pin name using uppercase letters, numbers, or
 underscores. The generated container receives privileged `/dev` access. The
-default read interval is 2 seconds.
+default read interval is 2 seconds. Its Python libraries belong to the shared
+`gpio` dependency extra.
 
 Declare measurements named `temperature` and `humidity` to match the built-in
 driver output.
+
+### Sensirion SHT40
+
+```yaml
+driver:
+  type: labpulse.sht40
+  options:
+    bus: 1
+    address: 0x44
+```
+
+| Option | Default | Constraint |
+|---|---:|---|
+| `bus` | `1` | 0 to 255 |
+| `address` | `0x44` | Fixed SHT40 address |
+
+The container receives only the configured `/dev/i2c-<bus>` device. The driver
+uses high-precision measurement mode and has a default read interval of 2
+seconds. Declare measurements named `temperature` and `humidity` to match its
+output. Fake-USB mode substitutes the standard room-environment SHT40 service
+with the existing simulated serial temperature/humidity endpoint. Its Python
+transport library belongs to the shared `i2c` dependency extra used by the
+X1200 driver.
 
 ### Geekworm X1200
 

@@ -32,8 +32,19 @@ def test_generated_payloads_match_parsers() -> None:
         payloads["ups_monitor"].strip()
     )
 
-    if pressure is None or "pressure" not in pressure:
+    if pressure is None:
         raise AssertionError(f"invalid pressure payload: {payloads['pressure']!r}")
+    configured_pressure_measurements = {
+        measurement.name
+        for measurement in load_config(REFACTOR_DIR / "config.yaml").config.services[
+            "pressure_monitor"
+        ].measurements
+    }
+    if set(pressure) != configured_pressure_measurements:
+        raise AssertionError(
+            "compressed-air starter config and simulated Arduino payload differ: "
+            f"configured={configured_pressure_measurements!r}, parsed={set(pressure)!r}"
+        )
     if pump is None:
         raise AssertionError(f"invalid pump payload: {payloads['pump_room']!r}")
     configured_pump_measurements = {
@@ -96,6 +107,8 @@ def test_scenarios_change_generated_values() -> None:
     generator = MeasurementGenerator(seed=8)
     generator.set_scenario("room_environment.humidity", "danger-high")
     generator.set_scenario("pressure_monitor.pressure", "danger-low")
+    generator.set_scenario("pressure_monitor.humidity", "danger-high")
+    generator.set_scenario("pressure_monitor.temperature", "stale")
     generator.set_scenario("room_environment.temperature", "stale")
     generator.set_scenario("pump_room.press1", "danger-low")
     generator.set_scenario("pump_room.roomhum", "danger-high")
@@ -116,6 +129,11 @@ def test_scenarios_change_generated_values() -> None:
         raise AssertionError("stale temperature was emitted or suppressed its healthy peer")
     if pressure["pressure"] >= 1:
         raise AssertionError(f"pressure did not enter danger-low: {pressure!r}")
+    if pressure["humidity"] < 90 or "temperature" in pressure:
+        raise AssertionError(
+            "compressed-air SHT40 scenarios were not applied independently: "
+            f"{pressure!r}"
+        )
     if pump["press1"] >= 1:
         raise AssertionError(f"pump pressure did not enter danger-low: {pump!r}")
     if pump["roomhum"] < 90:

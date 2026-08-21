@@ -7,21 +7,11 @@ namespace {
 
 // PRESSURE_CONFIG combines the header's pin mapping with its calibration.
 LabPulse::LinearPressureSensor pressureSensor(PRESSURE_CONFIG);
-LabPulse::Sht40Sensor environmentSensor(SHT40_CONFIG);
 
 void emitSample() {
-  // A failed SHT40 read becomes two null fields without suppressing pressure.
-  const LabPulse::Sht40Reading environment = environmentSensor.read();
+  // Invalid readings are written as null in the standard pipe format.
   LabPulse::PipeSampleWriter sample(Serial);
   sample.value(PRESSURE.name, pressureSensor.read(), PRESSURE_DECIMAL_PLACES);
-  sample.value(
-      ENVIRONMENT.temperatureName,
-      environment.temperature,
-      ENVIRONMENT_DECIMAL_PLACES);
-  sample.value(
-      ENVIRONMENT.humidityName,
-      environment.humidity,
-      ENVIRONMENT_DECIMAL_PLACES);
   sample.end();
 }
 
@@ -29,7 +19,6 @@ void emitSample() {
 
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
-  environmentSensor.begin();
 }
 
 void loop() {

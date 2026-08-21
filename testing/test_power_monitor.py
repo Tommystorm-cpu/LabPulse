@@ -158,7 +158,7 @@ def test_fake_usb_derivation_converts_direct_hardware() -> None:
     room = converted.services["room_environment"]
     power = converted.services["ups_monitor"]
     if room.driver.type != "labpulse.serial_pipe":
-        raise AssertionError("fake derivation retained the DHT11 driver")
+        raise AssertionError("fake derivation retained the direct SHT40 driver")
     if getattr(room.driver.options, "port", None) != "/tmp/labpulse-fake-serial/room_environment":
         raise AssertionError("fake derivation selected the wrong room endpoint")
     if getattr(power.driver.options, "port", None) != "/tmp/labpulse-fake-serial/ups_monitor":

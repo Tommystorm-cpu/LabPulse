@@ -38,6 +38,21 @@ def test_package_version_comes_from_installed_metadata() -> None:
     assert labpulse.__version__
 
 
+def test_hardware_dependencies_are_grouped_by_transport() -> None:
+    """Keep shared connection libraries independent of individual drivers."""
+
+    project = metadata()["project"]
+    extras = project["optional-dependencies"]
+    assert set(extras) == {"serial", "i2c", "gpio", "dev"}
+    assert extras["serial"] == ["pyserial>=3.5,<4"]
+    assert extras["i2c"] == ["smbus2>=0.5,<1"]
+    assert extras["gpio"] == [
+        "adafruit-blinka>=8,<9",
+        "adafruit-circuitpython-dht>=4,<5",
+        "lgpio>=0.2,<1",
+    ]
+
+
 @pytest.mark.parametrize(
     "fragment",
     ("MIT License", "Copyright (c) 2026 LabPulse contributors", 'THE SOFTWARE IS PROVIDED "AS IS"'),

@@ -16,6 +16,7 @@ firmware/
     PulseFlowSensor.*
     ThermistorSensor.*
     Dht11Sensor.*
+    Sht40Sensor.*
     LinearPressureSensor.*
   examples/
     pressure_monitor/
@@ -49,14 +50,15 @@ The installed structure must be:
       examples/
 ```
 
-Install `DHT sensor library` by Adafruit and its prompted dependencies. The
-library dependency is also declared in `library.properties`.
+Install `DHT sensor library` and `Adafruit SHT4x Library` through Arduino
+Library Manager, including their prompted dependencies. Both library
+dependencies are also declared in `library.properties`.
 
 ## Choose an example
 
 | Example | Measurements | Interval |
 |---|---|---:|
-| `pressure_monitor` | `pressure` | 1 second |
+| `pressure_monitor` | `pressure`, `temperature`, `humidity` | 1 second |
 | `pump_room` | `flow1`, `flow2`, `temp0`–`temp3`, `roomtemp`, `roomhum`, `press1`, `press2` | 5 seconds |
 | `turbo_pump` | `flow1`, `flow2`, `temp0`–`temp3` | 5 seconds |
 
@@ -106,7 +108,14 @@ hardware.
 - 0.48 to 4.5 V calibration span;
 - 0 to 1.6 MPa full scale;
 - output multiplied by 10 to bar;
+- Adafruit SHT40 on the Arduino's I2C SDA/SCL pins at fixed address `0x44`;
+- SHT40 high-precision, no-heater measurements;
 - one-second sampling.
+
+On an Arduino Uno, connect the Adafruit SHT40 breakout `VIN` to `5V`, `GND` to
+`GND`, `SDA` to `SDA`/A4, and `SCL` to `SCL`/A5. The breakout handles 5 V logic.
+The pressure transducer remains on A0. A failed SHT40 read emits `null` for
+temperature and humidity without suppressing the pressure measurement.
 
 ### Pump room
 
@@ -209,6 +218,12 @@ The component applies a two-point voltage calibration, full-scale pressure, and
 output multiplier. It can optionally preserve pre-conversion quantization and
 clamp negative outputs.
 
+### `Sht40Sensor`
+
+The wrapper initializes the fixed-address I2C sensor in high-precision,
+no-heater mode and validates temperature and humidity independently. It retries
+initialization after a failed transaction so a reconnected sensor can recover.
+
 ## Build, upload, and verify
 
 1. Select the correct board and connected port.
@@ -223,7 +238,7 @@ clamp negative outputs.
 Example:
 
 ```text
-flow1: 2.45 | flow2: 3.10 | temp0: 20.11 | temp1: 20.22
+pressure: 1.23 | temperature: 21.40 | humidity: 48.20
 ```
 
 Then assign or confirm the stable Pi path:

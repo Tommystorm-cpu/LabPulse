@@ -163,7 +163,13 @@ class Driver(BaseSensorDriver):
 
         try:
             self.bus = self._bus_factory(self.bus_number)
-        except (OSError, IOError, ImportError) as error:
+        except ImportError as error:
+            self.bus = None
+            raise DriverUnavailable(
+                "X1200 dependency is missing. Install the LabPulse i2c extra "
+                "or install smbus2 in the container."
+            ) from error
+        except (OSError, IOError) as error:
             self.bus = None
             raise DriverUnavailable(
                 f"failed to open X1200 MAX17043 at 0x{self.address:02X}: {error}"

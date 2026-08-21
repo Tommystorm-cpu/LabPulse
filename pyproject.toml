@@ -32,8 +32,8 @@ dependencies = [
 
 [project.optional-dependencies]
 serial = ["pyserial>=3.5,<4"]
-x1200 = ["smbus2>=0.5,<1"]
-dht11 = [
+i2c = ["smbus2>=0.5,<1"]
+gpio = [
   "adafruit-blinka>=8,<9",
   "adafruit-circuitpython-dht>=4,<5",
   "lgpio>=0.2,<1",

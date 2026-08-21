@@ -63,6 +63,8 @@ SCENARIO_STATES = ("normal", "recover", "danger-low", "danger-high", "stale")
 UPS_SCENARIO_STATES = ("mains", "battery", "stale")
 SCENARIO_TARGETS = (
     "pressure_monitor.pressure",
+    "pressure_monitor.temperature",
+    "pressure_monitor.humidity",
     "pump_room.flow1",
     "pump_room.flow2",
     "pump_room.temp0",
@@ -342,11 +344,24 @@ class MeasurementGenerator:
                 f"humidity:{self._humidity('room_environment.humidity')}"
             )
 
-        payloads: dict[str, str] = {}
+        pressure_measurements: dict[str, float] = {}
         if not self._is_stale("pressure_monitor.pressure"):
-            payloads["pressure"] = self._firmware_payload(
-                {"pressure": round(float(self._pressure_mpa()) * 10.0, 2)}
+            pressure_measurements["pressure"] = round(
+                float(self._pressure_mpa()) * 10.0,
+                2,
             )
+        if not self._is_stale("pressure_monitor.temperature"):
+            pressure_measurements["temperature"] = float(
+                self._temperature("pressure_monitor.temperature")
+            )
+        if not self._is_stale("pressure_monitor.humidity"):
+            pressure_measurements["humidity"] = float(
+                self._humidity("pressure_monitor.humidity")
+            )
+
+        payloads: dict[str, str] = {}
+        if pressure_measurements:
+            payloads["pressure"] = self._firmware_payload(pressure_measurements)
         if pump_measurements:
             payloads["pump_room"] = self._firmware_payload(pump_measurements)
         if turbo_measurements:

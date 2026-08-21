@@ -16,8 +16,8 @@ from labpulse.common.config import (
     format_config_error,
     load_config,
 )
-from labpulse.hardware.drivers.dht11 import Dht11Options
 from labpulse.hardware.drivers.serial_pipe import SerialPipeOptions
+from labpulse.hardware.drivers.sht40 import Sht40Options
 from labpulse.hardware.drivers.x1200 import X1200Options
 
 
@@ -50,7 +50,7 @@ def test_valid_document_and_typed_driver_options() -> None:
         raise AssertionError(f"unexpected source path: {document.path}")
     expected_types = {
         "pressure_monitor": SerialPipeOptions,
-        "room_environment": Dht11Options,
+        "room_environment": Sht40Options,
         "ups_monitor": X1200Options,
     }
     for service_name, expected_type in expected_types.items():

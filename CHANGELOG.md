@@ -26,6 +26,11 @@ artifacts are published.
 - Tag-derived package, runtime, and container versions through `setuptools-scm`.
 - One-container-per-service hardware execution with a central lifecycle runner.
 - Self-contained serial, DHT11, and X1200 drivers with declarative resources.
+- A self-contained Sensirion SHT40 I2C temperature/humidity driver with
+  CRC-validated measurements and least-privilege device access.
+- Compressed-air Arduino firmware that publishes pressure plus SHT40
+  temperature/humidity through the standard serial pipe, with the superseded
+  pressure-only sketch retained under `legacy/Arduino/pressure_monitor/`.
 - Hardware-free fake serial devices and controllable alarm scenarios.
 - Generated Home Assistant MQTT entities, alarm package, and native YAML
   dashboard.
@@ -38,6 +43,8 @@ artifacts are published.
 
 ### Changed
 
+- Optional hardware dependencies are grouped by the `serial`, `i2c`, and
+  `gpio` connection types instead of individual driver names.
 - The installed deployment directory is `~/labpulse-live`.
 - The guarded configuration command is `labpulse config`.
 - Deployment shell scripts are maintained under `deployment/`.

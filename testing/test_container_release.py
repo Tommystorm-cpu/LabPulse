@@ -33,7 +33,7 @@ def test_release_version_is_tag_derived() -> None:
         ("org.opencontainers.image.source", "repository label"),
         ("gpiod", "GPIO system dependency"),
         ("modemmanager", "SMS system dependency"),
-        ("labpulse[serial,x1200,dht11]", "hardware dependency extras"),
+        ("labpulse[serial,i2c,gpio]", "hardware transport extras"),
         ("dist/labpulse-${LABPULSE_VERSION}-py3-none-any.whl", "release wheel"),
     ),
 )

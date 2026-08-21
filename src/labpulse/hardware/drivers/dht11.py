@@ -46,8 +46,9 @@ def _load_gpio_dependencies() -> tuple[Any, Any]:
             board = board_module
     if adafruit_dht is None or board is None:
         raise DriverUnavailable(
-            "DHT11 dependencies are missing. Install adafruit-circuitpython-dht, "
-            "adafruit-blinka, and lgpio in the container."
+            "DHT11 dependencies are missing. Install the LabPulse gpio extra "
+            "or install adafruit-circuitpython-dht, adafruit-blinka, and lgpio "
+            "in the container."
         )
     return adafruit_dht, board
 

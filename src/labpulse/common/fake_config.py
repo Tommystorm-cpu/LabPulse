@@ -67,7 +67,8 @@ def derive_fake_config(text: str) -> str:
     if (
         isinstance(room_service, dict)
         and isinstance(room_service.get("driver"), dict)
-        and room_service["driver"].get("type") == "labpulse.dht11"
+        and room_service["driver"].get("type")
+        in {"labpulse.dht11", "labpulse.sht40"}
     ):
         text = convert_service_to_fake_serial(
             text,

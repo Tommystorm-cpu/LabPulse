@@ -200,7 +200,8 @@ def test_registry_validates_options_and_reports_available_ids() -> None:
     assert_equal(options.baud_rate, 9600, "default baud rate")
     message = assert_raises(
         ValueError,
-        "Available drivers: labpulse.dht11, labpulse.serial_pipe, labpulse.x1200",
+        "Available drivers: labpulse.dht11, labpulse.serial_pipe, "
+        "labpulse.sht40, labpulse.x1200",
         lambda: get_driver_spec("example.unknown"),
     )
     if "example.unknown" not in message:

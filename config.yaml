@@ -62,7 +62,7 @@ services:
       options:
         port: "FAKE_PRESSURE_PORT"
         baud_rate: 9600
-    device_name: "Air Pressure Sensor Hub"
+    device_name: "Compressed Air and Environment Sensor Hub"
     measurements:
       - name: "pressure"
         label: "Pressure"
@@ -72,6 +72,18 @@ services:
         # icon without allowing Home Assistant to convert the configured unit.
         # Add icon: "mdi:..." here only when overriding that default.
         device_class: "pressure"
+      - name: "temperature"
+        label: "Main Lab Temperature"
+        subcategory: "Environment"
+        setups: [compressed_air]
+        unit: "\u00b0C"
+        device_class: "temperature"
+      - name: "humidity"
+        label: "Main Lab Humidity"
+        subcategory: "Environment"
+        setups: [compressed_air]
+        unit: "%"
+        device_class: "humidity"
     reconnect_interval_seconds: 5
 
   pump_room:
@@ -195,9 +207,10 @@ services:
   room_environment:
     enabled: true
     driver:
-      type: labpulse.dht11
+      type: labpulse.sht40
       options:
-        pin: "D4"
+        bus: 1
+        address: 0x44
     device_name: "Cryogenics Room Environment Sensor"
     measurements:
       - name: "temperature"

@@ -34,6 +34,7 @@ Examples:
 
 ```text
 pressure:1.02
+pressure:1.02|temperature:21.4|humidity:48.2
 temp0:18.4|temp1:19.1|flow1:2.8
 voltage:4.08|battery_level:87.0|mains_present:1
 ```
@@ -108,6 +109,11 @@ is not republished from an old sample. If it remains absent beyond
 
 Where sensors are sampled as one coherent cycle, emit one complete line after
 the cycle. Do not split related fields across arbitrary debug lines.
+
+The compressed-air Arduino follows this rule for its analog pressure
+transducer and SHT40. If the SHT40 is unavailable, it emits numeric pressure
+alongside `temperature:null|humidity:null` so the independent pressure channel
+remains fresh.
 
 ## Measurement names
 

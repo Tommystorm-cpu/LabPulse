@@ -17,7 +17,7 @@ RUN apt-get update \
 COPY dist/labpulse-${LABPULSE_VERSION}-py3-none-any.whl /tmp/
 
 RUN python -m pip install --no-cache-dir \
-      "labpulse[serial,x1200,dht11] @ file:///tmp/labpulse-${LABPULSE_VERSION}-py3-none-any.whl" \
+      "labpulse[serial,i2c,gpio] @ file:///tmp/labpulse-${LABPULSE_VERSION}-py3-none-any.whl" \
     && rm "/tmp/labpulse-${LABPULSE_VERSION}-py3-none-any.whl"
 
 CMD ["python", "-m", "labpulse.hardware", "--help"]

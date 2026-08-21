@@ -49,12 +49,14 @@ def _load_serial() -> Any:
             import serial as pyserial
         except ImportError as error:
             raise DriverUnavailable(
-                "Serial dependencies are missing. Install pyserial in the container."
+                "Serial dependencies are missing. Install the LabPulse serial extra "
+                "or install pyserial in the container."
             ) from error
         serial = pyserial
     if serial is None:
         raise DriverUnavailable(
-            "Serial dependencies are missing. Install pyserial in the container."
+            "Serial dependencies are missing. Install the LabPulse serial extra "
+            "or install pyserial in the container."
         )
     return serial
 
