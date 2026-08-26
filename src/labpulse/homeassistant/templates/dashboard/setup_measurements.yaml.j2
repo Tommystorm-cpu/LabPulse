@@ -1,0 +1,18 @@
+{# Render one logical setup on an operator-facing dashboard tab. #}
+    - type: heading
+      heading: [[ setup.label | yaml_scalar ]]
+      heading_style: title
+      icon: [[ setup.icon ]]
+[% if not setup.measurements %]
+    - type: markdown
+      content: No measurements are currently assigned to this setup.
+[% endif %]
+[% for _subcategory, measurements in setup.measurement_groups %]
+    - type: entities
+      show_header_toggle: false
+      entities:
+[% for measurement in measurements %]
+      - entity: [[ measurement.entity_id ]]
+        name: [[ measurement.short_label | yaml_scalar ]]
+[% endfor %]
+[% endfor %]

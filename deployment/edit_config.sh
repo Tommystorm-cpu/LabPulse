@@ -60,7 +60,18 @@ WORK_FAKE_CONFIG=""
 CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/labpulse-config-check.XXXXXX")"
 cp -p "$CONFIG_PATH" "$WORK_CONFIG"
 
-EDITOR_COMMAND="${VISUAL:-${EDITOR:-nano}}"
+if [ -n "${VISUAL:-}" ]; then
+  EDITOR_COMMAND="$VISUAL"
+elif [ -n "${EDITOR:-}" ]; then
+  EDITOR_COMMAND="$EDITOR"
+elif command -v micro >/dev/null 2>&1; then
+  EDITOR_COMMAND="micro"
+elif command -v nano >/dev/null 2>&1; then
+  EDITOR_COMMAND="nano"
+else
+  echo "ERROR: No supported editor found. Install micro or nano, or set VISUAL/EDITOR." >&2
+  exit 1
+fi
 read -r -a EDITOR_PARTS <<< "$EDITOR_COMMAND"
 if [ "${#EDITOR_PARTS[@]}" -eq 0 ]; then
   echo "ERROR: VISUAL or EDITOR resolved to an empty command." >&2

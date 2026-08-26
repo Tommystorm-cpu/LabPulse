@@ -22,7 +22,7 @@ projection:
 
 | Path | Ownership | Purpose |
 |---|---|---|
-| `~/labpulse-live/config.yaml` | Operator | Permanent service, measurement, setup, MQTT, and SMS configuration |
+| `~/labpulse-live/config.yaml` | Operator | Permanent service, measurement, setup, dashboard, MQTT, and SMS configuration |
 | `~/labpulse-live/config.fake.yaml` | Generated | Fake-USB transport substitutions used by simulated containers |
 | repository `config.yaml` | Package | Starter copied only when a live source does not exist |
 
@@ -51,8 +51,10 @@ service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
+dashboards: {}
 setups: {}
 services: {}
+custom_measurements: {}
 ```
 
 Configuration is validated with Pydantic before generation and service startup.
@@ -71,7 +73,7 @@ The same validated document is consumed differently:
 |---|---|
 | Compose generator | enabled services, runtime image inputs, driver resources, SMS mode |
 | Hardware CLI | one selected service, its typed driver options, MQTT settings |
-| Home Assistant generator | enabled services, setups, measurements, health and power timing |
+| Home Assistant generator | enabled services, dashboards, setups, physical and custom measurements, health and power timing |
 | SMS CLI | MQTT settings, delivery mode, normal and test recipients |
 | Doctor | source/runtime agreement, enabled services, declared host resources |
 
@@ -131,6 +133,29 @@ Both values accept 1 to 3600 seconds. They are separate from:
 - per-measurement MQTT expiry;
 - ordinary measurement alarm observation and recovery settings.
 
+## Dashboard tabs
+
+The built-in `main` dashboard is the Monitor tab. Declare additional operator
+tabs only when setups need to be split across separate views:
+
+```yaml
+dashboards:
+  pump_systems:
+    label: "Pump Systems"
+    icon: "mdi:water-pump"
+    order: 10
+```
+
+Dashboard IDs use lowercase letters, numbers, and underscores. The ID `main`
+is reserved and does not need to be declared. Custom dashboards are ordered by
+`order`, then ID, and always appear after Monitor and before Alarm Setup.
+
+| Field | Default | Meaning |
+|---|---:|---|
+| `label` | readable form of ID | Dashboard tab title |
+| `icon` | `mdi:view-dashboard-outline` | Material Design tab icon |
+| `order` | `100` | Ordering among custom dashboards from 0 to 10000 |
+
 ## Logical setups
 
 Setups group measurements by experiment or monitored system independently of
@@ -142,6 +167,7 @@ setups:
     label: "Compressed Air"
     icon: "mdi:gauge"
     order: 10
+    dashboard: main
 ```
 
 Setup IDs are stable identifiers containing lowercase letters, numbers, and
@@ -154,6 +180,7 @@ Fields:
 | `label` | readable form of ID | Display text |
 | `icon` | `mdi:flask-outline` | Material Design icon |
 | `order` | `100` | Dashboard ordering from 0 to 10000 |
+| `dashboard` | `main` | Built-in main tab or a declared custom dashboard ID |
 
 An ordinary measurement must select at least one declared setup. One
 measurement may appear in several setups without creating duplicate MQTT
@@ -181,12 +208,14 @@ services:
         device_class: pressure
       - name: temperature
         label: "Main Lab Temperature"
+        short_label: "Temperature"
         subcategory: "Environment"
         setups: [compressed_air]
         unit: "°C"
         device_class: temperature
       - name: humidity
         label: "Main Lab Humidity"
+        short_label: "Humidity"
         subcategory: "Environment"
         setups: [compressed_air]
         unit: "%"
@@ -224,9 +253,11 @@ directly to the Raspberry Pi over I2C.
 
 ```yaml
 - name: temperature
-  label: "Room Temperature"
+  label: "Cryogenics Room Temperature"
+  short_label: "Room Temperature"
   subcategory: "Environment"
   setups: [cryogenics_room]
+  alarmed: true
   unit: "°C"
   device_class: temperature
   icon: "mdi:snowflake-thermometer"
@@ -236,9 +267,11 @@ directly to the Raspberry Pi over I2C.
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | required | Stable driver, MQTT, and entity key |
-| `label` | readable form of `name` | Display text |
+| `label` | readable form of `name` | Full label used for MQTT discovery, Diagnostics, active problems, helpers, and notifications |
+| `short_label` | `label` | Shorter label used where the dashboard's setup heading supplies context |
 | `subcategory` | none | Presentation grouping within a setup |
 | `setups` | required for ordinary values | One or more logical setup IDs |
+| `alarmed` | `true` | Whether to generate measurement alarm state, controls, and notifications |
 | `unit` | none | Exact published unit |
 | `device_class` | none | LabPulse semantic category and default-icon source |
 | `icon` | derived | Explicit `mdi:` override |
@@ -247,8 +280,84 @@ directly to the Raspberry Pi over I2C.
 Measurement names must be unique within a service. Hardware readings not listed
 in `measurements` are ignored.
 
-Changing a label or subcategory preserves identity. Changing `name` creates a
-new MQTT topic, Home Assistant entity, alarm helpers, and history.
+Changing `label`, `short_label`, or subcategory preserves identity. Changing
+`name` creates a new MQTT topic, Home Assistant entity, alarm helpers, and
+history.
+
+Use `label` to keep a measurement unambiguous when it appears without its
+logical setup heading. Add `short_label` only when that heading makes a
+shorter name clearer. For example, `Triton 1 Temperature In` can appear as
+`Temperature In` within the `Triton 1` dashboard group.
+
+Set `alarmed: false` for informational telemetry that should remain published
+and visible on operator dashboards and Diagnostics without measurement alarm
+helpers, threshold controls, active-problem rows, or notifications. Whole-
+service health monitoring remains separate. Dedicated power readings form one
+composite outage alarm, so every measurement in a `power_detection` service
+must use the same `alarmed` value.
+
+## Custom measurements
+
+Custom measurements are calculated by Home Assistant from one or more physical
+LabPulse measurements. They do not run in hardware containers and do not
+publish another MQTT topic.
+
+```yaml
+custom_measurements:
+  pump_room_temperature_difference:
+    label: "Pump Room Temperature Difference"
+    short_label: "Temperature Difference"
+    subcategory: "Calculated"
+    setups: [pump_room_system]
+    inputs:
+      supply: pump_room.temp0
+      return_temp: pump_room.temp1
+    constants:
+      scale: 1.0
+    formula: "(return_temp - supply) * scale"
+    precision: 2
+    alarmed: true
+    unit: "°C"
+    device_class: temperature
+    icon: "mdi:delta"
+```
+
+Each key below `inputs` is a short formula name. Its value must be an existing
+physical `service.measurement` reference. At least one input is required,
+every declared input must appear in the formula, and a custom
+measurement cannot use another custom measurement as an input. This keeps the
+calculation graph flat and makes faults traceable to hardware.
+
+The formula language deliberately supports only numeric literals, input and
+constant names, parentheses, unary `+`/`-`, and the `+`, `-`, `*`, and `/`
+operators. Function calls, attributes, powers, and arbitrary Python or Jinja
+are rejected during configuration validation. Constants are optional finite
+numbers and must be used when declared.
+
+| Field | Default | Meaning |
+|---|---:|---|
+| `label` | readable form of custom ID | Full display and notification label |
+| `short_label` | `label` | Compact setup-dashboard label |
+| `subcategory` | none | Presentation grouping within a setup |
+| `setups` | required | One or more logical setup IDs |
+| `inputs` | required | One or more alias-to-physical-measurement references |
+| `constants` | `{}` | Named finite numbers available to the formula |
+| `formula` | required | Restricted arithmetic expression |
+| `precision` | `2` | Result rounding from 0 to 10 decimal places |
+| `alarmed` | `true` | Whether to create the normal threshold alarm controls |
+| `unit` | none | Result unit shown by Home Assistant |
+| `device_class` | none | Result semantic category and threshold-editor hint |
+| `icon` | none | Optional explicit `mdi:` icon |
+| `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
+
+The resulting entity is `sensor.labpulse_custom_<custom-id>`. It is unavailable
+when any physical input is unavailable or non-numeric, or when a divisor
+evaluates to zero. Physical readings retain ownership of sensor-fault alerts;
+an unavailable dependency pauses and clears the custom threshold state without
+sending a duplicate custom sensor-fault notification. Once inputs recover,
+normal observation-window alarm evaluation resumes.
+
+The service ID `custom` is reserved whenever custom measurements are present.
 
 ### Units and icons
 
@@ -380,9 +489,10 @@ power_detection:
   restore_confirm_seconds: 5
 ```
 
-Dedicated power measurements omit `setups`; power is displayed and alarmed
-outside ordinary experimental setup grouping. Both confirmation values accept
-1 to 3600 seconds.
+Dedicated power measurements omit `setups`; power is displayed outside
+ordinary experimental setup grouping. It is alarmed by default. To keep only
+the raw readings, set `alarmed: false` on all three measurements. Both
+confirmation values accept 1 to 3600 seconds.
 
 ## Fake configuration
 

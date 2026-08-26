@@ -22,12 +22,39 @@ sensor:
     end: >-
       {{ now() }}
 [% endfor %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
 [% set power = service.power %]
 [% endfor %]
 [% endif %]
 
 template:
+[% if model.custom_measurements %]
+{# Home Assistant owns calculated values. Every physical input must be numeric,
+   and dynamic divisors must be non-zero, before a result is exposed. #}
+  - sensor:
+[% for measurement in model.custom_measurements %]
+    - name: [[ stable_id('custom', measurement.custom_id) | yaml_scalar ]]
+      unique_id: [[ stable_id('custom', measurement.custom_id) | yaml_scalar ]]
+[% if measurement.config.unit is not none %]
+      unit_of_measurement: [[ measurement.config.unit | yaml_scalar ]]
+[% endif %]
+[% if measurement.config.device_class is not none %]
+      device_class: [[ measurement.config.device_class | yaml_scalar ]]
+[% endif %]
+[% if measurement.config.state_class is not none %]
+      state_class: [[ measurement.config.state_class | yaml_scalar ]]
+[% endif %]
+[% if measurement.config.icon is not none %]
+      icon: [[ measurement.config.icon | yaml_scalar ]]
+[% endif %]
+      availability: [[ measurement.availability_template | yaml_scalar ]]
+      state: [[ measurement.state_template | yaml_scalar ]]
+      attributes:
+        labpulse_custom_measurement: true
+        formula: [[ measurement.config.formula | yaml_scalar ]]
+        physical_inputs: [[ measurement.config.inputs | yaml_scalar ]]
+[% endfor %]
+[% endif %]
 {# Give dashboards and messages clear values such as Normal, Danger, or Sensor
    Fault instead of making each one repeat the calculations. #}
 [% if model.services or model.alarm_measurements %]
@@ -49,6 +76,14 @@ template:
         fault_confirm_seconds: [[ service.health_fault_confirm_seconds | yaml_scalar ]]
         recovery_confirm_seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
 [% endfor %]
+[% for service in model.custom_alarm_services %]
+    - name: [[ stable_id(service.name, 'service_unhealthy') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, 'service_unhealthy') | yaml_scalar ]]
+      device_class: problem
+      state: [[ service.unhealthy_template | yaml_scalar ]]
+      attributes:
+        meaning: Calculation paused because a physical dependency or result is unavailable
+[% endfor %]
 [% for service, measurement in model.alarm_measurements %]
     - name: [[ stable_id(service.name, measurement.name, 'danger_zone') | yaml_scalar ]]
       unique_id: [[ stable_id(service.name, measurement.name, 'danger_zone') | yaml_scalar ]]
@@ -57,9 +92,7 @@ template:
         {% set mode = states(
           '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]'
         ) %}
-        {% set raw = states(
-          '[[ entity_id('sensor', service.name, measurement.name) ]]'
-        ) %}
+        {% set raw = states('[[ measurement.entity_id ]]') %}
         {% if mode == 'Disabled' or not is_number(raw) %}
           false
         {% else %}
@@ -80,9 +113,7 @@ template:
         {% set mode = states(
           '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]'
         ) %}
-        {% set raw = states(
-          '[[ entity_id('sensor', service.name, measurement.name) ]]'
-        ) %}
+        {% set raw = states('[[ measurement.entity_id ]]') %}
         {% if not is_number(raw) %}
           false
         {% elif mode == 'Disabled' %}
@@ -108,9 +139,7 @@ template:
       unique_id: [[ stable_id(service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
       device_class: problem
       state: >
-        {% set raw = states(
-          '[[ entity_id('sensor', service.name, measurement.name) ]]'
-        ) %}
+        {% set raw = states('[[ measurement.entity_id ]]') %}
         {% set service_blocked =
           is_state(
             '[[ entity_id('binary_sensor', service.name, 'service_unhealthy') ]]',
@@ -144,7 +173,7 @@ template:
         state: [[ bulk_target_count_template | yaml_scalar ]]
         unit_of_measurement: measurements
 [% endif %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
 {# Combine mains, voltage, and battery readings into one power status. Keep the
    original readings available on the Diagnostics page. #}
 [% set power = service.power %]

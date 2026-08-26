@@ -1,5 +1,6 @@
 {# Helpers store the settings chosen in Home Assistant. Their entity IDs must
    stay the same or saved thresholds and timing settings will appear to reset. #}
+[% if model.bulk_alarm_targets or model.alarm_measurements or model.power_alarm_services %]
 input_number:
 {# These values are only a preview. They are not copied to any alarms until the
    user presses Apply. #}
@@ -83,7 +84,7 @@ input_number:
     unit_of_measurement: [[ measurement.threshold.unit | yaml_scalar ]]
     mode: box
 [% endfor %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
 [% set power = service.power %]
   labpulse_[[ service.service_id ]]_power_last_outage_duration:
     name: '[[ service.label ]] Last Outage Duration'
@@ -115,7 +116,7 @@ input_select:
     - High Only
     - Range
 [% endfor %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
 [% set power = service.power %]
   labpulse_[[ service.service_id ]]_power_state:
     name: '[[ service.label ]] Power State'
@@ -124,6 +125,7 @@ input_select:
     - On Battery
     - Sensor Fault
 [% endfor %]
+[% endif %]
 
 input_boolean:
 {# These on/off helpers remember global mute, local mute, and whether a fault or
@@ -158,6 +160,11 @@ input_boolean:
   labpulse_[[ service.service_id ]]_service_fault_active:
     name: '[[ service.label ]] Service Fault Active'
 [% endfor %]
+[% for service in model.custom_alarm_services %]
+  labpulse_[[ service.service_id ]]_service_fault_active:
+    name: '[[ service.measurement.label ]] Calculation Dependency Fault Active'
+    initial: false
+[% endfor %]
 [% for service, measurement in model.alarm_measurements %]
   labpulse_[[ measurement.measurement_id ]]_alarm_timing_initialized:
     name: '[[ measurement.label ]] Alarm Timing Initialized'
@@ -166,7 +173,7 @@ input_boolean:
   labpulse_[[ measurement.measurement_id ]]_alarm_muted:
     name: '[[ measurement.label ]] Alarm Muted'
 [% endfor %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
 [% set power = service.power %]
   labpulse_[[ service.service_id ]]_power_muted:
     name: '[[ service.label ]] Power Alerts Muted'
@@ -184,7 +191,7 @@ input_datetime:
     has_date: true
     has_time: true
 [% endfor %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
 [% set power = service.power %]
   labpulse_[[ service.service_id ]]_power_outage_started:
     name: '[[ service.label ]] Outage Started'

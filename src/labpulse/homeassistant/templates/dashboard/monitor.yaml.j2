@@ -5,8 +5,8 @@
   cards:
 [% set power_services = model.services | selectattr('power', 'ne', none) | list %]
 [% if not power_services and not model.monitor_setups %]
-{# Even an empty installation needs the status controls; otherwise mute and
-   test-mode state would disappear until the first service is configured. #}
+{# Keep global status on the main tab even when every setup has moved to custom
+   dashboards or no measurements have been configured yet. #}
   - type: vertical-stack
     cards:
 [% include "dashboard/monitor_status.yaml.j2" %]
@@ -28,23 +28,30 @@
       name: [[ (service.label ~ ' Status') | yaml_scalar ]]
     - type: gauge
       entity: [[ entity_id('sensor', service.name, 'battery_level') ]]
-      name: [[ service.power.battery_level.label | yaml_scalar ]]
+      name: [[ service.power.battery_level.short_label | yaml_scalar ]]
       min: 0
       max: 100
       severity: {red: 0, yellow: 25, green: 50}
     - type: entities
       show_header_toggle: false
       entities:
+[% if service.power.alarmed %]
       - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
         name: Power state
       - entity: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]
         name: External power present
       - entity: [[ entity_id('sensor', service.name, 'voltage') ]]
-        name: [[ service.power.voltage.label | yaml_scalar ]]
+        name: [[ service.power.voltage.short_label | yaml_scalar ]]
       - entity: [[ entity_id('sensor', service.name, 'power', 'last_outage_started') ]]
         name: Last outage started
       - entity: [[ entity_id('sensor', service.name, 'power', 'last_outage_duration') ]]
         name: Last outage duration
+[% else %]
+      - entity: [[ entity_id('sensor', service.name, 'mains_present') ]]
+        name: [[ service.power.mains_present.short_label | yaml_scalar ]]
+      - entity: [[ entity_id('sensor', service.name, 'voltage') ]]
+        name: [[ service.power.voltage.short_label | yaml_scalar ]]
+[% endif %]
 [% endfor %]
 [% for setup in model.monitor_setups %]
   - type: vertical-stack
@@ -52,31 +59,5 @@
 [% if loop.first and not power_services %]
 [% include "dashboard/monitor_status.yaml.j2" %]
 [% endif %]
-    - type: heading
-      heading: [[ setup.label | yaml_scalar ]]
-      heading_style: title
-      icon: [[ setup.icon ]]
-[% if not setup.measurements %]
-{# Show empty setups as well. This makes it clear that the setup exists but does
-   not have any enabled measurements yet. #}
-    - type: markdown
-      content: No measurements are currently assigned to this setup.
-[% endif %]
-[% for _subcategory, measurements in setup.measurement_groups %]
-    - type: entities
-      show_header_toggle: false
-      entities:
-[% for measurement in measurements %]
-      - entity: [[ entity_id('sensor', measurement.service_name, measurement.name) ]]
-[% if measurement.setup_ids | length > 1 %]
-[% set others = [] %]
-[% for setup_id in measurement.setup_ids if setup_id != setup.setup_id %]
-[% set _ = others.append(model.config.setups[setup_id].display_label(setup_id)) %]
-[% endfor %]
-        name: [[ (measurement.label ~ ' (Shared with ' ~ (others | join(', ')) ~ ')') | yaml_scalar ]]
-[% else %]
-        name: [[ measurement.label | yaml_scalar ]]
-[% endif %]
-[% endfor %]
-[% endfor %]
+[% include "dashboard/setup_measurements.yaml.j2" %]
 [% endfor %]

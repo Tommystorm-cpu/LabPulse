@@ -125,9 +125,9 @@
               [[ service.label ]] / [[ measurement.label ]] is in Danger.
 
               Current Measurement:
-              {{ states('[[ entity_id('sensor', service.name, measurement.name) ]]') }}
+              {{ states('[[ measurement.entity_id ]]') }}
               {{ state_attr(
-                '[[ entity_id('sensor', service.name, measurement.name) ]]',
+                '[[ measurement.entity_id ]]',
                 'unit_of_measurement'
               ) or '' }}.
               Active threshold: {{ threshold }}.
@@ -184,7 +184,7 @@
                   | render_fragment(service=service, measurement=measurement, model=model)
                 ]]) ~ "\n[[ measurement.notification_context ]]",
                 "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
-                "current_measurement": states('[[ entity_id('sensor', service.name, measurement.name) ]]')
+                "current_measurement": states('[[ measurement.entity_id ]]')
               } | to_json }}
 {# Recovery uses its own confirmation interval and deadband. A reading merely
    crossing the danger threshold is not enough to announce a stable recovery. #}
@@ -240,9 +240,9 @@
               [[ service.label ]] / [[ measurement.label ]] has recovered.
 
               Current Measurement:
-              {{ states('[[ entity_id('sensor', service.name, measurement.name) ]]') }}
+              {{ states('[[ measurement.entity_id ]]') }}
               {{ state_attr(
-                '[[ entity_id('sensor', service.name, measurement.name) ]]',
+                '[[ measurement.entity_id ]]',
                 'unit_of_measurement'
               ) or '' }}.
               It remained inside the deadband-adjusted recovery zone for
@@ -282,5 +282,5 @@
                   | render_fragment(service=service, measurement=measurement, model=model)
                 ]]) ~ "\n[[ measurement.notification_context ]]",
                 "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
-                "current_measurement": states('[[ entity_id('sensor', service.name, measurement.name) ]]')
+                "current_measurement": states('[[ measurement.entity_id ]]')
               } | to_json }}

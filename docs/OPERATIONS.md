@@ -150,7 +150,8 @@ the user-owned source remains `~/labpulse-live/config.yaml`.
 The command:
 
 1. opens a temporary copy beside the live config;
-2. uses `$VISUAL`, then `$EDITOR`, then `nano`;
+2. uses `$VISUAL`, then `$EDITOR`, then Micro when installed, with Nano as the
+   fallback;
 3. validates the edited YAML and typed configuration;
 4. derives and validates `config.fake.yaml` when fake mode is active;
 5. exercises Compose and Home Assistant generation for the active mode;
@@ -167,6 +168,16 @@ The guarded configuration workflow uses the same Docker command selection as
 every other `labpulse` lifecycle command. Set
 `LABPULSE_DOCKER_COMMAND=docker` for Docker-group access; otherwise non-root
 Linux installations default to `sudo docker`.
+
+Micro is the preferred default editor. Install it on Raspberry Pi OS with:
+
+```bash
+sudo apt update
+sudo apt install micro
+```
+
+An explicit `$VISUAL` or `$EDITOR` still overrides this choice. If Micro is not
+installed and neither variable is set, LabPulse falls back to Nano.
 
 ## Run diagnostics
 

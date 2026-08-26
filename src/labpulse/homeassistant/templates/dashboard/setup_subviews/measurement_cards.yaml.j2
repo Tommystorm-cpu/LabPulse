@@ -11,8 +11,8 @@
       media_query: [[ ('(max-width: 899px)' if mobile else '(min-width: 900px)') | yaml_scalar ]]
     cards:
     - type: tile
-      entity: [[ entity_id('sensor', service_name, measurement.name) ]]
-      name: [[ measurement.label | yaml_scalar ]]
+      entity: [[ measurement.entity_id ]]
+      name: [[ measurement.short_label | yaml_scalar ]]
       grid_options: {columns: [[ ('full' if mobile else 6) ]]}
       tap_action: {action: none}
       hold_action: {action: none}
@@ -104,7 +104,7 @@
           square: false
           cards:
           - type: entities
-            title: [[ (measurement.label ~ ': Alarm behaviour') | yaml_scalar ]]
+            title: [[ (measurement.short_label ~ ': Alarm behaviour') | yaml_scalar ]]
             show_header_toggle: false
             entities:
             - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
@@ -129,7 +129,7 @@
               name: Required recovery
 [% else %]
         - type: entities
-          title: [[ (measurement.label ~ ': Alarm behaviour') | yaml_scalar ]]
+          title: [[ (measurement.short_label ~ ': Alarm behaviour') | yaml_scalar ]]
           show_header_toggle: false
           entities:
           - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
@@ -159,7 +159,7 @@
           title: Live status
           show_header_toggle: false
           entities:
-          - entity: [[ entity_id('sensor', service_name, measurement.name) ]]
+          - entity: [[ measurement.entity_id ]]
             name: Current value
           - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
             name: Alarm state

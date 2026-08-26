@@ -63,6 +63,11 @@ def test_valid_document_and_typed_driver_options() -> None:
     dumped = document.config.model_dump()
     if dumped["services"]["pressure_monitor"]["driver"]["options"]["baud_rate"] != 9600:
         raise AssertionError("concrete driver defaults were lost during serialization")
+    pressure = document.config.services["pressure_monitor"].measurements[0]
+    if pressure.alarmed is not True:
+        raise AssertionError("measurements are not alarmed by default")
+    if document.config.setups["compressed_air"].dashboard != "main":
+        raise AssertionError("setups do not default to the main dashboard")
 
 
 def test_root_and_schema_errors_are_structured() -> None:
@@ -82,6 +87,50 @@ def test_root_and_schema_errors_are_structured() -> None:
     invalid_option_shape = repository_data()
     invalid_option_shape["services"]["pressure_monitor"]["driver"]["options"] = 3  # type: ignore[index]
     expect_error(invalid_option_shape, "driver options must be a mapping")
+
+    unsupported_dashboard_label = repository_data()
+    measurement = unsupported_dashboard_label["services"]["pressure_monitor"]["measurements"][0]  # type: ignore[index]
+    measurement["dashboard_label"] = "Pressure"
+    expect_error(unsupported_dashboard_label, "Extra inputs are not permitted")
+
+
+def test_alarm_and_dashboard_configuration_contracts() -> None:
+    """Validate custom dashboard references and strict measurement alarm flags."""
+
+    configured = repository_data()
+    configured["dashboards"] = {
+        "cryogenics": {
+            "label": "Cryogenics",
+            "icon": "mdi:snowflake",
+            "order": 10,
+        }
+    }
+    configured["setups"]["cryogenics_room"]["dashboard"] = "cryogenics"  # type: ignore[index]
+    configured["services"]["room_environment"]["measurements"][0]["alarmed"] = False  # type: ignore[index]
+    document = load_config(
+        REPOSITORY / "configured.yaml",
+        text=yaml.safe_dump(configured, sort_keys=False),
+    )
+    if document.config.setups["cryogenics_room"].dashboard != "cryogenics":
+        raise AssertionError("custom dashboard assignment was not retained")
+    if document.config.services["room_environment"].measurements[0].alarmed:
+        raise AssertionError("explicit alarm disablement was not retained")
+
+    unknown_dashboard = repository_data()
+    unknown_dashboard["setups"]["compressed_air"]["dashboard"] = "missing"  # type: ignore[index]
+    expect_error(unknown_dashboard, "references unknown dashboard: missing")
+
+    reserved_dashboard = repository_data()
+    reserved_dashboard["dashboards"] = {"main": {}}
+    expect_error(reserved_dashboard, "reserved for the built-in Monitor tab")
+
+    non_boolean_alarm = repository_data()
+    non_boolean_alarm["services"]["pressure_monitor"]["measurements"][0]["alarmed"] = "false"  # type: ignore[index]
+    expect_error(non_boolean_alarm, "valid boolean")
+
+    mixed_power_alarm = repository_data()
+    mixed_power_alarm["services"]["ups_monitor"]["measurements"][0]["alarmed"] = False  # type: ignore[index]
+    expect_error(mixed_power_alarm, "must all use the same alarmed value")
 
 
 def test_file_failures_use_the_same_error_model() -> None:

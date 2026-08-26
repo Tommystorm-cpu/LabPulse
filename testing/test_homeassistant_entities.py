@@ -31,8 +31,9 @@ def sample_config() -> LabPulseConfig:
                 },
                 "device_name": "Pump Room Sensor Hub",
                 "measurements": [
-                    {"name": "flow1", "label": "Flow 1", "setups": ["pump_room"], "unit": "L/min"},
-                    {"name": "temp0", "label": "Temperature 0", "setups": ["pump_room"], "unit": "\u00b0C"},
+                    {"name": "flow1", "label": "Pump Room Flow", "short_label": "Flow", "setups": ["pump_room"], "unit": "L/min"},
+                    {"name": "temp0", "label": "Pump Room Temperature", "short_label": "Temperature", "setups": ["pump_room"], "unit": "\u00b0C"},
+                    {"name": "humidity", "label": "Pump Room Humidity", "setups": ["pump_room"], "alarmed": False, "unit": "%"},
                 ],
             },
             "disabled_service": {
@@ -61,12 +62,20 @@ def test_template_context_and_stable_entities() -> None:
     if not isinstance(context, HomeAssistantRenderModel):
         raise AssertionError("Home Assistant context is not an explicit render model")
     service = context.services[0]
-    flow, temperature = service["measurements"]
+    flow, temperature, humidity = service["measurements"]
     assert_equal(len(context.services), 1, "enabled services")
     assert_equal(len(context.setups), 1, "active setups")
     assert_equal(flow["setup_ids"], ("pump_room",), "setup membership")
+    assert_equal(flow["label"], "Pump Room Flow", "full label")
+    assert_equal(flow["short_label"], "Flow", "short contextual label")
     assert_equal(flow["threshold"]["range_min"], 0, "flow editor minimum")
     assert_equal(temperature["threshold"]["range_min"], -20, "temperature editor minimum")
+    assert_equal(humidity["alarmed"], False, "explicit alarm disablement")
+    assert_equal(
+        tuple(measurement["name"] for _, measurement in context.alarm_measurements),
+        ("flow1", "temp0"),
+        "alarm-capable measurements",
+    )
 
     expected = {
         entity_id("sensor", "pump_room", "status"): "sensor.labpulse_pump_room_status",

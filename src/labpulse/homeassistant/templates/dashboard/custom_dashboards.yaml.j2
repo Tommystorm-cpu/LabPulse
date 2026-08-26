@@ -1,0 +1,17 @@
+{# Custom operator tabs contain the setups assigned to each declared dashboard.
+   They intentionally precede Alarm Setup in the top-level template. #}
+[% for dashboard in model.dashboards %]
+- title: [[ dashboard.label | yaml_scalar ]]
+  path: [[ dashboard.path ]]
+  icon: [[ dashboard.icon ]]
+  cards:
+[% if not dashboard.setups %]
+  - type: markdown
+    content: No setups are currently assigned to this dashboard.
+[% endif %]
+[% for setup in dashboard.setups %]
+  - type: vertical-stack
+    cards:
+[% include "dashboard/setup_measurements.yaml.j2" %]
+[% endfor %]
+[% endfor %]

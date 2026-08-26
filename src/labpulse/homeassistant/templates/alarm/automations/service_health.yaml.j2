@@ -22,11 +22,13 @@
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
       state: 'on'
+[% if service.alarm_state_entities %]
     - service: input_select.select_option
       target:
         entity_id: [[ service.alarm_state_entities | yaml_scalar ]]
       data:
         option: Normal
+[% endif %]
     - repeat:
         for_each: [[ service.subordinate_notification_ids | yaml_scalar ]]
         sequence:

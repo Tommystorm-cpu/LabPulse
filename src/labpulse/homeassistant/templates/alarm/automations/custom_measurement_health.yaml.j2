@@ -1,0 +1,25 @@
+{# Physical measurements own sensor-fault reporting. If a custom calculation
+   loses one of those inputs, clear its derived state without a duplicate alert. #}
+[% for service in model.custom_alarm_services %]
+  - alias: LabPulse [[ service.measurement.label ]] Calculation Paused
+    mode: restart
+    trigger:
+    - platform: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+      to: 'on'
+    - platform: homeassistant
+      event: start
+    condition:
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+      state: 'on'
+    action:
+    - service: input_select.select_option
+      target:
+        entity_id: [[ service.alarm_state_entities | yaml_scalar ]]
+      data:
+        option: Normal
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: [[ service.subordinate_notification_ids[0] | yaml_scalar ]]
+[% endfor %]

@@ -53,8 +53,8 @@ The generation code is split by responsibility:
 Do not make permanent UI edits to the LabPulse YAML dashboard and do not
 hand-edit the generated package. Change:
 
-- sensors, setups, labels, subcategories, units, and icons in live
-  `config.yaml`;
+- sensors, dashboards, setup assignments, alarm enablement, labels/short
+  labels, subcategories, units, and icons in live `config.yaml`;
 - dashboard layout in `src/labpulse/homeassistant/templates/dashboard/`;
 - alarm entities and behavior in the concrete feature templates under
   `src/labpulse/homeassistant/templates/alarm/`; `alarm_package.yaml.j2` is
@@ -92,6 +92,10 @@ presentation group but remains one physical MQTT entity and one alarm.
 Dedicated power monitoring is displayed separately from experimental setup
 membership.
 
+Setups use the main Monitor tab unless their config selects a declared custom
+dashboard. Custom operator tabs use the same setup presentation, follow their
+configured order, and appear between Monitor and Alarm Setup.
+
 ### Alarm Setup
 
 Alarm Setup provides:
@@ -106,9 +110,10 @@ Alarm Setup provides:
 
 ### Diagnostics
 
-Diagnostics is organized by physical sensor service. It shows service status
-and the measurements produced by that hub, which helps distinguish a complete
-device failure from an individual measurement alarm.
+Diagnostics is organized by physical sensor service, followed by a Calculated
+Measurements section when custom measurements are configured. It shows service
+status and the measurements produced by each hub, which helps distinguish a
+complete device failure from an individual or calculated measurement alarm.
 
 ## Measurement discovery and identity
 
@@ -121,8 +126,8 @@ Stable identity comes from:
 service key + measurement name
 ```
 
-Changing a label is safe. Renaming a service key or measurement creates a new
-entity, alarm-helper set, topic, and history.
+Changing a measurement's `label` or `short_label` is safe. Renaming a service
+key or measurement creates a new entity, alarm-helper set, topic, and history.
 
 LabPulse publishes the exact configured unit and an explicit icon but does not
 publish Home Assistant's convertible sensor `device_class`. Home Assistant
@@ -130,7 +135,20 @@ therefore leaves Celsius, Fahrenheit, bar, psi, and other units unchanged.
 
 ## Measurement alarm model
 
-Each ordinary measurement has a persistent state:
+Only measurements with `alarmed: true` participate in this model. The default
+is `true`. A measurement with `alarmed: false` is still published and shown on
+its operator dashboard and Diagnostics, but it has no generated threshold
+helpers, alarm state, Alarm Setup editor, active-problem row, or measurement
+notification automation.
+
+Custom measurements use the same threshold, timing, setup-mute, and
+notification model. Home Assistant calculates their entities directly from
+configured physical inputs. If an input becomes invalid, the calculation is
+unavailable and its threshold state is paused and cleared; the physical input
+or service owns the fault notification so operators do not receive duplicate
+alerts for one hardware problem.
+
+Each alarmed ordinary or custom measurement has a persistent state:
 
 - `Normal`
 - `Danger`

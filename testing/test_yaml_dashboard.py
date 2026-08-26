@@ -47,7 +47,8 @@ def dashboard_config() -> dict[str, object]:
                     },
                     {
                         "name": "alpha_only",
-                        "label": "Alpha Only",
+                        "label": "Alpha Setup Temperature",
+                        "short_label": "Temperature",
                         "subcategory": "Cooling Water",
                         "setups": ["alpha_setup"],
                         "unit": "°C",
@@ -55,7 +56,8 @@ def dashboard_config() -> dict[str, object]:
                     },
                     {
                         "name": "shared",
-                        "label": "Shared Supply",
+                        "label": "Shared Supply Sensor",
+                        "short_label": "Shared Supply",
                         "subcategory": "Cooling Water",
                         "setups": ["beta_setup", "alpha_setup"],
                         "unit": "°C",
@@ -272,6 +274,96 @@ def test_plain_yaml_and_registration() -> None:
         raise AssertionError("custom frontend resources were generated")
 
 
+def test_custom_dashboard_tabs_precede_alarm_setup() -> None:
+    """Group assigned setups into ordered tabs while leaving others on Monitor."""
+
+    config = dashboard_config()
+    config["dashboards"] = {
+        "room": {"label": "Room Overview", "order": 20, "icon": "mdi:home"},
+        "experiments": {
+            "label": "Experiments",
+            "order": 10,
+            "icon": "mdi:test-tube",
+        },
+        "spare": {"label": "Spare Dashboard", "order": 30},
+    }
+    config["setups"]["room_conditions"]["dashboard"] = "room"  # type: ignore[index]
+    config["setups"]["beta_setup"]["dashboard"] = "experiments"  # type: ignore[index]
+
+    _, dashboard, _ = generate(config=config)
+    visible_views = [view for view in dashboard["views"] if not view.get("subview")]
+    if [view["title"] for view in visible_views] != [
+        "Monitor",
+        "Experiments",
+        "Room Overview",
+        "Spare Dashboard",
+        "Alarm Setup",
+        "Diagnostics",
+    ]:
+        raise AssertionError("custom dashboards are not ordered before Alarm Setup")
+
+    monitor = view_by_path(dashboard, "monitor")
+    experiments = view_by_path(dashboard, "dashboard-experiments")
+    room = view_by_path(dashboard, "dashboard-room")
+    spare = view_by_path(dashboard, "dashboard-spare")
+    if "Alpha Setup" not in headings(monitor) or "Beta Setup" in headings(monitor):
+        raise AssertionError("default and custom dashboard setup assignment is incorrect")
+    if headings(experiments) != ["Beta Setup"]:
+        raise AssertionError("experiment dashboard does not contain its assigned setup")
+    if headings(room) != ["Room Conditions"]:
+        raise AssertionError("room dashboard does not contain its assigned setup")
+    if "No setups are currently assigned" not in yaml.safe_dump(spare):
+        raise AssertionError("empty declared dashboard lacks an explanatory card")
+
+
+def test_non_alarmed_measurement_remains_visible_without_alarm_entities() -> None:
+    """Keep telemetry and diagnostics while omitting disabled alarm machinery."""
+
+    config = dashboard_config()
+    config["services"]["hub_a"]["measurements"][0]["alarmed"] = False  # type: ignore[index]
+    paths, dashboard, _ = generate(config=config)
+    sensor_entity = "sensor.labpulse_hub_a_alpha_general"
+    if entity_occurrences(view_by_path(dashboard, "monitor"), sensor_entity) != 1:
+        raise AssertionError("non-alarmed measurement disappeared from Monitor")
+    if entity_occurrences(view_by_path(dashboard, "diagnostics"), sensor_entity) != 1:
+        raise AssertionError("non-alarmed measurement disappeared from Diagnostics")
+
+    forbidden = "labpulse_hub_a_alpha_general_alarm_state"
+    if forbidden in paths.package_path.read_text(encoding="utf-8"):
+        raise AssertionError("non-alarmed measurement still generated alarm helpers")
+    alarm_setup = view_by_path(dashboard, "alarm-setup-alpha_setup")
+    if forbidden in yaml.safe_dump(alarm_setup, sort_keys=False):
+        raise AssertionError("non-alarmed measurement still appears in Alarm Setup")
+
+
+def test_non_alarmed_power_service_keeps_raw_monitoring_only() -> None:
+    """Disable one composite power alarm without hiding its raw measurements."""
+
+    config = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
+    for measurement in config["services"]["ups_monitor"]["measurements"]:
+        measurement["alarmed"] = False
+    paths, dashboard, _ = generate(config=config)
+    monitor = view_by_path(dashboard, "monitor")
+    for entity_id_value in (
+        "sensor.labpulse_ups_monitor_battery_level",
+        "sensor.labpulse_ups_monitor_voltage",
+        "sensor.labpulse_ups_monitor_mains_present",
+    ):
+        if entity_occurrences(monitor, entity_id_value) != 1:
+            raise AssertionError(f"raw non-alarmed power reading is missing: {entity_id_value}")
+    if any(
+        view.get("path") == "alarm-power-ups_monitor"
+        for view in dashboard["views"]
+    ):
+        raise AssertionError("non-alarmed power service still has an alarm subview")
+    package_text = paths.package_path.read_text(encoding="utf-8")
+    if "labpulse_ups_monitor_power_state" in package_text:
+        raise AssertionError("non-alarmed power service still generated power alarm helpers")
+    package = yaml.safe_load(package_text)
+    if "input_number" in package or "input_select" in package:
+        raise AssertionError("disabled alarm domains were rendered as empty configuration")
+
+
 def test_monitor_setup_and_subcategory_projections() -> None:
     """Project explicit single and shared measurements without new identities."""
 
@@ -360,10 +452,21 @@ def test_monitor_setup_and_subcategory_projections() -> None:
         raise AssertionError("single-setup measurement projection is incorrect")
     if entity_occurrences(monitor, "sensor.labpulse_hub_b_alpha_other_hub") != 1:
         raise AssertionError("one setup did not receive measurements from both hubs")
-    if "Shared with" not in rendered:
-        raise AssertionError("shared measurement context is not visible")
+    if "Shared with" in rendered:
+        raise AssertionError("shared-membership wording makes Monitor rows too busy")
     if "All setups" in rendered:
         raise AssertionError("removed all-membership wording remains visible")
+
+    alpha_stack = next(
+        stack
+        for stack in monitor["cards"]
+        if "heading: Alpha Setup" in yaml.safe_dump(stack, sort_keys=False)
+    )
+    alpha_rendered = yaml.safe_dump(alpha_stack, sort_keys=False)
+    if "name: Temperature\n" not in alpha_rendered:
+        raise AssertionError("Monitor did not use the short measurement label")
+    if "Alpha Setup Temperature" in alpha_rendered:
+        raise AssertionError("full label leaked beneath its setup heading")
     problem_entities = {
         entity["entity"] for entity in problems.get("entities", [])
     }
@@ -469,6 +572,13 @@ def test_alarm_controls_are_grouped_by_setup() -> None:
     for setup_id in ("room_conditions", "alpha_setup", "beta_setup"):
         if f"/labpulse-monitor/alarm-setup-{setup_id}" not in landing_rendered:
             raise AssertionError(f"setup Configure action is missing: {setup_id}")
+
+    alpha_view = view_by_path(dashboard, "alarm-setup-alpha_setup")
+    alpha_rendered = yaml.safe_dump(alpha_view, sort_keys=False)
+    if "name: Temperature\n" not in alpha_rendered:
+        raise AssertionError("setup editor did not use the short measurement label")
+    if "Alpha Setup Temperature" in alpha_rendered:
+        raise AssertionError("full label leaked into the setup editor")
 
     # Every subview has explicit desktop and mobile projections of each row.
     expected_rows = {
@@ -778,6 +888,10 @@ def test_diagnostics_use_physical_ownership() -> None:
         raise AssertionError("Diagnostics uses misleading service-health wording")
     if "name: Confirmed service fault" not in rendered:
         raise AssertionError("Diagnostics does not distinguish confirmed service faults")
+    if "name: Alpha Setup Temperature" not in rendered:
+        raise AssertionError("Diagnostics did not use the full dashboard label")
+    if "name: Temperature\n" in rendered:
+        raise AssertionError("short label leaked into Diagnostics")
     for service, measurements in {
         "hub_a": ("alpha_general", "alpha_only", "shared", "beta_only", "global_room"),
         "hub_b": ("alpha_other_hub",),

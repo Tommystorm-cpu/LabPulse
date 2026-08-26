@@ -16,7 +16,6 @@ from labpulse.sms.subscriptions import SmsCommandMonitor, SubscriptionRegistry
 
 APP_DIR = DEFAULT_CONFIG_PATH.parent
 
-
 def parse_args(argv: list[str] | None = None) -> Namespace:
     """Parse SMS service command-line options."""
 

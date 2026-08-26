@@ -2,6 +2,8 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import keyword
+import math
 import re
 from pathlib import Path
 import yaml
@@ -15,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from labpulse.common.formula import compile_formula
 from labpulse.common.identity import slug, title
 
 def find_default_config_path() -> Path:
@@ -145,6 +148,43 @@ class ServiceHealthConfig(BaseModel):
     recovery_confirm_seconds: int = Field(default=15, ge=1, le=3600)
 
 
+class DashboardConfig(BaseModel):
+    """Presentation metadata for one additional operator dashboard tab."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = None
+    icon: str = "mdi:view-dashboard-outline"
+    order: int = Field(default=100, ge=0, le=10000)
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, label: str | None) -> str | None:
+        """Normalize an optional label and reject blank display text."""
+
+        if label is None:
+            return None
+        normalized = label.strip()
+        if not normalized:
+            raise ValueError("dashboard label must not be blank")
+        return normalized
+
+    @field_validator("icon")
+    @classmethod
+    def validate_icon(cls, icon: str) -> str:
+        """Require a stable Material Design icon identifier."""
+
+        normalized = icon.strip()
+        if re.fullmatch(r"mdi:[a-z0-9]+(?:-[a-z0-9]+)*", normalized) is None:
+            raise ValueError("dashboard icon must use an mdi: icon identifier")
+        return normalized
+
+    def display_label(self, dashboard_id: str) -> str:
+        """Return the configured label or a readable dashboard-ID fallback."""
+
+        return self.label or title(dashboard_id)
+
+
 class SetupConfig(BaseModel):
     """Presentation metadata for one logical experimental setup."""
 
@@ -153,6 +193,7 @@ class SetupConfig(BaseModel):
     label: str | None = None
     icon: str = "mdi:flask-outline"
     order: int = Field(default=100, ge=0, le=10000)
+    dashboard: str = "main"
 
     @field_validator("label")
     @classmethod
@@ -175,6 +216,13 @@ class SetupConfig(BaseModel):
         if re.fullmatch(r"mdi:[a-z0-9]+(?:-[a-z0-9]+)*", normalized) is None:
             raise ValueError("setup icon must use an mdi: icon identifier")
         return normalized
+
+    @field_validator("dashboard")
+    @classmethod
+    def validate_dashboard(cls, dashboard: str) -> str:
+        """Require the reserved main ID or a stable custom dashboard ID."""
+
+        return validate_dashboard_id(dashboard)
 
     def display_label(self, setup_id: str) -> str:
         """Return the configured label or a readable setup-ID fallback."""
@@ -208,6 +256,49 @@ def validate_setup_id(setup_id: str) -> str:
         )
     return normalized
 
+
+def validate_dashboard_id(dashboard_id: str) -> str:
+    """Return one valid stable custom-dashboard identifier."""
+
+    normalized = dashboard_id.strip()
+    if not normalized or slug(normalized) != normalized:
+        raise ValueError(
+            "dashboard IDs must use lowercase letters, numbers, and underscores"
+        )
+    return normalized
+
+
+def normalize_setup_scope(value: object) -> SetupScope | None:
+    """Normalize an optional, explicit non-empty setup-ID list."""
+
+    if value is None:
+        return None
+    if isinstance(value, SetupScope):
+        return value
+    if isinstance(value, list):
+        if not value:
+            raise ValueError("setups must contain at least one setup ID")
+        normalized_ids: list[str] = []
+        for setup_id in value:
+            if not isinstance(setup_id, str):
+                raise ValueError("selected setup IDs must be strings")
+            normalized_ids.append(validate_setup_id(setup_id))
+        if len(set(normalized_ids)) != len(normalized_ids):
+            raise ValueError("selected setup IDs must be unique")
+        return SetupScope(setup_ids=tuple(normalized_ids))
+    raise ValueError("setups must be a non-empty list of setup IDs")
+
+
+def validate_measurement_icon(icon: str | None) -> str | None:
+    """Normalize an optional Material Design entity icon."""
+
+    if icon is None:
+        return None
+    normalized = icon.strip()
+    if re.fullmatch(r"mdi:[a-z0-9]+(?:-[a-z0-9]+)*", normalized) is None:
+        raise ValueError("measurement icon must use an mdi: icon identifier")
+    return normalized
+
 class MeasurementConfig(BaseModel):
     """One named value published by a LabPulse service."""
 
@@ -215,8 +306,10 @@ class MeasurementConfig(BaseModel):
 
     name: str
     label: str | None = None
+    short_label: str | None = None
     subcategory: str | None = None
     setups: SetupScope | None = None
+    alarmed: bool = Field(default=True, strict=True)
     unit: str | None = None
     device_class: str | None = None
     icon: str | None = None
@@ -227,40 +320,150 @@ class MeasurementConfig(BaseModel):
     def normalize_setups(cls, value: object) -> SetupScope | None:
         """Normalize an explicit non-empty setup-ID list."""
 
-        if value is None:
-            return None
-        if isinstance(value, SetupScope):
-            return value
-        if isinstance(value, list):
-            if not value:
-                raise ValueError("setups must contain at least one setup ID")
-            normalized_ids: list[str] = []
-            for setup_id in value:
-                if not isinstance(setup_id, str):
-                    raise ValueError("selected setup IDs must be strings")
-                normalized_ids.append(validate_setup_id(setup_id))
-            if len(set(normalized_ids)) != len(normalized_ids):
-                raise ValueError("selected setup IDs must be unique")
-            return SetupScope(setup_ids=tuple(normalized_ids))
-        raise ValueError("setups must be a non-empty list of setup IDs")
+        return normalize_setup_scope(value)
 
     @field_validator("icon")
     @classmethod
     def validate_icon(cls, icon: str | None) -> str | None:
         """Normalize an optional Material Design entity icon."""
 
-        if icon is None:
-            return None
-        normalized = icon.strip()
-        if re.fullmatch(r"mdi:[a-z0-9]+(?:-[a-z0-9]+)*", normalized) is None:
-            raise ValueError("measurement icon must use an mdi: icon identifier")
-        return normalized
+        return validate_measurement_icon(icon)
 
     @property
     def display_label(self) -> str:
-        """Return the configured label or the shared readable-name fallback."""
+        """Return the full label used outside compact dashboard rows."""
 
         return self.label or title(self.name)
+
+    @property
+    def display_short_label(self) -> str:
+        """Return the shorter label used where surrounding context is sufficient."""
+
+        return self.short_label or self.display_label
+
+
+class CustomMeasurementConfig(BaseModel):
+    """One Home Assistant-calculated reading built from physical measurements."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = None
+    short_label: str | None = None
+    subcategory: str | None = None
+    setups: SetupScope
+    inputs: dict[str, str]
+    constants: dict[str, float] = Field(default_factory=dict)
+    formula: str
+    precision: int = Field(default=2, ge=0, le=10)
+    alarmed: bool = Field(default=True, strict=True)
+    unit: str | None = None
+    device_class: str | None = None
+    icon: str | None = None
+    state_class: str | None = "measurement"
+
+    @field_validator("setups", mode="before")
+    @classmethod
+    def normalize_setups(cls, value: object) -> SetupScope:
+        """Require custom readings to belong to at least one setup."""
+
+        scope = normalize_setup_scope(value)
+        if scope is None:
+            raise ValueError("custom measurements must declare setups")
+        return scope
+
+    @field_validator("icon")
+    @classmethod
+    def validate_icon(cls, icon: str | None) -> str | None:
+        """Normalize an optional Material Design entity icon."""
+
+        return validate_measurement_icon(icon)
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_inputs(cls, inputs: dict[str, str]) -> dict[str, str]:
+        """Require at least one physical source with a safe local alias."""
+
+        if not inputs:
+            raise ValueError("custom measurements require at least one input")
+        normalized: dict[str, str] = {}
+        reserved = {"true", "false", "none", "null", "states", "is_number"}
+        for alias, reference in inputs.items():
+            clean_alias = alias.strip()
+            if (
+                not clean_alias
+                or slug(clean_alias) != clean_alias
+                or keyword.iskeyword(clean_alias)
+                or clean_alias in reserved
+            ):
+                raise ValueError(
+                    "input aliases must use non-reserved lowercase letters, numbers, and underscores"
+                )
+            clean_reference = reference.strip()
+            if clean_reference.count(".") != 1:
+                raise ValueError(
+                    f"input {clean_alias} must reference service.measurement"
+                )
+            normalized[clean_alias] = clean_reference
+        if len(set(normalized.values())) != len(normalized):
+            raise ValueError("custom measurement inputs must reference distinct measurements")
+        return normalized
+
+    @field_validator("constants", mode="before")
+    @classmethod
+    def validate_constants(cls, constants: object) -> dict[str, float]:
+        """Require finite numeric constants with the same safe naming rules."""
+
+        if not isinstance(constants, Mapping):
+            raise ValueError("custom measurement constants must be a mapping")
+        normalized: dict[str, float] = {}
+        reserved = {"true", "false", "none", "null", "states", "is_number"}
+        for name, raw_value in constants.items():
+            if not isinstance(name, str):
+                raise ValueError("custom measurement constant names must be strings")
+            clean_name = name.strip()
+            if (
+                not clean_name
+                or slug(clean_name) != clean_name
+                or keyword.iskeyword(clean_name)
+                or clean_name in reserved
+            ):
+                raise ValueError(
+                    "constant names must use non-reserved lowercase letters, numbers, and underscores"
+                )
+            if (
+                isinstance(raw_value, bool)
+                or not isinstance(raw_value, (int, float))
+                or not math.isfinite(raw_value)
+            ):
+                raise ValueError("custom measurement constants must be finite numbers")
+            normalized[clean_name] = float(raw_value)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_formula(self) -> "CustomMeasurementConfig":
+        """Ensure the formula uses every declared input and no unknown names."""
+
+        overlap = sorted(set(self.inputs).intersection(self.constants))
+        if overlap:
+            raise ValueError("inputs and constants use the same names: " + ", ".join(overlap))
+        compiled = compile_formula(self.formula, set(self.inputs) | set(self.constants))
+        unused_inputs = sorted(set(self.inputs).difference(compiled.names))
+        if unused_inputs:
+            raise ValueError("formula does not use inputs: " + ", ".join(unused_inputs))
+        unused_constants = sorted(set(self.constants).difference(compiled.names))
+        if unused_constants:
+            raise ValueError("formula does not use constants: " + ", ".join(unused_constants))
+        return self
+
+    def display_label(self, custom_id: str) -> str:
+        """Return the full label used outside compact dashboard rows."""
+
+        return self.label or title(custom_id)
+
+    def display_short_label(self, custom_id: str) -> str:
+        """Return the compact dashboard label."""
+
+        return self.short_label or self.display_label(custom_id)
 
 class DriverConfig(BaseModel):
     """One stable driver identity and its typed, driver-owned options."""
@@ -362,6 +565,12 @@ class ServiceConfig(BaseModel):
                     "dedicated power measurements must omit setups because power is "
                     "not grouped as an experimental setup"
                 )
+            alarmed_values = {measurement.alarmed for measurement in self.measurements}
+            if len(alarmed_values) > 1:
+                raise ValueError(
+                    "dedicated power measurements must all use the same alarmed value "
+                    "because they form one composite power alarm"
+                )
         elif any(measurement.setups is None for measurement in self.measurements):
             raise ValueError(
                 "every ordinary measurement must declare a non-empty setups list"
@@ -377,15 +586,28 @@ class LabPulseConfig(BaseModel):
     mqtt: MqttConfig
     sms: SmsConfig = Field(default_factory=SmsConfig)
     service_health: ServiceHealthConfig = Field(default_factory=ServiceHealthConfig)
+    dashboards: dict[str, DashboardConfig] = Field(default_factory=dict)
     setups: dict[str, SetupConfig]
     services: dict[str, ServiceConfig]
+    custom_measurements: dict[str, CustomMeasurementConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_setup_membership(self) -> "LabPulseConfig":
-        """Validate setup IDs and every measurement's logical references."""
+        """Validate dashboard/setup IDs and every logical reference."""
 
-        for setup_id in self.setups:
+        for dashboard_id in self.dashboards:
+            validate_dashboard_id(dashboard_id)
+            if dashboard_id == "main":
+                raise ValueError(
+                    "dashboard ID 'main' is reserved for the built-in Monitor tab"
+                )
+
+        for setup_id, setup in self.setups.items():
             validate_setup_id(setup_id)
+            if setup.dashboard != "main" and setup.dashboard not in self.dashboards:
+                raise ValueError(
+                    f"setup {setup_id} references unknown dashboard: {setup.dashboard}"
+                )
 
         available = set(self.setups)
         for service_name, service in self.services.items():
@@ -398,6 +620,43 @@ class LabPulseConfig(BaseModel):
                     raise ValueError(
                         f"{service_name}.{measurement.name} references unknown setups: "
                         + ", ".join(missing)
+                    )
+
+        if self.custom_measurements and "custom" in self.services:
+            raise ValueError(
+                "service ID 'custom' is reserved when custom measurements are configured"
+            )
+        for custom_id, measurement in self.custom_measurements.items():
+            if not custom_id or slug(custom_id) != custom_id:
+                raise ValueError(
+                    "custom measurement IDs must use lowercase letters, numbers, and underscores"
+                )
+            virtual_service_id = f"custom_{custom_id}"
+            if virtual_service_id in self.services:
+                raise ValueError(
+                    f"service ID '{virtual_service_id}' conflicts with custom "
+                    f"measurement {custom_id} alarm identities"
+                )
+            missing = sorted(set(measurement.setups.setup_ids).difference(available))
+            if missing:
+                raise ValueError(
+                    f"custom measurement {custom_id} references unknown setups: "
+                    + ", ".join(missing)
+                )
+            for alias, reference in measurement.inputs.items():
+                service_name, measurement_name = reference.split(".", 1)
+                source_service = self.services.get(service_name)
+                if source_service is None:
+                    raise ValueError(
+                        f"custom measurement {custom_id} input {alias} references "
+                        f"unknown physical service: {service_name}"
+                    )
+                if measurement_name not in {
+                    item.name for item in source_service.measurements
+                }:
+                    raise ValueError(
+                        f"custom measurement {custom_id} input {alias} references "
+                        f"unknown physical measurement: {reference}"
                     )
         return self
 

@@ -59,7 +59,7 @@
 [% endfor %]
 [% endif %]
 [% endfor %]
-[% for service in model.services if service.power is not none %]
+[% for service in model.power_alarm_services %]
       - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
         name: 'Power monitoring: lifecycle state'
         icon: mdi:power-plug-off-outline

@@ -323,10 +323,25 @@ def test_setup_refresh_and_preservation_contract() -> None:
         'RUNTIME_CONFIG="$FAKE_CONFIG_PATH"',
         '"${COMPOSE_MODE_ARGS[@]}"',
         'DOCKER_COMMAND_TEXT="${LABPULSE_DOCKER_COMMAND:-sudo docker}"',
+        'if [ -n "${VISUAL:-}" ]; then',
+        'elif [ -n "${EDITOR:-}" ]; then',
+        'command -v micro >/dev/null 2>&1',
+        'EDITOR_COMMAND="micro"',
+        'command -v nano >/dev/null 2>&1',
+        'EDITOR_COMMAND="nano"',
     )
     for fragment in required_editor_fragments:
         if fragment not in editor_source:
             raise AssertionError(f"config editor contract missing: {fragment}")
+    editor_priority = (
+        'if [ -n "${VISUAL:-}" ]; then',
+        'elif [ -n "${EDITOR:-}" ]; then',
+        'command -v micro >/dev/null 2>&1',
+        'command -v nano >/dev/null 2>&1',
+    )
+    positions = [editor_source.index(fragment) for fragment in editor_priority]
+    if positions != sorted(positions):
+        raise AssertionError("config editor priority is not VISUAL, EDITOR, micro, nano")
 
 
 def test_offline_dashboard_generation_is_deterministic() -> None:

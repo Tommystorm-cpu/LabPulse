@@ -36,10 +36,10 @@
       show_header_toggle: false
       entities:
 [% for measurement in service.measurements %]
-      - entity: [[ entity_id('sensor', service.name, measurement.name) ]]
+      - entity: [[ measurement.entity_id ]]
         name: [[ measurement.label | yaml_scalar ]]
 [% endfor %]
-[% if service.power is not none %]
+[% if service.power is not none and service.power.alarmed %]
 {# These power details are useful for fault finding, but too technical for the
    main Monitor page. #}
     - type: entities
@@ -60,3 +60,20 @@
         name: Last outage duration
 [% endif %]
 [% endfor %]
+[% if model.custom_measurements %]
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Calculated Measurements
+      heading_style: title
+      icon: mdi:calculator-variant-outline
+    - type: entities
+      title: Latest calculated values
+      show_header_toggle: false
+      entities:
+[% for measurement in model.custom_measurements %]
+      - entity: [[ measurement.entity_id ]]
+        name: [[ measurement.label | yaml_scalar ]]
+[% endfor %]
+[% endif %]

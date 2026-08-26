@@ -32,6 +32,14 @@ service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
+# Optional extra operator dashboard tabs. Setups use dashboard: <ID> to move
+# from the built-in main Monitor tab. Custom tabs appear before Alarm Setup.
+# dashboards:
+#   pump_systems:
+#     label: "Pump Systems"
+#     icon: "mdi:water-pump"
+#     order: 10
+
 # Logical experimental setups are independent of the physical sensor hubs
 # under services. Every ordinary measurement explicitly selects one or more setups.
 setups:
@@ -43,6 +51,7 @@ setups:
     label: "Pump Room Experiment"
     icon: "mdi:water-pump"
     order: 20
+    # dashboard: pump_systems
   turbo_pump_experiment:
     label: "Turbo Pump Experiment"
     icon: "mdi:snowflake-thermometer"
@@ -51,6 +60,27 @@ setups:
     label: "Cryogenics Room"
     icon: "mdi:home-thermometer-outline"
     order: 40
+
+# Optional calculated readings. Home Assistant evaluates these from one or
+# more physical service measurements; custom measurements cannot depend on
+# other custom measurements.
+# custom_measurements:
+#   pump_room_temperature_difference:
+#     label: "Pump Room Temperature Difference"
+#     short_label: "Temperature Difference"
+#     subcategory: "Calculated"
+#     setups: [pump_room_system]
+#     inputs:
+#       supply: pump_room.temp0
+#       return_temp: pump_room.temp1
+#     constants:
+#       scale: 1.0
+#     formula: "(return_temp - supply) * scale"
+#     precision: 2
+#     alarmed: true
+#     unit: "°C"
+#     device_class: "temperature"
+#     icon: "mdi:delta"
 
 services:
   # Ordinary measurements expire in Home Assistant after 300 seconds without an
@@ -67,6 +97,9 @@ services:
       - name: "pressure"
         label: "Pressure"
         setups: [compressed_air]
+        # Set alarmed: false to publish and display a reading without creating
+        # measurement alarm helpers, controls, or notifications.
+        alarmed: true
         unit: "bar"
         # device_class selects LabPulse semantics and the default mdi:gauge
         # icon without allowing Home Assistant to convert the configured unit.
