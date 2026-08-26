@@ -135,12 +135,12 @@ def test_service_health_config_contract() -> None:
         "setups": {"test_setup": {}},
         "services": {
             "hub": {
+                "label": "Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/hub"},
                 },
-                "device_name": "Hub",
-                "measurements": [{"name": "pressure", "setups": ["test_setup"]}],
+                "measurements": {"pressure": {"setups": ["test_setup"]}},
             }
         },
     }

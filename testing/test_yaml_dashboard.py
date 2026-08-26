@@ -32,80 +32,74 @@ def dashboard_config() -> dict[str, object]:
         },
         "services": {
             "hub_a": {
+                "label": "Hub A",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/hub-a"},
                 },
-                "device_name": "Hub A",
-                "measurements": [
-                    {
-                        "name": "alpha_general",
+                "measurements": {
+                    "alpha_general": {
                         "label": "General",
                         "setups": ["alpha_setup"],
                         "unit": "bar",
                         "device_class": "pressure",
                     },
-                    {
-                        "name": "alpha_only",
+                    "alpha_only": {
                         "label": "Alpha Setup Temperature",
                         "short_label": "Temperature",
-                        "subcategory": "Cooling Water",
+                        "group": "Cooling Water",
                         "setups": ["alpha_setup"],
                         "unit": "°C",
                         "device_class": "temperature",
                     },
-                    {
-                        "name": "shared",
+                    "shared": {
                         "label": "Shared Supply Sensor",
                         "short_label": "Shared Supply",
-                        "subcategory": "Cooling Water",
+                        "group": "Cooling Water",
                         "setups": ["beta_setup", "alpha_setup"],
                         "unit": "°C",
                         "device_class": "temperature",
                     },
-                    {
-                        "name": "beta_only",
+                    "beta_only": {
                         "label": "Beta Only",
-                        "subcategory": "Vacuum",
+                        "group": "Vacuum",
                         "setups": ["beta_setup"],
                         "unit": "%",
                         "device_class": "humidity",
                     },
-                    {
-                        "name": "global_room",
+                    "global_room": {
                         "label": "Room Temperature",
-                        "subcategory": "Ambient Sensors",
+                        "group": "Ambient Sensors",
                         "setups": ["room_conditions"],
                         "unit": "°C",
                         "device_class": "temperature",
                     },
-                ],
+                },
             },
             "hub_b": {
+                "label": "Hub B",
                 "driver": {
                     "type": "labpulse.dht11",
                     "options": {"pin": "D4"},
                 },
-                "device_name": "Hub B",
-                "measurements": [
-                    {
-                        "name": "alpha_other_hub",
+                "measurements": {
+                    "alpha_other_hub": {
                         "label": "Alpha From Hub B",
-                        "subcategory": "Cooling Water",
+                        "group": "Cooling Water",
                         "setups": ["alpha_setup"],
                         "unit": "°F",
                         "device_class": "temperature",
                     }
-                ],
+                },
             },
             "disabled_hub": {
                 "enabled": False,
+                "label": "Disabled Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/disabled"},
                 },
-                "device_name": "Disabled Hub",
-                "measurements": [{"name": "ignored", "setups": ["alpha_setup"]}],
+                "measurements": {"ignored": {"setups": ["alpha_setup"]}},
             },
         },
     }
@@ -320,7 +314,7 @@ def test_non_alarmed_measurement_remains_visible_without_alarm_entities() -> Non
     """Keep telemetry and diagnostics while omitting disabled alarm machinery."""
 
     config = dashboard_config()
-    config["services"]["hub_a"]["measurements"][0]["alarmed"] = False  # type: ignore[index]
+    config["services"]["hub_a"]["measurements"]["alpha_general"]["alarmed"] = False  # type: ignore[index]
     paths, dashboard, _ = generate(config=config)
     sensor_entity = "sensor.labpulse_hub_a_alpha_general"
     if entity_occurrences(view_by_path(dashboard, "monitor"), sensor_entity) != 1:
@@ -340,7 +334,7 @@ def test_non_alarmed_power_service_keeps_raw_monitoring_only() -> None:
     """Disable one composite power alarm without hiding its raw measurements."""
 
     config = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
-    for measurement in config["services"]["ups_monitor"]["measurements"]:
+    for measurement in config["services"]["ups_monitor"]["measurements"].values():
         measurement["alarmed"] = False
     paths, dashboard, _ = generate(config=config)
     monitor = view_by_path(dashboard, "monitor")

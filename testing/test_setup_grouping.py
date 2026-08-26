@@ -33,50 +33,47 @@ def config_data() -> dict[str, object]:
         },
         "services": {
             "pump_room": {
+                "label": "Pump Room Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/pump-room"},
                 },
-                "device_name": "Pump Room Hub",
-                "measurements": [
-                    {
-                        "name": "cryostat_only",
+                "measurements": {
+                    "cryostat_only": {
                         "setups": ["cryostat"],
                         "unit": "°C",
                         "device_class": "temperature",
                     },
-                    {"name": "turbo", "setups": ["turbo_pump"]},
-                    {
-                        "name": "shared",
+                    "turbo": {"setups": ["turbo_pump"]},
+                    "shared": {
                         "setups": ["turbo_pump", "cryostat"],
                         "unit": "°C",
                         "device_class": "temperature",
                     },
-                ],
+                },
             },
             "room_environment": {
+                "label": "Room Hub",
                 "driver": {
                     "type": "labpulse.dht11",
                     "options": {"pin": "D4"},
                 },
-                "device_name": "Room Hub",
-                "measurements": [
-                    {
-                        "name": "temperature",
+                "measurements": {
+                    "temperature": {
                         "setups": ["cryostat"],
                         "unit": "°F",
                         "device_class": "temperature",
                     }
-                ],
+                },
             },
             "disabled": {
                 "enabled": False,
+                "label": "Disabled Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/disabled"},
                 },
-                "device_name": "Disabled Hub",
-                "measurements": [{"name": "ignored", "setups": ["cryostat"]}],
+                "measurements": {"ignored": {"setups": ["cryostat"]}},
             },
         },
     }
@@ -99,7 +96,7 @@ def test_scope_normalization_and_validation() -> None:
 
     config = LabPulseConfig.model_validate(config_data())
     measurements = config.services["pump_room"].measurements
-    if [item.setups.setup_ids for item in measurements if item.setups is not None] != [
+    if [item.setups.setup_ids for item in measurements.values() if item.setups is not None] != [
         ("cryostat",),
         ("turbo_pump",),
         ("turbo_pump", "cryostat"),
@@ -107,30 +104,30 @@ def test_scope_normalization_and_validation() -> None:
         raise AssertionError("measurement setup scopes were not normalized")
 
     missing_membership = config_data()
-    missing_membership["services"]["pump_room"]["measurements"][0].pop("setups")
+    missing_membership["services"]["pump_room"]["measurements"]["cryostat_only"].pop("setups")
     assert_rejected(missing_membership, "setups")
 
     duplicate = config_data()
-    duplicate["services"]["pump_room"]["measurements"][1]["setups"] = [
+    duplicate["services"]["pump_room"]["measurements"]["turbo"]["setups"] = [
         "turbo_pump",
         "turbo_pump",
     ]
     assert_rejected(duplicate, "must be unique")
 
     unknown = config_data()
-    unknown["services"]["pump_room"]["measurements"][1]["setups"] = ["missing"]
+    unknown["services"]["pump_room"]["measurements"]["turbo"]["setups"] = ["missing"]
     assert_rejected(unknown, "unknown setups: missing")
 
     empty = config_data()
-    empty["services"]["pump_room"]["measurements"][1]["setups"] = []
+    empty["services"]["pump_room"]["measurements"]["turbo"]["setups"] = []
     assert_rejected(empty, "at least one setup ID")
 
     removed_none = config_data()
-    removed_none["services"]["pump_room"]["measurements"][1]["setups"] = "none"
+    removed_none["services"]["pump_room"]["measurements"]["turbo"]["setups"] = "none"
     assert_rejected(removed_none, "non-empty list")
 
     removed_all = config_data()
-    removed_all["services"]["pump_room"]["measurements"][1]["setups"] = "all"
+    removed_all["services"]["pump_room"]["measurements"]["turbo"]["setups"] = "all"
     assert_rejected(removed_all, "non-empty list")
 
 
@@ -153,7 +150,7 @@ def test_setup_metadata_validation() -> None:
     assert_rejected(invalid_icon, "mdi: icon identifier")
 
     invalid_measurement_icon = config_data()
-    invalid_measurement_icon["services"]["pump_room"]["measurements"][0][
+    invalid_measurement_icon["services"]["pump_room"]["measurements"]["cryostat_only"][
         "icon"
     ] = "thermometer"
     assert_rejected(invalid_measurement_icon, "measurement icon")
@@ -167,8 +164,8 @@ def test_setup_metadata_validation() -> None:
     assert_rejected(obsolete_display, "display")
 
     obsolete_group = config_data()
-    obsolete_group["services"]["pump_room"]["measurements"][0]["group"] = "General"
-    assert_rejected(obsolete_group, "group")
+    obsolete_group["services"]["pump_room"]["measurements"]["cryostat_only"]["subcategory"] = "General"
+    assert_rejected(obsolete_group, "subcategory")
 
     no_setups = config_data()
     no_setups["setups"] = {}
@@ -183,25 +180,25 @@ def test_dedicated_power_omits_setup_membership() -> None:
         "setups": {},
         "services": {
             "ups": {
+                "label": "UPS",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/ups"},
                 },
-                "device_name": "UPS",
-                "measurements": [
-                    {"name": "voltage"},
-                    {"name": "battery_level"},
-                    {"name": "mains_present", "state_class": None},
-                ],
+                "measurements": {
+                    "voltage": {},
+                    "battery_level": {},
+                    "mains_present": {"state_class": None},
+                },
                 "power_detection": {},
             }
         },
     }
     config = LabPulseConfig.model_validate(power)
-    if any(measurement.setups is not None for measurement in config.services["ups"].measurements):
+    if any(measurement.setups is not None for measurement in config.services["ups"].measurements.values()):
         raise AssertionError("power measurement unexpectedly gained setup membership")
 
-    power["services"]["ups"]["measurements"][0]["setups"] = ["power"]
+    power["services"]["ups"]["measurements"]["voltage"]["setups"] = ["power"]
     assert_rejected(power, "dedicated power measurements must omit setups")
 
 

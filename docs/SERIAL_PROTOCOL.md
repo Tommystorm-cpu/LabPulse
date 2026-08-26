@@ -144,21 +144,20 @@ Choose a firmware interval comfortably shorter than the service's
 ```yaml
 services:
   example_monitor:
-    enabled: true
+    label: Example Sensor Hub
     driver:
       type: labpulse.serial_pipe
       options:
         port: /dev/serial/by-id/usb-example
         baud_rate: 9600
-    device_name: "Example Sensor Hub"
     measurements:
-      - name: temperature
-        label: "Temperature"
+      temperature:
+        label: Temperature
         setups: [example_setup]
         unit: "°C"
         device_class: temperature
-      - name: pressure
-        label: "Pressure"
+      pressure:
+        label: Pressure
         setups: [example_setup]
         unit: bar
         device_class: pressure

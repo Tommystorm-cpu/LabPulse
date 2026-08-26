@@ -75,24 +75,23 @@ setups:
   monitor: {}
 services:
   pressure_monitor:
-    enabled: true
+    label: Pressure Monitor
     driver:
       type: labpulse.serial_pipe
       options:
         port: /tmp/labpulse-fake-serial/pressure
-    device_name: Pressure Monitor
     measurements:
-      - name: pressure
+      pressure:
         setups: [monitor]
   disabled_hub:
     enabled: false
+    label: Disabled Hub
     driver:
       type: labpulse.serial_pipe
       options:
         port: /tmp/labpulse-fake-serial/disabled
-    device_name: Disabled Hub
     measurements:
-      - name: unused
+      unused:
         setups: [monitor]
 """,
             encoding="utf-8",
@@ -461,7 +460,7 @@ sms: {dry_run: true}
 setups: {}
 services:
   ups_monitor:
-    enabled: true
+    label: UPS Monitor
     driver:
       type: labpulse.x1200
       options:
@@ -469,11 +468,10 @@ services:
         address: 0x36
         gpio_chip: /dev/gpiochip0
         gpio_line: 6
-    device_name: UPS Monitor
     measurements:
-      - {name: voltage}
-      - {name: battery_level}
-      - {name: mains_present}
+      voltage: {}
+      battery_level: {}
+      mains_present: {}
     power_detection:
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5
@@ -517,14 +515,13 @@ setups:
   monitor: {}
 services:
   pressure_monitor:
-    enabled: true
+    label: Pressure Monitor
     driver:
       type: labpulse.serial_pipe
       options:
         port: /tmp/labpulse-fake-serial/pressure
-    device_name: Pressure Monitor
     measurements:
-      - name: pressure
+      pressure:
         setups: [monitor]
 """,
             encoding="utf-8",

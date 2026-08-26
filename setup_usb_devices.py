@@ -70,7 +70,7 @@ def load_serial_services(config_path: Path) -> list[SerialService]:
             services.append(
                 SerialService(
                     name=name,
-                    label=config.device_name or name,
+                    label=config.label or name,
                     current_port=options.port,
                 )
             )

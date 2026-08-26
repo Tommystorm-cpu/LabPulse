@@ -320,7 +320,7 @@ may remain in Home Assistant's registry and should be reviewed manually.
 
 ## Unit or icon is unexpected
 
-The published unit is exactly `measurements[].unit`. LabPulse does not enable
+The published unit is exactly the measurement's configured `unit`. LabPulse does not enable
 Home Assistant unit conversion through MQTT `device_class`.
 
 The configured `device_class` chooses a default icon inside LabPulse. Set an

@@ -217,12 +217,12 @@ def test_options_registry_and_resources_are_end_to_end() -> None:
     """Validate options, automatic discovery, construction, and device access."""
 
     service = ServiceConfig(
+        label="Room Environment",
         driver={"type": "labpulse.sht40", "options": {"bus": 3}},
-        device_name="Room Environment",
-        measurements=[
-            {"name": "temperature", "setups": ["room"], "unit": "°C"},
-            {"name": "humidity", "setups": ["room"], "unit": "%"},
-        ],
+        measurements={
+            "temperature": {"setups": ["room"], "unit": "°C"},
+            "humidity": {"setups": ["room"], "unit": "%"},
+        },
     )
     driver = build_driver("room_environment", service)
     assert isinstance(driver, Driver)
@@ -249,15 +249,15 @@ setups:
   room: {}
 services:
   room_environment:
+    label: Room Environment
     driver:
       type: labpulse.sht40
       options:
         bus: 1
         address: 0x44
-    device_name: Room Environment
     measurements:
-      - {name: temperature, setups: [room], unit: "°C"}
-      - {name: humidity, setups: [room], unit: "%"}
+      temperature: {setups: [room], unit: "°C"}
+      humidity: {setups: [room], unit: "%"}
 """
 
     converted = LabPulseConfig.model_validate(

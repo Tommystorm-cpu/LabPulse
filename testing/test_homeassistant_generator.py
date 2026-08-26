@@ -33,27 +33,25 @@ def sample_config() -> dict[str, object]:
         "setups": {"air_pressure": {"label": "Air Pressure"}},
         "services": {
             "pressure_monitor": {
+                "label": "Air Pressure Sensor Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/labpulse-fake-serial/pressure"},
                 },
-                "device_name": "Air Pressure Sensor Hub",
-                "measurements": [
-                    {
-                        "name": "pressure",
+                "measurements": {
+                    "pressure": {
                         "label": "Pressure",
                         "setups": ["air_pressure"],
                         "unit": "bar",
                         "device_class": "pressure",
                     },
-                    {
-                        "name": "temperature",
+                    "temperature": {
                         "label": "Temperature",
                         "setups": ["air_pressure"],
                         "unit": "°C",
                         "device_class": "temperature",
                     },
-                ],
+                },
             }
         },
     }

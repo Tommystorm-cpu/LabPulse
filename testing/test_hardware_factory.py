@@ -26,6 +26,7 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
     """Build a valid serial ServiceConfig, with optional field overrides."""
 
     config = {
+        "label": "Pump Room Sensor Hub",
         "driver": {
             "type": "labpulse.serial_pipe",
             "options": {
@@ -33,9 +34,9 @@ def make_service_config(**overrides: Any) -> ServiceConfig:
                 "baud_rate": 9600,
             },
         },
-        "reconnect_interval_seconds": 5.0,
-        "device_name": "Pump Room Sensor Hub",
-        "measurements": [{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}],
+        "measurements": {
+            "flow1": {"label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}
+        },
     }
     config.update(overrides)
     return ServiceConfig(**config)
@@ -111,6 +112,7 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
             raise AssertionError("registry import eagerly loaded the DHT library")
 
         config = ServiceConfig(
+            label="Pump Room Sensor Hub",
             driver={{
                 "type": "labpulse.serial_pipe",
                 "options": {{
@@ -118,9 +120,9 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
                     "baud_rate": 9600,
                 }},
             }},
-            reconnect_interval_seconds=5.0,
-            device_name="Pump Room Sensor Hub",
-            measurements=[{{"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}}],
+            measurements={{
+                "flow1": {{"label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}}
+            }},
         )
         build_driver("pump_room", config)
 
@@ -177,10 +179,10 @@ def test_gpio_dht11_driver_builds() -> None:
     service_config = make_service_config(
         driver={"type": "labpulse.dht11", "options": {"pin": "D4"}},
         read_interval_seconds=3.0,
-        measurements=[
-            {"name": "temperature", "label": "Temperature", "setups": ["test_setup"], "unit": "\u00b0C"},
-            {"name": "humidity", "label": "Humidity", "setups": ["test_setup"], "unit": "%"},
-        ],
+        measurements={
+            "temperature": {"label": "Temperature", "setups": ["test_setup"], "unit": "°C"},
+            "humidity": {"label": "Humidity", "setups": ["test_setup"], "unit": "%"},
+        },
     )
 
     driver = build_driver("room_environment", service_config)
@@ -258,11 +260,11 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
             },
         },
         power_detection={},
-        measurements=[
-            {"name": "voltage", "unit": "V"},
-            {"name": "battery_level", "unit": "%"},
-            {"name": "mains_present", "state_class": None},
-        ],
+        measurements={
+            "voltage": {"unit": "V"},
+            "battery_level": {"unit": "%"},
+            "mains_present": {"state_class": None},
+        },
     )
 
     driver = build_driver("ups_monitor", service_config)

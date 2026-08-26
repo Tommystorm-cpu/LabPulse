@@ -107,8 +107,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         # Build each measurement once, then reuse it everywhere. This keeps its
         # name and entity ID the same on every page and in every alarm.
         service_measurements: list[dict[str, Any]] = []
-        for measurement_config in service_config.measurements:
-            name = slug(measurement_config.name)
+        for measurement_name, measurement_config in service_config.measurements.items():
+            name = slug(measurement_name)
             selected_setups = () if measurement_config.setups is None else tuple(
                 sorted(measurement_config.setups.setup_ids, key=setup_order.__getitem__)
             )
@@ -132,9 +132,9 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             measurement = {
                 "service_name": service_name,
                 "name": name,
-                "label": measurement_config.display_label,
-                "short_label": measurement_config.display_short_label,
-                "subcategory": measurement_config.subcategory,
+                "label": measurement_config.display_label(measurement_name),
+                "short_label": measurement_config.display_short_label(measurement_name),
+                "group": measurement_config.group,
                 "device_class": measurement_config.device_class,
                 "alarmed": measurement_config.alarmed,
                 "config": measurement_config,
@@ -143,7 +143,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "measurement_id": f"{slug(service_name)}_{name}",
                 "entity_id": entity_id("sensor", service_name, name),
                 "setup_notifications_unmuted_template": "{{ " + (checks or "true") + " }}",
-                "threshold": _threshold(measurement_config),
+                "threshold": _threshold(measurement_config, measurement_name),
             }
             measurements.append(measurement)
             service_measurements.append(measurement)
@@ -155,7 +155,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         service_id = slug(service_name)
         service = {
             "name": service_name,
-            "label": service_config.device_name,
+            "label": service_config.label,
             "service_id": service_id,
             "config": service_config,
             "health_fault_confirm_seconds": config.service_health.fault_confirm_seconds,
@@ -261,7 +261,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "custom_id": custom_id,
             "label": custom_config.display_label(custom_id),
             "short_label": custom_config.display_short_label(custom_id),
-            "subcategory": custom_config.subcategory,
+            "group": custom_config.group,
             "device_class": custom_config.device_class,
             "alarmed": custom_config.alarmed,
             "config": custom_config,
@@ -424,13 +424,13 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
 def _measurement_groups(
     measurements: list[dict[str, Any]],
 ) -> tuple[tuple[str, tuple[dict[str, Any], ...]], ...]:
-    """Group one setup's measurements by first-seen subcategory."""
+    """Group one setup's measurements by first-seen presentation group."""
 
     # Keep the order from config.yaml so the dashboard follows the order chosen
     # by the person who wrote the configuration.
     grouped: dict[str, list[dict[str, Any]]] = {}
     for measurement in measurements:
-        grouped.setdefault(measurement["subcategory"] or "Other Measurements", []).append(measurement)
+        grouped.setdefault(measurement["group"] or "Other Measurements", []).append(measurement)
     return tuple((name, tuple(items)) for name, items in grouped.items())
 
 

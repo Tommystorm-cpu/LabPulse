@@ -63,7 +63,7 @@ def test_valid_document_and_typed_driver_options() -> None:
     dumped = document.config.model_dump()
     if dumped["services"]["pressure_monitor"]["driver"]["options"]["baud_rate"] != 9600:
         raise AssertionError("concrete driver defaults were lost during serialization")
-    pressure = document.config.services["pressure_monitor"].measurements[0]
+    pressure = document.config.services["pressure_monitor"].measurements["pressure"]
     if pressure.alarmed is not True:
         raise AssertionError("measurements are not alarmed by default")
     if document.config.setups["compressed_air"].dashboard != "main":
@@ -89,7 +89,7 @@ def test_root_and_schema_errors_are_structured() -> None:
     expect_error(invalid_option_shape, "driver options must be a mapping")
 
     unsupported_dashboard_label = repository_data()
-    measurement = unsupported_dashboard_label["services"]["pressure_monitor"]["measurements"][0]  # type: ignore[index]
+    measurement = unsupported_dashboard_label["services"]["pressure_monitor"]["measurements"]["pressure"]  # type: ignore[index]
     measurement["dashboard_label"] = "Pressure"
     expect_error(unsupported_dashboard_label, "Extra inputs are not permitted")
 
@@ -106,14 +106,14 @@ def test_alarm_and_dashboard_configuration_contracts() -> None:
         }
     }
     configured["setups"]["cryogenics_room"]["dashboard"] = "cryogenics"  # type: ignore[index]
-    configured["services"]["room_environment"]["measurements"][0]["alarmed"] = False  # type: ignore[index]
+    configured["services"]["room_environment"]["measurements"]["temperature"]["alarmed"] = False  # type: ignore[index]
     document = load_config(
         REPOSITORY / "configured.yaml",
         text=yaml.safe_dump(configured, sort_keys=False),
     )
     if document.config.setups["cryogenics_room"].dashboard != "cryogenics":
         raise AssertionError("custom dashboard assignment was not retained")
-    if document.config.services["room_environment"].measurements[0].alarmed:
+    if document.config.services["room_environment"].measurements["temperature"].alarmed:
         raise AssertionError("explicit alarm disablement was not retained")
 
     unknown_dashboard = repository_data()
@@ -125,11 +125,11 @@ def test_alarm_and_dashboard_configuration_contracts() -> None:
     expect_error(reserved_dashboard, "reserved for the built-in Monitor tab")
 
     non_boolean_alarm = repository_data()
-    non_boolean_alarm["services"]["pressure_monitor"]["measurements"][0]["alarmed"] = "false"  # type: ignore[index]
+    non_boolean_alarm["services"]["pressure_monitor"]["measurements"]["pressure"]["alarmed"] = "false"  # type: ignore[index]
     expect_error(non_boolean_alarm, "valid boolean")
 
     mixed_power_alarm = repository_data()
-    mixed_power_alarm["services"]["ups_monitor"]["measurements"][0]["alarmed"] = False  # type: ignore[index]
+    mixed_power_alarm["services"]["ups_monitor"]["measurements"]["voltage"]["alarmed"] = False  # type: ignore[index]
     expect_error(mixed_power_alarm, "must all use the same alarmed value")
 
 

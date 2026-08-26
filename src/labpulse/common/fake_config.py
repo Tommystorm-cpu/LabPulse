@@ -17,7 +17,7 @@ FAKE_SERIAL_REPLACEMENTS = {
     "FAKE_UPS_PORT": FAKE_UPS_PORT,
 }
 DEFAULT_FAKE_POWER_SERVICE = {
-    "enabled": True,
+    "label": "UPS Monitor",
     "driver": {
         "type": "labpulse.serial_pipe",
         "options": {
@@ -25,27 +25,22 @@ DEFAULT_FAKE_POWER_SERVICE = {
             "baud_rate": 9600,
         },
     },
-    "device_name": "UPS Monitor",
-    "measurements": [
-        {
-            "name": "voltage",
+    "measurements": {
+        "voltage": {
             "label": "UPS Battery Voltage",
             "unit": "V",
             "device_class": "voltage",
         },
-        {
-            "name": "battery_level",
+        "battery_level": {
             "label": "UPS Battery Level",
             "unit": "%",
             "device_class": "battery",
         },
-        {
-            "name": "mains_present",
+        "mains_present": {
             "label": "External Power Present",
             "state_class": None,
         },
-    ],
-    "reconnect_interval_seconds": 5,
+    },
     "read_interval_seconds": 1,
     "maximum_measurement_age_seconds": 15,
     "power_detection": {

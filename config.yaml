@@ -1,291 +1,229 @@
-# ==========================================
-# LabPulse Starter Configuration Template
-# ==========================================
-#
-# On the Raspberry Pi, edit the live config here:
-#
-#   ~/labpulse-live/config.yaml
-#
-# This repo file is only copied as a starter template when the live config
-# does not already exist.
-# Alarm thresholds are configured through the generated Home Assistant
-# dashboard. A fresh installation starts with all notifications muted.
+# LabPulse starter configuration.
+# On the Raspberry Pi, edit ~/labpulse-live/config.yaml.
 
-# --- Global Settings ---
 mqtt:
-  broker: "mosquitto"
+  broker: mosquitto
   port: 1883
 
 sms:
-  # Keep true for safe testing; set false on the real Pi to send through mmcli.
+  # Keep enabled while testing so LabPulse does not contact the modem.
   dry_run: true
-  # Emergency contact numbers for system alerts
   recipients:
     - "+447700900000"
-  # Test-mode alerts are routed only to these numbers.
   test_recipients:
     - "+447700900001"
 
-# Whole sensor-service failures produce one hub-level warning instead of one
-# stale-measurement warning per sensor. These timers also reject brief USB glitches.
 service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
-# Optional extra operator dashboard tabs. Setups use dashboard: <ID> to move
-# from the built-in main Monitor tab. Custom tabs appear before Alarm Setup.
-# dashboards:
-#   pump_systems:
-#     label: "Pump Systems"
-#     icon: "mdi:water-pump"
-#     order: 10
+dashboards: {}
 
-# Logical experimental setups are independent of the physical sensor hubs
-# under services. Every ordinary measurement explicitly selects one or more setups.
 setups:
   compressed_air:
-    label: "Compressed Air"
-    icon: "mdi:gauge"
+    label: Compressed Air
+    icon: mdi:gauge
     order: 10
   pump_room_system:
-    label: "Pump Room Experiment"
-    icon: "mdi:water-pump"
+    label: Pump Room Experiment
+    icon: mdi:water-pump
     order: 20
-    # dashboard: pump_systems
   turbo_pump_experiment:
-    label: "Turbo Pump Experiment"
-    icon: "mdi:snowflake-thermometer"
+    label: Turbo Pump Experiment
+    icon: mdi:snowflake-thermometer
     order: 30
   cryogenics_room:
-    label: "Cryogenics Room"
-    icon: "mdi:home-thermometer-outline"
+    label: Cryogenics Room
+    icon: mdi:home-thermometer-outline
     order: 40
 
-# Optional calculated readings. Home Assistant evaluates these from one or
-# more physical service measurements; custom measurements cannot depend on
-# other custom measurements.
-# custom_measurements:
-#   pump_room_temperature_difference:
-#     label: "Pump Room Temperature Difference"
-#     short_label: "Temperature Difference"
-#     subcategory: "Calculated"
-#     setups: [pump_room_system]
-#     inputs:
-#       supply: pump_room.temp0
-#       return_temp: pump_room.temp1
-#     constants:
-#       scale: 1.0
-#     formula: "(return_temp - supply) * scale"
-#     precision: 2
-#     alarmed: true
-#     unit: "°C"
-#     device_class: "temperature"
-#     icon: "mdi:delta"
-
 services:
-  # Ordinary measurements expire in Home Assistant after 300 seconds without an
-  # MQTT sample. Override maximum_measurement_age_seconds per service if needed.
   pressure_monitor:
-    enabled: true
+    label: Compressed Air and Environment Sensor Hub
     driver:
       type: labpulse.serial_pipe
       options:
-        port: "FAKE_PRESSURE_PORT"
+        port: FAKE_PRESSURE_PORT
         baud_rate: 9600
-    device_name: "Compressed Air and Environment Sensor Hub"
     measurements:
-      - name: "pressure"
-        label: "Pressure"
+      pressure:
+        label: Pressure
         setups: [compressed_air]
-        # Set alarmed: false to publish and display a reading without creating
-        # measurement alarm helpers, controls, or notifications.
-        alarmed: true
-        unit: "bar"
-        # device_class selects LabPulse semantics and the default mdi:gauge
-        # icon without allowing Home Assistant to convert the configured unit.
-        # Add icon: "mdi:..." here only when overriding that default.
-        device_class: "pressure"
-      - name: "temperature"
-        label: "Main Lab Temperature"
-        subcategory: "Environment"
+        unit: bar
+        device_class: pressure
+      temperature:
+        label: Main Lab Temperature
+        group: Environment
         setups: [compressed_air]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "humidity"
-        label: "Main Lab Humidity"
-        subcategory: "Environment"
+        unit: "°C"
+        device_class: temperature
+      humidity:
+        label: Main Lab Humidity
+        group: Environment
         setups: [compressed_air]
         unit: "%"
-        device_class: "humidity"
-    reconnect_interval_seconds: 5
+        device_class: humidity
 
   pump_room:
-    enabled: true
+    label: Pump Room Sensor Hub
     driver:
       type: labpulse.serial_pipe
       options:
-        port: "FAKE_PUMP_ROOM_PORT"
+        port: FAKE_PUMP_ROOM_PORT
         baud_rate: 9600
-    device_name: "Pump Room Sensor Hub"
     measurements:
-      - name: "flow1"
-        label: "Flow 1"
-        subcategory: "Flow"
+      flow1:
+        label: Flow 1
+        group: Flow
         setups: [pump_room_system]
-        unit: "L/min"
-        device_class: "volume_flow_rate"
-      - name: "flow2"
-        label: "Flow 2"
-        subcategory: "Flow"
+        unit: L/min
+        device_class: volume_flow_rate
+      flow2:
+        label: Flow 2
+        group: Flow
         setups: [pump_room_system]
-        unit: "L/min"
-        device_class: "volume_flow_rate"
-      - name: "temp0"
-        label: "Triton 1 Temperature 1"
-        subcategory: "Water Temperatures"
+        unit: L/min
+        device_class: volume_flow_rate
+      temp0:
+        label: Triton 1 Temperature 1
+        group: Water Temperatures
         setups: [pump_room_system]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "temp1"
-        label: "Triton 1 Temperature 2"
-        subcategory: "Water Temperatures"
+        unit: "°C"
+        device_class: temperature
+      temp1:
+        label: Triton 1 Temperature 2
+        group: Water Temperatures
         setups: [pump_room_system]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "temp2"
-        label: "Triton 2 Temperature 1"
-        subcategory: "Water Temperatures"
+        unit: "°C"
+        device_class: temperature
+      temp2:
+        label: Triton 2 Temperature 1
+        group: Water Temperatures
         setups: [pump_room_system]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "temp3"
-        label: "Triton 2 Temperature 2"
-        subcategory: "Water Temperatures"
+        unit: "°C"
+        device_class: temperature
+      temp3:
+        label: Triton 2 Temperature 2
+        group: Water Temperatures
         setups: [pump_room_system]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "press1"
-        label: "Pressure 1"
-        subcategory: "Pressure"
+        unit: "°C"
+        device_class: temperature
+      press1:
+        label: Pressure 1
+        group: Pressure
         setups: [pump_room_system]
-        unit: "bar"
-        device_class: "pressure"
-      - name: "press2"
-        label: "Pressure 2"
-        subcategory: "Pressure"
+        unit: bar
+        device_class: pressure
+      press2:
+        label: Pressure 2
+        group: Pressure
         setups: [pump_room_system]
-        unit: "bar"
-        device_class: "pressure"
-      - name: "roomtemp"
-        label: "Room Temperature"
-        subcategory: "Pump Room Environment Sensor"
+        unit: bar
+        device_class: pressure
+      roomtemp:
+        label: Room Temperature
+        group: Pump Room Environment Sensor
         setups: [pump_room_system]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "roomhum"
-        label: "Room Humidity"
-        subcategory: "Pump Room Environment Sensor"
+        unit: "°C"
+        device_class: temperature
+      roomhum:
+        label: Room Humidity
+        group: Pump Room Environment Sensor
         setups: [pump_room_system]
         unit: "%"
-        device_class: "humidity"
-    reconnect_interval_seconds: 5
+        device_class: humidity
 
   turbo_pump:
-    enabled: true
+    label: Turbo Pump Hub
     driver:
       type: labpulse.serial_pipe
       options:
-        port: "FAKE_TURBO_PUMP_PORT"
+        port: FAKE_TURBO_PUMP_PORT
         baud_rate: 9600
-    device_name: "Turbo Pump Hub"
     measurements:
-      - name: "flow1"
-        label: "Flow 1"
-        subcategory: "Flow"
+      flow1:
+        label: Flow 1
+        group: Flow
         setups: [turbo_pump_experiment]
-        unit: "L/min"
-        device_class: "volume_flow_rate"
-      - name: "flow2"
-        label: "Flow 2"
-        subcategory: "Flow"
+        unit: L/min
+        device_class: volume_flow_rate
+      flow2:
+        label: Flow 2
+        group: Flow
         setups: [turbo_pump_experiment]
-        unit: "L/min"
-        device_class: "volume_flow_rate"
-      - name: "temp0"
-        label: "Temperature 0"
-        subcategory: "Water Temperatures"
+        unit: L/min
+        device_class: volume_flow_rate
+      temp0:
+        label: Temperature 0
+        group: Water Temperatures
         setups: [turbo_pump_experiment]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "temp1"
-        label: "Temperature 1"
-        subcategory: "Water Temperatures"
+        unit: "°C"
+        device_class: temperature
+      temp1:
+        label: Temperature 1
+        group: Water Temperatures
         setups: [turbo_pump_experiment]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "temp2"
-        label: "Temperature 2"
-        subcategory: "Water Temperatures"
+        unit: "°C"
+        device_class: temperature
+      temp2:
+        label: Temperature 2
+        group: Water Temperatures
         setups: [turbo_pump_experiment]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "temp3"
-        label: "Temperature 3"
-        subcategory: "Water Temperatures"
+        unit: "°C"
+        device_class: temperature
+      temp3:
+        label: Temperature 3
+        group: Water Temperatures
         setups: [turbo_pump_experiment]
-        unit: "\u00b0C"
-        device_class: "temperature"
-    reconnect_interval_seconds: 5
+        unit: "°C"
+        device_class: temperature
 
   room_environment:
-    enabled: true
+    label: Cryogenics Room Environment Sensor
     driver:
       type: labpulse.sht40
       options:
         bus: 1
         address: 0x44
-    device_name: "Cryogenics Room Environment Sensor"
     measurements:
-      - name: "temperature"
-        label: "Room Temperature"
+      temperature:
+        label: Room Temperature
         setups: [cryogenics_room]
-        unit: "\u00b0C"
-        device_class: "temperature"
-      - name: "humidity"
-        label: "Room Humidity"
+        unit: "°C"
+        device_class: temperature
+      humidity:
+        label: Room Humidity
         setups: [cryogenics_room]
         unit: "%"
-        device_class: "humidity"
+        device_class: humidity
     read_interval_seconds: 2
 
-# Verified X1200 UPS hardware. Fake-USB setup changes only this service's
-# transport to the UPS simulator while preserving these measurements and IDs.
   ups_monitor:
-    enabled: true
+    label: UPS Monitor
     driver:
       type: labpulse.x1200
       options:
         bus: 1
         address: 0x36
-        gpio_chip: "/dev/gpiochip0"
+        gpio_chip: /dev/gpiochip0
         gpio_line: 6
         mains_present_active_high: true
-    device_name: "UPS Monitor"
     measurements:
-      - name: voltage
-        label: "UPS Battery Voltage"
+      voltage:
+        label: UPS Battery Voltage
         unit: V
         device_class: voltage
-      - name: battery_level
-        label: "UPS Battery Level"
+      battery_level:
+        label: UPS Battery Level
         unit: "%"
         device_class: battery
-      - name: mains_present
-        label: "External Power Present"
+      mains_present:
+        label: External Power Present
         state_class: null
     read_interval_seconds: 1
-    reconnect_interval_seconds: 5
     maximum_measurement_age_seconds: 15
     power_detection:
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5
+
+custom_measurements: {}

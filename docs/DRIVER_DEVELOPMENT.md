@@ -217,7 +217,7 @@ driver; negative values are rejected.
 
 ## Measurement contract
 
-Driver reading keys must exactly match configured `measurements[].name`.
+Driver reading keys must exactly match the mapping keys under `measurements`.
 Unexpected keys are ignored by the publisher.
 
 Drivers publish facts:

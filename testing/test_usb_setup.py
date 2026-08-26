@@ -26,27 +26,26 @@ mqtt:
 setups: {}
 services:
   pressure_monitor:
-    enabled: true
+    label: Air Pressure Sensor Hub
     driver:
       type: labpulse.serial_pipe
       options:
         port: /dev/ttyACM0  # replace only this line
-    device_name: Air Pressure Sensor Hub
-    measurements: []
+    measurements: {}
   pump_room:
+    label: Pump Room Sensor Hub
     driver:
       type: labpulse.serial_pipe
       options:
         port: FAKE_PUMP_ROOM_PORT
-    device_name: Pump Room Sensor Hub
-    measurements: []
+    measurements: {}
   room_environment:
+    label: Room Sensor
     driver:
       type: labpulse.dht11
       options:
         pin: D4
-    device_name: Room Sensor
-    measurements: []
+    measurements: {}
 """
 
 
@@ -65,7 +64,7 @@ def test_loads_only_enabled_serial_services() -> None:
     if [service.name for service in services] != ["pressure_monitor", "pump_room"]:
         raise AssertionError(f"unexpected services: {services!r}")
     if services[0].label != "Air Pressure Sensor Hub":
-        raise AssertionError("device_name was not used as the operator label")
+        raise AssertionError("service label was not used as the operator label")
 
 
 def test_identifies_unplugged_then_replugged_devices() -> None:

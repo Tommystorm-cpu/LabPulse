@@ -25,20 +25,19 @@ def config_data() -> dict[str, object]:
         },
         "services": {
             "shared_hub": {
+                "label": "Shared Sensor Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/shared-hub"},
                 },
-                "device_name": "Shared Sensor Hub",
-                "measurements": [
-                    {"name": "alpha", "label": "Alpha Measurement", "setups": ["alpha"]},
-                    {"name": "beta", "label": "Beta Measurement", "setups": ["beta"]},
-                    {
-                        "name": "shared",
+                "measurements": {
+                    "alpha": {"label": "Alpha Measurement", "setups": ["alpha"]},
+                    "beta": {"label": "Beta Measurement", "setups": ["beta"]},
+                    "shared": {
                         "label": "Shared Measurement",
                         "setups": ["beta", "alpha"],
                     },
-                ],
+                },
             }
         },
     }
@@ -134,7 +133,7 @@ def test_membership_does_not_change_alarm_identity() -> None:
 
     first_data = config_data()
     second_data = config_data()
-    second_data["services"]["shared_hub"]["measurements"][1]["setups"] = [
+    second_data["services"]["shared_hub"]["measurements"]["beta"]["setups"] = [
         "alpha",
         "beta",
     ]

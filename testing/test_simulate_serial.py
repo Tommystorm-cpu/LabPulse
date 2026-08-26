@@ -34,12 +34,11 @@ def test_generated_payloads_match_parsers() -> None:
 
     if pressure is None:
         raise AssertionError(f"invalid pressure payload: {payloads['pressure']!r}")
-    configured_pressure_measurements = {
-        measurement.name
-        for measurement in load_config(REFACTOR_DIR / "config.yaml").config.services[
-            "pressure_monitor"
-        ].measurements
-    }
+    configured_pressure_measurements = set(
+        load_config(REFACTOR_DIR / "config.yaml")
+        .config.services["pressure_monitor"]
+        .measurements
+    )
     if set(pressure) != configured_pressure_measurements:
         raise AssertionError(
             "compressed-air starter config and simulated Arduino payload differ: "
@@ -47,12 +46,11 @@ def test_generated_payloads_match_parsers() -> None:
         )
     if pump is None:
         raise AssertionError(f"invalid pump payload: {payloads['pump_room']!r}")
-    configured_pump_measurements = {
-        measurement.name
-        for measurement in load_config(REFACTOR_DIR / "config.yaml").config.services[
-            "pump_room"
-        ].measurements
-    }
+    configured_pump_measurements = set(
+        load_config(REFACTOR_DIR / "config.yaml")
+        .config.services["pump_room"]
+        .measurements
+    )
     parsed_pump_measurements = set(pump)
     if configured_pump_measurements != parsed_pump_measurements:
         raise AssertionError(

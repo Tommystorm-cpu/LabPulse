@@ -304,10 +304,9 @@ class MeasurementConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str
     label: str | None = None
     short_label: str | None = None
-    subcategory: str | None = None
+    group: str | None = None
     setups: SetupScope | None = None
     alarmed: bool = Field(default=True, strict=True)
     unit: str | None = None
@@ -329,17 +328,15 @@ class MeasurementConfig(BaseModel):
 
         return validate_measurement_icon(icon)
 
-    @property
-    def display_label(self) -> str:
+    def display_label(self, measurement_id: str) -> str:
         """Return the full label used outside compact dashboard rows."""
 
-        return self.label or title(self.name)
+        return self.label or title(measurement_id)
 
-    @property
-    def display_short_label(self) -> str:
+    def display_short_label(self, measurement_id: str) -> str:
         """Return the shorter label used where surrounding context is sufficient."""
 
-        return self.short_label or self.display_label
+        return self.short_label or self.display_label(measurement_id)
 
 
 class CustomMeasurementConfig(BaseModel):
@@ -349,7 +346,7 @@ class CustomMeasurementConfig(BaseModel):
 
     label: str | None = None
     short_label: str | None = None
-    subcategory: str | None = None
+    group: str | None = None
     setups: SetupScope
     inputs: dict[str, str]
     constants: dict[str, float] = Field(default_factory=dict)
@@ -512,9 +509,9 @@ class ServiceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
+    label: str
     driver: DriverConfig
-    device_name: str
-    measurements: list[MeasurementConfig]
+    measurements: dict[str, MeasurementConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
     maximum_measurement_age_seconds: int = Field(default=300, ge=2, le=86400)
@@ -524,9 +521,12 @@ class ServiceConfig(BaseModel):
     def validate_hardware_contract(self) -> "ServiceConfig":
         """Validate driver-specific fields and the normalized UPS measurements."""
 
-        measurement_names = [measurement.name for measurement in self.measurements]
-        if len(set(measurement_names)) != len(measurement_names):
-            raise ValueError("measurements[].name values must be unique within a service")
+        measurement_names = list(self.measurements)
+        for measurement_id in measurement_names:
+            if not measurement_id or slug(measurement_id) != measurement_id:
+                raise ValueError(
+                    "measurement IDs must use lowercase letters, numbers, and underscores"
+                )
 
         serial_pipe_driver_id = "labpulse.serial_pipe"
         x1200_driver_id = "labpulse.x1200"
@@ -560,18 +560,18 @@ class ServiceConfig(BaseModel):
                     "X1200 power monitoring requires read_interval_seconds: 1"
                 )
 
-            if any(measurement.setups is not None for measurement in self.measurements):
+            if any(measurement.setups is not None for measurement in self.measurements.values()):
                 raise ValueError(
                     "dedicated power measurements must omit setups because power is "
                     "not grouped as an experimental setup"
                 )
-            alarmed_values = {measurement.alarmed for measurement in self.measurements}
+            alarmed_values = {measurement.alarmed for measurement in self.measurements.values()}
             if len(alarmed_values) > 1:
                 raise ValueError(
                     "dedicated power measurements must all use the same alarmed value "
                     "because they form one composite power alarm"
                 )
-        elif any(measurement.setups is None for measurement in self.measurements):
+        elif any(measurement.setups is None for measurement in self.measurements.values()):
             raise ValueError(
                 "every ordinary measurement must declare a non-empty setups list"
             )
@@ -611,14 +611,14 @@ class LabPulseConfig(BaseModel):
 
         available = set(self.setups)
         for service_name, service in self.services.items():
-            for measurement in service.measurements:
+            for measurement_name, measurement in service.measurements.items():
                 scope = measurement.setups
                 if scope is None:
                     continue
                 missing = sorted(set(scope.setup_ids).difference(available))
                 if missing:
                     raise ValueError(
-                        f"{service_name}.{measurement.name} references unknown setups: "
+                        f"{service_name}.{measurement_name} references unknown setups: "
                         + ", ".join(missing)
                     )
 
@@ -651,9 +651,7 @@ class LabPulseConfig(BaseModel):
                         f"custom measurement {custom_id} input {alias} references "
                         f"unknown physical service: {service_name}"
                     )
-                if measurement_name not in {
-                    item.name for item in source_service.measurements
-                }:
+                if measurement_name not in source_service.measurements:
                     raise ValueError(
                         f"custom measurement {custom_id} input {alias} references "
                         f"unknown physical measurement: {reference}"

@@ -90,14 +90,14 @@ class FakeMqttClient:
 def make_publisher(
     service_name: str = "pressure_monitor",
     device_name: str = "Air Pressure Sensor Hub",
-    measurements: list[dict[str, str]] | None = None,
+    measurements: dict[str, dict[str, str]] | None = None,
     power_detection: dict[str, object] | None = None,
     maximum_measurement_age_seconds: int = 300,
 ) -> HomeAssistantMqttPublisher:
     """Create a publisher wired to FakeMqttClient."""
 
     service_config = ServiceConfig(
-        enabled=True,
+        label=device_name,
         driver={
             "type": "labpulse.serial_pipe",
             "options": {
@@ -105,16 +105,14 @@ def make_publisher(
                 "baud_rate": 9600,
             },
         },
-        device_name=device_name,
-        measurements=measurements or [
-            {
-                "name": "pressure",
+        measurements=measurements or {
+            "pressure": {
                 "label": "Pressure",
                 "setups": ["test_setup"],
                 "unit": "bar",
                 "device_class": "pressure",
             }
-        ],
+        },
         maximum_measurement_age_seconds=maximum_measurement_age_seconds,
         power_detection=power_detection,
     )
@@ -287,23 +285,21 @@ def test_publish_discovery_for_new_measurements() -> None:
     publisher = make_publisher(
         service_name="pump_room",
         device_name="Pump Room Sensor Hub",
-        measurements=[
-            {
-                "name": "flow1",
+        measurements={
+            "flow1": {
                 "label": "Flow 1",
                 "setups": ["test_setup"],
                 "unit": "L/min",
                 "device_class": "volume_flow_rate",
             },
-            {
-                "name": "temp0",
+            "temp0": {
                 "label": "Temperature 0",
                 "setups": ["test_setup"],
                 "unit": "\u00b0C",
                 "device_class": "temperature",
                 "icon": "mdi:snowflake-thermometer",
             },
-        ],
+        },
     )
 
     publisher.publish({"flow1": 2.1})
@@ -370,9 +366,9 @@ def test_ignore_unconfigured_measurements() -> None:
     publisher = make_publisher(
         service_name="pump_room",
         device_name="Pump Room Sensor Hub",
-        measurements=[
-            {"name": "flow1", "label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
-        ],
+        measurements={
+            "flow1": {"label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
+        },
     )
 
     publisher.publish({"press1": 1.2, "flow1": 2.1})
@@ -404,11 +400,11 @@ def test_power_discovery_uses_power_message_expiry() -> None:
     publisher = make_publisher(
         service_name="ups_monitor",
         device_name="UPS Monitor",
-        measurements=[
-            {"name": "voltage", "unit": "V"},
-            {"name": "battery_level", "unit": "%"},
-            {"name": "mains_present", "state_class": None},
-        ],
+        measurements={
+            "voltage": {"unit": "V"},
+            "battery_level": {"unit": "%"},
+            "mains_present": {"state_class": None},
+        },
         power_detection={},
         maximum_measurement_age_seconds=15,
     )

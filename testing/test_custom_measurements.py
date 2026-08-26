@@ -20,22 +20,22 @@ def custom_config() -> dict[str, object]:
         "setups": {"water_loop": {"label": "Water Loop"}},
         "services": {
             "water_hub": {
+                "label": "Water Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/water-hub"},
                 },
-                "device_name": "Water Hub",
-                "measurements": [
-                    {"name": "supply", "setups": ["water_loop"], "unit": "°C"},
-                    {"name": "return_temp", "setups": ["water_loop"], "unit": "°C"},
-                ],
+                "measurements": {
+                    "supply": {"setups": ["water_loop"], "unit": "°C"},
+                    "return_temp": {"setups": ["water_loop"], "unit": "°C"},
+                },
             }
         },
         "custom_measurements": {
             "temperature_difference": {
                 "label": "Temperature Difference",
                 "short_label": "Delta T",
-                "subcategory": "Calculated",
+                "group": "Calculated",
                 "setups": ["water_loop"],
                 "inputs": {
                     "supply": "water_hub.supply",

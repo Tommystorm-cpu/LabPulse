@@ -68,19 +68,20 @@ def status_discovery_payload(
 def measurement_discovery_payload(
     service_name: str,
     device_name: str,
+    measurement_name: str,
     measurement: MeasurementConfig,
     expire_after: int,
 ) -> dict[str, Any]:
     """Build one measurement discovery document without publishing it."""
 
-    measurement_id = stable_id(service_name, measurement.name)
+    measurement_id = stable_id(service_name, measurement_name)
     payload: dict[str, Any] = {
-        "name": measurement.display_label,
-        "state_topic": sensor_state_topic(service_name, measurement.name),
+        "name": measurement.display_label(measurement_name),
+        "state_topic": sensor_state_topic(service_name, measurement_name),
         "expire_after": expire_after,
         "unique_id": measurement_id,
         "object_id": measurement_id,
-        "default_entity_id": entity_id("sensor", service_name, measurement.name),
+        "default_entity_id": entity_id("sensor", service_name, measurement_name),
         "device": {
             "identifiers": [service_name],
             "name": device_name,
@@ -116,10 +117,7 @@ class HomeAssistantMqttPublisher:
         self.mqtt_config = mqtt_config
         # Index once because every driver batch is filtered against the same
         # service contract before either discovery or state is published.
-        self.measurement_configs = {
-            measurement.name: measurement
-            for measurement in service_config.measurements
-        }
+        self.measurement_configs = dict(service_config.measurements)
         # Discovery is retained by MQTT, so it only needs publishing when a
         # configured measurement first appears or the broker reconnects.
         self.discovered_measurements: set[str] = set()
@@ -247,7 +245,7 @@ class HomeAssistantMqttPublisher:
             json.dumps(
                 status_discovery_payload(
                     self.service_name,
-                    self.service_config.device_name,
+                    self.service_config.label,
                 )
             ),
             retain=True,
@@ -260,7 +258,8 @@ class HomeAssistantMqttPublisher:
         for measurement_name in measurements:
             payload = measurement_discovery_payload(
                 self.service_name,
-                self.service_config.device_name,
+                self.service_config.label,
+                measurement_name,
                 self.measurement_configs[measurement_name],
                 self._measurement_expiry_seconds(),
             )

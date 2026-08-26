@@ -38,7 +38,7 @@ def test_config_validation_and_stable_identity() -> None:
         if getattr(detection, field) != value:
             raise AssertionError(f"unexpected {field}: {getattr(detection, field)!r}")
     expected_measurements = ["voltage", "battery_level", "mains_present"]
-    if [measurement.name for measurement in service.measurements] != expected_measurements:
+    if list(service.measurements) != expected_measurements:
         raise AssertionError("simulator measurements are not normalized")
 
     live_data = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
@@ -57,19 +57,18 @@ def test_config_validation_and_stable_identity() -> None:
     sim_service = simulated.services["ups_monitor"]
     live_service_config = live.services["ups_monitor"]
     sim_ids = [stable_id("ups_monitor", "status")] + [
-        stable_id("ups_monitor", item.name) for item in sim_service.measurements
+        stable_id("ups_monitor", measurement_id)
+        for measurement_id in sim_service.measurements
     ]
     live_ids = [stable_id("ups_monitor", "status")] + [
-        stable_id("ups_monitor", item.name) for item in live_service_config.measurements
+        stable_id("ups_monitor", measurement_id)
+        for measurement_id in live_service_config.measurements
     ]
     if sim_ids != live_ids:
         raise AssertionError("live and simulated power identities differ")
 
     invalid = dict(live_service)
-    invalid["measurements"] = [
-        {"name": "voltage"},
-        {"name": "battery_level"},
-    ]
+    invalid["measurements"] = {"voltage": {}, "battery_level": {}}
     try:
         ServiceConfig.model_validate(invalid)
     except ValidationError as error:
@@ -125,8 +124,14 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
         "/tmp/labpulse-fake-serial/ups_monitor",
     ):
         raise AssertionError("fake conversion selected the wrong UPS transport")
-    before_ids = [stable_id("ups_monitor", item.name) for item in before.services["ups_monitor"].measurements]
-    after_ids = [stable_id("ups_monitor", item.name) for item in converted.services["ups_monitor"].measurements]
+    before_ids = [
+        stable_id("ups_monitor", measurement_id)
+        for measurement_id in before.services["ups_monitor"].measurements
+    ]
+    after_ids = [
+        stable_id("ups_monitor", measurement_id)
+        for measurement_id in converted.services["ups_monitor"].measurements
+    ]
     if before_ids != after_ids:
         raise AssertionError("fake conversion changed power measurement identities")
 
@@ -139,7 +144,7 @@ def test_fake_usb_converts_starter_power_service() -> None:
         yaml.safe_load(convert_power_service_to_fake_serial(starter))
     )
     service = converted.services["ups_monitor"]
-    if [measurement.name for measurement in service.measurements] != [
+    if list(service.measurements) != [
         "voltage",
         "battery_level",
         "mains_present",

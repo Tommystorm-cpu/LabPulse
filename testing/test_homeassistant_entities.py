@@ -24,26 +24,25 @@ def sample_config() -> LabPulseConfig:
         "setups": {"pump_room": {"label": "Pump Room"}},
         "services": {
             "pump_room": {
-                "enabled": True,
+                "label": "Pump Room Sensor Hub",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/labpulse-fake-serial/pump_room"},
                 },
-                "device_name": "Pump Room Sensor Hub",
-                "measurements": [
-                    {"name": "flow1", "label": "Pump Room Flow", "short_label": "Flow", "setups": ["pump_room"], "unit": "L/min"},
-                    {"name": "temp0", "label": "Pump Room Temperature", "short_label": "Temperature", "setups": ["pump_room"], "unit": "\u00b0C"},
-                    {"name": "humidity", "label": "Pump Room Humidity", "setups": ["pump_room"], "alarmed": False, "unit": "%"},
-                ],
+                "measurements": {
+                    "flow1": {"label": "Pump Room Flow", "short_label": "Flow", "setups": ["pump_room"], "unit": "L/min"},
+                    "temp0": {"label": "Pump Room Temperature", "short_label": "Temperature", "setups": ["pump_room"], "unit": "°C"},
+                    "humidity": {"label": "Pump Room Humidity", "setups": ["pump_room"], "alarmed": False, "unit": "%"},
+                },
             },
             "disabled_service": {
                 "enabled": False,
+                "label": "Disabled",
                 "driver": {
                     "type": "labpulse.serial_pipe",
                     "options": {"port": "/tmp/labpulse-fake-serial/disabled"},
                 },
-                "device_name": "Disabled",
-                "measurements": [{"name": "ignored", "setups": ["pump_room"]}],
+                "measurements": {"ignored": {"setups": ["pump_room"]}},
             },
         },
     })

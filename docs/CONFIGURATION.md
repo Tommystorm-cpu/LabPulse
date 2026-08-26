@@ -58,8 +58,8 @@ custom_measurements: {}
 ```
 
 Configuration is validated with Pydantic before generation and service startup.
-Unknown driver IDs, invalid driver options, missing setup references, duplicate
-measurement names, unknown fields, and invalid timing values fail early. File,
+Unknown driver IDs, invalid driver options, missing setup references, unstable
+measurement IDs, unknown fields, and invalid timing values fail early. File,
 YAML, schema, driver, and option failures are reported through one error format
 that includes the source path and field location.
 
@@ -141,14 +141,15 @@ tabs only when setups need to be split across separate views:
 ```yaml
 dashboards:
   pump_systems:
-    label: "Pump Systems"
-    icon: "mdi:water-pump"
+    label: Pump Systems
+    icon: mdi:water-pump
     order: 10
 ```
 
 Dashboard IDs use lowercase letters, numbers, and underscores. The ID `main`
 is reserved and does not need to be declared. Custom dashboards are ordered by
-`order`, then ID, and always appear after Monitor and before Alarm Setup.
+`order`, then ID, and always appear after Monitor and before Alarm Setup. Their
+tabs show both the configured icon and label.
 
 | Field | Default | Meaning |
 |---|---:|---|
@@ -164,8 +165,8 @@ the physical sensor hub:
 ```yaml
 setups:
   compressed_air:
-    label: "Compressed Air"
-    icon: "mdi:gauge"
+    label: Compressed Air
+    icon: mdi:gauge
     order: 10
     dashboard: main
 ```
@@ -193,35 +194,32 @@ Each key under `services` describes one independently running hardware service:
 ```yaml
 services:
   pressure_monitor:
-    enabled: true
+    label: Compressed Air and Environment Sensor Hub
     driver:
       type: labpulse.serial_pipe
       options:
         port: /dev/serial/by-id/usb-example
         baud_rate: 9600
-    device_name: "Compressed Air and Environment Sensor Hub"
     measurements:
-      - name: pressure
-        label: "Pressure"
+      pressure:
+        label: Pressure
         setups: [compressed_air]
         unit: bar
         device_class: pressure
-      - name: temperature
-        label: "Main Lab Temperature"
-        short_label: "Temperature"
-        subcategory: "Environment"
+      temperature:
+        label: Main Lab Temperature
+        short_label: Temperature
+        group: Environment
         setups: [compressed_air]
         unit: "°C"
         device_class: temperature
-      - name: humidity
-        label: "Main Lab Humidity"
-        short_label: "Humidity"
-        subcategory: "Environment"
+      humidity:
+        label: Main Lab Humidity
+        short_label: Humidity
+        group: Environment
         setups: [compressed_air]
         unit: "%"
         device_class: humidity
-    reconnect_interval_seconds: 5
-    maximum_measurement_age_seconds: 300
 ```
 
 Service keys are stable IDs used in container names, MQTT topics, devices, and
@@ -231,9 +229,9 @@ after collecting history unless a new identity is intended.
 | Field | Default | Meaning |
 |---|---:|---|
 | `enabled` | `true` | Whether generation creates the service |
+| `label` | required | Home Assistant device and operator-facing service label |
 | `driver` | required | Driver ID and driver-owned options |
-| `device_name` | required | Home Assistant device label |
-| `measurements` | required | Allowed published values |
+| `measurements` | required | Ordered mapping of stable measurement IDs to their settings |
 | `reconnect_interval_seconds` | `5` | Delay before connection retry; greater than 0 |
 | `read_interval_seconds` | driver default | Central polling interval; greater than 0 when set |
 | `maximum_measurement_age_seconds` | `300` | MQTT expiry/freshness limit, 2 to 86400 |
@@ -252,24 +250,23 @@ directly to the Raspberry Pi over I2C.
 ## Measurements
 
 ```yaml
-- name: temperature
-  label: "Cryogenics Room Temperature"
-  short_label: "Room Temperature"
-  subcategory: "Environment"
-  setups: [cryogenics_room]
-  alarmed: true
-  unit: "°C"
-  device_class: temperature
-  icon: "mdi:snowflake-thermometer"
-  state_class: measurement
+measurements:
+  temperature:
+    label: Cryogenics Room Temperature
+    short_label: Room Temperature
+    group: Environment
+    setups: [cryogenics_room]
+    unit: "°C"
+    device_class: temperature
+    icon: mdi:snowflake-thermometer
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
-| `name` | required | Stable driver, MQTT, and entity key |
-| `label` | readable form of `name` | Full label used for MQTT discovery, Diagnostics, active problems, helpers, and notifications |
+| mapping key | required | Stable driver, MQTT, and entity ID; lowercase letters, numbers, and underscores |
+| `label` | readable form of ID | Full label used for MQTT discovery, Diagnostics, active problems, helpers, and notifications |
 | `short_label` | `label` | Shorter label used where the dashboard's setup heading supplies context |
-| `subcategory` | none | Presentation grouping within a setup |
+| `group` | none | Presentation grouping within a setup |
 | `setups` | required for ordinary values | One or more logical setup IDs |
 | `alarmed` | `true` | Whether to generate measurement alarm state, controls, and notifications |
 | `unit` | none | Exact published unit |
@@ -277,11 +274,11 @@ directly to the Raspberry Pi over I2C.
 | `icon` | derived | Explicit `mdi:` override |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
 
-Measurement names must be unique within a service. Hardware readings not listed
-in `measurements` are ignored.
+Measurement IDs are mapping keys, so they are inherently unique and preserve
+their YAML order. Hardware readings not listed in `measurements` are ignored.
 
-Changing `label`, `short_label`, or subcategory preserves identity. Changing
-`name` creates a new MQTT topic, Home Assistant entity, alarm helpers, and
+Changing `label`, `short_label`, or `group` preserves identity. Changing a
+measurement mapping key creates a new MQTT topic, Home Assistant entity, alarm helpers, and
 history.
 
 Use `label` to keep a measurement unambiguous when it appears without its
@@ -305,21 +302,19 @@ publish another MQTT topic.
 ```yaml
 custom_measurements:
   pump_room_temperature_difference:
-    label: "Pump Room Temperature Difference"
-    short_label: "Temperature Difference"
-    subcategory: "Calculated"
+    label: Pump Room Temperature Difference
+    short_label: Temperature Difference
+    group: Calculated
     setups: [pump_room_system]
     inputs:
       supply: pump_room.temp0
       return_temp: pump_room.temp1
     constants:
       scale: 1.0
-    formula: "(return_temp - supply) * scale"
-    precision: 2
-    alarmed: true
+    formula: (return_temp - supply) * scale
     unit: "°C"
     device_class: temperature
-    icon: "mdi:delta"
+    icon: mdi:delta
 ```
 
 Each key below `inputs` is a short formula name. Its value must be an existing
@@ -338,7 +333,7 @@ numbers and must be used when declared.
 |---|---:|---|
 | `label` | readable form of custom ID | Full display and notification label |
 | `short_label` | `label` | Compact setup-dashboard label |
-| `subcategory` | none | Presentation grouping within a setup |
+| `group` | none | Presentation grouping within a setup |
 | `setups` | required | One or more logical setup IDs |
 | `inputs` | required | One or more alias-to-physical-measurement references |
 | `constants` | `{}` | Named finite numbers available to the formula |
