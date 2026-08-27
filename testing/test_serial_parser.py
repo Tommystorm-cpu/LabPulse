@@ -1,13 +1,11 @@
 """Check the single supported pipe-delimited serial format."""
 
-from typing import Optional
-
 import pytest
 
-from labpulse.hardware.serial_parser import SerialParser
+from labpulse.hardware.drivers.serial_pipe import parse_serial_line
 
 
-TEST_CASES: tuple[tuple[str, str, Optional[dict[str, float]]], ...] = (
+TEST_CASES: tuple[tuple[str, str, dict[str, float] | None], ...] = (
     (
         "pressure sample",
         "pressure: 1.03",
@@ -63,8 +61,8 @@ TEST_CASES: tuple[tuple[str, str, Optional[dict[str, float]]], ...] = (
 def test_standard_serial_parser_cases(
     _description: str,
     line: str,
-    expected: Optional[dict[str, float]],
+    expected: dict[str, float] | None,
 ) -> None:
     """Parse one named standard-protocol example."""
 
-    assert SerialParser().parse(line) == expected
+    assert parse_serial_line(line) == expected

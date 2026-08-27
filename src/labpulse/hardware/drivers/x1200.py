@@ -1,4 +1,4 @@
-"""Typed configuration and implementation for the Geekworm X1200 UPS."""
+"""Read battery and mains-power measurements from a Geekworm X1200 UPS."""
 
 from __future__ import annotations
 
@@ -9,24 +9,25 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from labpulse.hardware.api import (
-    BaseSensorDriver,
-    ComponentIssue,
+from labpulse.hardware.driver import (
     ContainerRequirements,
     ConnectionLost,
-    DriverSpec,
+    DriverDefinition,
     DriverUnavailable,
-    ReadingBatch,
+    HardwareDriver,
+    HardwareIssue,
+    HardwareReadings,
 )
 
 
-REG_VCELL = 0x02
-REG_SOC = 0x04
+BATTERY_VOLTAGE_REGISTER = 0x02
+STATE_OF_CHARGE_REGISTER = 0x04
 CommandRunner = Callable[..., Any]
 
 
-class X1200Options(BaseModel):
-    """Normalized I2C and GPIO configuration for the X1200."""
+# Driver configuration
+class X1200Config(BaseModel):
+    """I2C and GPIO configuration for the X1200."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -46,6 +47,7 @@ class X1200Options(BaseModel):
         return address
 
 
+# Battery fuel-gauge decoding
 def register_word(data: list[int]) -> int:
     """Decode one big-endian two-byte MAX17043 register response."""
 
@@ -66,7 +68,8 @@ def decode_state_of_charge(raw: int) -> float:
     return raw / 256.0
 
 
-class GpiodLineReader:
+# Mains-power GPIO reading
+class MainsGpioReader:
     """Read the X1200 mains-detection GPIO with either libgpiod CLI version."""
 
     def __init__(
@@ -87,17 +90,12 @@ class GpiodLineReader:
         """Return normalized mains presence as 1.0 or 0.0."""
 
         chip_name = Path(self.chip).name
-        result = self._run_gpioget(["gpioget", "-c", chip_name, str(self.line)])
+        result = self._command_runner(["gpioget", "-c", chip_name, str(self.line)], capture_output=True, text=True, check=False, timeout=2)
         if result.returncode != 0:
-            legacy_result = self._run_gpioget(["gpioget", chip_name, str(self.line)])
+            legacy_result = self._command_runner(["gpioget", chip_name, str(self.line)], capture_output=True, text=True, check=False, timeout=2)
             if legacy_result.returncode != 0:
-                modern_detail = (
-                    result.stderr.strip() or f"gpioget exited {result.returncode}"
-                )
-                legacy_detail = (
-                    legacy_result.stderr.strip()
-                    or f"gpioget exited {legacy_result.returncode}"
-                )
+                modern_detail = result.stderr.strip() or f"gpioget exited {result.returncode}"
+                legacy_detail = legacy_result.stderr.strip() or f"gpioget exited {legacy_result.returncode}"
                 raise OSError(
                     f"libgpiod 2.x read failed: {modern_detail}; "
                     f"libgpiod 1.x read failed: {legacy_detail}"
@@ -112,43 +110,31 @@ class GpiodLineReader:
         asserted = value in {"1", "active"}
         mains_present = asserted if self.active_high else not asserted
         return 1.0 if mains_present else 0.0
-
-    def _run_gpioget(self, command: list[str]) -> Any:
-        """Run one bounded gpioget attempt with consistent process options."""
-
-        return self._command_runner(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=2,
-        )
-
-
-class Driver(BaseSensorDriver):
-    """Publish X1200 battery telemetry and direct external-power state."""
+# Required driver lifecycle
+class X1200Driver(HardwareDriver):
+    """Read X1200 battery telemetry and direct external-power state."""
 
     def __init__(
         self,
-        name: str,
-        options: X1200Options,
+        service_name: str,
+        config: X1200Config,
         *,
         bus_factory: Callable[[int], Any] | None = None,
-        gpio_reader: GpiodLineReader | None = None,
+        mains_gpio_reader: MainsGpioReader | None = None,
     ) -> None:
         """Store the verified X1200 identities and injectable dependencies."""
 
-        super().__init__(name)
-        self.bus_number = options.bus
-        self.address = options.address
+        super().__init__(service_name)
+        self.bus_number = config.bus
+        self.address = config.address
         self._bus_factory = bus_factory or self._default_bus_factory
-        self.gpio_reader = gpio_reader or GpiodLineReader(
-            options.gpio_chip,
-            options.gpio_line,
-            options.mains_present_active_high,
+        self._mains_gpio_reader = mains_gpio_reader or MainsGpioReader(
+            config.gpio_chip,
+            config.gpio_line,
+            config.mains_present_active_high,
         )
-        self.bus: Any | None = None
-        self._gpio_faulted = False
+        self._i2c_bus: Any | None = None
+        self._mains_read_was_faulted = False
 
     @staticmethod
     def _default_bus_factory(bus_number: int) -> Any:
@@ -162,114 +148,86 @@ class Driver(BaseSensorDriver):
         """Open the X1200 fuel-gauge connection without writing registers."""
 
         try:
-            self.bus = self._bus_factory(self.bus_number)
+            self._i2c_bus = self._bus_factory(self.bus_number)
         except ImportError as error:
-            self.bus = None
+            self._i2c_bus = None
             raise DriverUnavailable(
                 "X1200 dependency is missing. Install the LabPulse i2c extra "
                 "or install smbus2 in the container."
             ) from error
-        except (OSError, IOError) as error:
-            self.bus = None
+        except OSError as error:
+            self._i2c_bus = None
             raise DriverUnavailable(
                 f"failed to open X1200 MAX17043 at 0x{self.address:02X}: {error}"
             ) from error
-        self.logger.info(
-            "Connected to X1200 on I2C bus %s at 0x%02X",
-            self.bus_number,
-            self.address,
-        )
+        self.logger.info("Connected to X1200 on I2C bus %s at 0x%02X", self.bus_number, self.address)
 
-    def read(self) -> ReadingBatch:
+    def read(self) -> HardwareReadings:
         """Return battery and mains telemetry or classify a hardware fault."""
 
-        if self.bus is None:
+        if self._i2c_bus is None:
             raise ConnectionLost("X1200 I2C bus is not open")
 
         try:
-            voltage = decode_voltage(self._read_register(REG_VCELL))
-            battery_level = min(
-                decode_state_of_charge(self._read_register(REG_SOC)),
-                100.0,
-            )
-            self._validate_measurements(voltage, battery_level)
-        except (OSError, IOError, ValueError) as error:
+            voltage = decode_voltage(self._read_fuel_gauge_register(BATTERY_VOLTAGE_REGISTER))
+            raw_battery_level = self._read_fuel_gauge_register(STATE_OF_CHARGE_REGISTER)
+            battery_level = min(decode_state_of_charge(raw_battery_level), 100.0)
+            if not 2.0 <= voltage <= 5.0:
+                raise ValueError(f"impossible X1200 battery voltage: {voltage}")
+            if not 0.0 <= battery_level <= 100.0:
+                raise ValueError(f"impossible X1200 state of charge: {battery_level}")
+        except (OSError, ValueError) as error:
             raise ConnectionLost(f"X1200 fuel-gauge read failed: {error}") from error
 
-        measurements = {
+        values = {
             "voltage": round(voltage, 3),
             "battery_level": round(battery_level, 1),
         }
 
         try:
-            measurements["mains_present"] = self.gpio_reader.read()
+            values["mains_present"] = self._mains_gpio_reader.read()
         except (OSError, ValueError, subprocess.SubprocessError) as error:
-            if not self._gpio_faulted:
+            if not self._mains_read_was_faulted:
                 self.logger.error("X1200 mains GPIO read failed: %s", error)
-            self._gpio_faulted = True
-            return ReadingBatch(
-                measurements,
-                issues=(
-                    ComponentIssue(
-                        code="gpio_fault",
-                        message=f"X1200 mains GPIO read failed: {error}",
-                    ),
-                ),
-            )
+            self._mains_read_was_faulted = True
+            issue = HardwareIssue(code="gpio_fault", message=f"X1200 mains GPIO read failed: {error}")
+            return HardwareReadings(values, issues=(issue,))
 
-        if self._gpio_faulted:
+        if self._mains_read_was_faulted:
             self.logger.info("X1200 mains GPIO measurement recovered")
-        self._gpio_faulted = False
-        return ReadingBatch(measurements)
+        self._mains_read_was_faulted = False
+        return HardwareReadings(values)
 
     def close(self) -> None:
         """Close the I2C handle safely and idempotently."""
 
-        if self.bus is not None:
+        if self._i2c_bus is not None:
             try:
-                self.bus.close()
-            except (OSError, IOError, AttributeError) as error:
+                self._i2c_bus.close()
+            except (OSError, AttributeError) as error:
                 self.logger.warning("Failed to close X1200 I2C bus: %s", error)
-        self.bus = None
+        self._i2c_bus = None
 
-    def _read_register(self, register: int) -> int:
+    def _read_fuel_gauge_register(self, register: int) -> int:
         """Read one MAX17043 register from the X1200."""
 
-        if self.bus is None:
+        if self._i2c_bus is None:
             raise OSError("I2C bus is not open")
-        data = self.bus.read_i2c_block_data(self.address, register, 2)
+        data = self._i2c_bus.read_i2c_block_data(self.address, register, 2)
         return register_word([int(value) for value in data])
 
-    @staticmethod
-    def _validate_measurements(voltage: float, battery_level: float) -> None:
-        """Reject values outside the physical cell and fuel-gauge range."""
 
-        if not 2.0 <= voltage <= 5.0:
-            raise ValueError(f"impossible X1200 battery voltage: {voltage}")
-        if not 0.0 <= battery_level <= 100.0:
-            raise ValueError(f"impossible X1200 state of charge: {battery_level}")
-
-
-def resources(
-    options: X1200Options,
-    _force_simulated: bool,
-) -> ContainerRequirements:
+# Container access and driver registration
+def container_requirements(config: X1200Config, _force_simulated: bool) -> ContainerRequirements:
     """Expose only the configured I2C bus and GPIO chip."""
 
-    return ContainerRequirements(
-        devices=(
-            f"/dev/i2c-{options.bus}",
-            options.gpio_chip,
-        )
-    )
+    return ContainerRequirements(devices=(f"/dev/i2c-{config.bus}", config.gpio_chip))
 
 
-# The selected I2C bus and GPIO chip become concrete Compose device mappings,
-# which makes X1200 resources option-dependent but still declarative.
-DRIVER = DriverSpec(
+DRIVER_DEFINITION = DriverDefinition(
     driver_id="labpulse.x1200",
-    options_model=X1200Options,
-    implementation=Driver,
-    resources=resources,
+    config_model=X1200Config,
+    driver_class=X1200Driver,
+    container_requirements=container_requirements,
     default_read_interval_seconds=1.0,
 )

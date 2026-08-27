@@ -16,9 +16,9 @@ from labpulse.common.config import (
     format_config_error,
     load_config,
 )
-from labpulse.hardware.drivers.serial_pipe import SerialPipeOptions
-from labpulse.hardware.drivers.sht40 import Sht40Options
-from labpulse.hardware.drivers.x1200 import X1200Options
+from labpulse.hardware.drivers.serial_pipe import SerialPipeConfig
+from labpulse.hardware.drivers.sht40 import Sht40Config
+from labpulse.hardware.drivers.x1200 import X1200Config
 
 
 def repository_data() -> dict[str, object]:
@@ -43,15 +43,15 @@ def expect_error(data: object, message: str) -> ConfigError:
 
 
 def test_valid_document_and_typed_driver_options() -> None:
-    """Retain source identity and every concrete options model after one load."""
+    """Retain source identity and each concrete driver config after one load."""
 
     document = load_config(REPOSITORY / "config.yaml")
     if document.path != (REPOSITORY / "config.yaml").resolve():
         raise AssertionError(f"unexpected source path: {document.path}")
     expected_types = {
-        "pressure_monitor": SerialPipeOptions,
-        "room_environment": Sht40Options,
-        "ups_monitor": X1200Options,
+        "pressure_monitor": SerialPipeConfig,
+        "room_environment": Sht40Config,
+        "ups_monitor": X1200Config,
     }
     for service_name, expected_type in expected_types.items():
         options = document.config.services[service_name].driver.options

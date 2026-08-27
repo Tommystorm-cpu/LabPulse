@@ -135,7 +135,7 @@ def test_complete_round_trip() -> None:
     with state_tree() as (live, archive):
         runner = ComposeRunner()
         result = create_backup(live, archive, ["docker"], runner=runner)
-        assert_equal(result.archive_path, archive, "archive path")
+        assert_equal(result, archive, "archive path")
         if os.name != "nt" and archive.stat().st_mode & 0o077:
             raise AssertionError("backup archive permissions are not private")
 

@@ -132,7 +132,7 @@ typed.
 
 When changing configuration:
 
-1. update the shared model or the owning driver's options model;
+1. update the shared model or the owning driver's configuration model;
 2. update `config.yaml` if the starter shape changes;
 3. update fake derivation when the field affects simulated transport;
 4. update Compose and Home Assistant consumers only where behavior changes;
@@ -140,7 +140,7 @@ When changing configuration:
 6. add validation and generated-output tests.
 
 Do not add hardware-specific fields to `ServiceConfig`. Put them beneath
-`driver.options` and let the driver spec own validation.
+`driver.options` and let the driver definition own validation.
 
 ## Generation model
 
@@ -254,12 +254,30 @@ Use `labpulse.serial_pipe` when firmware can emit the standard protocol. Add a
 direct driver only when the transport requires Python-owned hardware access or
 protocol logic.
 
-A direct driver keeps its options, implementation, optional container resource
-resolver, and `DRIVER` spec together in one module. See
+A direct driver keeps its configuration, implementation, optional container
+requirements function, and `DRIVER_DEFINITION` together in one module. See
 [Driver development](DRIVER_DEVELOPMENT.md).
 
 ## Code quality
 
+- Organize code in the order a reader encounters the work: configuration,
+  domain-specific helpers, the main operation, then integration declarations.
+- Keep one operation's decisions together when splitting them into helpers
+  would force the reader to jump around to reconstruct the normal path.
+- Keep a short call or expression on one line when it remains comfortably
+  readable. Do not add vertical structure merely to satisfy a narrow line limit.
+- Prefer descriptive names such as `last_successful_read_at` over short names
+  that depend on surrounding context.
+- Introduce a class, protocol, or data model only when it expresses shared
+  state, a real boundary, or a reused contract.
+- Put principal collaborators before runtime facilities and private lifecycle
+  bookkeeping so the importance of stored state is immediately visible.
+- Use short comments to signpost unfamiliar procedures. Use longer comments
+  for safety constraints and reasons that the code itself cannot show.
+- Keep the successful path visible and handle expected failures beside the
+  operation that can produce them.
+- Validate untrusted input once at its system boundary. After conversion to a
+  typed internal object, trust it instead of repeating validation downstream.
 - Put behavior in the package that owns the decision.
 - Keep `common` dependency-light and limited to genuinely shared contracts.
 - Centralize IDs and MQTT topics.

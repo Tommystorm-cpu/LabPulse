@@ -1,4 +1,4 @@
-"""Typed configuration and implementation for Sensirion SHT40 sensors."""
+"""Read temperature and humidity from a Sensirion SHT40 sensor."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from labpulse.hardware.api import (
-    BaseSensorDriver,
+from labpulse.hardware.driver import (
     ContainerRequirements,
     ConnectionLost,
-    DriverSpec,
+    DriverDefinition,
     DriverUnavailable,
-    ReadingBatch,
+    HardwareDriver,
+    HardwareReadings,
     TransientReadError,
 )
 
@@ -24,8 +24,9 @@ MEASURE_HIGH_PRECISION = 0xFD
 MEASUREMENT_DELAY_SECONDS = 0.01
 
 
-class Sht40Options(BaseModel):
-    """Normalized I2C configuration for one SHT40 sensor."""
+# Driver configuration
+class Sht40Config(BaseModel):
+    """I2C configuration for one SHT40 sensor."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -42,6 +43,7 @@ class Sht40Options(BaseModel):
         return address
 
 
+# Optional hardware dependency
 # Keep smbus2 optional and lazy so config generation and unrelated workers can
 # discover this module on development machines without Raspberry Pi libraries.
 _UNLOADED = object()
@@ -67,6 +69,7 @@ def _load_i2c_dependency() -> Any:
     return smbus2
 
 
+# Device-specific decoding
 def crc8(data: Sequence[int]) -> int:
     """Return the SHT4x CRC-8 for one two-byte sensor word."""
 
@@ -103,25 +106,26 @@ def decode_measurement(data: Sequence[int]) -> tuple[float, float]:
     return temperature, min(max(humidity, 0.0), 100.0)
 
 
-class Driver(BaseSensorDriver):
+# Required driver lifecycle
+class Sht40Driver(HardwareDriver):
     """Read temperature and relative humidity from one SHT40 over I2C."""
 
     def __init__(
         self,
-        name: str,
-        options: Sht40Options,
+        service_name: str,
+        config: Sht40Config,
         *,
         bus_factory: Callable[[int], Any] | None = None,
-        sleeper: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         """Store the I2C identity and injectable hardware dependencies."""
 
-        super().__init__(name)
-        self.bus_number = options.bus
-        self.address = options.address
+        super().__init__(service_name)
+        self.bus_number = config.bus
+        self.address = config.address
         self._bus_factory = bus_factory or self._default_bus_factory
-        self._sleep = sleeper
-        self.bus: Any | None = None
+        self._sleep = sleep
+        self._i2c_bus: Any | None = None
 
     @staticmethod
     def _default_bus_factory(bus_number: int) -> Any:
@@ -133,41 +137,34 @@ class Driver(BaseSensorDriver):
         """Open the configured I2C bus or report it as unavailable."""
 
         try:
-            self.bus = self._bus_factory(self.bus_number)
+            self._i2c_bus = self._bus_factory(self.bus_number)
         except DriverUnavailable:
-            self.bus = None
+            self._i2c_bus = None
             raise
-        except (OSError, IOError, ImportError) as error:
-            self.bus = None
+        except (OSError, ImportError) as error:
+            self._i2c_bus = None
             raise DriverUnavailable(
                 f"failed to open SHT40 at 0x{self.address:02X} on "
                 f"I2C bus {self.bus_number}: {error}"
             ) from error
 
-        self.logger.info(
-            "Connected to SHT40 on I2C bus %s at 0x%02X",
-            self.bus_number,
-            self.address,
-        )
+        self.logger.info("Connected to SHT40 on I2C bus %s at 0x%02X", self.bus_number, self.address)
 
-    def read(self) -> ReadingBatch:
+    def read(self) -> HardwareReadings:
         """Request one high-precision sample and return normalized measurements."""
 
-        if self.bus is None:
+        if self._i2c_bus is None:
             raise ConnectionLost("SHT40 I2C bus is not open")
 
         dependency = _load_i2c_dependency()
         try:
-            command = dependency.i2c_msg.write(
-                self.address,
-                [MEASURE_HIGH_PRECISION],
-            )
-            self.bus.i2c_rdwr(command)
+            command = dependency.i2c_msg.write(self.address, [MEASURE_HIGH_PRECISION])
+            self._i2c_bus.i2c_rdwr(command)
             self._sleep(MEASUREMENT_DELAY_SECONDS)
             response = dependency.i2c_msg.read(self.address, 6)
-            self.bus.i2c_rdwr(response)
+            self._i2c_bus.i2c_rdwr(response)
             payload = list(response)
-        except (OSError, IOError) as error:
+        except OSError as error:
             raise ConnectionLost(f"SHT40 I2C read failed: {error}") from error
 
         try:
@@ -175,37 +172,30 @@ class Driver(BaseSensorDriver):
         except (TypeError, ValueError) as error:
             raise TransientReadError(f"invalid SHT40 sample: {error}") from error
 
-        return ReadingBatch(
-            {
-                "temperature": round(temperature, 2),
-                "humidity": round(humidity, 2),
-            }
-        )
+        return HardwareReadings({"temperature": round(temperature, 2), "humidity": round(humidity, 2)})
 
     def close(self) -> None:
         """Close the I2C handle safely and idempotently."""
 
-        if self.bus is not None:
+        if self._i2c_bus is not None:
             try:
-                self.bus.close()
-            except (OSError, IOError, AttributeError) as error:
+                self._i2c_bus.close()
+            except (OSError, AttributeError) as error:
                 self.logger.warning("Failed to close SHT40 I2C bus: %s", error)
-        self.bus = None
+        self._i2c_bus = None
 
 
-def resources(
-    options: Sht40Options,
-    _force_simulated: bool,
-) -> ContainerRequirements:
+# Container access and driver registration
+def container_requirements(config: Sht40Config, _force_simulated: bool) -> ContainerRequirements:
     """Expose only the configured Raspberry Pi I2C device."""
 
-    return ContainerRequirements(devices=(f"/dev/i2c-{options.bus}",))
+    return ContainerRequirements(devices=(f"/dev/i2c-{config.bus}",))
 
 
-DRIVER = DriverSpec(
+DRIVER_DEFINITION = DriverDefinition(
     driver_id="labpulse.sht40",
-    options_model=Sht40Options,
-    implementation=Driver,
-    resources=resources,
+    config_model=Sht40Config,
+    driver_class=Sht40Driver,
+    container_requirements=container_requirements,
     default_read_interval_seconds=2.0,
 )

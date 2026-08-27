@@ -62,14 +62,9 @@ def derive_fake_config(text: str) -> str:
     if (
         isinstance(room_service, dict)
         and isinstance(room_service.get("driver"), dict)
-        and room_service["driver"].get("type")
-        in {"labpulse.dht11", "labpulse.sht40"}
+        and room_service["driver"].get("type") in {"labpulse.dht11", "labpulse.sht40"}
     ):
-        text = convert_service_to_fake_serial(
-            text,
-            "room_environment",
-            "/tmp/labpulse-fake-serial/room_environment",
-        )
+        text = convert_service_to_fake_serial(text, "room_environment", "/tmp/labpulse-fake-serial/room_environment")
     return convert_power_service_to_fake_serial(text)
 
 
@@ -84,16 +79,10 @@ def convert_power_service_to_fake_serial(text: str) -> str:
     payload = yaml.safe_load(text) or {}
     services = payload.get("services", {})
     configured_power_services = [
-        name
-        for name, service in services.items()
-        if isinstance(service, dict)
-        and service.get("power_detection") is not None
+        name for name, service in services.items()
+        if isinstance(service, dict) and service.get("power_detection") is not None
     ]
-    targets = [
-        name
-        for name in configured_power_services
-        if services[name].get("enabled", True)
-    ]
+    targets = [name for name in configured_power_services if services[name].get("enabled", True)]
     if not targets:
         if configured_power_services:
             return text
@@ -107,15 +96,12 @@ def convert_power_service_to_fake_serial(text: str) -> str:
     return convert_service_to_fake_serial(text, str(targets[0]), FAKE_UPS_PORT)
 
 
-def convert_service_to_fake_serial(
-    text: str,
-    service_name: str,
-    port: str,
-) -> str:
+def convert_service_to_fake_serial(text: str, service_name: str, port: str) -> str:
     """Replace one service's driver block while preserving surrounding YAML."""
 
     root = yaml.compose(text)
-    service_node = _mapping_value(_mapping_value(root, "services"), service_name)
+    services_node = _mapping_entry(root, "services")[1]
+    service_node = _mapping_entry(services_node, service_name)[1]
     if not isinstance(service_node, MappingNode):
         raise ValueError(f"Service '{service_name}' must be a YAML mapping")
 
@@ -138,7 +124,7 @@ def _add_default_fake_power_service(text: str) -> str:
     """Add an active simulator-safe UPS service beneath the services mapping."""
 
     root = yaml.compose(text)
-    services_node = _mapping_value(root, "services")
+    services_node = _mapping_entry(root, "services")[1]
     if not isinstance(services_node, MappingNode):
         raise ValueError("services must be a YAML mapping")
 
@@ -160,21 +146,7 @@ def _add_default_fake_power_service(text: str) -> str:
     return "".join(lines)
 
 
-def _mapping_value(node: object, key: str) -> object:
-    """Return a named child value from a composed YAML mapping node."""
-
-    if not isinstance(node, MappingNode):
-        raise ValueError(f"Expected YAML mapping while locating '{key}'")
-    for key_node, value_node in node.value:
-        if isinstance(key_node, ScalarNode) and key_node.value == key:
-            return value_node
-    raise ValueError(f"Missing YAML mapping key: {key}")
-
-
-def _mapping_entry(
-    node: object,
-    key: str,
-) -> tuple[ScalarNode, object]:
+def _mapping_entry(node: object, key: str) -> tuple[ScalarNode, object]:
     """Return one key/value node pair from a composed YAML mapping."""
 
     if not isinstance(node, MappingNode):

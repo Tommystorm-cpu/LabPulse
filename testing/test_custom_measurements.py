@@ -60,7 +60,8 @@ def test_custom_measurement_renders_sensor_dashboard_and_alarm() -> None:
     custom = context.custom_measurements[0]
     if custom["entity_id"] != "sensor.labpulse_custom_temperature_difference":
         raise AssertionError(f"unexpected calculated entity: {custom['entity_id']}")
-    if custom not in context.measurements_by_setup["water_loop"]:
+    water_loop = next(setup for setup in context.monitor_setups if setup["setup_id"] == "water_loop")
+    if custom not in water_loop["measurements"]:
         raise AssertionError("custom measurement was not assigned to its setup")
     if len(context.custom_alarm_services) != 1:
         raise AssertionError("alarmed custom measurement lacks dependency guard")

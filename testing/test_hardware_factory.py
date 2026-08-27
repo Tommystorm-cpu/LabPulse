@@ -8,18 +8,24 @@ from typing import Any, Callable, TypeVar
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import ServiceConfig
-from labpulse.hardware.api import ContainerRequirements
-from labpulse.hardware.cli import _target_summary
-from labpulse.hardware.drivers.dht11 import Driver as Dht11Driver
-from labpulse.hardware.registry import build_driver, get_driver_spec
+from labpulse.hardware.driver import ContainerRequirements, HardwareDriver
+from labpulse.hardware.drivers.dht11 import Dht11Config, Dht11Driver
+from labpulse.hardware.registry import get_driver_definition
 from labpulse.hardware.drivers.serial_pipe import (
-    Driver as SerialDriver,
-    SerialPipeOptions,
+    SerialPipeConfig,
+    SerialPipeDriver,
 )
-from labpulse.hardware.drivers.x1200 import Driver as X1200UpsDriver
+from labpulse.hardware.drivers.x1200 import X1200Driver
 
 
 TException = TypeVar("TException", bound=Exception)
+
+
+def create_driver(service_name: str, service_config: ServiceConfig) -> HardwareDriver:
+    """Construct a driver through the registry declaration under test."""
+
+    definition = get_driver_definition(service_config.driver.type)
+    return definition.create_driver(service_name, service_config.driver.options)
 
 
 def make_service_config(**overrides: Any) -> ServiceConfig:
@@ -75,24 +81,12 @@ def test_serial_driver_builds() -> None:
 
     service_config = make_service_config()
 
-    driver = build_driver("pump_room", service_config)
+    driver = create_driver("pump_room", service_config)
 
-    assert_equal(isinstance(driver, SerialDriver), True, "driver type")
-    assert_equal(driver.name, "pump_room", "driver name")
+    assert_equal(isinstance(driver, SerialPipeDriver), True, "driver type")
+    assert_equal(driver.service_name, "pump_room", "service name")
     assert_equal(driver.port, "/tmp/labpulse-fake-serial/pump_room", "port")
     assert_equal(driver.baud_rate, 9600, "baud rate")
-
-
-def test_operator_target_summary_uses_hardware_identity() -> None:
-    """Log useful hardware targets without relying on object representations."""
-
-    summary = _target_summary(
-        SerialPipeOptions(
-            port="/dev/serial/by-id/usb-labpulse",
-            baud_rate=9600,
-        )
-    )
-    assert_equal(summary, "port=/dev/serial/by-id/usb-labpulse", "target summary")
 
 
 def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
@@ -105,7 +99,7 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
         sys.path.insert(0, {str(REFACTOR_DIR / "src")!r})
 
         from labpulse.common.config import ServiceConfig
-        from labpulse.hardware.registry import build_driver
+        from labpulse.hardware.registry import get_driver_definition
 
         dht_dependency = "adafruit_dht"
         if dht_dependency in sys.modules:
@@ -124,7 +118,8 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
                 "flow1": {{"label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"}}
             }},
         )
-        build_driver("pump_room", config)
+        definition = get_driver_definition(config.driver.type)
+        definition.create_driver("pump_room", config.driver.options)
 
         if "board" in sys.modules or dht_dependency in sys.modules:
             raise AssertionError("serial driver construction loaded the GPIO stack")
@@ -185,51 +180,52 @@ def test_gpio_dht11_driver_builds() -> None:
         },
     )
 
-    driver = build_driver("room_environment", service_config)
+    driver = create_driver("room_environment", service_config)
 
     assert_equal(isinstance(driver, Dht11Driver), True, "driver type")
-    assert_equal(driver.name, "room_environment", "driver name")
+    assert_equal(driver.service_name, "room_environment", "service name")
     assert_equal(driver.pin_name, "D4", "pin")
 
 
-def test_registry_validates_options_and_reports_available_ids() -> None:
-    """Keep driver-owned defaults and unknown-ID errors at the registry seam."""
+def test_config_loading_applies_driver_defaults_and_registry_reports_ids() -> None:
+    """Validate once through ServiceConfig and report unknown driver IDs."""
 
-    options = get_driver_spec("labpulse.serial_pipe").validate_options(
-        {"port": "/tmp/serial"}
+    service_config = make_service_config(
+        driver={
+            "type": "labpulse.serial_pipe",
+            "options": {"port": "/tmp/serial"},
+        }
     )
-    assert_equal(isinstance(options, SerialPipeOptions), True, "options type")
-    assert_equal(options.baud_rate, 9600, "default baud rate")
+    driver_config = service_config.driver.options
+    assert_equal(isinstance(driver_config, SerialPipeConfig), True, "config type")
+    assert_equal(driver_config.baud_rate, 9600, "default baud rate")
     message = assert_raises(
         ValueError,
         "Available drivers: labpulse.dht11, labpulse.serial_pipe, "
         "labpulse.sht40, labpulse.x1200",
-        lambda: get_driver_spec("example.unknown"),
+        lambda: get_driver_definition("example.unknown"),
     )
     if "example.unknown" not in message:
         raise AssertionError("unknown driver error omitted the requested ID")
 
 
-def test_driver_specs_declare_implementation_and_resources_directly() -> None:
-    """Keep the registry seam declarative without per-driver builder wrappers."""
+def test_driver_definitions_declare_class_and_requirements_function() -> None:
+    """Keep driver construction and container access plainly declared."""
 
-    serial_spec = get_driver_spec("labpulse.serial_pipe")
-    assert_equal(serial_spec.implementation, SerialDriver, "implementation")
-    assert_equal(hasattr(serial_spec, "build"), False, "legacy builder field")
+    definition = get_driver_definition("labpulse.serial_pipe")
+    assert_equal(definition.driver_class, SerialPipeDriver, "driver class")
+    assert_equal(hasattr(definition, "build"), False, "legacy builder field")
 
-    dht_requirements = get_driver_spec("labpulse.dht11").resolve_resources(
-        {"pin": "D4"},
+    dht_requirements = get_driver_definition(
+        "labpulse.dht11"
+    ).container_requirements(
+        Dht11Config(pin="D4"),
         False,
     )
     assert_equal(
         dht_requirements,
         ContainerRequirements(mounts=("/dev:/dev",), privileged=True),
         "fixed DHT resources",
-    )
-    assert_raises(
-        ValueError,
-        "pin",
-        lambda: get_driver_spec("labpulse.dht11").resolve_resources({}, False),
     )
 
 
@@ -267,9 +263,7 @@ def test_x1200_i2c_gpio_driver_builds() -> None:
         },
     )
 
-    driver = build_driver("ups_monitor", service_config)
-    assert_equal(isinstance(driver, X1200UpsDriver), True, "driver type")
+    driver = create_driver("ups_monitor", service_config)
+    assert_equal(isinstance(driver, X1200Driver), True, "driver type")
     assert_equal(driver.bus_number, 1, "I2C bus")
     assert_equal(driver.address, 0x36, "I2C address")
-    assert_equal(driver.gpio_reader.chip, "/dev/gpiochip0", "GPIO chip")
-    assert_equal(driver.gpio_reader.line, 6, "GPIO line")

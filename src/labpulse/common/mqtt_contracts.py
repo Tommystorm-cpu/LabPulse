@@ -55,16 +55,10 @@ def service_status_topic(service_name: str) -> str:
 def sensor_discovery_topic(service_name: str, measurement_name: str) -> str:
     """Return the Home Assistant discovery topic for one sensor measurement."""
 
-    return (
-        f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/sensor/"
-        f"{service_name}_{measurement_name}/config"
-    )
+    return f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/sensor/{service_name}_{measurement_name}/config"
 
 
 def status_discovery_topic(service_name: str) -> str:
     """Return the Home Assistant discovery topic for one service status."""
 
-    return (
-        f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/sensor/"
-        f"{service_name}_status/config"
-    )
+    return f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/sensor/{service_name}_status/config"

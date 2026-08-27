@@ -7,15 +7,7 @@ import math
 import re
 from pathlib import Path
 import yaml
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    SerializeAsAny,
-    ValidationError,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, ValidationError, field_validator, model_validator
 
 from labpulse.common.formula import compile_formula
 from labpulse.common.identity import slug, title
@@ -67,18 +59,12 @@ class ConfigDocument:
             return self.config.services[service_name]
         except KeyError as error:
             available = ", ".join(sorted(self.config.services))
-            raise ConfigError(
-                self.path,
-                (
-                    ConfigProblem(
-                        location=("services", service_name),
-                        message=(
-                            f"unknown service; available services: {available}"
-                        ),
-                        kind="service_not_found",
-                    ),
-                ),
-            ) from error
+            problem = ConfigProblem(
+                location=("services", service_name),
+                message=f"unknown service; available services: {available}",
+                kind="service_not_found",
+            )
+            raise ConfigError(self.path, (problem,)) from error
 
 
 def format_config_error(error: "ConfigError") -> str:
@@ -230,30 +216,12 @@ class SetupConfig(BaseModel):
         return self.label or title(setup_id)
 
 
-class SetupScope(BaseModel):
-    """Normalized explicit logical-setup membership for one physical measurement."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    setup_ids: tuple[str, ...]
-
-    @model_validator(mode="after")
-    def validate_shape(self) -> "SetupScope":
-        """Require every ordinary measurement to name at least one setup."""
-
-        if not self.setup_ids:
-            raise ValueError("setup membership must not be empty")
-        return self
-
-
 def validate_setup_id(setup_id: str) -> str:
     """Return one valid stable setup identifier."""
 
     normalized = setup_id.strip()
     if not normalized or slug(normalized) != normalized:
-        raise ValueError(
-            "setup IDs must use lowercase letters, numbers, and underscores"
-        )
+        raise ValueError("setup IDs must use lowercase letters, numbers, and underscores")
     return normalized
 
 
@@ -262,20 +230,16 @@ def validate_dashboard_id(dashboard_id: str) -> str:
 
     normalized = dashboard_id.strip()
     if not normalized or slug(normalized) != normalized:
-        raise ValueError(
-            "dashboard IDs must use lowercase letters, numbers, and underscores"
-        )
+        raise ValueError("dashboard IDs must use lowercase letters, numbers, and underscores")
     return normalized
 
 
-def normalize_setup_scope(value: object) -> SetupScope | None:
+def normalize_setups(value: object) -> tuple[str, ...] | None:
     """Normalize an optional, explicit non-empty setup-ID list."""
 
     if value is None:
         return None
-    if isinstance(value, SetupScope):
-        return value
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         if not value:
             raise ValueError("setups must contain at least one setup ID")
         normalized_ids: list[str] = []
@@ -285,7 +249,7 @@ def normalize_setup_scope(value: object) -> SetupScope | None:
             normalized_ids.append(validate_setup_id(setup_id))
         if len(set(normalized_ids)) != len(normalized_ids):
             raise ValueError("selected setup IDs must be unique")
-        return SetupScope(setup_ids=tuple(normalized_ids))
+        return tuple(normalized_ids)
     raise ValueError("setups must be a non-empty list of setup IDs")
 
 
@@ -307,7 +271,7 @@ class MeasurementConfig(BaseModel):
     label: str | None = None
     short_label: str | None = None
     group: str | None = None
-    setups: SetupScope | None = None
+    setups: tuple[str, ...] | None = None
     alarmed: bool = Field(default=True, strict=True)
     unit: str | None = None
     device_class: str | None = None
@@ -316,10 +280,10 @@ class MeasurementConfig(BaseModel):
 
     @field_validator("setups", mode="before")
     @classmethod
-    def normalize_setups(cls, value: object) -> SetupScope | None:
+    def validate_setups(cls, value: object) -> tuple[str, ...] | None:
         """Normalize an explicit non-empty setup-ID list."""
 
-        return normalize_setup_scope(value)
+        return normalize_setups(value)
 
     @field_validator("icon")
     @classmethod
@@ -347,7 +311,7 @@ class CustomMeasurementConfig(BaseModel):
     label: str | None = None
     short_label: str | None = None
     group: str | None = None
-    setups: SetupScope
+    setups: tuple[str, ...]
     inputs: dict[str, str]
     constants: dict[str, float] = Field(default_factory=dict)
     formula: str
@@ -360,13 +324,13 @@ class CustomMeasurementConfig(BaseModel):
 
     @field_validator("setups", mode="before")
     @classmethod
-    def normalize_setups(cls, value: object) -> SetupScope:
+    def validate_setups(cls, value: object) -> tuple[str, ...]:
         """Require custom readings to belong to at least one setup."""
 
-        scope = normalize_setup_scope(value)
-        if scope is None:
+        setups = normalize_setups(value)
+        if setups is None:
             raise ValueError("custom measurements must declare setups")
-        return scope
+        return setups
 
     @field_validator("icon")
     @classmethod
@@ -386,20 +350,13 @@ class CustomMeasurementConfig(BaseModel):
         reserved = {"true", "false", "none", "null", "states", "is_number"}
         for alias, reference in inputs.items():
             clean_alias = alias.strip()
-            if (
-                not clean_alias
-                or slug(clean_alias) != clean_alias
-                or keyword.iskeyword(clean_alias)
-                or clean_alias in reserved
-            ):
+            if not clean_alias or slug(clean_alias) != clean_alias or keyword.iskeyword(clean_alias) or clean_alias in reserved:
                 raise ValueError(
                     "input aliases must use non-reserved lowercase letters, numbers, and underscores"
                 )
             clean_reference = reference.strip()
             if clean_reference.count(".") != 1:
-                raise ValueError(
-                    f"input {clean_alias} must reference service.measurement"
-                )
+                raise ValueError(f"input {clean_alias} must reference service.measurement")
             normalized[clean_alias] = clean_reference
         if len(set(normalized.values())) != len(normalized):
             raise ValueError("custom measurement inputs must reference distinct measurements")
@@ -418,20 +375,11 @@ class CustomMeasurementConfig(BaseModel):
             if not isinstance(name, str):
                 raise ValueError("custom measurement constant names must be strings")
             clean_name = name.strip()
-            if (
-                not clean_name
-                or slug(clean_name) != clean_name
-                or keyword.iskeyword(clean_name)
-                or clean_name in reserved
-            ):
+            if not clean_name or slug(clean_name) != clean_name or keyword.iskeyword(clean_name) or clean_name in reserved:
                 raise ValueError(
                     "constant names must use non-reserved lowercase letters, numbers, and underscores"
                 )
-            if (
-                isinstance(raw_value, bool)
-                or not isinstance(raw_value, (int, float))
-                or not math.isfinite(raw_value)
-            ):
+            if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)) or not math.isfinite(raw_value):
                 raise ValueError("custom measurement constants must be finite numbers")
             normalized[clean_name] = float(raw_value)
         return normalized
@@ -473,9 +421,9 @@ class DriverConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_registered_driver(cls, value: object) -> object:
-        """Resolve the driver and retain its concrete validated options model."""
+        """Resolve the driver and retain its concrete validated config model."""
 
-        from labpulse.hardware.registry import get_driver_spec
+        from labpulse.hardware.registry import get_driver_definition
 
         if not isinstance(value, Mapping):
             raise ValueError("driver must be a mapping")
@@ -486,12 +434,12 @@ class DriverConfig(BaseModel):
         driver_type = driver_value.strip()
         if not driver_type:
             raise ValueError("driver type must not be blank")
-        spec = get_driver_spec(driver_type)
+        definition = get_driver_definition(driver_type)
         options = raw.get("options", {})
-        if not isinstance(options, (Mapping, BaseModel)):
+        if not isinstance(options, Mapping):
             raise ValueError("driver options must be a mapping")
         raw["type"] = driver_type
-        raw["options"] = spec.validate_options(options)
+        raw["options"] = definition.validate_config(options)
         return raw
 
 
@@ -531,10 +479,7 @@ class ServiceConfig(BaseModel):
         serial_pipe_driver_id = "labpulse.serial_pipe"
         x1200_driver_id = "labpulse.x1200"
 
-        if (
-            self.driver.type == x1200_driver_id
-            and self.power_detection is None
-        ):
+        if self.driver.type == x1200_driver_id and self.power_detection is None:
             raise ValueError("labpulse.x1200 services require power_detection")
 
         if self.power_detection is not None:
@@ -544,18 +489,12 @@ class ServiceConfig(BaseModel):
                 raise ValueError(
                     "power_detection requires measurements named: " + ", ".join(missing)
                 )
-            if self.driver.type not in {
-                x1200_driver_id,
-                serial_pipe_driver_id,
-            }:
+            if self.driver.type not in {x1200_driver_id, serial_pipe_driver_id}:
                 raise ValueError(
                     "power_detection requires the live X1200 driver "
                     "or the fake serial UPS driver"
                 )
-            if (
-                self.driver.type == x1200_driver_id
-                and self.read_interval_seconds not in (None, 1.0)
-            ):
+            if self.driver.type == x1200_driver_id and self.read_interval_seconds not in (None, 1.0):
                 raise ValueError(
                     "X1200 power monitoring requires read_interval_seconds: 1"
                 )
@@ -615,7 +554,7 @@ class LabPulseConfig(BaseModel):
                 scope = measurement.setups
                 if scope is None:
                     continue
-                missing = sorted(set(scope.setup_ids).difference(available))
+                missing = sorted(set(scope).difference(available))
                 if missing:
                     raise ValueError(
                         f"{service_name}.{measurement_name} references unknown setups: "
@@ -637,7 +576,7 @@ class LabPulseConfig(BaseModel):
                     f"service ID '{virtual_service_id}' conflicts with custom "
                     f"measurement {custom_id} alarm identities"
                 )
-            missing = sorted(set(measurement.setups.setup_ids).difference(available))
+            missing = sorted(set(measurement.setups).difference(available))
             if missing:
                 raise ValueError(
                     f"custom measurement {custom_id} references unknown setups: "
@@ -681,38 +620,7 @@ def resolve_config_relative_path(config_path: str | Path, value: str | Path) -> 
 def _single_problem(path: Path, message: str, kind: str) -> ConfigError:
     """Build a root-level configuration error for read and YAML failures."""
 
-    return ConfigError(
-        path,
-        (ConfigProblem(location=(), message=message, kind=kind),),
-    )
-
-
-def _validate_config(data: object, source: Path) -> ConfigDocument:
-    """Validate decoded YAML data into one source-aware configuration document."""
-
-    if not isinstance(data, Mapping):
-        if data is None:
-            message = "configuration is empty; expected a top-level mapping"
-        else:
-            message = (
-                "configuration root must be a mapping, "
-                f"not {type(data).__name__}"
-            )
-        raise _single_problem(source, message, "invalid_root")
-
-    try:
-        config = LabPulseConfig.model_validate(dict(data))
-    except ValidationError as error:
-        problems = tuple(
-            ConfigProblem(
-                location=tuple(item["loc"]),
-                message=str(item["msg"]),
-                kind=str(item["type"]),
-            )
-            for item in error.errors()
-        )
-        raise ConfigError(source, problems) from error
-    return ConfigDocument(path=source, config=config)
+    return ConfigError(path, (ConfigProblem(location=(), message=message, kind=kind),))
 
 
 def load_config(
@@ -732,5 +640,25 @@ def load_config(
         data = yaml.safe_load(text)
     except yaml.YAMLError as error:
         raise _single_problem(config_path, str(error), "yaml_error") from error
-    return _validate_config(data, config_path)
+
+    if not isinstance(data, Mapping):
+        if data is None:
+            message = "configuration is empty; expected a top-level mapping"
+        else:
+            message = f"configuration root must be a mapping, not {type(data).__name__}"
+        raise _single_problem(config_path, message, "invalid_root")
+
+    try:
+        config = LabPulseConfig.model_validate(dict(data))
+    except ValidationError as error:
+        problems = tuple(
+            ConfigProblem(
+                location=tuple(item["loc"]),
+                message=str(item["msg"]),
+                kind=str(item["type"]),
+            )
+            for item in error.errors()
+        )
+        raise ConfigError(config_path, problems) from error
+    return ConfigDocument(path=config_path, config=config)
 

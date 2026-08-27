@@ -54,29 +54,6 @@ def _replace_text(path: Path, text: str) -> None:
         raise
 
 
-def _install_homeassistant(staged: Path, live: Path) -> None:
-    """Install owned HA files and initialize, but never overwrite, UI files."""
-
-    owned_pairs = (
-        (staged / "configuration.yaml", live / "configuration.yaml"),
-        (
-            staged / "packages" / "labpulse_generated.yaml",
-            live / "packages" / "labpulse_generated.yaml",
-        ),
-        (staged / "labpulse-dashboard.yaml", live / "labpulse-dashboard.yaml"),
-    )
-    for staged_path, live_path in owned_pairs:
-        _replace_text(live_path, staged_path.read_text(encoding="utf-8"))
-
-    for ui_path in (
-        live / "automations.yaml",
-        live / "scripts.yaml",
-        live / "scenes.yaml",
-    ):
-        if not ui_path.exists():
-            _replace_text(ui_path, "[]\n")
-
-
 def generate_deployment(
     config_path: Path,
     compose_output: Path,
@@ -108,7 +85,23 @@ def generate_deployment(
         # No live generated file is touched until both Compose and every owned
         # Home Assistant artifact have been built successfully.
         _replace_text(compose_output, compose_text)
-        _install_homeassistant(staged_ha_dir, ha_config_dir)
+        owned_homeassistant_files = (
+            (staged_ha_dir / "configuration.yaml", ha_config_dir / "configuration.yaml"),
+            (
+                staged_ha_dir / "packages" / "labpulse_generated.yaml",
+                ha_config_dir / "packages" / "labpulse_generated.yaml",
+            ),
+            (staged_ha_dir / "labpulse-dashboard.yaml", ha_config_dir / "labpulse-dashboard.yaml"),
+        )
+        for staged_path, live_path in owned_homeassistant_files:
+            _replace_text(live_path, staged_path.read_text(encoding="utf-8"))
+
+        # These files are user-owned. Home Assistant needs them to exist, but
+        # regeneration must never replace them.
+        for filename in ("automations.yaml", "scripts.yaml", "scenes.yaml"):
+            ui_path = ha_config_dir / filename
+            if not ui_path.exists():
+                _replace_text(ui_path, "[]\n")
     finally:
         shutil.rmtree(staging_root)
 
@@ -123,38 +116,15 @@ def parse_args(argv: list[str] | None = None) -> Namespace:
         description="Generate deployment files from validated LabPulse configuration"
     )
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument(
-        "--output",
-        "--compose-output",
-        required=True,
-        dest="compose_output",
-        type=Path,
-    )
+    parser.add_argument("--output", "--compose-output", required=True, dest="compose_output", type=Path)
     parser.add_argument("--project-dir", required=True, type=Path)
     parser.add_argument(
         "--ha-config-dir",
         type=Path,
         help="also generate Home Assistant files from the same config load",
     )
-    parser.add_argument(
-        "-fake_usb",
-        "--fake-usb",
-        "--fake_usb",
-        action="store_true",
-        dest="fake_usb",
-    )
+    parser.add_argument("-fake_usb", "--fake-usb", "--fake_usb", action="store_true", dest="fake_usb")
     return parser.parse_args(argv)
-
-
-def _print_result(document: ConfigDocument, compose_path: Path, image: str) -> None:
-    """Report installed output and enabled service container names."""
-
-    print(f"Generated {compose_path}")
-    print(f"LabPulse runtime image: {image}")
-    print("LabPulse service containers:")
-    for service_name, service in document.config.services.items():
-        if service.enabled:
-            print(f"  labpulse-{service_slug(service_name)} -> {service_name}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -196,7 +166,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
-    _print_result(document, compose_output, runtime_image)
+    print(f"Generated {compose_output}")
+    print(f"LabPulse runtime image: {runtime_image}")
+    print("LabPulse service containers:")
+    for service_name, service in document.config.services.items():
+        if service.enabled:
+            print(f"  labpulse-{service_slug(service_name)} -> {service_name}")
     return 0
 
 

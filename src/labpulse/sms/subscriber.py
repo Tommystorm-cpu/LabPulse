@@ -48,8 +48,8 @@ class RecentRequestCache:
         self.cooldown_seconds = cooldown_seconds
         self.max_entries = max_entries
         self.clock = clock
-        self.request_times: OrderedDict[str, float] = OrderedDict()
-        self.event_times: dict[str, float] = {}
+        self._request_times: OrderedDict[str, float] = OrderedDict()
+        self._event_times: dict[str, float] = {}
         self._load()
 
     def rejection_reason(self, request: SmsRequest) -> str | None:
@@ -57,10 +57,10 @@ class RecentRequestCache:
 
         now = self.clock()
         self._prune(now)
-        if request.request_id in self.request_times:
+        if request.request_id in self._request_times:
             return "duplicate"
         event_key = self._event_key(request)
-        last_event = self.event_times.get(event_key)
+        last_event = self._event_times.get(event_key)
         if last_event is not None and now - last_event < self.cooldown_seconds:
             return "rate_limited"
         return None
@@ -69,9 +69,9 @@ class RecentRequestCache:
         """Record an accepted request and persist the duplicate cache."""
 
         now = self.clock()
-        self.request_times[request.request_id] = now
-        self.request_times.move_to_end(request.request_id)
-        self.event_times[self._event_key(request)] = now
+        self._request_times[request.request_id] = now
+        self._request_times.move_to_end(request.request_id)
+        self._event_times[self._event_key(request)] = now
         self._prune(now)
         self._save()
 
@@ -85,14 +85,14 @@ class RecentRequestCache:
         """Remove expired and excess entries."""
 
         cutoff = now - self.retention_seconds
-        while self.request_times:
-            first_id, first_time = next(iter(self.request_times.items()))
-            if first_time >= cutoff and len(self.request_times) <= self.max_entries:
+        while self._request_times:
+            first_id, first_time = next(iter(self._request_times.items()))
+            if first_time >= cutoff and len(self._request_times) <= self.max_entries:
                 break
-            self.request_times.pop(first_id)
-        self.event_times = {
+            self._request_times.pop(first_id)
+        self._event_times = {
             key: timestamp
-            for key, timestamp in self.event_times.items()
+            for key, timestamp in self._event_times.items()
             if timestamp >= now - self.cooldown_seconds
         }
 
@@ -109,7 +109,7 @@ class RecentRequestCache:
             return
         for request_id, timestamp in payload.items():
             if isinstance(request_id, str) and isinstance(timestamp, (int, float)):
-                self.request_times[request_id] = float(timestamp)
+                self._request_times[request_id] = float(timestamp)
         self._prune(self.clock())
 
     def _save(self) -> None:
@@ -121,7 +121,7 @@ class RecentRequestCache:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary_path.write_text(
-                json.dumps(self.request_times, indent=2) + "\n",
+                json.dumps(self._request_times, indent=2) + "\n",
                 encoding="utf-8",
             )
             temporary_path.replace(self.path)
@@ -129,7 +129,7 @@ class RecentRequestCache:
             return
 
 
-class SMSSubscriber:
+class SmsSubscriber:
     """Reliable MQTT subscriber used by the SMS container."""
 
     def __init__(
@@ -143,8 +143,8 @@ class SMSSubscriber:
 
         self.mqtt_config = mqtt_config
         self.sender = sender
-        self.logger = logging.getLogger("LabPulse.SMS")
         self.request_cache = request_cache or RecentRequestCache()
+        self._logger = logging.getLogger("LabPulse.SMS")
         self.client = client_factory(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id="LabPulse-SMS",
@@ -163,7 +163,7 @@ class SMSSubscriber:
 
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
-        self.logger.info(
+        self._logger.info(
             "Connecting to MQTT broker %s:%s",
             self.mqtt_config.broker,
             self.mqtt_config.port,
@@ -193,9 +193,9 @@ class SMSSubscriber:
         """Subscribe at QoS 1 whenever MQTT connects or reconnects."""
 
         if reason_code != 0:
-            self.logger.error("SMS MQTT connection failed: %s", reason_code)
+            self._logger.error("SMS MQTT connection failed: %s", reason_code)
             return
-        self.logger.info("SMS service subscribing to %s", SMS_SUBSCRIPTION_TOPIC)
+        self._logger.info("SMS service subscribing to %s", SMS_SUBSCRIPTION_TOPIC)
         client.subscribe(SMS_SUBSCRIPTION_TOPIC, qos=1)
         self._publish_json(
             SMS_STATUS_DISCOVERY_TOPIC,
@@ -225,12 +225,12 @@ class SMSSubscriber:
         try:
             request = parse_sms_payload(message.payload)
         except SmsPayloadError as error:
-            self.logger.warning("Rejected invalid SMS request: %s", error)
+            self._logger.warning("Rejected invalid SMS request: %s", error)
             return
 
         reason = self.request_cache.rejection_reason(request)
         if reason is not None:
-            self.logger.warning(
+            self._logger.warning(
                 "Rejected SMS request %s: %s", request.request_id, reason
             )
             self.publish_delivery_result(
@@ -238,7 +238,7 @@ class SMSSubscriber:
             )
             return
 
-        self.logger.info(
+        self._logger.info(
             "SMS request accepted: request_id=%s event=%s service=%s measurement=%s",
             request.request_id,
             request.event,

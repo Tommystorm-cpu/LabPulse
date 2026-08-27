@@ -59,7 +59,7 @@ The serial stream is unit-free. Units belong in `config.yaml`:
 
 ```yaml
 measurements:
-  - name: temperature
+  temperature:
     unit: "°C"
     device_class: temperature
 ```
@@ -194,7 +194,7 @@ labpulse up
 A protocol change must update together:
 
 - firmware writers and examples;
-- `src/labpulse/hardware/serial_parser.py`;
+- `src/labpulse/hardware/drivers/serial_pipe.py`;
 - simulator payload generation;
 - parser and simulator tests;
 - starter configuration names;

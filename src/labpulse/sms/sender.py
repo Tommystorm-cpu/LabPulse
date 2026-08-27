@@ -57,23 +57,16 @@ def format_sms_message(request: SmsRequest) -> str:
     title = request.title
     if request.test_mode and not title.startswith(TEST_PREFIX):
         title = f"{TEST_PREFIX} {title}"
-    message = render_alert_message(request.message, request.current_measurement)
+    if request.current_measurement not in (None, "", "unknown", "None"):
+        message = request.message.replace(CURRENT_MEASUREMENT_PLACEHOLDER, str(request.current_measurement))
+    else:
+        message = "\n".join(
+            line for line in request.message.splitlines() if CURRENT_MEASUREMENT_PLACEHOLDER not in line
+        )
     lines = [title, message]
     if request.event == "warning":
         lines.extend(("", UNSUBSCRIBE_FOOTER))
     return "\n".join(lines)
-
-
-def render_alert_message(message: str, current_measurement: str | None) -> str:
-    """Fill the measurement placeholder or remove its template line when absent."""
-
-    if current_measurement not in (None, "", "unknown", "None"):
-        return message.replace(CURRENT_MEASUREMENT_PLACEHOLDER, str(current_measurement))
-    return "\n".join(
-        line for line in message.splitlines() if CURRENT_MEASUREMENT_PLACEHOLDER not in line
-    )
-
-
 def mask_phone_number(phone_number: str) -> str:
     """Return a log-safe representation of a recipient number."""
 
@@ -102,110 +95,80 @@ class SmsSender:
 
         self.recipients = tuple(recipients)
         self.test_recipients = tuple(test_recipients)
-        self.logger = logger
         self.dry_run = dry_run
-        self.runner = runner
-        self.retries = retries
-        self.retry_delay_seconds = retry_delay_seconds
-        self.sleeper = sleeper
         self.subscription_registry = subscription_registry
-        self.modem_lock = threading.RLock()
-        self.result_handler: ResultHandler | None = None
-        self.queue: queue.Queue[tuple[str, SmsRequest] | None] = queue.Queue(
-            maxsize=queue_size
-        )
-        self.closed = False
-        self.worker = threading.Thread(
-            target=self._worker,
-            name="labpulse-sms-sender",
-            daemon=False,
-        )
-        self.worker.start()
+
+        self._logger = logger
+        self._command_runner = runner
+        self._retries = retries
+        self._retry_delay_seconds = retry_delay_seconds
+        self._sleep = sleeper
+        self._modem_lock = threading.RLock()
+        self._result_handler: ResultHandler | None = None
+        self._queue: queue.Queue[tuple[str, SmsRequest] | None] = queue.Queue(maxsize=queue_size)
+        self._closed = False
+        self._worker_thread = threading.Thread(target=self._worker, name="labpulse-sms-sender", daemon=False)
+        self._worker_thread.start()
 
     def set_result_handler(self, handler: ResultHandler) -> None:
         """Register the callback used for delivery results."""
 
-        self.result_handler = handler
+        self._result_handler = handler
 
     def broadcast(self, request: SmsRequest) -> bool:
         """Queue one outbound request for every configured recipient."""
 
-        if self.closed:
-            self.logger.error("SMS request rejected because the sender is stopping")
+        if self._closed:
+            self._logger.error("SMS request rejected because the sender is stopping")
             return False
         recipients = self.test_recipients if request.test_mode else self.recipients
         recipient_kind = "test recipients" if request.test_mode else "recipients"
         if not recipients:
-            self.logger.warning(
-                "SMS request dropped because no %s are configured", recipient_kind
-            )
-            self._report(
-                DeliveryResult(
-                    request.request_id,
-                    "",
-                    "failed",
-                    f"no {recipient_kind} configured",
-                )
-            )
+            self._logger.warning("SMS request dropped because no %s are configured", recipient_kind)
+            self._report(DeliveryResult(request.request_id, "", "failed", f"no {recipient_kind} configured"))
             return False
 
         active_recipients = []
         for recipient in recipients:
-            if (
-                self.subscription_registry is not None
-                and not self.subscription_registry.is_subscribed(recipient)
-            ):
-                self._report(
-                    DeliveryResult(
-                        request.request_id,
-                        mask_phone_number(recipient),
-                        "unsubscribed",
-                        "recipient has unsubscribed",
-                    )
+            if self.subscription_registry is not None and not self.subscription_registry.is_subscribed(recipient):
+                result = DeliveryResult(
+                    request.request_id, mask_phone_number(recipient), "unsubscribed", "recipient has unsubscribed"
                 )
+                self._report(result)
             else:
                 active_recipients.append(recipient)
 
-        available_slots = self.queue.maxsize - self.queue.qsize()
-        if self.queue.maxsize and available_slots < len(active_recipients):
-            self.logger.error("SMS queue is full; request %s was rejected", request.request_id)
-            self._report(
-                DeliveryResult(request.request_id, "", "failed", "sender queue full")
-            )
+        available_slots = self._queue.maxsize - self._queue.qsize()
+        if self._queue.maxsize and available_slots < len(active_recipients):
+            self._logger.error("SMS queue is full; request %s was rejected", request.request_id)
+            self._report(DeliveryResult(request.request_id, "", "failed", "sender queue full"))
             return False
-        try:
-            for recipient in active_recipients:
-                self.queue.put_nowait((recipient, request))
-        except queue.Full:
-            self.logger.error("SMS queue is full; request %s was rejected", request.request_id)
-            self._report(
-                DeliveryResult(request.request_id, "", "failed", "sender queue full")
-            )
-            return False
+        for recipient in active_recipients:
+            self._queue.put_nowait((recipient, request))
         return True
 
     def send_sms(self, phone_number: str, message: str) -> bool:
         """Log one SMS in dry-run mode or send it through ModemManager."""
 
         if self.dry_run:
-            self.logger.info(
+            self._logger.info(
                 "SMS dry run would send to %s: %s",
                 mask_phone_number(phone_number),
                 message,
             )
             return True
-        with self.modem_lock:
+        with self._modem_lock:
             return self._send_with_mmcli(phone_number, message)
 
     def list_received_sms(self) -> list[InboundSms]:
         """Return complete received text messages currently stored by the modem."""
 
-        with self.modem_lock:
-            modem_id = self.get_modem_id()
+        with self._modem_lock:
+            modem_id = self._get_modem_id()
             if modem_id is None:
                 return []
             try:
-                result = self.runner(
+                result = self._command_runner(
                     ["mmcli", "-m", modem_id, "--messaging-list-sms"],
                     capture_output=True,
                     text=True,
@@ -213,7 +176,7 @@ class SmsSender:
                     timeout=15,
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-                self.logger.warning(
+                self._logger.warning(
                     "Could not list received SMS objects: %s", type(error).__name__
                 )
                 return []
@@ -232,7 +195,7 @@ class SmsSender:
         """Read one SMS object and return it only when reception is complete."""
 
         try:
-            result = self.runner(
+            result = self._command_runner(
                 ["mmcli", "-s", sms_path, "--output-keyvalue"],
                 capture_output=True,
                 text=True,
@@ -240,7 +203,7 @@ class SmsSender:
                 timeout=15,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            self.logger.warning("Could not read SMS object %s: %s", sms_path, error)
+            self._logger.warning("Could not read SMS object %s: %s", sms_path, error)
             return None
         fields = parse_mmcli_key_values(result.stdout)
         if fields.get("sms.properties.state") != "received":
@@ -254,27 +217,27 @@ class SmsSender:
     def delete_received_sms(self, sms_path: str) -> None:
         """Delete one processed received SMS object from modem storage."""
 
-        with self.modem_lock:
-            modem_id = self.get_modem_id()
+        with self._modem_lock:
+            modem_id = self._get_modem_id()
             if modem_id is not None:
-                self.delete_sms(modem_id, sms_path)
+                self._delete_sms(modem_id, sms_path)
 
     def close(self, timeout: float = 15) -> None:
         """Drain pending sends and stop the worker thread."""
 
-        if self.closed:
+        if self._closed:
             return
-        self.closed = True
-        self.queue.put(None)
-        self.worker.join(timeout=timeout)
-        if self.worker.is_alive():
-            self.logger.warning("SMS sender did not stop within %.1f seconds", timeout)
+        self._closed = True
+        self._queue.put(None)
+        self._worker_thread.join(timeout=timeout)
+        if self._worker_thread.is_alive():
+            self._logger.warning("SMS sender did not stop within %.1f seconds", timeout)
 
     def _worker(self) -> None:
         """Send queued SMS messages one at a time."""
 
         while True:
-            item = self.queue.get()
+            item = self._queue.get()
             try:
                 if item is None:
                     return
@@ -282,43 +245,38 @@ class SmsSender:
                 try:
                     success = self.send_sms(phone_number, format_sms_message(request))
                 except Exception:
-                    self.logger.exception("Unexpected SMS sender failure")
+                    self._logger.exception("Unexpected SMS sender failure")
                     success = False
                 self._report(
                     DeliveryResult(
                         request.request_id,
                         mask_phone_number(phone_number),
-                        self.success_status() if success else "failed",
+                        ("logged" if self.dry_run else "sent") if success else "failed",
                         "" if success else "SMS delivery failed",
                     )
                 )
             finally:
-                self.queue.task_done()
+                self._queue.task_done()
 
     def _report(self, result: DeliveryResult) -> None:
         """Send a delivery result when a handler has been registered."""
 
-        if self.result_handler is not None:
-            self.result_handler(result)
-
-    def success_status(self) -> str:
-        """Distinguish a dry-run log from a successful modem send."""
-
-        return "logged" if self.dry_run else "sent"
+        if self._result_handler is not None:
+            self._result_handler(result)
 
     def _send_with_mmcli(self, phone_number: str, message: str) -> bool:
         """Send one SMS through the first modem reported by mmcli."""
 
-        for attempt in range(1, self.retries + 1):
-            modem_id = self.get_modem_id()
+        for attempt in range(1, self._retries + 1):
+            modem_id = self._get_modem_id()
             if modem_id is None:
-                self.logger.error("No operational cellular modem found")
+                self._logger.error("No operational cellular modem found")
                 return False
 
             sms_path: str | None = None
             try:
-                sms_path = self.create_sms(modem_id, phone_number, message)
-                self.runner(
+                sms_path = self._create_sms(modem_id, phone_number, message)
+                self._command_runner(
                     ["mmcli", "-s", sms_path, "--send"],
                     capture_output=True,
                     text=True,
@@ -326,45 +284,41 @@ class SmsSender:
                     timeout=30,
                 )
             except subprocess.TimeoutExpired:
-                self.logger.warning(
-                    "SMS send timed out on attempt %s/%s", attempt, self.retries
-                )
+                self._logger.warning("SMS send timed out on attempt %s/%s", attempt, self._retries)
             except subprocess.CalledProcessError as error:
                 stderr = (error.stderr or "").strip()
-                self.logger.warning(
+                self._logger.warning(
                     "SMS send failed on attempt %s/%s: %s",
                     attempt,
-                    self.retries,
+                    self._retries,
                     stderr or f"mmcli exited with {error.returncode}",
                 )
             except RuntimeError as error:
-                self.logger.warning(
-                    "SMS setup failed on attempt %s/%s: %s", attempt, self.retries, error
-                )
+                self._logger.warning("SMS setup failed on attempt %s/%s: %s", attempt, self._retries, error)
             else:
-                self.logger.info(
+                self._logger.info(
                     "SMS sent to %s via %s", mask_phone_number(phone_number), sms_path
                 )
                 return True
             finally:
                 if sms_path is not None:
-                    self.delete_sms(modem_id, sms_path)
+                    self._delete_sms(modem_id, sms_path)
 
-            if attempt < self.retries:
-                self.sleeper(self.retry_delay_seconds)
+            if attempt < self._retries:
+                self._sleep(self._retry_delay_seconds)
 
-        self.logger.error(
+        self._logger.error(
             "SMS delivery failed after %s attempts to %s",
-            self.retries,
+            self._retries,
             mask_phone_number(phone_number),
         )
         return False
 
-    def get_modem_id(self) -> str | None:
+    def _get_modem_id(self) -> str | None:
         """Return the first modem ID visible to ModemManager."""
 
         try:
-            result = self.runner(
+            result = self._command_runner(
                 ["mmcli", "-L"],
                 capture_output=True,
                 text=True,
@@ -372,7 +326,7 @@ class SmsSender:
                 timeout=10,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            self.logger.error("Failed to list modems with mmcli: %s", type(error).__name__)
+            self._logger.error("Failed to list modems with mmcli: %s", type(error).__name__)
             return None
 
         for line in result.stdout.splitlines():
@@ -381,14 +335,14 @@ class SmsSender:
                 return match.group(1)
         return None
 
-    def create_sms(self, modem_id: str, phone_number: str, message: str) -> str:
+    def _create_sms(self, modem_id: str, phone_number: str, message: str) -> str:
         """Create an SMS in ModemManager and return its storage path."""
 
         sms_args = (
             f"text={quote_mmcli_value(message)},"
             f"number={quote_mmcli_value(phone_number)}"
         )
-        result = self.runner(
+        result = self._command_runner(
             ["mmcli", "-m", modem_id, "--messaging-create-sms", sms_args],
             capture_output=True,
             text=True,
@@ -402,11 +356,11 @@ class SmsSender:
                 return match.group(1)
         raise RuntimeError("Could not parse the created SMS path from mmcli output")
 
-    def delete_sms(self, modem_id: str, sms_path: str) -> None:
+    def _delete_sms(self, modem_id: str, sms_path: str) -> None:
         """Delete a created SMS object from ModemManager storage."""
 
         try:
-            self.runner(
+            self._command_runner(
                 ["mmcli", "-m", modem_id, f"--messaging-delete-sms={sms_path}"],
                 capture_output=True,
                 text=True,
@@ -414,7 +368,7 @@ class SmsSender:
                 timeout=15,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            self.logger.warning(
+            self._logger.warning(
                 "Could not remove ModemManager SMS object %s: %s",
                 sms_path,
                 type(error).__name__,

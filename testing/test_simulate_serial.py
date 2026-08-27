@@ -9,7 +9,7 @@ from unittest.mock import patch
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import load_config
-from labpulse.hardware.serial_parser import SerialParser
+from labpulse.hardware.drivers.serial_pipe import parse_serial_line
 from simulate_serial import MeasurementGenerator, SimulatorService, build_parser
 
 
@@ -18,19 +18,11 @@ def test_generated_payloads_match_parsers() -> None:
 
     payloads = MeasurementGenerator(seed=4).payloads()
 
-    pressure = SerialParser().parse(
-        payloads["pressure"].strip()
-    )
-    pump = SerialParser().parse(
-        payloads["pump_room"].strip()
-    )
-    turbo = SerialParser().parse(payloads["turbo_pump"].strip())
-    room = SerialParser().parse(
-        payloads["room_environment"].strip()
-    )
-    ups = SerialParser().parse(
-        payloads["ups_monitor"].strip()
-    )
+    pressure = parse_serial_line(payloads["pressure"].strip())
+    pump = parse_serial_line(payloads["pump_room"].strip())
+    turbo = parse_serial_line(payloads["turbo_pump"].strip())
+    room = parse_serial_line(payloads["room_environment"].strip())
+    ups = parse_serial_line(payloads["ups_monitor"].strip())
 
     if pressure is None:
         raise AssertionError(f"invalid pressure payload: {payloads['pressure']!r}")
@@ -76,11 +68,10 @@ def test_ups_power_scenarios_and_stale_suppression() -> None:
     """Check UPS scenarios use real gauge fields and stale stops publication."""
 
     generator = MeasurementGenerator(seed=2)
-    parser = SerialParser()
     expected_voltage = {"mains": 4.13, "battery": 3.95}
     for state, voltage in expected_voltage.items():
         generator.set_scenario("ups_monitor.power", state)
-        parsed = parser.parse(generator.payloads()["ups_monitor"])
+        parsed = parse_serial_line(generator.payloads()["ups_monitor"])
         if parsed is None:
             raise AssertionError(f"UPS {state} payload did not parse")
         expected_mains = 1.0 if state == "mains" else 0.0
@@ -112,12 +103,9 @@ def test_scenarios_change_generated_values() -> None:
     generator.set_scenario("pump_room.roomhum", "danger-high")
 
     first = generator.payloads()
-    room_parser = SerialParser()
-    first_room = room_parser.parse(first["room_environment"].strip())
-    pressure = SerialParser().parse(
-        first["pressure"].strip()
-    )
-    pump = SerialParser().parse(first["pump_room"])
+    first_room = parse_serial_line(first["room_environment"].strip())
+    pressure = parse_serial_line(first["pressure"].strip())
+    pump = parse_serial_line(first["pump_room"])
 
     if first_room is None or pressure is None or pump is None:
         raise AssertionError("scenario payload failed to parse")
@@ -181,9 +169,9 @@ def test_device_disconnect_control() -> None:
 
     service = SimulatorService(Path("/tmp/unused-labpulse-test"), interval=1)
     endpoint = FakeEndpoint()
-    service.endpoints["pressure"] = endpoint  # type: ignore[assignment]
+    service._endpoints["pressure"] = endpoint  # type: ignore[assignment]
     response = service._dispatch({"command": "disconnect", "device": "pressure_monitor"})
-    if not endpoint.closed or "pressure" in service.endpoints:
+    if not endpoint.closed or "pressure" in service._endpoints:
         raise AssertionError("disconnect did not close and remove the endpoint")
     if "Disconnected simulator device pressure" not in response["message"]:
         raise AssertionError(f"unclear disconnect response: {response!r}")
@@ -194,7 +182,7 @@ def test_device_disconnect_control() -> None:
     with patch("simulate_serial.SerialEndpoint.create", return_value=replacement) as create:
         response = service._dispatch({"command": "connect", "device": "pressure"})
     create.assert_called_once_with(service.sim_dir, "pressure")
-    if service.endpoints.get("pressure") is not replacement:
+    if service._endpoints.get("pressure") is not replacement:
         raise AssertionError("connect did not install the replacement endpoint")
     if "Connected simulator device pressure" not in response["message"]:
         raise AssertionError(f"unclear connect response: {response!r}")

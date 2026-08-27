@@ -229,10 +229,10 @@ The flow is:
 hardware/cli.py
   → load ConfigDocument
   → select ServiceConfig
-  → registry.get_driver_spec(driver.type)
-  → construct driver from typed options
+  → registry.get_driver_definition(driver.type)
+  → construct driver from typed configuration
   → construct HomeAssistantMqttPublisher
-  → HardwareRunner.run_forever()
+  → HardwareServiceRunner.run_forever()
 ```
 
 Ownership is strict:
@@ -244,7 +244,7 @@ Ownership is strict:
 | Connect, retry, poll, freshness, and cleanup | Runner |
 | Service-health transitions | Runner |
 | MQTT discovery, state, availability, and status | Publisher |
-| Devices, mounts, and privileged requirements | Driver spec |
+| Devices, mounts, and privileged requirements | Driver definition |
 | Thresholds, alarm transitions, and notifications | Home Assistant |
 
 Drivers do not publish MQTT or manage retry sleeps. The runner does not import
@@ -252,16 +252,16 @@ vendor hardware libraries or understand device protocols.
 
 ## Driver contract
 
-Every driver extends `BaseSensorDriver` and implements:
+Every driver extends `HardwareDriver` and implements:
 
 ```text
 connect() -> None
-read() -> ReadingBatch | None
+read() -> HardwareReadings | None
 close() -> None
 ```
 
-`ReadingBatch.measurements` maps configured measurement names to finite numeric
-values. `None` means no complete sample is ready. `ComponentIssue` can accompany
+`HardwareReadings.values` maps configured measurement names to finite numeric
+values. `None` means no complete sample is ready. `HardwareIssue` can accompany
 valid measurements when one part of a multi-function device is degraded.
 
 Expected failure classes are:
@@ -292,26 +292,27 @@ Home Assistant cannot interpret cached data as a recovery.
 Each public module under `src/labpulse/hardware/drivers/` exports exactly one:
 
 ```python
-DRIVER = DriverSpec(...)
+DRIVER_DEFINITION = DriverDefinition(...)
 ```
 
 The registry imports public modules automatically. `driver_template.py` is
 excluded. Supporting modules in that directory must begin with `_`.
 
-A `DriverSpec` contains:
+A `DriverDefinition` contains:
 
 - stable driver ID;
-- strict options model;
-- implementation class;
-- fixed resources or an option-dependent resource resolver;
+- strict configuration model;
+- clearly named driver class;
+- container-requirements function;
 - default read interval.
 
-The spec validates options once and constructs the implementation with the
-standard `(service_name, options)` constructor. This makes the driver itself
+The definition validates configuration once and constructs the driver with the
+standard `(service_name, config)` constructor. This makes the driver itself
 the hardware-to-runner translation layer; there is no separate adapter type.
 
-Resources use `ContainerRequirements` containing devices, mounts, and a
-privileged flag. Drivers cannot return arbitrary Compose YAML.
+Every driver supplies a function returning `ContainerRequirements`, containing
+devices, mounts, and a privileged flag. Drivers cannot return arbitrary Compose
+YAML.
 
 ## MQTT boundary
 

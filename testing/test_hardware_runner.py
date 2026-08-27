@@ -3,15 +3,15 @@
 from typing import Callable
 from unittest.mock import Mock
 
-from labpulse.hardware.api import (
-    BaseSensorDriver,
-    ComponentIssue,
+from labpulse.hardware.driver import (
     ConnectionLost,
     DriverUnavailable,
-    ReadingBatch,
+    HardwareDriver,
+    HardwareIssue,
+    HardwareReadings,
     TransientReadError,
 )
-from labpulse.hardware.runner import HardwareRunner, RunnerPolicy
+from labpulse.hardware.runner import HardwareServiceRunner, RunnerTimings
 
 
 class FakeClock:
@@ -40,13 +40,13 @@ class FakeClock:
         self.value += seconds
 
 
-class FakeDriver(BaseSensorDriver):
+class FakeDriver(HardwareDriver):
     """Script connection and read outcomes without physical hardware."""
 
     def __init__(
         self,
         connect_results: list[Exception | None] | None = None,
-        read_results: list[ReadingBatch | Exception | None] | None = None,
+        read_results: list[HardwareReadings | Exception | None] | None = None,
         close_error: Exception | None = None,
     ) -> None:
         """Store scripted outcomes and lifecycle call counters."""
@@ -67,7 +67,7 @@ class FakeDriver(BaseSensorDriver):
         if isinstance(result, Exception):
             raise result
 
-    def read(self) -> ReadingBatch | None:
+    def read(self) -> HardwareReadings | None:
         """Return or raise the next read outcome."""
 
         self.read_calls += 1
@@ -125,20 +125,20 @@ def make_runner(
     maximum_age: float = 10.0,
     read_interval: float = 0.0,
     logger: Mock | None = None,
-) -> tuple[HardwareRunner, FakePublisher, FakeClock]:
+) -> tuple[HardwareServiceRunner, FakePublisher, FakeClock]:
     """Build one deterministic runner and its observable collaborators."""
 
     actual_publisher = publisher or FakePublisher()
     actual_clock = clock or FakeClock()
-    runner = HardwareRunner(
+    runner = HardwareServiceRunner(
         driver,
         actual_publisher,
-        RunnerPolicy(
+        RunnerTimings(
             reconnect_interval_seconds=reconnect,
             maximum_measurement_age_seconds=maximum_age,
             read_interval_seconds=read_interval,
         ),
-        monotonic=actual_clock,
+        clock=actual_clock,
         sleep=actual_clock.sleep,
         logger=logger,
     )
@@ -155,12 +155,12 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
 def test_connect_and_publish_batch() -> None:
     """Connect once, publish status transitions, then publish one batch."""
 
-    driver = FakeDriver(read_results=[ReadingBatch({"pressure": 1.23})])
+    driver = FakeDriver(read_results=[HardwareReadings({"pressure": 1.23})])
     runner, publisher, _ = make_runner(driver)
 
-    assert_equal(runner.step(), False, "connection step")
+    runner.step()
     assert_equal(publisher.statuses, ["reconnecting"], "awaiting first sample")
-    assert_equal(runner.step(), True, "measurement step")
+    runner.step()
     assert_equal(publisher.measurements, [{"pressure": 1.23}], "measurements")
     assert_equal(publisher.statuses, ["reconnecting", "online"], "validated online")
     assert_equal(
@@ -179,7 +179,7 @@ def test_connection_retry_is_throttled_and_recovers() -> None:
 
     driver = FakeDriver(
         connect_results=[DriverUnavailable("missing"), None],
-        read_results=[ReadingBatch({"pressure": 1.0})],
+        read_results=[HardwareReadings({"pressure": 1.0})],
     )
     runner, publisher, clock = make_runner(driver, reconnect=5.0)
 
@@ -204,19 +204,18 @@ def test_transient_failures_recycle_stale_driver_and_recover() -> None:
         read_results=[
             TransientReadError("timing"),
             TransientReadError("timing"),
-            ReadingBatch({"temperature": 21.4}),
+            HardwareReadings({"temperature": 21.4}),
         ]
     )
     runner, publisher, clock = make_runner(driver, maximum_age=5.0)
 
     runner.step()
     runner.step()
-    assert_equal(runner.connected, True, "connected after transient failure")
+    assert_equal(driver.close_calls, 0, "driver retained after transient failure")
     assert_equal(publisher.statuses[-1], "reconnecting", "initial transient status")
     clock.advance(5.0)
     runner.step()
     assert_equal(publisher.statuses[-1], "error", "freshness status")
-    assert_equal(runner.connected, False, "stale driver disconnected")
     assert_equal(driver.close_calls, 1, "stale driver closed")
     clock.advance(5.0)
     runner.step()
@@ -252,7 +251,7 @@ def test_status_logs_include_freshness_context() -> None:
     """Put the service transition and last-reading state in operator logs."""
 
     logger = Mock()
-    driver = FakeDriver(read_results=[ReadingBatch({"temperature": 21.0})])
+    driver = FakeDriver(read_results=[HardwareReadings({"temperature": 21.0})])
     runner, _, _ = make_runner(driver, logger=logger)
 
     runner.step()
@@ -272,7 +271,7 @@ def test_connection_loss_closes_and_reconnects() -> None:
         connect_results=[None, None],
         read_results=[
             ConnectionLost("unplugged"),
-            ReadingBatch({"pressure": 1.4}),
+            HardwareReadings({"pressure": 1.4}),
         ],
     )
     runner, publisher, clock = make_runner(driver, reconnect=5.0)
@@ -294,7 +293,10 @@ def test_unexpected_read_error_enters_error_and_recovers() -> None:
 
     driver = FakeDriver(
         connect_results=[None, None],
-        read_results=[ValueError("bad library state"), ReadingBatch({"value": 2.0})],
+        read_results=[
+            ValueError("bad library state"),
+            HardwareReadings({"value": 2.0}),
+        ],
     )
     runner, publisher, clock = make_runner(driver, reconnect=2.0, logger=Mock())
 
@@ -310,9 +312,9 @@ def test_unexpected_read_error_enters_error_and_recovers() -> None:
 def test_component_issue_keeps_partial_measurements() -> None:
     """Publish valid values alongside an X1200-style component fault."""
 
-    batch = ReadingBatch(
+    batch = HardwareReadings(
         {"voltage": 4.13, "battery_level": 94.2},
-        issues=(ComponentIssue("gpio_fault", "GPIO unavailable"),),
+        issues=(HardwareIssue("gpio_fault", "GPIO unavailable"),),
     )
     driver = FakeDriver(read_results=[batch])
     runner, publisher, _ = make_runner(driver)
@@ -332,8 +334,8 @@ def test_read_interval_is_scheduled_by_runner() -> None:
 
     driver = FakeDriver(
         read_results=[
-            ReadingBatch({"value": 1.0}),
-            ReadingBatch({"value": 2.0}),
+            HardwareReadings({"value": 1.0}),
+            HardwareReadings({"value": 2.0}),
         ]
     )
     runner, publisher, clock = make_runner(driver, read_interval=2.0)
@@ -350,22 +352,6 @@ def test_read_interval_is_scheduled_by_runner() -> None:
         [{"value": 1.0}, {"value": 2.0}],
         "scheduled measurements",
     )
-
-
-def test_once_mode_and_cleanup_are_idempotent() -> None:
-    """Stop after one valid batch and close every collaborator exactly once."""
-
-    driver = FakeDriver(
-        read_results=[None, ReadingBatch({"pressure": 1.2})],
-    )
-    publisher = FakePublisher()
-    runner, _, _ = make_runner(driver, publisher=publisher)
-
-    runner.run_forever(once=True)
-    runner.close()
-    assert_equal(driver.close_calls, 1, "driver cleanup")
-    assert_equal(publisher.disconnect_calls, 1, "publisher cleanup")
-    assert_equal(publisher.measurements, [{"pressure": 1.2}], "once data")
 
 
 def test_cleanup_failures_do_not_skip_other_cleanup() -> None:

@@ -3,12 +3,12 @@
 from typing import Callable
 
 from labpulse.hardware.drivers import dht11
-from labpulse.hardware.api import (
+from labpulse.hardware.driver import (
     ConnectionLost,
     DriverUnavailable,
     TransientReadError,
 )
-from labpulse.hardware.drivers.dht11 import Dht11Options, Driver
+from labpulse.hardware.drivers.dht11 import Dht11Config, Dht11Driver
 
 
 class FakeBoard:
@@ -78,17 +78,19 @@ class FakeAdafruitDht:
 def install_fake_modules(
     device: FakeDhtDevice | None = None,
     board: object | None = None,
-) -> None:
+) -> FakeAdafruitDht:
     """Patch Pi-only modules with in-memory stand-ins."""
 
-    dht11.adafruit_dht = FakeAdafruitDht(device)
+    fake_dht_module = FakeAdafruitDht(device)
+    dht11.adafruit_dht = fake_dht_module
     dht11.board = board or FakeBoard
+    return fake_dht_module
 
 
-def make_driver(pin_name: str = "D4") -> Driver:
+def make_driver(pin_name: str = "D4") -> Dht11Driver:
     """Build one DHT11 driver."""
 
-    return Driver("room_environment", Dht11Options(pin=pin_name))
+    return Dht11Driver("room_environment", Dht11Config(pin=pin_name))
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -111,14 +113,14 @@ def assert_raises(expected: type[Exception], action: Callable[[], object]) -> No
 def test_connect_and_read_returns_rounded_batch() -> None:
     """Initialize the GPIO device and normalize one complete sample."""
 
-    install_fake_modules()
+    fake_dht_module = install_fake_modules()
     driver = make_driver()
 
     driver.connect()
     batch = driver.read()
-    assert_equal(driver.device.use_pulseio, True, "PulseIn enabled")
+    assert_equal(fake_dht_module.device.use_pulseio, True, "PulseIn enabled")
     assert_equal(
-        dict(batch.measurements),
+        dict(batch.values),
         {"temperature": 21.3, "humidity": 45.7},
         "measurements",
     )
@@ -127,14 +129,13 @@ def test_connect_and_read_returns_rounded_batch() -> None:
 def test_timing_error_is_transient() -> None:
     """Classify ordinary DHT timing misses without losing the connection."""
 
-    install_fake_modules(
-        FakeDhtDevice(FakeBoard.D4, read_error=RuntimeError("timing"))
-    )
+    device = FakeDhtDevice(FakeBoard.D4, read_error=RuntimeError("timing"))
+    install_fake_modules(device)
     driver = make_driver()
     driver.connect()
 
     assert_raises(TransientReadError, driver.read)
-    assert_equal(driver.device is not None, True, "device retained")
+    assert_equal(device.exited, False, "device retained")
 
 
 def test_incomplete_sample_is_transient() -> None:
@@ -189,4 +190,3 @@ def test_close_is_idempotent() -> None:
     driver.close()
     driver.close()
     assert_equal(device.exited, True, "device released")
-    assert_equal(driver.device, None, "handle cleared")

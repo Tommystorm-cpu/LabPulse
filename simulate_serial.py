@@ -145,7 +145,7 @@ class MeasurementGenerator:
         """Create a generator with optional initial scenarios and random seed."""
 
         self.scenarios = dict(scenarios or {})
-        self.random = random.Random(seed)
+        self._random = random.Random(seed)
         for target, state in self.scenarios.items():
             validate_scenario(target, state)
 
@@ -189,7 +189,7 @@ class MeasurementGenerator:
             bounds = high_range
         else:
             return stale_value
-        return self.random.randint(*bounds)
+        return self._random.randint(*bounds)
 
     def _hundredths(self, target: str, turbo: bool = False) -> str:
         """Return one flow measurement with two decimal places."""
@@ -250,13 +250,13 @@ class MeasurementGenerator:
 
         state = self.scenarios.get("pressure_monitor.pressure")
         if state is None:
-            return f"0.{self.random.randint(1200, 1300):04d}"
+            return f"0.{self._random.randint(1200, 1300):04d}"
         if state in {"normal", "recover"}:
-            return f"0.{self.random.randint(1200, 1250):04d}"
+            return f"0.{self._random.randint(1200, 1250):04d}"
         if state == "danger-low":
-            return f"0.{self.random.randint(500, 590):04d}"
+            return f"0.{self._random.randint(500, 590):04d}"
         if state == "danger-high":
-            return f"{self.random.randint(120, 121)}.{self.random.randint(0, 9999):04d}"
+            return f"{self._random.randint(120, 121)}.{self._random.randint(0, 9999):04d}"
         return "0.1200"
 
     def _ups_payload(self) -> str | None:
@@ -307,38 +307,27 @@ class MeasurementGenerator:
                 pump_measurements[f"temp{index}"] = float(self._temperature(target))
 
         if not self._is_stale("pump_room.roomtemp"):
-            pump_measurements["roomtemp"] = float(
-                self._temperature("pump_room.roomtemp")
-            )
+            pump_measurements["roomtemp"] = float(self._temperature("pump_room.roomtemp"))
         if not self._is_stale("pump_room.roomhum"):
             pump_measurements["roomhum"] = float(self._humidity("pump_room.roomhum"))
         for index in (1, 2):
             target = f"pump_room.press{index}"
             if not self._is_stale(target):
-                pump_measurements[f"press{index}"] = float(
-                    self._pump_pressure(target)
-                )
+                pump_measurements[f"press{index}"] = float(self._pump_pressure(target))
 
         turbo_measurements: dict[str, float] = {}
         for index in (1, 2):
             target = f"turbo_pump.flow{index}"
             if not self._is_stale(target):
-                turbo_measurements[f"flow{index}"] = float(
-                    self._hundredths(target, turbo=True)
-                )
+                turbo_measurements[f"flow{index}"] = float(self._hundredths(target, turbo=True))
         for index in range(4):
             target = f"turbo_pump.temp{index}"
             if not self._is_stale(target):
-                turbo_measurements[f"temp{index}"] = float(
-                    self._temperature(target, turbo=True)
-                )
+                turbo_measurements[f"temp{index}"] = float(self._temperature(target, turbo=True))
 
         room_parts = []
         if not self._is_stale("room_environment.temperature"):
-            room_parts.append(
-                "temperature:"
-                f"{self._temperature('room_environment.temperature')}"
-            )
+            room_parts.append(f"temperature:{self._temperature('room_environment.temperature')}")
         if not self._is_stale("room_environment.humidity"):
             room_parts.append(
                 f"humidity:{self._humidity('room_environment.humidity')}"
@@ -346,18 +335,11 @@ class MeasurementGenerator:
 
         pressure_measurements: dict[str, float] = {}
         if not self._is_stale("pressure_monitor.pressure"):
-            pressure_measurements["pressure"] = round(
-                float(self._pressure_mpa()) * 10.0,
-                2,
-            )
+            pressure_measurements["pressure"] = round(float(self._pressure_mpa()) * 10.0, 2)
         if not self._is_stale("pressure_monitor.temperature"):
-            pressure_measurements["temperature"] = float(
-                self._temperature("pressure_monitor.temperature")
-            )
+            pressure_measurements["temperature"] = float(self._temperature("pressure_monitor.temperature"))
         if not self._is_stale("pressure_monitor.humidity"):
-            pressure_measurements["humidity"] = float(
-                self._humidity("pressure_monitor.humidity")
-            )
+            pressure_measurements["humidity"] = float(self._humidity("pressure_monitor.humidity"))
 
         payloads: dict[str, str] = {}
         if pressure_measurements:
@@ -444,9 +426,9 @@ class SimulatorService:
         self.interval = interval
         self.socket_path = sim_dir / CONTROL_SOCKET_NAME
         self.generator = MeasurementGenerator(scenarios)
-        self.endpoints: dict[str, SerialEndpoint] = {}
-        self.server: socket.socket | None = None
-        self.running = True
+        self._endpoints: dict[str, SerialEndpoint] = {}
+        self._server_socket: socket.socket | None = None
+        self._running = True
 
     def _dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         """Apply one control request and return a JSON-compatible response."""
@@ -463,16 +445,16 @@ class SimulatorService:
             return {"ok": True, "message": f"Cleared {target}"}
         if command == "disconnect":
             name = normalize_device_name(str(request.get("device", "")))
-            endpoint = self.endpoints.pop(name, None)
+            endpoint = self._endpoints.pop(name, None)
             if endpoint is None:
                 raise ValueError(f"Simulator device is already disconnected: {name}")
             endpoint.close()
             return {"ok": True, "message": f"Disconnected simulator device {name}"}
         if command == "connect":
             name = normalize_device_name(str(request.get("device", "")))
-            if name in self.endpoints:
+            if name in self._endpoints:
                 raise ValueError(f"Simulator device is already connected: {name}")
-            self.endpoints[name] = SerialEndpoint.create(self.sim_dir, name)
+            self._endpoints[name] = SerialEndpoint.create(self.sim_dir, name)
             return {"ok": True, "message": f"Connected simulator device {name}"}
         if command == "reset":
             self.generator.reset()
@@ -483,12 +465,12 @@ class SimulatorService:
                 "scenarios": dict(sorted(self.generator.scenarios.items())),
                 "devices": {
                     name: str(endpoint.link_path)
-                    for name, endpoint in self.endpoints.items()
+                    for name, endpoint in self._endpoints.items()
                 },
-                "disconnected_devices": sorted(set(DEVICE_NAMES) - set(self.endpoints)),
+                "disconnected_devices": sorted(set(DEVICE_NAMES) - set(self._endpoints)),
             }
         if command == "stop":
-            self.running = False
+            self._running = False
             return {"ok": True, "message": "Simulator stopping"}
         raise ValueError(f"Unsupported control command: {command}")
 
@@ -507,7 +489,7 @@ class SimulatorService:
         """Write one payload to each pseudo-serial endpoint."""
 
         for name, payload in self.generator.payloads().items():
-            endpoint = self.endpoints.get(name)
+            endpoint = self._endpoints.get(name)
             if endpoint is not None:
                 endpoint.write(payload)
 
@@ -528,33 +510,33 @@ class SimulatorService:
 
         try:
             for name in DEVICE_NAMES:
-                self.endpoints[name] = SerialEndpoint.create(self.sim_dir, name)
-            self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.server.bind(str(self.socket_path))
+                self._endpoints[name] = SerialEndpoint.create(self.sim_dir, name)
+            self._server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self._server_socket.bind(str(self.socket_path))
             self.socket_path.chmod(0o600)
-            self.server.listen()
-            self.server.settimeout(0.1)
+            self._server_socket.listen()
+            self._server_socket.settimeout(0.1)
 
-            signal.signal(signal.SIGTERM, lambda *_: setattr(self, "running", False))
-            signal.signal(signal.SIGINT, lambda *_: setattr(self, "running", False))
+            signal.signal(signal.SIGTERM, lambda *_: setattr(self, "_running", False))
+            signal.signal(signal.SIGINT, lambda *_: setattr(self, "_running", False))
 
             next_emission = time.monotonic()
-            while self.running:
+            while self._running:
                 now = time.monotonic()
                 if now >= next_emission:
                     self._emit()
                     next_emission = now + self.interval
                 try:
-                    connection, _ = self.server.accept()
+                    connection, _ = self._server_socket.accept()
                 except TimeoutError:
                     continue
                 self._handle_connection(connection)
         finally:
-            if self.server is not None:
-                self.server.close()
+            if self._server_socket is not None:
+                self._server_socket.close()
             if self.socket_path.exists() or self.socket_path.is_symlink():
                 self.socket_path.unlink()
-            for endpoint in self.endpoints.values():
+            for endpoint in self._endpoints.values():
                 endpoint.close()
 
 

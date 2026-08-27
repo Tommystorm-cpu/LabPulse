@@ -96,7 +96,7 @@ def test_scope_normalization_and_validation() -> None:
 
     config = LabPulseConfig.model_validate(config_data())
     measurements = config.services["pump_room"].measurements
-    if [item.setups.setup_ids for item in measurements.values() if item.setups is not None] != [
+    if [item.setups for item in measurements.values() if item.setups is not None] != [
         ("cryostat",),
         ("turbo_pump",),
         ("turbo_pump", "cryostat"),
@@ -206,7 +206,9 @@ def test_canonical_catalog_and_projections() -> None:
     """Project the same measurement dictionaries by setup and physical service."""
 
     context = build_template_context(LabPulseConfig.model_validate(config_data()))
-    measurements = context.measurements
+    measurements = tuple(
+        measurement for service in context.services for measurement in service["measurements"]
+    )
     if [item["service_name"] for item in measurements] != [
         "pump_room",
         "pump_room",
@@ -229,13 +231,14 @@ def test_canonical_catalog_and_projections() -> None:
         raise AssertionError("selected setups did not follow configured setup order")
     if global_measurement["setup_ids"] != ("cryostat",):
         raise AssertionError("single setup membership is incorrect")
-    if context.measurements_by_setup["cryostat"] != [cryostat_only, shared, global_measurement]:
+    measurements_by_setup = {setup["setup_id"]: setup["measurements"] for setup in context.monitor_setups}
+    if measurements_by_setup["cryostat"] != (cryostat_only, shared, global_measurement):
         raise AssertionError("cryostat projection is incorrect")
-    if context.measurements_by_setup["turbo_pump"] != [turbo, shared]:
+    if measurements_by_setup["turbo_pump"] != (turbo, shared):
         raise AssertionError("turbo projection is incorrect")
     if context.services[0]["measurements"] != [cryostat_only, turbo, shared]:
         raise AssertionError("physical service projection is incorrect")
-    if context.measurements_by_setup["turbo_pump"][0] is not turbo:
+    if measurements_by_setup["turbo_pump"][0] is not turbo:
         raise AssertionError("setup projection copied a canonical measurement")
     if stable_id("pump_room", turbo["name"]) != "labpulse_pump_room_turbo":
         raise AssertionError("setup membership changed physical stable identity")

@@ -31,23 +31,7 @@ DEFAULT_MEASUREMENT_ICONS = {
 DEFAULT_MEASUREMENT_ICON = "mdi:chart-line"
 
 
-def measurement_icon(device_class: str | None, override: str | None) -> str:
-    """Return an explicit icon without enabling Home Assistant unit conversion."""
-
-    if override:
-        return override
-    if device_class:
-        return DEFAULT_MEASUREMENT_ICONS.get(
-            device_class,
-            DEFAULT_MEASUREMENT_ICON,
-        )
-    return DEFAULT_MEASUREMENT_ICON
-
-
-def status_discovery_payload(
-    service_name: str,
-    device_name: str,
-) -> dict[str, Any]:
+def status_discovery_payload(service_name: str, device_name: str) -> dict[str, Any]:
     """Build the Home Assistant discovery document for service health."""
 
     status_id = stable_id(service_name, "status")
@@ -92,10 +76,7 @@ def measurement_discovery_payload(
     # Home Assistant converts numeric values when a convertible device class
     # is present. LabPulse treats the configured unit as the data contract, so
     # discovery publishes an icon while device_class stays internal metadata.
-    payload["icon"] = measurement_icon(
-        measurement.device_class,
-        measurement.icon,
-    )
+    payload["icon"] = measurement.icon or DEFAULT_MEASUREMENT_ICONS.get(measurement.device_class, DEFAULT_MEASUREMENT_ICON)
     if measurement.state_class:
         payload["state_class"] = measurement.state_class
     return payload
@@ -104,98 +85,66 @@ def measurement_discovery_payload(
 class HomeAssistantMqttPublisher:
     """Publish LabPulse measurements through MQTT and Home Assistant discovery."""
 
-    def __init__(
-        self,
-        service_name: str,
-        service_config: ServiceConfig,
-        mqtt_config: MqttConfig,
-    ) -> None:
+    def __init__(self, service_name: str, service_config: ServiceConfig, mqtt_config: MqttConfig) -> None:
         """Create an MQTT publisher for one LabPulse service."""
 
         self.service_name = service_name
         self.service_config = service_config
         self.mqtt_config = mqtt_config
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"LabPulse-{service_name}")
+
         # Index once because every driver batch is filtered against the same
         # service contract before either discovery or state is published.
-        self.measurement_configs = dict(service_config.measurements)
+        self._measurement_configs = dict(service_config.measurements)
         # Discovery is retained by MQTT, so it only needs publishing when a
         # configured measurement first appears or the broker reconnects.
-        self.discovered_measurements: set[str] = set()
-        self.status_discovery_published = False
-        self.current_status: str | None = None
-        self.logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
-        self.client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2,
-            client_id=f"LabPulse-{service_name}",
-        )
+        self._discovered_measurements: set[str] = set()
+        self._status_discovery_published = False
+        self._current_status: str | None = None
+        self._logger = logging.getLogger(f"HomeAssistantMqtt.{service_name}")
 
     def connect(self) -> None:
         """Connect to the MQTT broker and start the background network loop."""
 
         self.client.on_connect = self._on_connect
-        self.client.will_set(
-            service_status_topic(self.service_name),
-            payload="offline",
-            qos=1,
-            retain=True,
-        )
-        self.logger.info(
-            "Connecting to MQTT broker %s:%s",
-            self.mqtt_config.broker,
-            self.mqtt_config.port,
-        )
+        self.client.will_set(service_status_topic(self.service_name), payload="offline", qos=1, retain=True)
+        self._logger.info("Connecting to MQTT broker %s:%s", self.mqtt_config.broker, self.mqtt_config.port)
         self.client.connect(self.mqtt_config.broker, self.mqtt_config.port, 60)
         self.client.loop_start()
 
     def publish(self, measurements: dict[str, float]) -> None:
         """Publish discovery for new names, followed by their current values."""
 
-        # A typo or extra key from a driver must never create an undeclared Home
-        # Assistant entity. The warning remains visible to the operator.
-        measurements = self.configured_measurements(measurements)
-        undiscovered_measurements = {
-            measurement_name: measurement
-            for measurement_name, measurement in measurements.items()
-            if measurement_name not in self.discovered_measurements
-        }
+        # Never let a typo or unexpected driver field create an undeclared
+        # Home Assistant entity.
+        configured_measurements: dict[str, float] = {}
+        for measurement_name, value in measurements.items():
+            if measurement_name in self._measurement_configs:
+                configured_measurements[measurement_name] = value
+            else:
+                self._logger.warning("Ignoring unconfigured measurement: %s", measurement_name)
 
+        undiscovered_measurements = [
+            name for name in configured_measurements if name not in self._discovered_measurements
+        ]
         if undiscovered_measurements:
             # Home Assistant must know the entity before its first state arrives.
-            self.publish_discovery(undiscovered_measurements)
-            self.discovered_measurements.update(undiscovered_measurements)
+            self._publish_discovery(undiscovered_measurements)
+            self._discovered_measurements.update(undiscovered_measurements)
 
-        self.publish_measurements(measurements)
-
-    def configured_measurements(self, measurements: dict[str, float]) -> dict[str, float]:
-        """Return only measurements declared exactly in this service's config."""
-
-        configured: dict[str, float] = {}
-        for measurement_name, value in measurements.items():
-            if measurement_name in self.measurement_configs:
-                configured[measurement_name] = value
-            else:
-                self.logger.warning(
-                    "Ignoring unconfigured measurement: %s",
-                    measurement_name,
-                )
-
-        return configured
+        for measurement_name, value in configured_measurements.items():
+            self.client.publish(sensor_state_topic(self.service_name, measurement_name), value)
 
     def publish_status(self, status: str) -> None:
         """Publish the service health status as a retained Home Assistant entity."""
 
-        self.current_status = status
-        if not self.status_discovery_published:
-            self.publish_status_discovery()
-            self.status_discovery_published = True
+        self._current_status = status
+        if not self._status_discovery_published:
+            self._publish_status_discovery()
+            self._status_discovery_published = True
 
-        self.client.publish(
-            service_status_topic(self.service_name),
-            status,
-            qos=1,
-            retain=True,
-        )
-        self.logger.info("Published service status: %s", status)
+        self.client.publish(service_status_topic(self.service_name), status, qos=1, retain=True)
+        self._logger.info("Published service status: %s", status)
 
     def _on_connect(
         self,
@@ -208,60 +157,42 @@ class HomeAssistantMqttPublisher:
         """Restore retained discovery and service status after every connection."""
 
         if getattr(reason_code, "is_failure", False):
-            self.logger.error("MQTT connection failed: %s", reason_code)
+            self._logger.error("MQTT connection failed: %s", reason_code)
             return
 
         # A broker restart can retain the client's Last Will ``offline`` state.
         # The runner may still be internally online and suppress an identical
         # status transition, so reconnect handling must restore that fact.
-        self.publish_status_discovery()
-        self.status_discovery_published = True
+        self._publish_status_discovery()
+        self._status_discovery_published = True
 
-        if self.discovered_measurements:
-            self.publish_discovery(
-                {
-                    measurement_name: 0.0
-                    for measurement_name in self.discovered_measurements
-                }
-            )
+        if self._discovered_measurements:
+            self._publish_discovery(sorted(self._discovered_measurements))
 
-        if self.current_status is not None:
-            client.publish(
-                service_status_topic(self.service_name),
-                self.current_status,
-                qos=1,
-                retain=True,
-            )
-            self.logger.info(
-                "Republished service status after MQTT connection: %s",
-                self.current_status,
-            )
+        if self._current_status is not None:
+            client.publish(service_status_topic(self.service_name), self._current_status, qos=1, retain=True)
+            self._logger.info("Republished service status after MQTT connection: %s", self._current_status)
 
-    def publish_status_discovery(self) -> None:
+    def _publish_status_discovery(self) -> None:
         """Publish Home Assistant MQTT discovery config for service status."""
 
         self.client.publish(
             status_discovery_topic(self.service_name),
-            json.dumps(
-                status_discovery_payload(
-                    self.service_name,
-                    self.service_config.label,
-                )
-            ),
+            json.dumps(status_discovery_payload(self.service_name, self.service_config.label)),
             retain=True,
         )
-        self.logger.info("Published Home Assistant status discovery")
+        self._logger.info("Published Home Assistant status discovery")
 
-    def publish_discovery(self, measurements: dict[str, float]) -> None:
+    def _publish_discovery(self, measurement_names: list[str]) -> None:
         """Publish Home Assistant MQTT discovery config for each measurement."""
 
-        for measurement_name in measurements:
+        for measurement_name in measurement_names:
             payload = measurement_discovery_payload(
                 self.service_name,
                 self.service_config.label,
                 measurement_name,
-                self.measurement_configs[measurement_name],
-                self._measurement_expiry_seconds(),
+                self._measurement_configs[measurement_name],
+                self.service_config.maximum_measurement_age_seconds,
             )
 
             self.client.publish(
@@ -269,34 +200,15 @@ class HomeAssistantMqttPublisher:
                 json.dumps(payload),
                 retain=True,
             )
-            self.logger.info("Published Home Assistant discovery for %s", measurement_name)
-
-    def _measurement_expiry_seconds(self) -> int:
-        """Return how long Home Assistant may wait without an MQTT sample."""
-
-        return self.service_config.maximum_measurement_age_seconds
-
-    def publish_measurements(self, measurements: dict[str, float]) -> None:
-        """Publish current sensor measurements to their MQTT state topics."""
-
-        for measurement_name, measurement in measurements.items():
-            self.client.publish(
-                sensor_state_topic(self.service_name, measurement_name),
-                measurement,
-            )
+            self._logger.info("Published Home Assistant discovery for %s", measurement_name)
 
     def disconnect(self) -> None:
         """Publish a clean offline state, then stop MQTT networking."""
 
         # Flush the retained offline state before stopping the network loop. If
         # the process dies unexpectedly, the broker's Last Will covers this path.
-        publish_result = self.client.publish(
-            service_status_topic(self.service_name),
-            "offline",
-            qos=1,
-            retain=True,
-        )
+        publish_result = self.client.publish(service_status_topic(self.service_name), "offline", qos=1, retain=True)
         publish_result.wait_for_publish(timeout=2.0)
         self.client.loop_stop()
         self.client.disconnect()
-        self.logger.info("Disconnected from MQTT broker")
+        self._logger.info("Disconnected from MQTT broker")

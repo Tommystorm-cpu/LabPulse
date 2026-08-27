@@ -47,6 +47,8 @@ def compile_formula(formula: str, allowed_names: set[str]) -> CompiledFormula:
     divisors: list[str] = []
 
     def render(node: ast.AST) -> str:
+        """Validate and render one node from the restricted expression tree."""
+
         if isinstance(node, ast.Expression):
             return render(node.body)
         if isinstance(node, ast.Name):
@@ -72,8 +74,4 @@ def compile_formula(formula: str, allowed_names: set[str]) -> CompiledFormula:
         raise ValueError("formula may only use names, numbers, parentheses, +, -, *, and /")
 
     expression = render(tree)
-    return CompiledFormula(
-        expression=expression,
-        names=frozenset(names),
-        divisors=tuple(divisors),
-    )
+    return CompiledFormula(expression=expression, names=frozenset(names), divisors=tuple(divisors))

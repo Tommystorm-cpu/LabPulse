@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from labpulse.hardware.drivers import serial_pipe
-from labpulse.hardware.api import ConnectionLost, DriverUnavailable
-from labpulse.hardware.drivers.serial_pipe import Driver, SerialPipeOptions
+from labpulse.hardware.driver import ConnectionLost, DriverUnavailable
+from labpulse.hardware.drivers.serial_pipe import SerialPipeConfig, SerialPipeDriver
 
 
 class FakeSerialPort:
@@ -41,12 +41,12 @@ class FakeSerialException(Exception):
     """Stand-in for pyserial's platform-specific exception."""
 
 
-def make_driver() -> Driver:
+def make_driver() -> SerialPipeDriver:
     """Build one serial driver with the standard fake path."""
 
-    return Driver(
+    return SerialPipeDriver(
         "pressure_monitor",
-        SerialPipeOptions(
+        SerialPipeConfig(
             port="/tmp/labpulse-fake-serial/pressure",
             baud_rate=9600,
         ),
@@ -80,7 +80,7 @@ def assert_raises(expected: type[Exception], action: Callable[[], object]) -> No
 
 
 def test_connect_and_read_batch() -> None:
-    """Open the port and return normalized readings in a ReadingBatch."""
+    """Open the port and return normalized hardware readings."""
 
     install_fake_serial(lambda *args, **kwargs: FakeSerialPort())
     driver = make_driver()
@@ -88,7 +88,7 @@ def test_connect_and_read_batch() -> None:
     driver.connect()
     batch = driver.read()
     assert_equal(
-        dict(batch.measurements) if batch else None,
+        dict(batch.values) if batch else None,
         {"pressure": 1.23},
         "measurements",
     )
@@ -106,7 +106,7 @@ def test_connect_failure_is_classified() -> None:
     driver = make_driver()
 
     assert_raises(DriverUnavailable, driver.connect)
-    assert_equal(driver.ser, None, "serial handle")
+    assert_raises(ConnectionLost, driver.read)
 
 
 def test_read_requires_connection() -> None:
@@ -146,7 +146,6 @@ def test_read_failure_is_classified_for_runner_cleanup() -> None:
     assert_raises(ConnectionLost, driver.read)
     driver.close()
     assert_equal(port.closed, True, "port closed")
-    assert_equal(driver.ser, None, "handle cleared")
 
 
 def test_close_is_idempotent() -> None:

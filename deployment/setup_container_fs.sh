@@ -107,9 +107,9 @@ PY
 
   "$HOST_PYTHON" - <<'PY'
 from labpulse import __version__
-from labpulse.hardware.registry import get_driver_spec
+from labpulse.hardware.registry import get_driver_definition
 
-get_driver_spec("labpulse.serial_pipe")
+get_driver_definition("labpulse.serial_pipe")
 print(f"Installed LabPulse package ready: {__version__}")
 PY
 }

@@ -40,21 +40,23 @@ to a clear public module such as:
 src/labpulse/hardware/drivers/bme280.py
 ```
 
-Keep these together in that one module:
+Keep the same readable order in every driver module:
 
-1. strict Pydantic options model;
-2. `Driver` class accepting the service name and typed options;
-3. container-resource resolver, only when access depends on options;
-4. exported `DRIVER = DriverSpec(...)`.
+1. device constants;
+2. strict Pydantic `*Config` model;
+3. device-specific decoding and dependency helpers;
+4. clearly named `*Driver` class;
+5. container requirements;
+6. exported `DRIVER_DEFINITION`.
 
 The registry discovers public modules automatically. Do not edit
 `registry.py`. `driver_template.py` is excluded; helper modules in the drivers
 directory must begin with `_` or they will be treated as drivers.
 
-## Options model
+## Driver configuration
 
 ```python
-class Bme280Options(BaseModel):
+class Bme280Config(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     bus: int = Field(default=1, ge=0)
@@ -78,11 +80,11 @@ Do not add device-specific fields to shared `ServiceConfig`.
 
 ## Lifecycle contract
 
-Inherit `BaseSensorDriver` and implement:
+Inherit `HardwareDriver` and implement:
 
 ```python
 def connect(self) -> None: ...
-def read(self) -> ReadingBatch | None: ...
+def read(self) -> HardwareReadings | None: ...
 def close(self) -> None: ...
 ```
 
@@ -91,17 +93,17 @@ def close(self) -> None: ...
 Use the same small constructor shape for every driver:
 
 ```python
-def __init__(self, name: str, options: Bme280Options) -> None:
-    super().__init__(name)
-    self.bus = options.bus
-    self.address = options.address
-    self.device = None
+def __init__(self, service_name: str, config: Bme280Config) -> None:
+    super().__init__(service_name)
+    self.bus_number = config.bus
+    self.address = config.address
+    self._device = None
 ```
 
-Store validated options but do not open hardware in `__init__`. `DriverSpec`
-validates the raw mapping before it calls the constructor, so the driver does
-not need another `isinstance` check. The registry and tests must be able to
-construct a driver without the device.
+Store validated configuration but do not open hardware in `__init__`.
+`DriverDefinition` validates the raw mapping before it calls the constructor,
+so the driver does not need another `isinstance` check. The registry and tests
+must be able to construct a driver without the device.
 
 ### Connect
 
@@ -113,9 +115,9 @@ from it. Translate missing dependencies and expected initialization failures to
 def connect(self) -> None:
     try:
         import vendor_library
-        self.device = vendor_library.open(...)
+        self._device = vendor_library.open(...)
     except (ImportError, OSError) as error:
-        self.device = None
+        self._device = None
         raise DriverUnavailable(f"device unavailable: {error}") from error
 ```
 
@@ -126,7 +128,7 @@ Never make unrelated services import the vendor library.
 Return configured finite numeric values:
 
 ```python
-return ReadingBatch(
+return HardwareReadings(
     {
         "temperature": temperature,
         "humidity": humidity,
@@ -141,7 +143,7 @@ Use:
 
 - `TransientReadError` when one sample is bad but the handle remains usable;
 - `ConnectionLost` when the handle must be closed and recreated;
-- `ComponentIssue` with valid measurements when only one component is degraded.
+- `HardwareIssue` with valid measurements when only one component is degraded.
 
 Unexpected programming errors may escape; the runner contains and logs them,
 but expected hardware failures should be classified explicitly.
@@ -152,34 +154,35 @@ Release every resource and make repeated calls safe:
 
 ```python
 def close(self) -> None:
-    if self.device is not None:
-        self.device.close()
-    self.device = None
+    if self._device is not None:
+        self._device.close()
+    self._device = None
 ```
 
 Cleanup must also tolerate partial connection.
 
 ## Container resources
 
-Declare fixed access directly:
+Every driver provides one function. For fixed access, ignore the arguments:
 
 ```python
-resources=ContainerRequirements(mounts=("/dev:/dev",), privileged=True)
+def container_requirements(_config: ExampleConfig, _force_simulated: bool) -> ContainerRequirements:
+    return ContainerRequirements(mounts=("/dev:/dev",), privileged=True)
 ```
 
-When access depends on options, return the narrowest resources from a resolver:
+When access depends on configuration, use it to return the narrowest access:
 
 ```python
-def resources(
-    options: Bme280Options,
+def container_requirements(
+    config: Bme280Config,
     _force_simulated: bool,
 ) -> ContainerRequirements:
     return ContainerRequirements(
-        devices=(f"/dev/i2c-{options.bus}",),
+        devices=(f"/dev/i2c-{config.bus}",),
     )
 ```
 
-Available declarations:
+`ContainerRequirements` describes three kinds of Docker access:
 
 ```python
 ContainerRequirements(
@@ -192,18 +195,20 @@ ContainerRequirements(
 Prefer individual devices over `/dev:/dev` and avoid `privileged=True` unless
 the hardware stack actually requires it. Never return raw Compose YAML.
 
-`force_simulated` lets a spec select fake resources during fake generation. A
-driver may also recognize a configured fake path. `DriverSpec` passes the same
-validated options type to the driver and its resource resolver.
+`force_simulated` lets a definition select fake resources during fake
+generation. A driver may also recognize a configured fake path.
+`DriverDefinition` passes the same validated configuration type to the driver
+and its container-requirements function. The definition always contains a
+function; it never contains a mixture of functions and prebuilt results.
 
-## Driver spec
+## Driver definition
 
 ```python
-DRIVER = DriverSpec(
+DRIVER_DEFINITION = DriverDefinition(
     driver_id="example.bme280",
-    options_model=Bme280Options,
-    implementation=Driver,
-    resources=resources,
+    config_model=Bme280Config,
+    driver_class=Bme280Driver,
+    container_requirements=container_requirements,
     default_read_interval_seconds=1.0,
 )
 ```
@@ -283,8 +288,8 @@ testing/test_deployment_generation.py
 
 A driver contribution is ready when it includes:
 
-- self-contained implementation and spec;
-- strict documented options;
+- self-contained implementation and definition;
+- strict documented driver configuration;
 - least-privilege resources;
 - lazy optional imports;
 - hardware-free lifecycle tests;

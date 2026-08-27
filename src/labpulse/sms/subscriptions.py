@@ -24,8 +24,8 @@ class SubscriptionRegistry:
 
         self.allowed_numbers = frozenset(number.strip() for number in allowed_numbers)
         self.path = path
-        self.lock = threading.Lock()
-        self.unsubscribed: set[str] = set()
+        self._lock = threading.Lock()
+        self._unsubscribed: set[str] = set()
         self._load()
 
     def is_allowed(self, phone_number: str) -> bool:
@@ -37,8 +37,8 @@ class SubscriptionRegistry:
         """Return whether an allowed number currently receives alerts."""
 
         normalized = phone_number.strip()
-        with self.lock:
-            return normalized in self.allowed_numbers and normalized not in self.unsubscribed
+        with self._lock:
+            return normalized in self.allowed_numbers and normalized not in self._unsubscribed
 
     def set_subscribed(self, phone_number: str, subscribed: bool) -> bool:
         """Persist an allowed number's choice and reject every unknown number."""
@@ -46,15 +46,15 @@ class SubscriptionRegistry:
         normalized = phone_number.strip()
         if normalized not in self.allowed_numbers:
             return False
-        with self.lock:
-            previous = set(self.unsubscribed)
+        with self._lock:
+            previous = set(self._unsubscribed)
             if subscribed:
-                self.unsubscribed.discard(normalized)
+                self._unsubscribed.discard(normalized)
             else:
-                self.unsubscribed.add(normalized)
+                self._unsubscribed.add(normalized)
             if self._save():
                 return True
-            self.unsubscribed = previous
+            self._unsubscribed = previous
             return False
 
     def _load(self) -> None:
@@ -68,7 +68,7 @@ class SubscriptionRegistry:
             return
         values = payload.get("unsubscribed") if isinstance(payload, dict) else None
         if isinstance(values, list):
-            self.unsubscribed = {value for value in values if isinstance(value, str)}
+            self._unsubscribed = {value for value in values if isinstance(value, str)}
 
     def _save(self) -> bool:
         """Atomically store subscription choices when persistence is configured."""
@@ -79,7 +79,7 @@ class SubscriptionRegistry:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary_path.write_text(
-                json.dumps({"unsubscribed": sorted(self.unsubscribed)}, indent=2) + "\n",
+                json.dumps({"unsubscribed": sorted(self._unsubscribed)}, indent=2) + "\n",
                 encoding="utf-8",
             )
             temporary_path.replace(self.path)
@@ -102,38 +102,34 @@ class SmsCommandMonitor:
 
         self.sender = sender
         self.registry = registry
-        self.logger = logger
-        self.poll_interval_seconds = poll_interval_seconds
-        self.stop_event = threading.Event()
-        self.processed_paths: set[str] = set()
-        self.worker = threading.Thread(
-            target=self._worker,
-            name="labpulse-sms-command-monitor",
-            daemon=False,
+        self._logger = logger
+        self._poll_interval_seconds = poll_interval_seconds
+        self._stop_event = threading.Event()
+        self._processed_paths: set[str] = set()
+        self._worker_thread = threading.Thread(
+            target=self._worker, name="labpulse-sms-command-monitor", daemon=False
         )
 
     def start(self) -> None:
         """Start polling for inbound subscription commands."""
 
-        self.worker.start()
+        self._worker_thread.start()
 
     def close(self, timeout: float = 15.0) -> None:
         """Stop the inbound-command worker and wait for it to finish."""
 
-        self.stop_event.set()
-        if self.worker.ident is not None:
-            self.worker.join(timeout=timeout)
-        if self.worker.is_alive():
-            self.logger.warning(
-                "SMS command monitor did not stop within %.1f seconds", timeout
-            )
+        self._stop_event.set()
+        if self._worker_thread.ident is not None:
+            self._worker_thread.join(timeout=timeout)
+        if self._worker_thread.is_alive():
+            self._logger.warning("SMS command monitor did not stop within %.1f seconds", timeout)
 
     def poll_once(self) -> None:
         """Process every complete received SMS currently stored by the modem."""
 
         for message in self.sender.list_received_sms():
-            if message.path not in self.processed_paths:
-                self.processed_paths.add(message.path)
+            if message.path not in self._processed_paths:
+                self._processed_paths.add(message.path)
                 self._handle_message(message)
             self.sender.delete_received_sms(message.path)
 
@@ -143,7 +139,7 @@ class SmsCommandMonitor:
         phone_number = message.phone_number.strip()
         command = message.text.strip().upper()
         if not self.registry.is_allowed(phone_number):
-            self.logger.warning(
+            self._logger.warning(
                 "Ignored inbound SMS command from unconfigured number %s",
                 mask_phone_number(phone_number),
             )
@@ -151,24 +147,24 @@ class SmsCommandMonitor:
 
         if command == UNSUBSCRIBE_COMMAND:
             if not self.registry.set_subscribed(phone_number, False):
-                self.logger.error(
+                self._logger.error(
                     "Could not persist unsubscribe request for %s",
                     mask_phone_number(phone_number),
                 )
                 return
-            self.logger.info("Unsubscribed %s", mask_phone_number(phone_number))
+            self._logger.info("Unsubscribed %s", mask_phone_number(phone_number))
             self.sender.send_sms(phone_number, UNSUBSCRIBE_CONFIRMATION)
         elif command == SUBSCRIBE_COMMAND:
             if not self.registry.set_subscribed(phone_number, True):
-                self.logger.error(
+                self._logger.error(
                     "Could not persist subscribe request for %s",
                     mask_phone_number(phone_number),
                 )
                 return
-            self.logger.info("Subscribed %s", mask_phone_number(phone_number))
+            self._logger.info("Subscribed %s", mask_phone_number(phone_number))
             self.sender.send_sms(phone_number, SUBSCRIBE_CONFIRMATION)
         else:
-            self.logger.info(
+            self._logger.info(
                 "Ignored unrecognized inbound SMS from %s",
                 mask_phone_number(phone_number),
             )
@@ -176,9 +172,9 @@ class SmsCommandMonitor:
     def _worker(self) -> None:
         """Poll immediately and then at a bounded interval until shutdown."""
 
-        while not self.stop_event.is_set():
+        while not self._stop_event.is_set():
             try:
                 self.poll_once()
             except Exception:
-                self.logger.exception("Unexpected SMS command monitor failure")
-            self.stop_event.wait(self.poll_interval_seconds)
+                self._logger.exception("Unexpected SMS command monitor failure")
+            self._stop_event.wait(self._poll_interval_seconds)

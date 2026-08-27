@@ -15,7 +15,7 @@ import yaml
 
 from labpulse import __version__
 from labpulse.common.config import ConfigError, LabPulseConfig, format_config_error, load_config
-from labpulse.hardware.registry import get_driver_spec
+from labpulse.hardware.registry import get_driver_definition
 
 
 class CheckStatus(StrEnum):
@@ -65,16 +65,11 @@ class DoctorReport:
             status: sum(check.status is status for check in self.checks)
             for status in CheckStatus
         }
-        lines.extend(
-            [
-                "",
-                "Summary: "
-                f"{counts[CheckStatus.PASS]} passed, "
-                f"{counts[CheckStatus.WARN]} warnings, "
-                f"{counts[CheckStatus.FAIL]} failed, "
-                f"{counts[CheckStatus.SKIP]} skipped",
-            ]
+        summary = (
+            f"{counts[CheckStatus.PASS]} passed, {counts[CheckStatus.WARN]} warnings, "
+            f"{counts[CheckStatus.FAIL]} failed, {counts[CheckStatus.SKIP]} skipped"
         )
+        lines.extend(("", f"Summary: {summary}"))
         if self.exit_code:
             lines.append("Run 'labpulse logs' for service-level error details.")
         return "\n".join(lines)
@@ -82,13 +77,6 @@ class DoctorReport:
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 Connector = Callable[..., Any]
-
-
-def _read_yaml(path: Path) -> Any:
-    """Read one YAML file without mutating it."""
-
-    with path.open("r", encoding="utf-8") as stream:
-        return yaml.safe_load(stream)
 
 
 def _validation_detail(error: Exception) -> str:
@@ -130,11 +118,7 @@ def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
     expected = f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
     services = compose_data.get("services") if isinstance(compose_data, dict) else None
     if not isinstance(services, dict):
-        report.add(
-            CheckStatus.SKIP,
-            "Runtime image",
-            "compose.yaml is unavailable",
-        )
+        report.add(CheckStatus.SKIP, "Runtime image", "compose.yaml is unavailable")
         return
 
     images = {
@@ -145,11 +129,7 @@ def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
         and isinstance(service, dict)
     }
     if images == {expected}:
-        report.add(
-            CheckStatus.PASS,
-            "Runtime image",
-            f"{expected} matches the installed package",
-        )
+        report.add(CheckStatus.PASS, "Runtime image", f"{expected} matches the installed package")
         return
 
     rendered = ", ".join(sorted(str(image) for image in images)) or "none"
@@ -161,19 +141,11 @@ def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
     )
 
 
-def _validate_config(
-    report: DoctorReport,
-    path: Path,
-    name: str,
-) -> LabPulseConfig | None:
+def _validate_config(report: DoctorReport, path: Path, name: str) -> LabPulseConfig | None:
     """Validate one LabPulse configuration and record its outcome."""
 
     if not path.is_file():
-        report.add(
-            CheckStatus.FAIL,
-            name,
-            f"missing {path}; run 'labpulse setup' to restore managed files",
-        )
+        report.add(CheckStatus.FAIL, name, f"missing {path}; run 'labpulse setup' to restore managed files")
         return None
     try:
         config = load_config(path).config
@@ -182,11 +154,7 @@ def _validate_config(
         return None
 
     enabled = sum(service.enabled for service in config.services.values())
-    report.add(
-        CheckStatus.PASS,
-        name,
-        f"{path.name} is valid ({enabled} enabled hardware services)",
-    )
+    report.add(CheckStatus.PASS, name, f"{path.name} is valid ({enabled} enabled hardware services)")
     return config
 
 
@@ -197,9 +165,9 @@ def _host_resource_paths(config: LabPulseConfig, *, simulated: bool) -> dict[str
     for service_name, service in config.services.items():
         if not service.enabled:
             continue
-        definition = get_driver_spec(service.driver.type)
+        definition = get_driver_definition(service.driver.type)
         options = service.driver.options
-        requirements = definition.resolve_resources(options, simulated)
+        requirements = definition.container_requirements(options, simulated)
         paths = {Path(device.split(":", 1)[0]) for device in requirements.devices}
         paths.update(Path(mount.split(":", 1)[0]) for mount in requirements.mounts)
 
@@ -210,20 +178,11 @@ def _host_resource_paths(config: LabPulseConfig, *, simulated: bool) -> dict[str
     return resources
 
 
-def _check_hardware(
-    report: DoctorReport,
-    config: LabPulseConfig | None,
-    *,
-    simulated: bool,
-) -> None:
+def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simulated: bool) -> None:
     """Check that configured driver resources are visible on the host."""
 
     if config is None:
-        report.add(
-            CheckStatus.SKIP,
-            "Hardware resources",
-            "runtime configuration is not valid",
-        )
+        report.add(CheckStatus.SKIP, "Hardware resources", "runtime configuration is not valid")
         return
 
     try:
@@ -248,18 +207,10 @@ def _check_hardware(
             )
         else:
             detail = ", ".join(sorted(str(path) for path in paths))
-            report.add(
-                CheckStatus.PASS,
-                f"Hardware {service_name}",
-                detail or "driver declares no host paths",
-            )
+            report.add(CheckStatus.PASS, f"Hardware {service_name}", detail or "driver declares no host paths")
 
 
-def _run(
-    runner: CommandRunner,
-    command: Sequence[str],
-    live_dir: Path,
-) -> subprocess.CompletedProcess[str]:
+def _run(runner: CommandRunner, command: Sequence[str], live_dir: Path) -> subprocess.CompletedProcess[str]:
     """Run one bounded, non-interactive diagnostic command."""
 
     return runner(
@@ -289,22 +240,14 @@ def _check_docker(
     """Validate Compose syntax and compare expected with running services."""
 
     if docker_prefix is None:
-        report.add(
-            CheckStatus.FAIL,
-            "Docker daemon",
-            "Docker command is not configured correctly",
-        )
+        report.add(CheckStatus.FAIL, "Docker daemon", "Docker command is not configured correctly")
         report.add(CheckStatus.SKIP, "Docker Compose", "Docker daemon is unavailable")
         report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
         return
 
     command = [*docker_prefix, "compose"]
     try:
-        engine = _run(
-            runner,
-            [*docker_prefix, "version", "--format", "{{.Server.Version}}"],
-            live_dir,
-        )
+        engine = _run(runner, [*docker_prefix, "version", "--format", "{{.Server.Version}}"], live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
         report.add(
             CheckStatus.FAIL,
@@ -337,11 +280,7 @@ def _check_docker(
         report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
         return
     compose_version = version.stdout.strip().splitlines()
-    report.add(
-        CheckStatus.PASS,
-        "Docker Compose",
-        compose_version[-1] if compose_version else "command is available",
-    )
+    report.add(CheckStatus.PASS, "Docker Compose", compose_version[-1] if compose_version else "command is available")
 
     try:
         validation = _run(runner, [*command, "config", "--quiet"], live_dir)
@@ -356,11 +295,7 @@ def _check_docker(
     report.add(CheckStatus.PASS, "Compose validation", "compose.yaml is valid")
 
     try:
-        running_result = _run(
-            runner,
-            [*command, "ps", "--status", "running", "--services"],
-            live_dir,
-        )
+        running_result = _run(runner, [*command, "ps", "--status", "running", "--services"], live_dir)
     except subprocess.SubprocessError as error:
         report.add(CheckStatus.FAIL, "Containers", str(error))
         return
@@ -411,19 +346,10 @@ def _check_tcp(
     report.add(CheckStatus.PASS, name, f"{host}:{port} accepted a connection")
 
 
-def _check_clock(
-    report: DoctorReport,
-    live_dir: Path,
-    runner: CommandRunner,
-) -> None:
+def _check_clock(report: DoctorReport, live_dir: Path, runner: CommandRunner) -> None:
     """Report host timezone and NTP synchronization without changing either."""
 
-    command = [
-        "timedatectl",
-        "show",
-        "--property=Timezone",
-        "--property=NTPSynchronized",
-    ]
+    command = ["timedatectl", "show", "--property=Timezone", "--property=NTPSynchronized"]
     try:
         result = _run(runner, command, live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
@@ -476,16 +402,8 @@ def _check_watchdog(
         )
         return
     try:
-        result = _run(
-            runner,
-            [
-                "systemctl",
-                "show",
-                "--property=RuntimeWatchdogUSec",
-                "--value",
-            ],
-            live_dir,
-        )
+        command = ["systemctl", "show", "--property=RuntimeWatchdogUSec", "--value"]
+        result = _run(runner, command, live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
         report.add(
             CheckStatus.WARN,
@@ -546,7 +464,8 @@ def diagnose(
         report.add(CheckStatus.FAIL, "Compose file", f"missing {compose_path}")
     else:
         try:
-            compose_data = _read_yaml(compose_path)
+            with compose_path.open("r", encoding="utf-8") as stream:
+                compose_data = yaml.safe_load(stream)
             services = compose_data.get("services") if isinstance(compose_data, dict) else None
             if not isinstance(services, dict) or not services:
                 raise ValueError("services must be a non-empty mapping")
@@ -584,19 +503,11 @@ def diagnose(
     if runtime_config_path == source_config_path.resolve():
         runtime_config = source_config
     else:
-        runtime_config = _validate_config(
-            report,
-            runtime_config_path,
-            "Runtime configuration",
-        )
+        runtime_config = _validate_config(report, runtime_config_path, "Runtime configuration")
 
     generated_files = (
         live_dir / "homeassistant" / "config" / "configuration.yaml",
-        live_dir
-        / "homeassistant"
-        / "config"
-        / "packages"
-        / "labpulse_generated.yaml",
+        live_dir / "homeassistant" / "config" / "packages" / "labpulse_generated.yaml",
         live_dir / "homeassistant" / "config" / "labpulse-dashboard.yaml",
     )
     missing_generated = [str(path.relative_to(live_dir)) for path in generated_files if not path.is_file()]
@@ -615,20 +526,10 @@ def diagnose(
             "configuration, alarms, and dashboard are present",
         )
 
-    _check_hardware(
-        report,
-        runtime_config,
-        simulated=simulated,
-    )
+    _check_hardware(report, runtime_config, simulated=simulated)
 
     if compose_services:
-        _check_docker(
-            report,
-            live_dir,
-            compose_services,
-            docker_prefix,
-            command_runner,
-        )
+        _check_docker(report, live_dir, compose_services, docker_prefix, command_runner)
     else:
         report.add(CheckStatus.SKIP, "Docker Compose", "compose.yaml is unavailable")
         report.add(CheckStatus.SKIP, "Containers", "compose.yaml is unavailable")

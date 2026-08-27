@@ -41,9 +41,6 @@ from labpulse.common.config import (
     format_config_error,
     load_config,
 )
-from labpulse.hardware.drivers.serial_pipe import SerialPipeOptions
-
-
 REAL_DEVICE_DIR = Path("/dev/serial/by-id")
 FAKE_DEVICE_DIR = Path("/tmp/labpulse-fake-serial")
 
@@ -54,7 +51,7 @@ class SerialService:
 
     name: str
     label: str
-    current_port: str | None
+    current_port: str
 
 
 def load_serial_services(config_path: Path) -> list[SerialService]:
@@ -65,8 +62,6 @@ def load_serial_services(config_path: Path) -> list[SerialService]:
     for name, config in document.config.services.items():
         if config.enabled and config.driver.type == "labpulse.serial_pipe":
             options = config.driver.options
-            if not isinstance(options, SerialPipeOptions):
-                raise TypeError("serial service did not retain SerialPipeOptions")
             services.append(
                 SerialService(
                     name=name,
@@ -277,10 +272,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for service in services:
             print(f"  {service.name}: {service.label}")
 
-        assignments = identify_devices(
-            services,
-            snapshot=lambda: snapshot_devices(device_dir),
-        )
+        assignments = identify_devices(services, snapshot=lambda: snapshot_devices(device_dir))
         print("\nDetected assignments:")
         for service in services:
             print(f"  {service.name}: {assignments[service.name]}")
@@ -304,7 +296,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ConfigError as error:
         print(format_config_error(error), file=sys.stderr)
         return 1
-    except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
+    except (KeyError, OSError, RuntimeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 

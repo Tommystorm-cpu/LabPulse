@@ -44,10 +44,10 @@ configuration source is always `~/labpulse-live/config.yaml`.
 | Diagnostics | `src/labpulse/doctor.py` |
 | Compose rendering | `src/labpulse/deployment/compose.py` |
 | Atomic deployment installation | `src/labpulse/deployment/generate.py` |
-| Driver API | `src/labpulse/hardware/api.py` |
+| Driver contract | `src/labpulse/hardware/driver.py` |
 | Driver discovery | `src/labpulse/hardware/registry.py` |
 | Hardware lifecycle | `src/labpulse/hardware/runner.py` |
-| Serial parsing | `src/labpulse/hardware/serial_parser.py` |
+| Serial parsing | `src/labpulse/hardware/drivers/serial_pipe.py` |
 | MQTT discovery/state publication | `src/labpulse/hardware/homeassistant_publisher.py` |
 | Home Assistant CLI | `src/labpulse/homeassistant/cli.py` |
 | Home Assistant file generation | `src/labpulse/homeassistant/generator.py` |

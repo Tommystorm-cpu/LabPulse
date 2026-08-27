@@ -1,7 +1,7 @@
 """Copy this file to add a self-contained LabPulse hardware driver.
 
-Rename the module, replace the example names and options, and keep the
-module-level ``DRIVER`` definition. The registry discovers it automatically.
+Rename the module, replace the example names, and keep the module-level
+``DRIVER_DEFINITION``. The registry discovers it automatically.
 Pydantic is a host and container dependency, but optional hardware libraries
 must only be imported inside ``connect()`` or a helper called from it.
 
@@ -12,33 +12,38 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from labpulse.hardware.api import (
-    BaseSensorDriver,
+from labpulse.hardware.driver import (
     ConnectionLost,
     ContainerRequirements,
-    DriverSpec,
+    DriverDefinition,
     DriverUnavailable,
-    ReadingBatch,
+    HardwareDriver,
+    HardwareReadings,
 )
 
 
-class ExampleOptions(BaseModel):
-    """Configuration accepted below ``driver.options``."""
+# Driver configuration
+class ExampleConfig(BaseModel):
+    """Configuration accepted below ``driver.options`` in config.yaml."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
     device: str = Field(min_length=1)
 
 
-class Driver(BaseSensorDriver):
+# Device-specific decoding belongs here when the hardware needs it.
+
+
+# Required driver lifecycle
+class ExampleDriver(HardwareDriver):
     """Adapt one example device to the LabPulse lifecycle contract."""
 
-    def __init__(self, name: str, options: ExampleOptions) -> None:
+    def __init__(self, service_name: str, config: ExampleConfig) -> None:
         """Store configuration without opening hardware."""
 
-        super().__init__(name)
-        self.device_path = options.device
-        self.device: Any | None = None
+        super().__init__(service_name)
+        self.device_path = config.device
+        self._device: Any | None = None
 
     def connect(self) -> None:
         """Import the optional library and open the hardware."""
@@ -46,43 +51,41 @@ class Driver(BaseSensorDriver):
         try:
             import example_hardware_library
 
-            self.device = example_hardware_library.open(self.device_path)
+            self._device = example_hardware_library.open(self.device_path)
         except (ImportError, OSError) as error:
-            self.device = None
+            self._device = None
             raise DriverUnavailable(f"example device unavailable: {error}") from error
 
-    def read(self) -> ReadingBatch:
+    def read(self) -> HardwareReadings:
         """Return normalized numeric measurements."""
 
-        if self.device is None:
+        if self._device is None:
             raise ConnectionLost("example device is not connected")
         try:
-            value = float(self.device.read())
+            value = float(self._device.read())
         except OSError as error:
             raise ConnectionLost(f"example device read failed: {error}") from error
-        return ReadingBatch({"example_value": value})
+        return HardwareReadings({"example_value": value})
 
     def close(self) -> None:
         """Release hardware safely when called more than once."""
 
-        if self.device is not None:
-            self.device.close()
-        self.device = None
+        if self._device is not None:
+            self._device.close()
+        self._device = None
 
 
-def resources(
-    options: ExampleOptions,
-    _force_simulated: bool,
-) -> ContainerRequirements:
+# Container access and driver registration
+def container_requirements(config: ExampleConfig, _force_simulated: bool) -> ContainerRequirements:
     """Declare the narrowest device and mount access this driver requires."""
 
-    return ContainerRequirements(devices=(options.device,))
+    return ContainerRequirements(devices=(config.device,))
 
 
-DRIVER = DriverSpec(
+DRIVER_DEFINITION = DriverDefinition(
     driver_id="example.device",
-    options_model=ExampleOptions,
-    implementation=Driver,
-    resources=resources,
+    config_model=ExampleConfig,
+    driver_class=ExampleDriver,
+    container_requirements=container_requirements,
     default_read_interval_seconds=1.0,
 )

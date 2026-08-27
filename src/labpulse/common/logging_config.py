@@ -18,7 +18,14 @@ def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> 
     Logs always go to stdout so Docker can collect them. They are also written
     to a file unless LABPULSE_LOG_FILE is set to an empty string.
     """
-    log_file = _get_log_file(app_name)
+    configured_file = os.getenv("LABPULSE_LOG_FILE")
+    if configured_file == "":
+        log_file = None
+    elif configured_file:
+        log_file = Path(configured_file).expanduser().resolve()
+    else:
+        log_dir = Path(os.getenv("LABPULSE_LOG_DIR", DEFAULT_LOG_DIR)).expanduser()
+        log_file = (log_dir / f"{app_name}.log").resolve()
 
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
 
@@ -36,18 +43,3 @@ def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> 
 
     logging.getLogger("LabPulse").info("Logging to stdout and %s", log_file)
     return log_file
-
-
-def _get_log_file(app_name: str) -> Path | None:
-    """Return the configured log path, or None when file logging is disabled."""
-
-    configured_file = os.getenv("LABPULSE_LOG_FILE")
-
-    if configured_file == "":
-        return None
-
-    if configured_file:
-        return Path(configured_file).expanduser().resolve()
-
-    log_dir = Path(os.getenv("LABPULSE_LOG_DIR", DEFAULT_LOG_DIR)).expanduser()
-    return (log_dir / f"{app_name}.log").resolve()

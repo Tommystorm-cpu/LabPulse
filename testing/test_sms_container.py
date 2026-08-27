@@ -36,7 +36,7 @@ from labpulse.sms.sender import (
 )
 from labpulse.sms.subscriber import (
     RecentRequestCache,
-    SMSSubscriber,
+    SmsSubscriber,
     SmsPayloadError,
     parse_sms_payload,
 )
@@ -255,7 +255,7 @@ def test_test_mode_routes_only_to_test_recipients() -> None:
     )
     try:
         assert_equal(sender.broadcast(test_request), True, "test request accepted")
-        sender.queue.join()
+        sender._queue.join()
     finally:
         sender.close()
     assert_equal(len(results), 2, "test recipient fan-out")
@@ -288,7 +288,7 @@ def test_unsubscribed_numbers_are_filtered_in_both_modes() -> None:
         assert_equal(sender.broadcast(request("live-filter")), True, "live accepted")
         test_request = request("test-filter").model_copy(update={"test_mode": True})
         assert_equal(sender.broadcast(test_request), True, "test accepted")
-        sender.queue.join()
+        sender._queue.join()
     finally:
         sender.close()
     suppressed = [
@@ -453,7 +453,7 @@ def test_subscriber_uses_persistent_qos_one_session() -> None:
         constructor["kwargs"] = kwargs
         return client
 
-    subscriber = SMSSubscriber(
+    subscriber = SmsSubscriber(
         MqttConfig(broker="mosquitto", port=1883),
         sender,
         client_factory=client_factory,
@@ -499,7 +499,7 @@ def test_subscriber_deduplicates_and_rate_limits() -> None:
     now = [1_000.0]
     sender = FakeSender()
     client = FakeSmsClient()
-    subscriber = SMSSubscriber(
+    subscriber = SmsSubscriber(
         MqttConfig(broker="mosquitto"),
         sender,
         client_factory=lambda *args, **kwargs: client,
@@ -546,7 +546,7 @@ def test_delivery_results_are_published() -> None:
 
     sender = FakeSender()
     client = FakeSmsClient()
-    subscriber = SMSSubscriber(
+    subscriber = SmsSubscriber(
         MqttConfig(broker="mosquitto"),
         sender,
         client_factory=lambda *args, **kwargs: client,
@@ -565,7 +565,7 @@ def test_subscriber_closes_gracefully() -> None:
 
     sender = FakeSender()
     client = FakeSmsClient()
-    subscriber = SMSSubscriber(
+    subscriber = SmsSubscriber(
         MqttConfig(broker="mosquitto"),
         sender,
         client_factory=lambda *args, **kwargs: client,
@@ -585,13 +585,13 @@ def test_queue_fans_out_and_stops_cleanly() -> None:
     results: list[DeliveryResult] = []
     sender.set_result_handler(results.append)
     assert_equal(sender.broadcast(request()), True, "queue accepted")
-    sender.queue.join()
+    sender._queue.join()
     sender.close()
     assert_equal(len(results), 2, "recipient fan-out")
     assert_equal(
         [result.status for result in results], ["logged", "logged"], "delivery results"
     )
-    assert_equal(sender.worker.is_alive(), False, "worker stopped")
+    assert_equal(sender._worker_thread.is_alive(), False, "worker stopped")
 
 
 def test_dry_run_reports_logged_not_sent() -> None:
@@ -601,7 +601,7 @@ def test_dry_run_reports_logged_not_sent() -> None:
     results: list[DeliveryResult] = []
     sender.set_result_handler(results.append)
     sender.broadcast(request())
-    sender.queue.join()
+    sender._queue.join()
     sender.close()
     assert_equal(results[0].status, "logged", "dry-run status")
 

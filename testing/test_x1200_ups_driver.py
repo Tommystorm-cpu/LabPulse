@@ -4,16 +4,16 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from labpulse.hardware.drivers.x1200 import (
-    Driver,
-    GpiodLineReader,
-    REG_SOC,
-    REG_VCELL,
+    BATTERY_VOLTAGE_REGISTER,
+    MainsGpioReader,
+    STATE_OF_CHARGE_REGISTER,
+    X1200Config,
+    X1200Driver,
     decode_state_of_charge,
     decode_voltage,
     register_word,
-    X1200Options,
 )
-from labpulse.hardware.api import ConnectionLost
+from labpulse.hardware.driver import ConnectionLost
 
 
 class FakeBus:
@@ -87,22 +87,22 @@ def healthy_registers() -> dict[int, int]:
     """Return live-like 4.13 V and 94.2% X1200 register values."""
 
     return {
-        REG_VCELL: 3304 << 4,
-        REG_SOC: round(94.2 * 256),
+        BATTERY_VOLTAGE_REGISTER: 3304 << 4,
+        STATE_OF_CHARGE_REGISTER: round(94.2 * 256),
     }
 
 
 def make_driver(
-    reader: GpiodLineReader | None = None,
+    reader: MainsGpioReader | None = None,
     bus_factory: Callable[[int], Any] | None = None,
     address: int = 0x36,
-) -> Driver:
+) -> X1200Driver:
     """Build a deterministic X1200 driver around fake hardware."""
 
     default_bus = FakeBus(healthy_registers())
-    return Driver(
+    return X1200Driver(
         "ups_monitor",
-        X1200Options(
+        X1200Config(
             bus=1,
             address=address,
             gpio_chip="/dev/gpiochip0",
@@ -110,8 +110,8 @@ def make_driver(
             mains_present_active_high=True,
         ),
         bus_factory=bus_factory or (lambda _: default_bus),
-        gpio_reader=reader
-        or GpiodLineReader(
+        mains_gpio_reader=reader
+        or MainsGpioReader(
             "/dev/gpiochip0",
             6,
             True,
@@ -123,10 +123,10 @@ def make_driver(
 def test_active_high_gpio_values() -> None:
     """Normalize X1200 high/low values to mains present/absent."""
 
-    present = GpiodLineReader(
+    present = MainsGpioReader(
         "/dev/gpiochip0", 6, True, runner_for(command_result("1\n"))
     )
-    absent = GpiodLineReader(
+    absent = MainsGpioReader(
         "/dev/gpiochip0", 6, True, runner_for(command_result("0\n"))
     )
     if present.read() != 1.0 or absent.read() != 0.0:
@@ -136,7 +136,7 @@ def test_active_high_gpio_values() -> None:
 def test_configurable_polarity() -> None:
     """Support an inverted signal without changing lifecycle logic."""
 
-    reader = GpiodLineReader(
+    reader = MainsGpioReader(
         "/dev/gpiochip0", 6, False, runner_for(command_result("0\n"))
     )
     if reader.read() != 1.0:
@@ -147,7 +147,7 @@ def test_libgpiod_cli_versions() -> None:
     """Support libgpiod v2 output and fall back to the v1 syntax."""
 
     modern_commands: list[list[str]] = []
-    modern = GpiodLineReader(
+    modern = MainsGpioReader(
         "/dev/gpiochip0",
         6,
         True,
@@ -159,7 +159,7 @@ def test_libgpiod_cli_versions() -> None:
         raise AssertionError(f"libgpiod 2.x command is incorrect: {modern_commands!r}")
 
     legacy_commands: list[list[str]] = []
-    legacy = GpiodLineReader(
+    legacy = MainsGpioReader(
         "/dev/gpiochip0",
         6,
         True,
@@ -185,7 +185,7 @@ def test_register_conversion_is_read_only() -> None:
     driver = make_driver(bus_factory=lambda _: bus)
     driver.connect()
     batch = driver.read()
-    measurements = dict(batch.measurements)
+    measurements = dict(batch.values)
     expected = {
         "voltage": 4.13,
         "battery_level": 94.2,
@@ -193,7 +193,10 @@ def test_register_conversion_is_read_only() -> None:
     }
     if measurements != expected:
         raise AssertionError(f"expected {expected!r}, got {measurements!r}")
-    if bus.reads != [(0x36, REG_VCELL, 2), (0x36, REG_SOC, 2)]:
+    if bus.reads != [
+        (0x36, BATTERY_VOLTAGE_REGISTER, 2),
+        (0x36, STATE_OF_CHARGE_REGISTER, 2),
+    ]:
         raise AssertionError(f"unexpected register reads: {bus.reads!r}")
     if decode_voltage(3304 << 4) != 4.13:
         raise AssertionError("VCELL conversion is incorrect")
@@ -207,10 +210,10 @@ def test_full_charge_soc_is_capped() -> None:
     """Publish an over-100% gauge estimate as full instead of a fault."""
 
     registers = healthy_registers()
-    registers[REG_SOC] = round(100.98046875 * 256)
+    registers[STATE_OF_CHARGE_REGISTER] = round(100.98046875 * 256)
     driver = make_driver(bus_factory=lambda _: FakeBus(registers))
     driver.connect()
-    measurements = dict(driver.read().measurements)
+    measurements = dict(driver.read().values)
     if measurements != {
         "voltage": 4.13,
         "battery_level": 100.0,
@@ -237,7 +240,14 @@ def test_rejects_invalid_gauge_configuration() -> None:
     else:
         raise AssertionError("short register response was accepted")
 
-    driver = make_driver(bus_factory=lambda _: FakeBus({REG_VCELL: 0, REG_SOC: 0}))
+    driver = make_driver(
+        bus_factory=lambda _: FakeBus(
+            {
+                BATTERY_VOLTAGE_REGISTER: 0,
+                STATE_OF_CHARGE_REGISTER: 0,
+            }
+        )
+    )
     driver.connect()
     try:
         driver.read()
@@ -268,7 +278,7 @@ def test_i2c_fault_is_classified_for_runner_cleanup() -> None:
 def test_gpio_fault_omits_only_mains_measurement() -> None:
     """Keep battery telemetry while allowing the mains entity to expire."""
 
-    reader = GpiodLineReader(
+    reader = MainsGpioReader(
         "/dev/gpiochip0",
         6,
         True,
@@ -277,7 +287,7 @@ def test_gpio_fault_omits_only_mains_measurement() -> None:
     driver = make_driver(reader=reader)
     driver.connect()
     batch = driver.read()
-    measurements = dict(batch.measurements)
+    measurements = dict(batch.values)
     if measurements != {"voltage": 4.13, "battery_level": 94.2}:
         raise AssertionError(f"GPIO fault discarded battery telemetry: {measurements!r}")
     if not batch.issues or batch.issues[0].code != "gpio_fault":

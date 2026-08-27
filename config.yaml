@@ -1,24 +1,48 @@
-# LabPulse starter configuration.
-# On the Raspberry Pi, edit ~/labpulse-live/config.yaml.
+# ==========================================
+# LabPulse Starter Configuration Template
+# ==========================================
+#
+# On the Raspberry Pi, edit the live config here:
+#
+#   ~/labpulse-live/config.yaml
+#
+# This repo file is copied there only when the live config does not already
+# exist. Alarm thresholds are configured through the generated Home Assistant
+# dashboard. A fresh installation starts with all notifications muted.
 
+# --- Global settings ---
 mqtt:
   broker: mosquitto
   port: 1883
 
 sms:
-  # Keep enabled while testing so LabPulse does not contact the modem.
+  # Keep true for safe testing; set false on the real Pi to send through mmcli.
   dry_run: true
+  # Emergency contact numbers for system alerts.
   recipients:
     - "+447700900000"
+  # Test-mode alerts are routed only to these numbers.
   test_recipients:
     - "+447700900001"
 
+# Whole sensor-service failures produce one hub-level warning instead of one
+# stale-measurement warning per sensor. These timers also reject brief USB glitches.
 service_health:
   fault_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
+# Optional extra operator dashboard tabs. Setups use dashboard: <ID> to move
+# from the built-in main Monitor tab. Custom tabs appear before Alarm Setup.
 dashboards: {}
+# Example:
+# dashboards:
+#   pump_systems:
+#     label: Pump Systems
+#     icon: mdi:water-pump
+#     order: 10
 
+# Logical experimental setups are independent of the physical sensor hubs
+# under services. Every ordinary measurement selects one or more setups.
 setups:
   compressed_air:
     label: Compressed Air
@@ -28,6 +52,7 @@ setups:
     label: Pump Room Experiment
     icon: mdi:water-pump
     order: 20
+    # dashboard: pump_systems
   turbo_pump_experiment:
     label: Turbo Pump Experiment
     icon: mdi:snowflake-thermometer
@@ -38,6 +63,8 @@ setups:
     order: 40
 
 services:
+  # Measurements normally expire in Home Assistant after 300 seconds without
+  # an MQTT sample. Override maximum_measurement_age_seconds per service.
   pressure_monitor:
     label: Compressed Air and Environment Sensor Hub
     driver:
@@ -49,6 +76,11 @@ services:
       pressure:
         label: Pressure
         setups: [compressed_air]
+        # Set alarmed: false to display this reading without creating alarm
+        # helpers, controls, or notifications. The default is true.
+        # device_class selects LabPulse semantics and the default icon without
+        # allowing Home Assistant to convert the configured unit. Add icon:
+        # mdi:... only when overriding that default.
         unit: bar
         device_class: pressure
       temperature:
@@ -198,6 +230,8 @@ services:
         device_class: humidity
     read_interval_seconds: 2
 
+  # Verified X1200 UPS hardware. Fake-USB setup changes only this service's
+  # transport to the UPS simulator while preserving these measurements and IDs.
   ups_monitor:
     label: UPS Monitor
     driver:
@@ -226,4 +260,24 @@ services:
       outage_confirm_seconds: 3
       restore_confirm_seconds: 5
 
+# Optional calculated readings. Home Assistant evaluates these from one or
+# more physical measurements. They cannot depend on other custom measurements.
 custom_measurements: {}
+# Example:
+# custom_measurements:
+#   pump_room_temperature_difference:
+#     label: Pump Room Temperature Difference
+#     short_label: Temperature Difference
+#     group: Calculated
+#     setups: [pump_room_system]
+#     inputs:
+#       supply: pump_room.temp0
+#       return_temp: pump_room.temp1
+#     constants:
+#       scale: 1.0
+#     formula: (return_temp - supply) * scale
+#     precision: 2
+#     alarmed: true
+#     unit: "°C"
+#     device_class: temperature
+#     icon: mdi:delta

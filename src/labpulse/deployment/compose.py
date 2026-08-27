@@ -4,7 +4,7 @@ import json
 import re
 
 from labpulse.common.config import ConfigDocument
-from labpulse.hardware.registry import get_driver_spec
+from labpulse.hardware.registry import get_driver_definition
 
 
 def service_slug(service_name: str) -> str:
@@ -12,30 +12,6 @@ def service_slug(service_name: str) -> str:
 
     normalized = re.sub(r"[^a-zA-Z0-9]+", "-", service_name).strip("-").lower()
     return normalized or "service"
-
-
-def _hardware_command(service_name: str) -> str:
-    """Serialize one explicit hardware command as Compose list syntax."""
-
-    return json.dumps(
-        [
-            "python",
-            "-m",
-            "labpulse.hardware",
-            "--config",
-            "/app/config.yaml",
-            "--service",
-            service_name,
-        ]
-    )
-
-
-def _sms_command() -> str:
-    """Serialize the SMS service command as Compose list syntax."""
-
-    return json.dumps(
-        ["python", "-m", "labpulse.sms", "--config", "/app/config.yaml"]
-    )
 
 
 def build_compose(
@@ -52,11 +28,7 @@ def build_compose(
     if not config_mount_source.strip():
         raise ValueError("config mount source cannot be empty")
     config = document.config
-    enabled_services = [
-        (service_name, service)
-        for service_name, service in config.services.items()
-        if service.enabled
-    ]
+    enabled_services = [(name, service) for name, service in config.services.items() if service.enabled]
     if not enabled_services:
         raise ValueError("configuration has no enabled hardware services")
 
@@ -104,40 +76,20 @@ def build_compose(
         "  labpulse-sms:",
     ]
 
-    if config.sms.dry_run:
-        lines.extend(
-            [
-                "    <<: *labpulse-runtime-base",
-                "    volumes:",
-                "      - ./logs:/app/logs",
-                f"      - {config_mount_source}:/app/config.yaml:ro",
-                "      - /etc/localtime:/etc/localtime:ro",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                f"    image: {runtime_image}",
-                "    depends_on:",
-                "      - mosquitto",
-                "    volumes:",
-                "      - ./logs:/app/logs",
-                f"      - {config_mount_source}:/app/config.yaml:ro",
-                "      - /etc/localtime:/etc/localtime:ro",
-                "      - /run/dbus:/run/dbus:ro",
-                "      - /dev:/dev",
-                "    privileged: true",
-                "    environment:",
-                "      MQTT_BROKER: mosquitto",
-                "      MQTT_PORT: 1883",
-                "      LABPULSE_LOG_DIR: /app/logs",
-                "    restart: unless-stopped",
-            ]
-        )
+    lines.extend([
+        "    <<: *labpulse-runtime-base",
+        "    volumes:",
+        "      - ./logs:/app/logs",
+        f"      - {config_mount_source}:/app/config.yaml:ro",
+        "      - /etc/localtime:/etc/localtime:ro",
+    ])
+    if not config.sms.dry_run:
+        lines.extend(["      - /run/dbus:/run/dbus:ro", "      - /dev:/dev", "    privileged: true"])
+    sms_command = json.dumps(["python", "-m", "labpulse.sms", "--config", "/app/config.yaml"])
     lines.extend(
         [
             "    container_name: labpulse-sms",
-            f"    command: {_sms_command()}",
+            f"    command: {sms_command}",
             "",
         ]
     )
@@ -153,11 +105,8 @@ def build_compose(
             )
         used_container_names.add(container_name)
 
-        definition = get_driver_spec(service.driver.type)
-        requirements = definition.resolve_resources(
-            service.driver.options,
-            force_simulated,
-        )
+        definition = get_driver_definition(service.driver.type)
+        requirements = definition.container_requirements(service.driver.options, force_simulated)
         service_lines = [
             f"  {container_name}:",
             "    <<: *labpulse-runtime-base",
@@ -174,12 +123,9 @@ def build_compose(
         service_lines.extend(f"      - {mount}" for mount in requirements.mounts)
         if requirements.privileged:
             service_lines.append("    privileged: true")
-        service_lines.extend(
-            [
-                f"    container_name: {container_name}",
-                f"    command: {_hardware_command(service_name)}",
-                "",
-            ]
-        )
+        command = json.dumps([
+            "python", "-m", "labpulse.hardware", "--config", "/app/config.yaml", "--service", service_name
+        ])
+        service_lines.extend([f"    container_name: {container_name}", f"    command: {command}", ""])
         lines.extend(service_lines)
     return "\n".join(lines)

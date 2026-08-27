@@ -468,16 +468,16 @@ An X1200 service requires:
 
 ```yaml
 measurements:
-  - name: voltage
-    label: "UPS Battery Voltage"
+  voltage:
+    label: UPS Battery Voltage
     unit: V
     device_class: voltage
-  - name: battery_level
-    label: "UPS Battery Level"
+  battery_level:
+    label: UPS Battery Level
     unit: "%"
     device_class: battery
-  - name: mains_present
-    label: "External Power Present"
+  mains_present:
+    label: External Power Present
     state_class: null
 power_detection:
   outage_confirm_seconds: 3

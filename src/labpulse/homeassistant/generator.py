@@ -15,9 +15,9 @@ from labpulse.common.identity import entity_id, slug, stable_id
 
 from .alarm import (
     HomeAssistantRenderModel,
-    _yaml_scalar,
     build_template_context,
     render_alarm,
+    yaml_scalar,
 )
 
 
@@ -44,7 +44,7 @@ def _environment() -> Environment:
         trim_blocks=False,
         lstrip_blocks=True,
     )
-    environment.filters.update(yaml_scalar=_yaml_scalar, pyrepr=repr)
+    environment.filters.update(yaml_scalar=yaml_scalar, pyrepr=repr)
     environment.globals.update(entity_id=entity_id, stable_id=stable_id, slug=slug)
     return environment
 
@@ -65,14 +65,12 @@ def _render_dashboard(context: HomeAssistantRenderModel) -> str:
 
 
 def _validate_dashboard(rendered: str) -> dict[str, object]:
-    """Check that the dashboard contains a list of pages."""
+    """Check the generated dashboard at the YAML boundary before installation."""
 
     dashboard = yaml.safe_load(rendered)
     if not isinstance(dashboard, dict) or not isinstance(dashboard.get("views"), list):
         raise ValueError("rendered Home Assistant dashboard must contain a views list")
     return dashboard
-
-
 def _render_configuration() -> str:
     """Create and check the main Home Assistant configuration."""
 

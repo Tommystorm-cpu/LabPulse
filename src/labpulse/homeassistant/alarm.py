@@ -43,17 +43,14 @@ class HomeAssistantRenderModel:
     without adding a separate class for every small piece of generated YAML.
     """
 
-    config: LabPulseConfig
     services: tuple[dict[str, Any], ...]
     dashboards: tuple[dict[str, Any], ...]
     setups: tuple[dict[str, Any], ...]
     monitor_setups: tuple[dict[str, Any], ...]
-    measurements: tuple[dict[str, Any], ...]
     custom_measurements: tuple[dict[str, Any], ...]
     custom_alarm_services: tuple[dict[str, Any], ...]
     alarm_measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
     power_alarm_services: tuple[dict[str, Any], ...]
-    measurements_by_setup: dict[str, list[dict[str, Any]]]
     sms_send_topic: str
     bulk_alarm_targets: tuple[dict[str, Any], ...]
     bulk_alarm_target_options: tuple[str, ...]
@@ -62,22 +59,22 @@ class HomeAssistantRenderModel:
     bulk_apply_entities: tuple[str, ...]
 
 
-def _threshold(
-    measurement: MeasurementConfig | CustomMeasurementConfig,
-    name_override: str | None = None,
-) -> dict[str, object]:
+def _threshold(name: str, measurement: MeasurementConfig | CustomMeasurementConfig) -> dict[str, object]:
     """Return the threshold editor bounds used by Home Assistant."""
 
     # Measurement names are the only reliable hint available here. Device class
     # is optional and custom installations are allowed to omit it.
-    name = slug(name_override or getattr(measurement, "name", "measurement"))
-    kind = (
-        "temp" if "temp" in name else
-        "hum" if "hum" in name else
-        "flow" if "flow" in name else
-        "pressure" if "press" in name else
-        "generic"
-    )
+    name = slug(name)
+    if "temp" in name:
+        kind = "temp"
+    elif "hum" in name:
+        kind = "hum"
+    elif "flow" in name:
+        kind = "flow"
+    elif "press" in name:
+        kind = "pressure"
+    else:
+        kind = "generic"
     values = dict(THRESHOLD_RANGES[kind])
     values["unit"] = measurement.unit or values["unit"]
     return values
@@ -88,19 +85,13 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
 
     # Sort once and reuse the same order everywhere. Otherwise a setup can move
     # between the monitor, alarm editor, and notification text after a render.
-    setup_ids = [
-        setup_id for setup_id, _setup in sorted(
-            config.setups.items(), key=lambda item: (item[1].order, item[0])
-        )
-    ]
+    setup_ids = sorted(config.setups, key=lambda setup_id: (config.setups[setup_id].order, setup_id))
     setup_order = {setup_id: index for index, setup_id in enumerate(setup_ids)}
-    by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
-    alarmed_by_setup: dict[str, list[dict[str, Any]]] = {
-        key: [] for key in setup_ids
-    }
+    measurements_by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
+    alarmed_measurements_by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
     services: list[dict[str, Any]] = []
-    measurements: list[dict[str, Any]] = []
 
+    # Physical services and measurements
     for service_name, service_config in config.services.items():
         if not service_config.enabled:
             continue
@@ -110,7 +101,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         for measurement_name, measurement_config in service_config.measurements.items():
             name = slug(measurement_name)
             selected_setups = () if measurement_config.setups is None else tuple(
-                sorted(measurement_config.setups.setup_ids, key=setup_order.__getitem__)
+                sorted(measurement_config.setups, key=setup_order.__getitem__)
             )
             # A shared measurement stays audible while any affected setup is
             # unmuted. Muting one setup must not hide a fault from another lab.
@@ -143,14 +134,13 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "measurement_id": f"{slug(service_name)}_{name}",
                 "entity_id": entity_id("sensor", service_name, name),
                 "setup_notifications_unmuted_template": "{{ " + (checks or "true") + " }}",
-                "threshold": _threshold(measurement_config, measurement_name),
+                "threshold": _threshold(measurement_name, measurement_config),
             }
-            measurements.append(measurement)
             service_measurements.append(measurement)
             for setup_id in selected_setups:
-                by_setup[setup_id].append(measurement)
+                measurements_by_setup[setup_id].append(measurement)
                 if measurement_config.alarmed:
-                    alarmed_by_setup[setup_id].append(measurement)
+                    alarmed_measurements_by_setup[setup_id].append(measurement)
 
         service_id = slug(service_name)
         service = {
@@ -197,25 +187,19 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "alarmed": all(item["alarmed"] for item in service_measurements),
             }
             if service["power"]["alarmed"]:
-                service["subordinate_notification_ids"] = [
-                    f"labpulse_{service_id}_power"
-                ]
-                service["alarm_state_entities"] = [
-                    entity_id("input_select", service_name, "power", "state")
-                ]
+                service["subordinate_notification_ids"] = [f"labpulse_{service_id}_power"]
+                service["alarm_state_entities"] = [entity_id("input_select", service_name, "power", "state")]
             else:
                 service["subordinate_notification_ids"] = []
                 service["alarm_state_entities"] = []
         services.append(service)
 
+    # Home Assistant-calculated measurements
     custom_measurements: list[dict[str, Any]] = []
     custom_alarm_services: list[dict[str, Any]] = []
     custom_alarm_measurements: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for custom_id, custom_config in config.custom_measurements.items():
-        compiled = compile_formula(
-            custom_config.formula,
-            set(custom_config.inputs) | set(custom_config.constants),
-        )
+        compiled = compile_formula(custom_config.formula, set(custom_config.inputs) | set(custom_config.constants))
         source_entities = {
             alias: entity_id("sensor", *reference.split(".", 1))
             for alias, reference in custom_config.inputs.items()
@@ -224,13 +208,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             f"{{% set {alias} = states('{source}') | float(0) %}}"
             for alias, source in source_entities.items()
         ]
-        assignments.extend(
-            f"{{% set {name} = {value!r} %}}"
-            for name, value in custom_config.constants.items()
-        )
-        numeric_checks = [
-            f"is_number(states('{source}'))" for source in source_entities.values()
-        ]
+        assignments.extend(f"{{% set {name} = {value!r} %}}" for name, value in custom_config.constants.items())
+        numeric_checks = [f"is_number(states('{source}'))" for source in source_entities.values()]
         divisor_checks = [f"(({divisor}) | float(0)) != 0" for divisor in compiled.divisors]
         output_entity = entity_id("sensor", "custom", custom_id)
         availability_template = "\n".join(
@@ -241,12 +220,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             safe_expression = (
                 f"({safe_expression}) if " + " and ".join(divisor_checks) + " else none"
             )
-        state_template = "\n".join(
-            [*assignments, "{{ " + safe_expression + " }}"]
-        )
-        selected_setups = tuple(
-            sorted(custom_config.setups.setup_ids, key=setup_order.__getitem__)
-        )
+        state_template = "\n".join([*assignments, "{{ " + safe_expression + " }}"])
+        selected_setups = tuple(sorted(custom_config.setups, key=setup_order.__getitem__))
         setup_mutes = tuple(
             entity_id("input_boolean", "setup", setup_id, "notifications_muted")
             for setup_id in selected_setups
@@ -270,23 +245,19 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "measurement_id": f"{virtual_name}_value",
             "entity_id": output_entity,
             "setup_notifications_unmuted_template": "{{ " + (checks or "true") + " }}",
-            "threshold": _threshold(custom_config, custom_id),
+            "threshold": _threshold(custom_id, custom_config),
             "source_entities": source_entities,
             "availability_template": availability_template,
             "state_template": state_template,
         }
         custom_measurements.append(measurement)
-        measurements.append(measurement)
         for setup_id in selected_setups:
-            by_setup[setup_id].append(measurement)
+            measurements_by_setup[setup_id].append(measurement)
             if custom_config.alarmed:
-                alarmed_by_setup[setup_id].append(measurement)
+                alarmed_measurements_by_setup[setup_id].append(measurement)
 
         if custom_config.alarmed:
-            dependency_checks = [
-                f"not is_number(states('{source}'))"
-                for source in source_entities.values()
-            ]
+            dependency_checks = [f"not is_number(states('{source}'))" for source in source_entities.values()]
             dependency_services = sorted({
                 reference.split(".", 1)[0]
                 for reference in custom_config.inputs.values()
@@ -306,12 +277,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "service_id": virtual_name,
                 "sensor_fault_confirm_seconds": 15,
                 "unhealthy_template": "{{ " + " or ".join(dependency_checks) + " }}",
-                "alarm_state_entities": [
-                    entity_id("input_select", virtual_name, "value", "alarm_state")
-                ],
-                "subordinate_notification_ids": [
-                    f"labpulse_{measurement['measurement_id']}_status"
-                ],
+                "alarm_state_entities": [entity_id("input_select", virtual_name, "value", "alarm_state")],
+                "subordinate_notification_ids": [f"labpulse_{measurement['measurement_id']}_status"],
                 "measurement": measurement,
             }
             custom_alarm_services.append(virtual_service)
@@ -322,7 +289,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
     # remains visible even before sensors are assigned.
     setups = []
     for setup_id in setup_ids:
-        items = alarmed_by_setup[setup_id]
+        items = alarmed_measurements_by_setup[setup_id]
         if not items:
             continue
         label = config.setups[setup_id].display_label(setup_id)
@@ -360,12 +327,12 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
     )
     # Bulk controls only cover normal high/low alarms. Power alarms work
     # differently and have their own settings page.
-    targets = _bulk_targets(config, alarm_measurements, by_setup)
+    targets = _bulk_targets(config, alarm_measurements, measurements_by_setup)
     groups = targets[0]["deadband_groups"] if targets else ()
     monitor_setup_records: dict[str, dict[str, Any]] = {}
     for setup_id in setup_ids:
         setup_config = config.setups[setup_id]
-        items = by_setup[setup_id]
+        items = measurements_by_setup[setup_id]
         monitor_setup_records[setup_id] = {
             "setup_id": setup_id,
             "label": setup_config.display_label(setup_id),
@@ -394,17 +361,14 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             ),
         })
     return HomeAssistantRenderModel(
-        config=config,
         services=tuple(services),
         dashboards=tuple(dashboard_records),
         setups=tuple(setups),
         monitor_setups=monitor_setups,
-        measurements=tuple(measurements),
         custom_measurements=tuple(custom_measurements),
         custom_alarm_services=tuple(custom_alarm_services),
         alarm_measurements=tuple(alarm_measurements),
         power_alarm_services=power_alarm_services,
-        measurements_by_setup=by_setup,
         sms_send_topic=SMS_SEND_TOPIC,
         bulk_alarm_targets=targets,
         bulk_alarm_target_options=tuple(target["option"] for target in targets),
@@ -437,7 +401,7 @@ def _measurement_groups(
 def _bulk_targets(
     config: LabPulseConfig,
     alarm_measurements: list[tuple[dict[str, Any], dict[str, Any]]],
-    by_setup: dict[str, list[dict[str, Any]]],
+    measurements_by_setup: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, Any], ...]:
     """Build the targets and deadband groups used by the bulk editor."""
 
@@ -450,7 +414,7 @@ def _bulk_targets(
     target_groups = [("all", "All measurements", list(by_key.values()))]
     target_groups.extend(
         (setup_id, f"{config.setups[setup_id].display_label(setup_id)} ({setup_id})", items)
-        for setup_id, items in by_setup.items()
+        for setup_id, items in measurements_by_setup.items()
     )
     targets = []
     for target_id, option, candidates in target_groups:
@@ -535,7 +499,7 @@ def render_alarm(render_model: HomeAssistantRenderModel) -> str:
         lstrip_blocks=True,
         keep_trailing_newline=True,
     )
-    environment.filters["yaml_scalar"] = _yaml_scalar
+    environment.filters["yaml_scalar"] = yaml_scalar
     environment.filters["json"] = json.dumps
     environment.globals.update(entity_id=entity_id, stable_id=stable_id, slug=slug)
 
@@ -593,7 +557,7 @@ def render_alarm(render_model: HomeAssistantRenderModel) -> str:
     )
 
 
-def _yaml_scalar(value: object) -> str:
+def yaml_scalar(value: object) -> str:
     """Return one YAML-safe scalar or flow collection without a document marker."""
 
     dumped = yaml.safe_dump(

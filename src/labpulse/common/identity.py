@@ -18,7 +18,11 @@ def title(value: str) -> str:
 def stable_id(*parts: str) -> str:
     """Return a stable LabPulse ID built only from machine identifiers."""
 
-    normalized = [slug(part) for part in parts if slug(part)]
+    normalized = []
+    for part in parts:
+        normalized_part = slug(part)
+        if normalized_part:
+            normalized.append(normalized_part)
     return "labpulse_" + "_".join(normalized)
 
 

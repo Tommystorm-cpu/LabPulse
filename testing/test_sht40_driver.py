@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from labpulse.common.config import LabPulseConfig, ServiceConfig
 from labpulse.common.fake_config import derive_fake_config
-from labpulse.hardware.api import (
+from labpulse.hardware.driver import (
     ConnectionLost,
     ContainerRequirements,
     DriverUnavailable,
@@ -18,12 +18,12 @@ from labpulse.hardware.drivers import sht40
 from labpulse.hardware.drivers.sht40 import (
     MEASUREMENT_DELAY_SECONDS,
     MEASURE_HIGH_PRECISION,
-    Driver,
-    Sht40Options,
+    Sht40Config,
+    Sht40Driver,
     crc8,
     decode_measurement,
 )
-from labpulse.hardware.registry import build_driver, get_driver_spec
+from labpulse.hardware.registry import get_driver_definition
 
 
 class FakeMessage:
@@ -129,13 +129,13 @@ def install_fake_bus(
 def make_driver(
     *,
     sleeper: Callable[[float], None] = lambda _seconds: None,
-) -> Driver:
+) -> Sht40Driver:
     """Build one SHT40 driver using normal validated options."""
 
-    return Driver(
+    return Sht40Driver(
         "room_environment",
-        Sht40Options(bus=1, address=0x44),
-        sleeper=sleeper,
+        Sht40Config(bus=1, address=0x44),
+        sleep=sleeper,
     )
 
 
@@ -174,7 +174,7 @@ def test_connect_and_read_high_precision_sample() -> None:
     assert bus.messages[0].address == 0x44
     assert bus.messages[0].data == [MEASURE_HIGH_PRECISION]
     assert bus.messages[1].operation == "read"
-    assert dict(batch.measurements) == {
+    assert dict(batch.values) == {
         "temperature": 25.0,
         "humidity": 56.5,
     }
@@ -191,7 +191,7 @@ def test_crc_failure_is_a_transient_sample_error() -> None:
 
     error = assert_raises(TransientReadError, driver.read)
     assert "temperature CRC mismatch" in str(error)
-    assert driver.bus is bus
+    assert bus.closed is False
 
 
 def test_i2c_failure_loses_connection() -> None:
@@ -213,8 +213,8 @@ def test_missing_dependency_and_closed_bus_are_reported() -> None:
     assert_raises(ConnectionLost, make_driver().read)
 
 
-def test_options_registry_and_resources_are_end_to_end() -> None:
-    """Validate options, automatic discovery, construction, and device access."""
+def test_config_registry_and_resources_are_end_to_end() -> None:
+    """Validate once, discover the driver, construct it, and declare access."""
 
     service = ServiceConfig(
         label="Room Environment",
@@ -224,19 +224,23 @@ def test_options_registry_and_resources_are_end_to_end() -> None:
             "humidity": {"setups": ["room"], "unit": "%"},
         },
     )
-    driver = build_driver("room_environment", service)
-    assert isinstance(driver, Driver)
+    definition = get_driver_definition(service.driver.type)
+    driver = definition.create_driver("room_environment", service.driver.options)
+    assert isinstance(driver, Sht40Driver)
     assert driver.bus_number == 3
     assert driver.address == 0x44
 
-    spec = get_driver_spec("labpulse.sht40")
-    assert spec.default_read_interval_seconds == 2.0
-    assert spec.resolve_resources({"bus": 3}, False) == ContainerRequirements(
+    definition = get_driver_definition("labpulse.sht40")
+    assert definition.default_read_interval_seconds == 2.0
+    assert definition.container_requirements(
+        service.driver.options,
+        False,
+    ) == ContainerRequirements(
         devices=("/dev/i2c-3",)
     )
     assert_raises(
         ValidationError,
-        lambda: Sht40Options(address=0x45),
+        lambda: Sht40Config(address=0x45),
     )
 
 
@@ -283,4 +287,3 @@ def test_close_is_idempotent() -> None:
     driver.close()
 
     assert bus.closed is True
-    assert driver.bus is None

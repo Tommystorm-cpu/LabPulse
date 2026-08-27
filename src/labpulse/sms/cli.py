@@ -11,7 +11,7 @@ import sys
 from labpulse.common.config import ConfigError, DEFAULT_CONFIG_PATH, format_config_error, load_config
 from labpulse.common.logging_config import configure_logging
 from labpulse.sms.sender import SmsSender
-from labpulse.sms.subscriber import RecentRequestCache, SMSSubscriber
+from labpulse.sms.subscriber import RecentRequestCache, SmsSubscriber
 from labpulse.sms.subscriptions import SmsCommandMonitor, SubscriptionRegistry
 
 APP_DIR = DEFAULT_CONFIG_PATH.parent
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=cfg.sms.dry_run,
         subscription_registry=subscription_registry,
     )
-    subscriber = SMSSubscriber(
+    subscriber = SmsSubscriber(
         cfg.mqtt,
         sender,
         request_cache=RecentRequestCache(log_dir / "sms_processed_requests.json"),

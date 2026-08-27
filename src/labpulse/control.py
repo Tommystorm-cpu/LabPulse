@@ -32,12 +32,8 @@ from labpulse.doctor import run_doctor
 
 DEFAULT_LIVE_DIR = Path("~/labpulse-live")
 HOME_ASSISTANT_URL = "http://localhost:8123"
-FIRMWARE_SOURCE_URL = (
-    "https://github.com/Tommystorm-cpu/LabPulse/tree/main/firmware"
-)
-FIRMWARE_ARCHIVE_URL = (
-    "https://github.com/Tommystorm-cpu/LabPulse/archive/refs/heads/main.zip"
-)
+FIRMWARE_SOURCE_URL = "https://github.com/Tommystorm-cpu/LabPulse/tree/main/firmware"
+FIRMWARE_ARCHIVE_URL = "https://github.com/Tommystorm-cpu/LabPulse/archive/refs/heads/main.zip"
 FIRMWARE_HELP = f"""\
 LabPulse firmware is currently distributed through the project repository.
 
@@ -148,12 +144,7 @@ def run_config_editor(live_dir: Path) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
     try:
-        return subprocess.run(
-            [bash, str(edit_script)],
-            cwd=live_dir,
-            env=environment,
-            check=False,
-        ).returncode
+        return subprocess.run([bash, str(edit_script)], cwd=live_dir, env=environment, check=False).returncode
     except FileNotFoundError as error:
         print(f"ERROR: Cannot run {error.filename!r}.", file=sys.stderr)
         return 127
@@ -184,16 +175,11 @@ def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
     """Create a consistent private archive of user-owned runtime state."""
 
     try:
-        result = create_backup(
-            live_dir,
-            output,
-            docker_command(),
-            force=force,
-        )
+        archive_path = create_backup(live_dir, output, docker_command(), force=force)
     except (BackupError, OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    print(f"Backup created: {result.archive_path}")
+    print(f"Backup created: {archive_path}")
     print("This archive contains credentials, tokens, and phone-number state.")
     print("Store it with the same care as a password.")
     return 0
@@ -263,9 +249,7 @@ def run_restore_command(
         print("Restore cancelled; no files were changed.")
         return 2
 
-    had_user_state = (live_dir / "config.yaml").exists() or (
-        live_dir / "homeassistant" / "config"
-    ).exists()
+    had_user_state = (live_dir / "config.yaml").exists() or (live_dir / "homeassistant" / "config").exists()
     if not (live_dir / "compose.yaml").is_file():
         if _run_setup_for_manifest(live_dir, manifest) != 0:
             print("ERROR: Could not scaffold the restore target.", file=sys.stderr)
@@ -284,12 +268,7 @@ def run_restore_command(
     try:
         if had_user_state:
             rollback_path = _rollback_archive_path(live_dir)
-            create_backup(
-                live_dir,
-                rollback_path,
-                docker_prefix,
-                quiesce=False,
-            )
+            create_backup(live_dir, rollback_path, docker_prefix, quiesce=False)
             print(f"Pre-restore rollback archive: {rollback_path}")
 
         restore_backup(live_dir, archive)
@@ -374,20 +353,11 @@ def run_setup(
 def build_parser() -> argparse.ArgumentParser:
     """Build the operator command-line parser."""
 
-    parser = argparse.ArgumentParser(
-        prog="labpulse",
-        description="Control the installed LabPulse Docker deployment.",
-    )
-    parser.add_argument(
-        "--live-dir",
-        metavar="DIR",
-        help="live deployment directory (default: ~/labpulse-live)",
-    )
+    parser = argparse.ArgumentParser(prog="labpulse", description="Control the installed LabPulse Docker deployment.")
+    parser.add_argument("--live-dir", metavar="DIR", help="live deployment directory (default: ~/labpulse-live)")
     commands = parser.add_subparsers(dest="action", required=True)
 
-    setup_parser = commands.add_parser(
-        "setup", help="create or refresh the live LabPulse installation"
-    )
+    setup_parser = commands.add_parser("setup", help="create or refresh the live LabPulse installation")
     setup_parser.add_argument(
         "-fake_usb",
         "--fake-usb",
@@ -397,30 +367,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="configure simulated USB serial hardware",
     )
     setup_parser.add_argument(
-        "--backup",
-        action="store_true",
-        help="back up generated and package-managed files before replacement",
+        "--backup", action="store_true", help="back up generated and package-managed files before replacement"
     )
 
-    up_parser = commands.add_parser(
-        "up", help="start the stack or selected services in the background"
-    )
+    up_parser = commands.add_parser("up", help="start the stack or selected services in the background")
     up_parser.add_argument("services", nargs="*", help="optional service names")
 
-    down_parser = commands.add_parser(
-        "down", help="stop and remove containers without deleting persistent data"
-    )
+    down_parser = commands.add_parser("down", help="stop and remove containers without deleting persistent data")
     down_parser.add_argument("services", nargs="*", help="optional service names")
 
-    restart_parser = commands.add_parser(
-        "restart", help="restart the stack or selected services"
-    )
+    restart_parser = commands.add_parser("restart", help="restart the stack or selected services")
     restart_parser.add_argument("services", nargs="*", help="optional service names")
 
-    backup_parser = commands.add_parser(
-        "backup",
-        help="create a checksummed archive of user-owned LabPulse state",
-    )
+    backup_parser = commands.add_parser("backup", help="create a checksummed archive of user-owned LabPulse state")
     backup_parser.add_argument("output", help="output .tar.gz archive path")
     backup_parser.add_argument(
         "--force",
@@ -429,8 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     restore_parser = commands.add_parser(
-        "restore",
-        help="restore, regenerate, start, and diagnose a LabPulse state archive",
+        "restore", help="restore, regenerate, start, and diagnose a LabPulse state archive"
     )
     restore_parser.add_argument("archive", help="LabPulse backup archive path")
     restore_parser.add_argument(
@@ -458,14 +416,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     logs_parser.add_argument("services", nargs="*", help="optional service names")
 
-    commands.add_parser(
-        "config",
-        help="edit, validate, regenerate, and safely apply config.yaml",
-    )
-    commands.add_parser(
-        "open",
-        help="open Home Assistant at http://localhost:8123",
-    )
+    commands.add_parser("config", help="edit, validate, regenerate, and safely apply config.yaml")
+    commands.add_parser("open", help="open Home Assistant at http://localhost:8123")
     doctor_parser = commands.add_parser(
         "doctor",
         help="diagnose the installation, hardware access, and running services",
@@ -487,20 +439,14 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("version", help="show the installed LabPulse version")
 
     help_topics = tuple(commands.choices)
-    help_parser = commands.add_parser(
-        "help",
-        help="show general help or help for one command",
-    )
+    help_parser = commands.add_parser("help", help="show general help or help for one command")
     help_parser.add_argument(
         "topic",
         nargs="?",
         choices=help_topics,
         help="command to explain",
     )
-    help_parser.set_defaults(
-        help_root_parser=parser,
-        help_command_parsers=commands.choices,
-    )
+    help_parser.set_defaults(help_root_parser=parser, help_command_parsers=commands.choices)
     return parser
 
 
@@ -524,27 +470,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"LabPulse {__version__}")
         return 0
     if arguments.action == "setup":
-        return run_setup(
-            arguments.live_dir,
-            fake_usb=arguments.fake_usb,
-            backup=arguments.backup,
-        )
+        return run_setup(arguments.live_dir, fake_usb=arguments.fake_usb, backup=arguments.backup)
     if arguments.action == "open":
         return open_homeassistant()
 
     live_dir = live_directory(arguments.live_dir)
     if arguments.action == "backup":
-        return run_backup_command(
-            live_dir,
-            Path(arguments.output),
-            force=arguments.force,
-        )
+        return run_backup_command(live_dir, Path(arguments.output), force=arguments.force)
     if arguments.action == "restore":
-        return run_restore_command(
-            live_dir,
-            Path(arguments.archive),
-            assume_yes=arguments.yes,
-        )
+        return run_restore_command(live_dir, Path(arguments.archive), assume_yes=arguments.yes)
     if arguments.action == "config":
         return run_config_editor(live_dir)
     if arguments.action == "doctor":

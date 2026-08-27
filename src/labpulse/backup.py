@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 from importlib.metadata import PackageNotFoundError, version
@@ -39,14 +38,6 @@ CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 class BackupError(RuntimeError):
     """Raised when a backup or restore cannot complete safely."""
-
-
-@dataclass(frozen=True)
-class BackupResult:
-    """Created archive and its validated manifest."""
-
-    archive_path: Path
-    manifest: dict[str, Any]
 
 
 @contextmanager
@@ -275,7 +266,7 @@ def _assemble_snapshot(
     staging_root: Path,
     docker_prefix: Sequence[str],
     runner: CommandRunner,
-) -> dict[str, Any]:
+) -> None:
     """Copy selected state and write its checksum manifest."""
 
     payload_root = staging_root / PAYLOAD_DIRECTORY
@@ -320,7 +311,6 @@ def _assemble_snapshot(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    return manifest
 
 
 def _inside(path: Path, parent: Path) -> bool:
@@ -341,7 +331,7 @@ def create_backup(
     force: bool = False,
     quiesce: bool = True,
     runner: CommandRunner = subprocess.run,
-) -> BackupResult:
+) -> Path:
     """Create one checksummed private archive, restarting quiesced services."""
 
     live_dir = live_dir.expanduser().resolve()
@@ -370,12 +360,7 @@ def create_backup(
             archive_path.parent,
             "labpulse-backup-",
         ) as staging_root:
-            manifest = _assemble_snapshot(
-                live_dir,
-                staging_root,
-                docker_prefix,
-                runner,
-            )
+            _assemble_snapshot(live_dir, staging_root, docker_prefix, runner)
             with tarfile.open(temporary_archive, "w:gz") as archive:
                 archive.add(staging_root / MANIFEST_NAME, arcname=MANIFEST_NAME)
                 archive.add(staging_root / PAYLOAD_DIRECTORY, arcname=PAYLOAD_DIRECTORY)
@@ -387,7 +372,7 @@ def create_backup(
         if quiesce:
             start_services(live_dir, docker_prefix, active_services, runner)
 
-    return BackupResult(archive_path=archive_path, manifest=manifest)
+    return archive_path
 
 
 def _safe_member_name(name: str) -> bool:
