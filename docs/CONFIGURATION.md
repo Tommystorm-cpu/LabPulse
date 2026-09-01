@@ -400,6 +400,60 @@ driver:
 
 See [Serial protocol](SERIAL_PROTOCOL.md).
 
+### Named JSON over MQTT
+
+Use `labpulse.mqtt_json` when another computer publishes a changing set of
+named measurements as one JSON snapshot. The publisher sends every available
+field, while `parameters` maps only the useful source names to stable LabPulse
+measurement IDs:
+
+```yaml
+driver:
+  type: labpulse.mqtt_json
+  options:
+    broker: mosquitto
+    port: 1883
+    topic: labpulse/triton/measurements
+    parameters:
+      condense_pressure: "P2 Condense (Bar)"
+      cold_plate_temperature: "Cold Plate T(K)"
+      turbo_speed: "turbo speed(Hz)"
+    maximum_record_age_seconds: 30
+```
+
+| Option | Default | Meaning |
+|---|---:|---|
+| `broker` | `mosquitto` | Broker hostname visible inside the service container |
+| `port` | `1883` | Internal broker TCP port |
+| `topic` | required | Exact MQTT topic; wildcards are rejected |
+| `parameters` | required | LabPulse measurement ID to source-field mapping |
+| `maximum_record_age_seconds` | `300` | Reject snapshots whose source timestamp is older than this |
+
+The corresponding keys under the service's `measurements` section must match
+the left side of the `parameters` mapping. Source names on the right are exact
+and case-sensitive. Extra fields in a message are ignored. If one configured
+field is absent or null, available fields continue updating and the service
+reports a partial hardware fault.
+
+Messages use this versioned contract:
+
+```json
+{
+  "protocol": "labpulse.measurements",
+  "version": 1,
+  "recorded_at": 1700000000,
+  "measurements": {
+    "Cold Plate T(K)": 0.0857,
+    "unused changing header": null
+  }
+}
+```
+
+The driver consumes each snapshot once. If publishing stops, the ordinary
+service `maximum_measurement_age_seconds` setting makes the service stale and
+reconnects it. MQTT is ordinary network access, so this driver requests no
+host devices or privileged container permissions.
+
 ### DHT11
 
 ```yaml

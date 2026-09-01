@@ -1,13 +1,14 @@
 # LabPulse Arduino firmware
 
-This directory is an Arduino library containing reusable sensor components and
-three example device firmwares. The examples publish LabPulse's standard
+This directory contains the LabPulse Arduino library and the Windows-side
+Triton logfile publisher. The Arduino examples publish LabPulse's standard
 unit-free pipe-delimited serial protocol.
 
 ## Contents
 
 ```text
 firmware/
+  triton_logfile_decoder.py
   library.properties
   src/
     Reading.h
@@ -23,6 +24,36 @@ firmware/
     pump_room/
     turbo_pump/
 ```
+
+## Triton logfile publisher
+
+`triton_logfile_decoder.py` retains the existing binary `.vcl` decoder and
+publishes every field from each new complete record as one named JSON message.
+LabPulse's `labpulse.mqtt_json` driver selects the useful fields by their exact
+Triton header names, so different logfiles may contain different headers.
+
+Install its MQTT dependency on the Windows Triton computer:
+
+```powershell
+py -m pip install "paho-mqtt>=2,<3"
+```
+
+For a TLS listener on the LabPulse Pi, run:
+
+```powershell
+py .\triton_logfile_decoder.py `
+  --broker 192.0.2.10 `
+  --port 8883 `
+  --username triton-publisher `
+  --password-file C:\LabPulse\mqtt-password.txt `
+  --ca-certificate C:\LabPulse\labpulse-ca.crt
+```
+
+The script keeps decoding while the broker is temporarily unavailable and
+publishes the current record once the connection recovers. The password file's
+first line is used, which keeps the secret out of command history and process
+arguments. Without `--ca-certificate`, the MQTT connection is unencrypted and
+should only be used for isolated development.
 
 The complete `firmware` folder is the `LabPulseFirmware` Arduino library. Do not
 copy or open only an example `.ino`; the example depends on headers under

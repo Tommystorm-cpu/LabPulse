@@ -201,8 +201,8 @@ def test_config_loading_applies_driver_defaults_and_registry_reports_ids() -> No
     assert_equal(driver_config.baud_rate, 9600, "default baud rate")
     message = assert_raises(
         ValueError,
-        "Available drivers: labpulse.dht11, labpulse.serial_pipe, "
-        "labpulse.sht40, labpulse.x1200",
+        "Available drivers: labpulse.dht11, labpulse.mqtt_json, "
+        "labpulse.serial_pipe, labpulse.sht40, labpulse.x1200",
         lambda: get_driver_definition("example.unknown"),
     )
     if "example.unknown" not in message:

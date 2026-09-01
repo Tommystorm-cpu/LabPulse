@@ -48,7 +48,7 @@ def main() -> None:
         read_interval_seconds = driver_definition.default_read_interval_seconds
 
     driver_options = driver_config.model_dump()
-    target_fields = ("port", "pin", "bus", "address", "gpio_chip", "gpio_line")
+    target_fields = ("broker", "port", "topic", "pin", "bus", "address", "gpio_chip", "gpio_line")
     target_parts = [f"{field}={driver_options[field]}" for field in target_fields if field in driver_options]
     logger.info(
         "Starting service=%s driver=%s target=(%s) config=%s "
