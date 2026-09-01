@@ -45,8 +45,7 @@ The generation code is split by responsibility:
 
 | Module | Responsibility |
 |---|---|
-| `src/labpulse/homeassistant/cli.py` | Standalone arguments, config loading, config-error output |
-| `src/labpulse/homeassistant/generator.py` | Core configuration/dashboard rendering, validation, file installation |
+| `src/labpulse/homeassistant/generator.py` | Arguments, config loading, rendering, validation, and file installation |
 | `src/labpulse/homeassistant/alarm.py` | Typed `HomeAssistantRenderModel`, derived relationships, and alarm rendering |
 | `src/labpulse/homeassistant/templates/` | Final dashboard, helper, script, and automation YAML |
 

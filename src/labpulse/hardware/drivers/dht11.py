@@ -15,7 +15,7 @@ from labpulse.hardware.driver import (
 )
 
 
-# Driver configuration
+# Values accepted under driver.options in config.yaml.
 class Dht11Config(BaseModel):
     """GPIO configuration for one DHT11 sensor."""
 
@@ -24,38 +24,7 @@ class Dht11Config(BaseModel):
     pin: str = Field(pattern=r"^[A-Z][A-Z0-9_]*$")
 
 
-# Optional hardware dependencies
-# These libraries can initialize GPIO during import. Delay that work until this
-# driver is selected, while leaving the globals patchable in hardware-free tests.
-_UNLOADED = object()
-adafruit_dht: Any = _UNLOADED
-board: Any = _UNLOADED
-
-
-def _load_gpio_dependencies() -> tuple[Any, Any]:
-    """Load Blinka and Adafruit DHT lazily for the selected worker only."""
-
-    global adafruit_dht, board
-    if adafruit_dht is _UNLOADED or board is _UNLOADED:
-        try:
-            import adafruit_dht as adafruit_dht_module
-            import board as board_module
-        except ImportError:
-            adafruit_dht = None
-            board = None
-        else:
-            adafruit_dht = adafruit_dht_module
-            board = board_module
-    if adafruit_dht is None or board is None:
-        raise DriverUnavailable(
-            "DHT11 dependencies are missing. Install the LabPulse gpio extra "
-            "or install adafruit-circuitpython-dht, adafruit-blinka, and lgpio "
-            "in the container."
-        )
-    return adafruit_dht, board
-
-
-# Required driver lifecycle
+# The runner calls this connect/read/close lifecycle for the selected service.
 class Dht11Driver(HardwareDriver):
     """Read temperature and humidity from an Adafruit-compatible DHT11 sensor."""
 
@@ -69,10 +38,20 @@ class Dht11Driver(HardwareDriver):
     def connect(self) -> None:
         """Initialize the DHT11 device or report it as unavailable."""
 
-        dht_module, board_module = _load_gpio_dependencies()
+        # Import only in the selected worker because Blinka can initialize GPIO
+        # as a side effect of importing it.
+        try:
+            import adafruit_dht
+            import board
+        except ImportError as error:
+            raise DriverUnavailable(
+                "DHT11 dependencies are missing. Install the LabPulse gpio extra "
+                "or install adafruit-circuitpython-dht, adafruit-blinka, and lgpio "
+                "in the container."
+            ) from error
 
         try:
-            pin = getattr(board_module, self.pin_name)
+            pin = getattr(board, self.pin_name)
         except AttributeError as error:
             raise DriverUnavailable(
                 f"unknown board pin for DHT11 service {self.service_name}: "
@@ -80,7 +59,7 @@ class Dht11Driver(HardwareDriver):
             ) from error
 
         try:
-            self._device = dht_module.DHT11(pin, use_pulseio=True)
+            self._device = adafruit_dht.DHT11(pin, use_pulseio=True)
         except Exception as error:
             self._device = None
             raise DriverUnavailable(f"failed to initialize DHT11 on {self.pin_name}: {error}") from error
@@ -123,7 +102,7 @@ class Dht11Driver(HardwareDriver):
         self._device = None
 
 
-# Container access and driver registration
+# This becomes the GPIO access granted to the service in Docker Compose.
 def container_requirements(_config: Dht11Config, _force_simulated: bool) -> ContainerRequirements:
     """Give the DHT11 container access to Raspberry Pi GPIO devices."""
 

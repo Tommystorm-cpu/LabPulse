@@ -1,11 +1,8 @@
 """Copy this file to add a self-contained LabPulse hardware driver.
 
 Rename the module, replace the example names, and keep the module-level
-``DRIVER_DEFINITION``. The registry discovers it automatically.
-Pydantic is a host and container dependency, but optional hardware libraries
-must only be imported inside ``connect()`` or a helper called from it.
-
-This template is deliberately excluded from automatic discovery.
+``DRIVER_DEFINITION``. The registry discovers it automatically. Optional
+hardware libraries must only be imported when the driver connects.
 """
 
 from typing import Any
@@ -22,25 +19,17 @@ from labpulse.hardware.driver import (
 )
 
 
-# Driver configuration
 class ExampleConfig(BaseModel):
     """Configuration accepted below ``driver.options`` in config.yaml."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
-
     device: str = Field(min_length=1)
 
 
-# Device-specific decoding belongs here when the hardware needs it.
-
-
-# Required driver lifecycle
 class ExampleDriver(HardwareDriver):
     """Adapt one example device to the LabPulse lifecycle contract."""
 
     def __init__(self, service_name: str, config: ExampleConfig) -> None:
-        """Store configuration without opening hardware."""
-
         super().__init__(service_name)
         self.device_path = config.device
         self._device: Any | None = None
@@ -75,7 +64,6 @@ class ExampleDriver(HardwareDriver):
         self._device = None
 
 
-# Container access and driver registration
 def container_requirements(config: ExampleConfig, _force_simulated: bool) -> ContainerRequirements:
     """Declare the narrowest device and mount access this driver requires."""
 

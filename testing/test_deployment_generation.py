@@ -18,7 +18,7 @@ TEST_TMP_DIR = REFACTOR_DIR / "testing" / "tmp"
 from labpulse import __version__
 from labpulse.common.config import load_config
 from labpulse.deployment.compose import build_compose
-from labpulse.homeassistant.cli import main as generate_homeassistant
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 @contextmanager
@@ -210,7 +210,6 @@ def test_setup_refresh_and_preservation_contract() -> None:
         "LabPulse requires Pydantic 2",
         'if [ ! -e "$LIVE_CONFIG" ]; then',
         'Preserving existing live config',
-        'Real setup never rewrites the',
         'derive_fake_config',
         'RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"',
         '--config "$RUNTIME_CONFIG"',

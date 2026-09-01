@@ -1,9 +1,9 @@
 """Hardware-free tests for the standard pipe-delimited serial driver."""
 
+import sys
 from types import SimpleNamespace
 from typing import Any, Callable
 
-from labpulse.hardware.drivers import serial_pipe
 from labpulse.hardware.driver import ConnectionLost, DriverUnavailable
 from labpulse.hardware.drivers.serial_pipe import SerialPipeConfig, SerialPipeDriver
 
@@ -56,10 +56,10 @@ def make_driver() -> SerialPipeDriver:
 def install_fake_serial(factory: Callable[..., FakeSerialPort]) -> None:
     """Patch pyserial construction without touching physical devices."""
 
-    serial_pipe.serial = SimpleNamespace(
+    sys.modules["serial"] = SimpleNamespace(
         Serial=factory,
         SerialException=FakeSerialException,
-    )
+    )  # type: ignore[assignment]
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:

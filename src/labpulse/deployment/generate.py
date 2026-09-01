@@ -1,7 +1,6 @@
 """Generate deployment artifacts through the shared configuration pipeline."""
 
 import argparse
-from argparse import Namespace
 import os
 from pathlib import Path
 import shutil
@@ -76,8 +75,9 @@ def generate_deployment(
         force_simulated=force_simulated,
     )
 
+    project_dir.mkdir(parents=True, exist_ok=True)
     staging_root = project_dir / f".labpulse-generation-{uuid4().hex}"
-    staging_root.mkdir(parents=True)
+    staging_root.mkdir()
     try:
         staged_ha_dir = staging_root / "homeassistant" / "config"
         generate_homeassistant(document, staged_ha_dir)
@@ -109,8 +109,8 @@ def generate_deployment(
     return document
 
 
-def parse_args(argv: list[str] | None = None) -> Namespace:
-    """Parse paths for Compose-only or unified deployment generation."""
+def main(argv: list[str] | None = None) -> int:
+    """Load once and atomically install the requested generated outputs."""
 
     parser = argparse.ArgumentParser(
         description="Generate deployment files from validated LabPulse configuration"
@@ -124,13 +124,7 @@ def parse_args(argv: list[str] | None = None) -> Namespace:
         help="also generate Home Assistant files from the same config load",
     )
     parser.add_argument("-fake_usb", "--fake-usb", "--fake_usb", action="store_true", dest="fake_usb")
-    return parser.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Load once and atomically install the requested generated outputs."""
-
-    args = parse_args(argv)
+    args = parser.parse_args(argv)
     project_dir = args.project_dir.expanduser().resolve()
     compose_output = args.compose_output.expanduser().resolve()
     runtime_image = os.environ.get(

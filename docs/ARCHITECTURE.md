@@ -148,8 +148,12 @@ domain modules do not inspect `sys.argv` or exit the interpreter.
 
 ## Configuration model and flow
 
-`src/labpulse/common/config.py` is the only production LabPulse YAML loader.
-It returns a `ConfigDocument` containing:
+`src/labpulse/common/config.py` is the only production LabPulse YAML loader and
+owns the final cross-section validation. Physical and calculated measurement
+models live in `common/measurement_config.py`; driver, service, and power models
+live in `common/service_config.py`.
+
+The loader returns a `ConfigDocument` containing:
 
 - the resolved source path;
 - a fully validated `LabPulseConfig`;
@@ -226,7 +230,7 @@ python -m labpulse.hardware --config /app/config.yaml --service NAME
 The flow is:
 
 ```text
-hardware/cli.py
+hardware/__main__.py
   → load ConfigDocument
   → select ServiceConfig
   → registry.get_driver_definition(driver.type)
@@ -295,8 +299,9 @@ Each public module under `src/labpulse/hardware/drivers/` exports exactly one:
 DRIVER_DEFINITION = DriverDefinition(...)
 ```
 
-The registry imports public modules automatically. `driver_template.py` is
-excluded. Supporting modules in that directory must begin with `_`.
+The registry imports public modules automatically. The contributor template
+lives in `docs/examples`; supporting modules in the production driver package
+must begin with `_`.
 
 A `DriverDefinition` contains:
 
@@ -358,8 +363,7 @@ Its modules have separate roles:
 
 | Module | Responsibility |
 |---|---|
-| `homeassistant/cli.py` | Arguments, config load, user-facing config errors |
-| `homeassistant/generator.py` | Core configuration/dashboard rendering, validation, atomic file replacement |
+| `homeassistant/generator.py` | Arguments, config load, rendering, validation, and atomic file replacement |
 | `homeassistant/alarm.py` | Typed render model, threshold metadata, alarm package rendering |
 | `homeassistant/templates/` | Final-shaped YAML behavior and layout |
 

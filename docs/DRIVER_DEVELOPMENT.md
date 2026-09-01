@@ -31,7 +31,7 @@ that cannot reasonably emit the standard serial format.
 Copy:
 
 ```text
-src/labpulse/hardware/drivers/driver_template.py
+docs/examples/driver_template.py
 ```
 
 to a clear public module such as:
@@ -50,8 +50,9 @@ Keep the same readable order in every driver module:
 6. exported `DRIVER_DEFINITION`.
 
 The registry discovers public modules automatically. Do not edit
-`registry.py`. `driver_template.py` is excluded; helper modules in the drivers
-directory must begin with `_` or they will be treated as drivers.
+`registry.py`. The contributor template lives in `docs/examples`; helper
+modules in the drivers directory must begin with `_` or they will be treated
+as drivers.
 
 ## Driver configuration
 
@@ -268,10 +269,13 @@ Add hardware-free tests covering:
 - component issues where applicable;
 - repeated cleanup;
 - declared Compose resources;
-- fake or injected hardware behavior.
+- fake hardware behavior.
 
-Use injected bus/device factories, command runners, or small fake library
-objects. Ordinary tests must not require `/dev`, GPIO, I2C, or network hardware.
+Patch the real external boundary: install a small fake optional-library module
+in `sys.modules`, or patch `subprocess.run` for a CLI-based device. Do not add
+alternate constructors, factories, or command runners to production drivers
+for testing. Ordinary tests must not require `/dev`, GPIO, I2C, or network
+hardware.
 
 Focused existing examples:
 

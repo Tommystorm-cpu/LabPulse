@@ -25,7 +25,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Stop early when setup has not installed every file this workflow needs.
+# Fail with setup guidance before creating temporary files or opening an editor.
 if [ ! -f "$CONFIG_PATH" ]; then
   echo "ERROR: Required LabPulse file is missing: $CONFIG_PATH" >&2
   exit 1

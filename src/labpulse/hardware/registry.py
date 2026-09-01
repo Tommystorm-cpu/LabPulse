@@ -8,9 +8,6 @@ import pkgutil
 from labpulse.hardware.driver import DriverDefinition
 
 
-# Public modules are treated as drivers by default. The contributor template is
-# documentation, not a runnable driver.
-_NON_DRIVER_MODULES = {"driver_template"}
 _DRIVER_PACKAGE = "labpulse.hardware.drivers"
 
 # Discover at import time so malformed declarations fail during config startup,
@@ -21,7 +18,7 @@ _driver_modules = sorted(pkgutil.iter_modules(_driver_package.__path__), key=lam
 
 for _module_info in _driver_modules:
     # Underscored modules may contain shared driver helpers without defining a driver.
-    if _module_info.name.startswith("_") or _module_info.name in _NON_DRIVER_MODULES:
+    if _module_info.name.startswith("_"):
         continue
 
     _module = importlib.import_module(f"{_DRIVER_PACKAGE}.{_module_info.name}")

@@ -1,13 +1,16 @@
 """Hardware-free contract tests for the Sensirion SHT40 driver."""
 
 from collections.abc import Callable, Iterator
+import sys
 from typing import Any
+from unittest.mock import patch
 
 import yaml
 from pydantic import ValidationError
 
-from labpulse.common.config import LabPulseConfig, ServiceConfig
+from labpulse.common.config import LabPulseConfig
 from labpulse.common.fake_config import derive_fake_config
+from labpulse.common.service_config import ServiceConfig
 from labpulse.hardware.driver import (
     ConnectionLost,
     ContainerRequirements,
@@ -122,21 +125,14 @@ def install_fake_bus(
 
     bus = FakeBus(payload or response(0x6666, 0x8000), read_error)
     dependency = FakeSmbus2(bus)
-    sht40.smbus2 = dependency
+    sys.modules["smbus2"] = dependency  # type: ignore[assignment]
     return bus, dependency
 
 
-def make_driver(
-    *,
-    sleeper: Callable[[float], None] = lambda _seconds: None,
-) -> Sht40Driver:
+def make_driver() -> Sht40Driver:
     """Build one SHT40 driver using normal validated options."""
 
-    return Sht40Driver(
-        "room_environment",
-        Sht40Config(bus=1, address=0x44),
-        sleep=sleeper,
-    )
+    return Sht40Driver("room_environment", Sht40Config(bus=1, address=0x44))
 
 
 def assert_raises(expected: type[Exception], action: Callable[[], Any]) -> Exception:
@@ -163,10 +159,11 @@ def test_connect_and_read_high_precision_sample() -> None:
 
     delays: list[float] = []
     bus, dependency = install_fake_bus(response(0x6666, 0x8000))
-    driver = make_driver(sleeper=delays.append)
+    driver = make_driver()
 
     driver.connect()
-    batch = driver.read()
+    with patch.object(sht40.time, "sleep", side_effect=delays.append):
+        batch = driver.read()
 
     assert dependency.opened_bus_numbers == [1]
     assert delays == [MEASUREMENT_DELAY_SECONDS]
@@ -189,7 +186,8 @@ def test_crc_failure_is_a_transient_sample_error() -> None:
     driver = make_driver()
     driver.connect()
 
-    error = assert_raises(TransientReadError, driver.read)
+    with patch.object(sht40.time, "sleep", return_value=None):
+        error = assert_raises(TransientReadError, driver.read)
     assert "temperature CRC mismatch" in str(error)
     assert bus.closed is False
 
@@ -201,14 +199,15 @@ def test_i2c_failure_loses_connection() -> None:
     driver = make_driver()
     driver.connect()
 
-    error = assert_raises(ConnectionLost, driver.read)
+    with patch.object(sht40.time, "sleep", return_value=None):
+        error = assert_raises(ConnectionLost, driver.read)
     assert "sensor missing" in str(error)
 
 
 def test_missing_dependency_and_closed_bus_are_reported() -> None:
     """Fail clearly without smbus2 or without an established connection."""
 
-    sht40.smbus2 = None
+    sys.modules["smbus2"] = None  # type: ignore[assignment]
     assert_raises(DriverUnavailable, make_driver().connect)
     assert_raises(ConnectionLost, make_driver().read)
 

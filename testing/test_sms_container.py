@@ -3,14 +3,14 @@
 from pathlib import Path
 import json
 import subprocess
-import sys
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
-from labpulse.common.config import MqttConfig, SmsConfig
+from labpulse.common.config import DEFAULT_CONFIG_PATH, MqttConfig, SmsConfig
 from labpulse.common.mqtt_contracts import (
     SMS_STATUS_DISCOVERY_TOPIC,
     SMS_STATUS_TOPIC,
@@ -23,11 +23,16 @@ from labpulse.common.sms_templates import (
     TEMPLATE_PATH,
     load_sms_templates,
 )
-from labpulse.sms.cli import DEFAULT_CONFIG_PATH, parse_args
+from labpulse.sms import sender as sms_sender
+from labpulse.sms import subscriber as sms_subscriber
 from labpulse.sms.sender import (
     DeliveryResult,
     InboundSms,
+    SUBSCRIBE_CONFIRMATION,
+    UNSUBSCRIBE_CONFIRMATION,
     SmsSender,
+    SmsCommandMonitor,
+    SubscriptionRegistry,
     UNSUBSCRIBE_FOOTER,
     format_sms_message,
     mask_phone_number,
@@ -37,15 +42,11 @@ from labpulse.sms.sender import (
 from labpulse.sms.subscriber import (
     RecentRequestCache,
     SmsSubscriber,
-    SmsPayloadError,
     parse_sms_payload,
 )
-from labpulse.sms.subscriptions import (
-    SUBSCRIBE_CONFIRMATION,
-    UNSUBSCRIBE_CONFIRMATION,
-    SmsCommandMonitor,
-    SubscriptionRegistry,
-)
+
+
+SMS_TEST_STATE = REFACTOR_DIR / "testing" / "tmp" / "sms-test-state.json"
 
 
 class FakeSmsClient:
@@ -205,11 +206,9 @@ def test_setup_and_compose_contract() -> None:
 
 
 def test_sms_entry_accepts_explicit_argv() -> None:
-    """Check the CLI path default and directly injectable argument parsing."""
+    """Check the SMS service uses the shared default config path."""
 
     assert_equal(DEFAULT_CONFIG_PATH.name, "config.yaml", "default config filename")
-    args = parse_args(["--config", "custom.yaml"])
-    assert_equal(args.config, "custom.yaml", "custom config argument")
 
 
 def test_sms_config_validates_recipients() -> None:
@@ -245,6 +244,7 @@ def test_test_mode_routes_only_to_test_recipients() -> None:
     sender = SmsSender(
         ["+447700900000"],
         quiet_logger(),
+        subscription_registry=SubscriptionRegistry(["+447700900000"], SMS_TEST_STATE),
         test_recipients=["+447700900001", "+447700900002"],
         dry_run=True,
     )
@@ -270,27 +270,32 @@ def test_test_mode_routes_only_to_test_recipients() -> None:
 def test_unsubscribed_numbers_are_filtered_in_both_modes() -> None:
     """Apply one persistent subscription choice to live and test routing."""
 
-    registry = SubscriptionRegistry(
-        ["+447700900000", "+447700900001", "+447700900002"]
-    )
-    registry.set_subscribed("+447700900000", False)
-    registry.set_subscribed("+447700900002", False)
-    sender = SmsSender(
-        ["+447700900000", "+447700900001"],
-        quiet_logger(),
-        test_recipients=["+447700900001", "+447700900002"],
-        dry_run=True,
-        subscription_registry=registry,
-    )
-    results: list[DeliveryResult] = []
-    sender.set_result_handler(results.append)
+    state_path = REFACTOR_DIR / "testing" / "tmp" / "sms-filter-subscriptions.json"
+    state_path.unlink(missing_ok=True)
     try:
-        assert_equal(sender.broadcast(request("live-filter")), True, "live accepted")
-        test_request = request("test-filter").model_copy(update={"test_mode": True})
-        assert_equal(sender.broadcast(test_request), True, "test accepted")
-        sender._queue.join()
+        registry = SubscriptionRegistry(
+            ["+447700900000", "+447700900001", "+447700900002"], state_path
+        )
+        registry.set_subscribed("+447700900000", False)
+        registry.set_subscribed("+447700900002", False)
+        sender = SmsSender(
+            ["+447700900000", "+447700900001"],
+            quiet_logger(),
+            test_recipients=["+447700900001", "+447700900002"],
+            dry_run=True,
+            subscription_registry=registry,
+        )
+        results: list[DeliveryResult] = []
+        sender.set_result_handler(results.append)
+        try:
+            assert_equal(sender.broadcast(request("live-filter")), True, "live accepted")
+            test_request = request("test-filter").model_copy(update={"test_mode": True})
+            assert_equal(sender.broadcast(test_request), True, "test accepted")
+            sender._queue.join()
+        finally:
+            sender.close()
     finally:
-        sender.close()
+        state_path.unlink(missing_ok=True)
     suppressed = [
         result.recipient for result in results if result.status == "unsubscribed"
     ]
@@ -348,7 +353,9 @@ def test_subscription_registry_persists_and_rejects_outsiders() -> None:
 def test_inbound_subscription_commands_are_allow_listed() -> None:
     """Confirm valid commands, ignore outsiders, and delete every received object."""
 
-    registry = SubscriptionRegistry(["+447700900000", "+447700900001"])
+    state_path = REFACTOR_DIR / "testing" / "tmp" / "sms-command-subscriptions.json"
+    state_path.unlink(missing_ok=True)
+    registry = SubscriptionRegistry(["+447700900000", "+447700900001"], state_path)
     sender = FakeCommandSender(
         [
             InboundSms("/sms/1", "+447700900000", " unsubscribe \n"),
@@ -372,6 +379,7 @@ def test_inbound_subscription_commands_are_allow_listed() -> None:
     monitor.poll_once()
     assert_equal(registry.is_subscribed("+447700900000"), True, "allowed subscribe")
     assert_equal(sender.sent[-1], ("+447700900000", SUBSCRIBE_CONFIRMATION), "subscribe confirmation")
+    state_path.unlink(missing_ok=True)
 
 
 def test_mmcli_received_sms_parsing() -> None:
@@ -404,11 +412,17 @@ def test_mmcli_received_sms_parsing() -> None:
             )
         return type("Completed", (), {"stdout": stdout, "stderr": "", "returncode": 0})()
 
-    sender = SmsSender([], quiet_logger(), dry_run=False, runner=runner)
-    try:
-        messages = sender.list_received_sms()
-    finally:
-        sender.close()
+    sender = SmsSender(
+        [],
+        quiet_logger(),
+        subscription_registry=SubscriptionRegistry([], SMS_TEST_STATE),
+        dry_run=False,
+    )
+    with patch.object(sms_sender.subprocess, "run", side_effect=runner):
+        try:
+            messages = sender.list_received_sms()
+        finally:
+            sender.close()
     assert_equal(
         messages,
         [
@@ -432,11 +446,15 @@ def test_mmcli_received_sms_parsing() -> None:
 def test_test_requests_do_not_rate_limit_live_alerts() -> None:
     """Check a test event cannot consume the live alert cooldown slot."""
 
-    cache = RecentRequestCache(clock=lambda: 100.0)
+    cache_path = REFACTOR_DIR / "testing" / "tmp" / "sms-test-cache.json"
+    cache_path.unlink(missing_ok=True)
+    cache = RecentRequestCache(cache_path)
     test_request = request("test-request").model_copy(update={"test_mode": True})
     live_request = request("live-request")
-    cache.remember(test_request)
-    assert_equal(cache.rejection_reason(live_request), None, "live request after test")
+    with patch.object(sms_subscriber.time, "time", return_value=100.0):
+        cache.remember(test_request)
+        assert_equal(cache.rejection_reason(live_request), None, "live request after test")
+    cache_path.unlink(missing_ok=True)
 
 
 def test_subscriber_uses_persistent_qos_one_session() -> None:
@@ -453,11 +471,10 @@ def test_subscriber_uses_persistent_qos_one_session() -> None:
         constructor["kwargs"] = kwargs
         return client
 
-    subscriber = SmsSubscriber(
-        MqttConfig(broker="mosquitto", port=1883),
-        sender,
-        client_factory=client_factory,
-    )
+    with patch.object(sms_subscriber.mqtt, "Client", side_effect=client_factory):
+        subscriber = SmsSubscriber(
+            MqttConfig(broker="mosquitto", port=1883), sender, SMS_TEST_STATE
+        )
     assert_equal(constructor["kwargs"]["client_id"], "LabPulse-SMS", "stable client ID")
     assert_equal(constructor["kwargs"]["clean_session"], False, "persistent session")
     assert_equal(client.will[0], SMS_STATUS_TOPIC, "status last-will topic")
@@ -488,7 +505,7 @@ def test_payload_parser_is_strict() -> None:
     for payload in invalid_payloads:
         try:
             parse_sms_payload(payload)
-        except SmsPayloadError:
+        except ValueError:
             continue
         raise AssertionError(f"invalid payload accepted: {payload!r}")
 
@@ -499,28 +516,29 @@ def test_subscriber_deduplicates_and_rate_limits() -> None:
     now = [1_000.0]
     sender = FakeSender()
     client = FakeSmsClient()
-    subscriber = SmsSubscriber(
-        MqttConfig(broker="mosquitto"),
-        sender,
-        client_factory=lambda *args, **kwargs: client,
-        request_cache=RecentRequestCache(clock=lambda: now[0]),
-    )
+    cache_path = REFACTOR_DIR / "testing" / "tmp" / "sms-dedup-cache.json"
+    cache_path.unlink(missing_ok=True)
+    with patch.object(sms_subscriber.mqtt, "Client", return_value=client), patch.object(
+        sms_subscriber.time, "time", side_effect=lambda: now[0]
+    ):
+        subscriber = SmsSubscriber(MqttConfig(broker="mosquitto"), sender, cache_path)
 
-    message = type("Message", (), {"payload": json.dumps(request_payload()).encode()})()
-    subscriber.on_message(client, None, message)
-    assert_equal(len(sender.requests), 1, "accepted request")
-    subscriber.on_message(client, None, message)
-    assert_equal(len(sender.requests), 1, "duplicate suppressed")
-    assert_equal(json.loads(client.published[-1][1])["status"], "duplicate", "duplicate result")
+        message = type("Message", (), {"payload": json.dumps(request_payload()).encode()})()
+        subscriber.on_message(client, None, message)
+        assert_equal(len(sender.requests), 1, "accepted request")
+        subscriber.on_message(client, None, message)
+        assert_equal(len(sender.requests), 1, "duplicate suppressed")
+        assert_equal(json.loads(client.published[-1][1])["status"], "duplicate", "duplicate result")
 
-    repeated = type(
-        "Message",
-        (),
-        {"payload": json.dumps(request_payload("request-2")).encode()},
-    )()
-    subscriber.on_message(client, None, repeated)
-    assert_equal(len(sender.requests), 1, "event cooldown")
-    assert_equal(json.loads(client.published[-1][1])["status"], "rate_limited", "rate result")
+        repeated = type(
+            "Message",
+            (),
+            {"payload": json.dumps(request_payload("request-2")).encode()},
+        )()
+        subscriber.on_message(client, None, repeated)
+        assert_equal(len(sender.requests), 1, "event cooldown")
+        assert_equal(json.loads(client.published[-1][1])["status"], "rate_limited", "rate result")
+    cache_path.unlink(missing_ok=True)
 
 
 def test_recent_request_cache_persists() -> None:
@@ -530,10 +548,12 @@ def test_recent_request_cache_persists() -> None:
     temp_dir.mkdir(parents=True, exist_ok=True)
     cache_path = temp_dir / "requests.json"
     try:
-        first = RecentRequestCache(path=cache_path, clock=lambda: 1_000.0)
-        first.remember(request())
-        second = RecentRequestCache(path=cache_path, clock=lambda: 1_001.0)
-        assert_equal(second.rejection_reason(request()), "duplicate", "persistent duplicate")
+        with patch.object(sms_subscriber.time, "time", return_value=1_000.0):
+            first = RecentRequestCache(cache_path)
+            first.remember(request())
+        with patch.object(sms_subscriber.time, "time", return_value=1_001.0):
+            second = RecentRequestCache(cache_path)
+            assert_equal(second.rejection_reason(request()), "duplicate", "persistent duplicate")
     finally:
         if cache_path.exists():
             cache_path.unlink()
@@ -546,11 +566,8 @@ def test_delivery_results_are_published() -> None:
 
     sender = FakeSender()
     client = FakeSmsClient()
-    subscriber = SmsSubscriber(
-        MqttConfig(broker="mosquitto"),
-        sender,
-        client_factory=lambda *args, **kwargs: client,
-    )
+    with patch.object(sms_subscriber.mqtt, "Client", return_value=client):
+        subscriber = SmsSubscriber(MqttConfig(broker="mosquitto"), sender, SMS_TEST_STATE)
     subscriber.publish_delivery_result(
         DeliveryResult("request-1", "+44*******000", "sent")
     )
@@ -565,11 +582,8 @@ def test_subscriber_closes_gracefully() -> None:
 
     sender = FakeSender()
     client = FakeSmsClient()
-    subscriber = SmsSubscriber(
-        MqttConfig(broker="mosquitto"),
-        sender,
-        client_factory=lambda *args, **kwargs: client,
-    )
+    with patch.object(sms_subscriber.mqtt, "Client", return_value=client):
+        subscriber = SmsSubscriber(MqttConfig(broker="mosquitto"), sender, SMS_TEST_STATE)
     subscriber.close()
     assert_equal(sender.closed, True, "sender closed")
     assert_equal(json.loads(client.published[-1][1])["state"], "offline", "offline status")
@@ -580,7 +594,12 @@ def test_queue_fans_out_and_stops_cleanly() -> None:
     """Check the real worker delivers once per recipient and joins on close."""
 
     sender = SmsSender(
-        ["+447700900000", "+447700900001"], quiet_logger(), dry_run=True
+        ["+447700900000", "+447700900001"],
+        quiet_logger(),
+        subscription_registry=SubscriptionRegistry(
+            ["+447700900000", "+447700900001"], SMS_TEST_STATE
+        ),
+        dry_run=True,
     )
     results: list[DeliveryResult] = []
     sender.set_result_handler(results.append)
@@ -597,7 +616,12 @@ def test_queue_fans_out_and_stops_cleanly() -> None:
 def test_dry_run_reports_logged_not_sent() -> None:
     """Check dry-run delivery results cannot be mistaken for a real SMS."""
 
-    sender = SmsSender(["+447700900000"], quiet_logger(), dry_run=True)
+    sender = SmsSender(
+        ["+447700900000"],
+        quiet_logger(),
+        subscription_registry=SubscriptionRegistry(["+447700900000"], SMS_TEST_STATE),
+        dry_run=True,
+    )
     results: list[DeliveryResult] = []
     sender.set_result_handler(results.append)
     sender.broadcast(request())
@@ -626,14 +650,14 @@ def test_mmcli_sends_and_deletes_created_object() -> None:
     sender = SmsSender(
         ["+447700900000"],
         quiet_logger(),
+        subscription_registry=SubscriptionRegistry(["+447700900000"], SMS_TEST_STATE),
         dry_run=False,
-        runner=runner,
-        retries=1,
     )
-    try:
-        assert_equal(sender.send_sms("+447700900000", "hello"), True, "mmcli send")
-    finally:
-        sender.close()
+    with patch.object(sms_sender.subprocess, "run", side_effect=runner):
+        try:
+            assert_equal(sender.send_sms("+447700900000", "hello"), True, "mmcli send")
+        finally:
+            sender.close()
     assert_equal(calls[0], ["mmcli", "-L"], "list modems")
     assert_equal(
         calls[-2],
@@ -675,17 +699,17 @@ def test_retry_does_not_sleep_after_final_failure() -> None:
     sender = SmsSender(
         ["+447700900000"],
         quiet_logger(),
+        subscription_registry=SubscriptionRegistry(["+447700900000"], SMS_TEST_STATE),
         dry_run=False,
-        runner=runner,
-        retries=2,
-        retry_delay_seconds=3,
-        sleeper=sleeps.append,
     )
-    try:
-        assert_equal(sender.send_sms("+447700900000", "hello"), False, "failed send")
-    finally:
-        sender.close()
-    assert_equal(sleeps, [3], "between-attempt sleep")
+    with patch.object(sms_sender.subprocess, "run", side_effect=runner), patch.object(
+        sms_sender.time, "sleep", side_effect=sleeps.append
+    ):
+        try:
+            assert_equal(sender.send_sms("+447700900000", "hello"), False, "failed send")
+        finally:
+            sender.close()
+    assert_equal(sleeps, [2.0, 2.0], "between-attempt sleep")
 
 
 def test_message_formatting_and_privacy_helpers() -> None:

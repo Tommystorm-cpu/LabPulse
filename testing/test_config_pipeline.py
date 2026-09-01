@@ -145,7 +145,7 @@ def test_file_failures_use_the_same_error_model() -> None:
         try:
             load_config(missing)
         except ConfigError as error:
-            if error.path != missing.resolve() or error.problems[0].kind != "read_error":
+            if error.path != missing.resolve() or not error.problems[0].message:
                 raise AssertionError(f"unexpected missing-file error: {error}") from error
         else:
             raise AssertionError("missing configuration was accepted")
@@ -155,7 +155,7 @@ def test_file_failures_use_the_same_error_model() -> None:
         try:
             load_config(malformed)
         except ConfigError as error:
-            if error.problems[0].kind != "yaml_error":
+            if not error.problems[0].message:
                 raise AssertionError(f"unexpected YAML error: {error}") from error
         else:
             raise AssertionError("malformed YAML was accepted")

@@ -1,8 +1,7 @@
 """Behavior tests for interactive real/fake USB serial assignment."""
 
 from pathlib import Path
-import sys
-from typing import Callable
+from unittest.mock import patch
 from uuid import uuid4
 
 
@@ -71,8 +70,8 @@ def test_identifies_unplugged_then_replugged_devices() -> None:
     """Check one disappearing stable path is assigned to each service."""
 
     services = [
-        SerialService("pressure_monitor", "Air Pressure", None),
-        SerialService("pump_room", "Pump Room", None),
+        SerialService("pressure_monitor", "Air Pressure"),
+        SerialService("pump_room", "Pump Room"),
     ]
     baseline = {
         "usb-pressure": "/dev/serial/by-id/usb-pressure",
@@ -89,11 +88,10 @@ def test_identifies_unplugged_then_replugged_devices() -> None:
         ]
     )
     prompts: list[str] = []
-    assignments = identify_devices(
-        services,
-        snapshot=lambda: next(snapshots),
-        prompt=lambda message: prompts.append(message) or "",
-    )
+    with patch("setup_usb_devices.snapshot_devices", side_effect=lambda _path: next(snapshots)), patch(
+        "builtins.input", side_effect=lambda message: prompts.append(message) or ""
+    ):
+        assignments = identify_devices(services, Path("/dev/serial/by-id"))
     expected = {
         "pressure_monitor": "/dev/serial/by-id/usb-pressure",
         "pump_room": "/dev/serial/by-id/usb-pump",
@@ -110,11 +108,10 @@ def test_rejects_ambiguous_unplug() -> None:
     baseline = {"one": "/fake/one", "two": "/fake/two"}
     snapshots = iter([baseline, {}])
     try:
-        identify_devices(
-            [SerialService("service", "Service", None)],
-            snapshot=lambda: next(snapshots),
-            prompt=lambda _message: "",
-        )
+        with patch("setup_usb_devices.snapshot_devices", side_effect=lambda _path: next(snapshots)), patch(
+            "builtins.input", return_value=""
+        ):
+            identify_devices([SerialService("service", "Service")], Path("/fake"))
     except RuntimeError as error:
         if "exactly one" not in str(error):
             raise AssertionError(f"unclear ambiguity error: {error}") from error
@@ -129,7 +126,7 @@ def test_surgical_config_update_and_backup() -> None:
         "pressure_monitor": "/dev/serial/by-id/usb-pressure",
         "pump_room": "/dev/serial/by-id/usb-pump",
     }
-    updated = replace_serial_ports(CONFIG, assignments)
+    updated = replace_serial_ports(CONFIG, assignments, source=Path("config.yaml"))
     if "# preserve this manual comment" not in updated or "type: labpulse.dht11" not in updated:
         raise AssertionError("manual or unrelated config content was lost")
     for port in assignments.values():

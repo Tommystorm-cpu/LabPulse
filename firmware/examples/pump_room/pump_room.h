@@ -43,13 +43,13 @@ constexpr LabPulse::PinMeasurement PRESSURES[] = {
     {A4, "press2"},
 };
 
-// Flow configuration retained from the current pump-room firmware.
+// Keep the deployed flow, thermistor, and DHT11 calibration here so moving to
+// shared sensor classes does not change the values sent to LabPulse.
 constexpr LabPulse::PulseFlowConfig FLOW1_CONFIG = {
     FLOW1.pin, 450.0F, INPUT_PULLUP, FALLING};
 constexpr LabPulse::PulseFlowConfig FLOW2_CONFIG = {
     FLOW2.pin, 450.0F, INPUT_PULLUP, FALLING};
 
-// Water-temperature configuration retained from the current firmware.
 constexpr LabPulse::ThermistorConfig TEMPERATURE_CONFIGS[] = {
     {TEMPERATURES[0].pin, 5.0F, 1023, 2, 1021, 4700.0F, 0.0014948F, 0.00021902F,
      1.6239e-6F, 3.4445e-8F, -100.0F, 200.0F},
@@ -61,7 +61,6 @@ constexpr LabPulse::ThermistorConfig TEMPERATURE_CONFIGS[] = {
      1.6239e-6F, 3.4445e-8F, -100.0F, 200.0F},
 };
 
-// DHT11 configuration retained from the current pump-room firmware.
 constexpr LabPulse::Dht11Config DHT11_CONFIG = {
     ROOM_DHT11.pin, DHT11, -40.0F, 80.0F, 0.0F, 100.0F};
 

@@ -10,13 +10,14 @@ from pydantic import ValidationError
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
-from labpulse.common.config import LabPulseConfig, ServiceConfig, load_config
+from labpulse.common.config import LabPulseConfig, load_config
 from labpulse.common.identity import stable_id
 from labpulse.common.fake_config import (
     convert_power_service_to_fake_serial,
     derive_fake_config,
 )
-from labpulse.homeassistant.cli import main as generate_homeassistant
+from labpulse.common.service_config import ServiceConfig
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"

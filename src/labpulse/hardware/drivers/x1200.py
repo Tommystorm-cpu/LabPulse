@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +21,9 @@ from labpulse.hardware.driver import (
 
 BATTERY_VOLTAGE_REGISTER = 0x02
 STATE_OF_CHARGE_REGISTER = 0x04
-CommandRunner = Callable[..., Any]
 
 
-# Driver configuration
+# Values accepted under driver.options in config.yaml.
 class X1200Config(BaseModel):
     """I2C and GPIO configuration for the X1200."""
 
@@ -47,7 +45,8 @@ class X1200Config(BaseModel):
         return address
 
 
-# Battery fuel-gauge decoding
+# The fuel gauge sends the most significant byte first. Combine the two bytes
+# before applying the voltage or percentage scale from its datasheet.
 def register_word(data: list[int]) -> int:
     """Decode one big-endian two-byte MAX17043 register response."""
 
@@ -59,6 +58,8 @@ def register_word(data: list[int]) -> int:
 def decode_voltage(raw: int) -> float:
     """Decode the X1200 MAX17043 VCELL register using its 1.25 mV scale."""
 
+    # The lowest four register bits are fractional padding rather than part of
+    # the 12-bit ADC reading.
     return (raw >> 4) * 0.00125
 
 
@@ -68,87 +69,54 @@ def decode_state_of_charge(raw: int) -> float:
     return raw / 256.0
 
 
-# Mains-power GPIO reading
-class MainsGpioReader:
-    """Read the X1200 mains-detection GPIO with either libgpiod CLI version."""
+# Raspberry Pi OS releases use two incompatible gpioget command forms, so try
+# the current form first and fall back to the older one.
+def read_mains_gpio(chip: str, line: int, active_high: bool) -> float:
+    """Read the mains-detection GPIO, supporting either libgpiod CLI version."""
 
-    def __init__(
-        self,
-        chip: str,
-        line: int,
-        active_high: bool = True,
-        command_runner: CommandRunner = subprocess.run,
-    ) -> None:
-        """Store the configured GPIO identity and injectable process runner."""
+    chip_name = Path(chip).name
+    result = subprocess.run(["gpioget", "-c", chip_name, str(line)], capture_output=True, text=True, check=False, timeout=2)
+    if result.returncode != 0:
+        legacy_result = subprocess.run(["gpioget", chip_name, str(line)], capture_output=True, text=True, check=False, timeout=2)
+        if legacy_result.returncode != 0:
+            modern_detail = result.stderr.strip() or f"gpioget exited {result.returncode}"
+            legacy_detail = legacy_result.stderr.strip() or f"gpioget exited {legacy_result.returncode}"
+            raise OSError(f"libgpiod 2.x read failed: {modern_detail}; libgpiod 1.x read failed: {legacy_detail}")
+        result = legacy_result
 
-        self.chip = chip
-        self.line = line
-        self.active_high = active_high
-        self._command_runner = command_runner
+    raw = result.stdout.strip()
+    value = raw.rsplit("=", 1)[-1].strip().lower()
+    if value not in {"0", "1", "active", "inactive"}:
+        raise ValueError(f"unexpected gpioget output: {raw!r}")
 
-    def read(self) -> float:
-        """Return normalized mains presence as 1.0 or 0.0."""
+    asserted = value in {"1", "active"}
+    mains_present = asserted if active_high else not asserted
+    return 1.0 if mains_present else 0.0
 
-        chip_name = Path(self.chip).name
-        result = self._command_runner(["gpioget", "-c", chip_name, str(self.line)], capture_output=True, text=True, check=False, timeout=2)
-        if result.returncode != 0:
-            legacy_result = self._command_runner(["gpioget", chip_name, str(self.line)], capture_output=True, text=True, check=False, timeout=2)
-            if legacy_result.returncode != 0:
-                modern_detail = result.stderr.strip() or f"gpioget exited {result.returncode}"
-                legacy_detail = legacy_result.stderr.strip() or f"gpioget exited {legacy_result.returncode}"
-                raise OSError(
-                    f"libgpiod 2.x read failed: {modern_detail}; "
-                    f"libgpiod 1.x read failed: {legacy_detail}"
-                )
-            result = legacy_result
 
-        raw = result.stdout.strip()
-        value = raw.rsplit("=", 1)[-1].strip().lower()
-        if value not in {"0", "1", "active", "inactive"}:
-            raise ValueError(f"unexpected gpioget output: {raw!r}")
-
-        asserted = value in {"1", "active"}
-        mains_present = asserted if self.active_high else not asserted
-        return 1.0 if mains_present else 0.0
-# Required driver lifecycle
+# The runner calls this connect/read/close lifecycle for the selected service.
 class X1200Driver(HardwareDriver):
     """Read X1200 battery telemetry and direct external-power state."""
 
-    def __init__(
-        self,
-        service_name: str,
-        config: X1200Config,
-        *,
-        bus_factory: Callable[[int], Any] | None = None,
-        mains_gpio_reader: MainsGpioReader | None = None,
-    ) -> None:
-        """Store the verified X1200 identities and injectable dependencies."""
+    def __init__(self, service_name: str, config: X1200Config) -> None:
+        """Store the verified X1200 hardware identities."""
 
         super().__init__(service_name)
         self.bus_number = config.bus
         self.address = config.address
-        self._bus_factory = bus_factory or self._default_bus_factory
-        self._mains_gpio_reader = mains_gpio_reader or MainsGpioReader(
-            config.gpio_chip,
-            config.gpio_line,
-            config.mains_present_active_high,
-        )
+        self.gpio_chip = config.gpio_chip
+        self.gpio_line = config.gpio_line
+        self.mains_present_active_high = config.mains_present_active_high
         self._i2c_bus: Any | None = None
         self._mains_read_was_faulted = False
-
-    @staticmethod
-    def _default_bus_factory(bus_number: int) -> Any:
-        """Open SMBus lazily so hardware-free tests do not require smbus2."""
-
-        import smbus2
-
-        return smbus2.SMBus(bus_number)
 
     def connect(self) -> None:
         """Open the X1200 fuel-gauge connection without writing registers."""
 
         try:
-            self._i2c_bus = self._bus_factory(self.bus_number)
+            import smbus2
+
+            self._i2c_bus = smbus2.SMBus(self.bus_number)
         except ImportError as error:
             self._i2c_bus = None
             raise DriverUnavailable(
@@ -185,7 +153,7 @@ class X1200Driver(HardwareDriver):
         }
 
         try:
-            values["mains_present"] = self._mains_gpio_reader.read()
+            values["mains_present"] = read_mains_gpio(self.gpio_chip, self.gpio_line, self.mains_present_active_high)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             if not self._mains_read_was_faulted:
                 self.logger.error("X1200 mains GPIO read failed: %s", error)
@@ -217,7 +185,7 @@ class X1200Driver(HardwareDriver):
         return register_word([int(value) for value in data])
 
 
-# Container access and driver registration
+# This becomes the I2C and GPIO access granted to the service in Docker Compose.
 def container_requirements(config: X1200Config, _force_simulated: bool) -> ContainerRequirements:
     """Expose only the configured I2C bus and GPIO chip."""
 

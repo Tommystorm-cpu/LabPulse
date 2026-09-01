@@ -12,7 +12,7 @@ import re
 import shutil
 import sys
 import tempfile
-from typing import Callable, Sequence
+from typing import Sequence
 
 
 def _use_managed_python_when_deployed() -> None:
@@ -30,6 +30,8 @@ def _use_managed_python_when_deployed() -> None:
             "Run 'labpulse setup' to restore the managed environment."
         )
     if Path(sys.executable).resolve() != python_path.resolve():
+        # Replace this process rather than starting a child, so signals and the
+        # final exit code still belong to the command the operator launched.
         os.execv(str(python_path), [str(python_path), *sys.argv])
 
 
@@ -51,7 +53,6 @@ class SerialService:
 
     name: str
     label: str
-    current_port: str
 
 
 def load_serial_services(config_path: Path) -> list[SerialService]:
@@ -61,14 +62,7 @@ def load_serial_services(config_path: Path) -> list[SerialService]:
     services: list[SerialService] = []
     for name, config in document.config.services.items():
         if config.enabled and config.driver.type == "labpulse.serial_pipe":
-            options = config.driver.options
-            services.append(
-                SerialService(
-                    name=name,
-                    label=config.label or name,
-                    current_port=options.port,
-                )
-            )
+            services.append(SerialService(name=name, label=config.label or name))
     return services
 
 
@@ -77,6 +71,8 @@ def snapshot_devices(device_dir: Path) -> dict[str, str]:
 
     if not device_dir.is_dir():
         return {}
+    # /dev/serial/by-id contains stable symlinks rather than the changeable
+    # /dev/ttyUSB0-style names underneath them.
     return {
         entry.name: str(device_dir / entry.name)
         for entry in sorted(device_dir.iterdir(), key=lambda item: item.name)
@@ -86,15 +82,14 @@ def snapshot_devices(device_dir: Path) -> dict[str, str]:
 
 def identify_devices(
     services: list[SerialService],
-    snapshot: Callable[[], dict[str, str]],
-    prompt: Callable[[str], str] = input,
+    device_dir: Path,
 ) -> dict[str, str]:
     """Identify one endpoint per service through guided unplug/replug changes."""
 
-    prompt(
+    input(
         "Start with every USB serial device plugged in, then press Enter to scan. "
     )
-    baseline = snapshot()
+    baseline = snapshot_devices(device_dir)
     if len(baseline) < len(services):
         raise RuntimeError(
             f"Found {len(baseline)} serial device(s), but {len(services)} enabled "
@@ -104,11 +99,13 @@ def identify_devices(
     assignments: dict[str, str] = {}
     used_devices: set[str] = set()
     for service in services:
-        prompt(
+        input(
             f"Unplug the USB device for {service.label} ({service.name}), "
             "then press Enter. "
         )
-        unplugged = snapshot()
+        unplugged = snapshot_devices(device_dir)
+        # Set subtraction leaves the name that existed before unplugging but is
+        # absent now. Exactly one disappearance identifies one physical device.
         missing = set(baseline) - set(unplugged)
         if len(missing) != 1:
             raise RuntimeError(
@@ -119,10 +116,10 @@ def identify_devices(
         if device_name in used_devices:
             raise RuntimeError(f"Device {device_name} was already assigned")
 
-        prompt(
+        input(
             f"Detected {baseline[device_name]}. Replug it, then press Enter. "
         )
-        replugged = snapshot()
+        replugged = snapshot_devices(device_dir)
         if device_name not in replugged:
             raise RuntimeError(
                 f"{baseline[device_name]} did not return. Reconnect it and rerun."
@@ -139,12 +136,14 @@ def replace_serial_ports(
     config_text: str,
     assignments: dict[str, str],
     *,
-    source: Path = Path("config.yaml"),
+    source: Path,
 ) -> str:
     """Replace only assigned nested driver port lines, preserving other text."""
 
     lines = config_text.splitlines(keepends=True)
     newline = "\r\n" if "\r\n" in config_text else "\n"
+    # Work with the original lines rather than dumping parsed YAML, because the
+    # explanatory comments and the user's formatting should survive this edit.
     services_index = next(
         (index for index, line in enumerate(lines) if re.match(r"^services:\s*(?:#.*)?$", line.rstrip("\r\n"))),
         None,
@@ -153,6 +152,8 @@ def replace_serial_ports(
         raise ValueError("Config has no top-level services mapping")
 
     for service_name, port in assignments.items():
+        # Locate this service's top-level two-space header, then stop at the next
+        # service or top-level config section.
         header_pattern = re.compile(rf"^  {re.escape(service_name)}:\s*(?:#.*)?$")
         start = next(
             (
@@ -175,6 +176,7 @@ def replace_serial_ports(
                 end = index
                 break
 
+        # json.dumps supplies valid YAML quoting for unusual path characters.
         replacement = f"        port: {json.dumps(port)}{newline}"
         port_index = next(
             (
@@ -188,6 +190,8 @@ def replace_serial_ports(
             lines[port_index] = replacement
             continue
 
+        # Older configs may omit the optional port line. Insert it directly
+        # below driver.options when there is no existing line to replace.
         insert_after = next(
             (
                 index
@@ -202,6 +206,8 @@ def replace_serial_ports(
             )
         lines.insert(insert_after + 1, replacement)
 
+    # Validate the complete edited document and confirm each typed driver model
+    # received the intended path before anything is written to disk.
     updated = "".join(lines)
     document = load_config(source, text=updated)
     for service_name, port in assignments.items():
@@ -219,6 +225,8 @@ def write_config(config_path: Path, updated_text: str) -> Path:
     shutil.copy2(config_path, backup_path)
     temporary_name: str | None = None
     try:
+        # Write beside config.yaml and replace it only after the complete file is
+        # safely closed, so interruption cannot leave a partial configuration.
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
@@ -272,7 +280,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for service in services:
             print(f"  {service.name}: {service.label}")
 
-        assignments = identify_devices(services, snapshot=lambda: snapshot_devices(device_dir))
+        assignments = identify_devices(services, device_dir)
         print("\nDetected assignments:")
         for service in services:
             print(f"  {service.name}: {assignments[service.name]}")

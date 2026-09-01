@@ -1,8 +1,8 @@
 """Hardware-free contract tests for the Raspberry Pi DHT11 driver."""
 
+import sys
 from typing import Callable
 
-from labpulse.hardware.drivers import dht11
 from labpulse.hardware.driver import (
     ConnectionLost,
     DriverUnavailable,
@@ -82,8 +82,8 @@ def install_fake_modules(
     """Patch Pi-only modules with in-memory stand-ins."""
 
     fake_dht_module = FakeAdafruitDht(device)
-    dht11.adafruit_dht = fake_dht_module
-    dht11.board = board or FakeBoard
+    sys.modules["adafruit_dht"] = fake_dht_module  # type: ignore[assignment]
+    sys.modules["board"] = board or FakeBoard  # type: ignore[assignment]
     return fake_dht_module
 
 
@@ -173,8 +173,8 @@ def test_unknown_pin_is_unavailable() -> None:
 def test_missing_dependencies_are_unavailable() -> None:
     """Report missing optional GPIO packages without an import crash."""
 
-    dht11.adafruit_dht = None
-    dht11.board = None
+    sys.modules["adafruit_dht"] = None  # type: ignore[assignment]
+    sys.modules["board"] = None  # type: ignore[assignment]
 
     assert_raises(DriverUnavailable, make_driver().connect)
 

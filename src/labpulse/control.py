@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -13,7 +12,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any, Sequence
+from typing import Sequence
 import webbrowser
 
 from labpulse import __version__
@@ -185,50 +184,19 @@ def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
     return 0
 
 
-def _wait_for_homeassistant(
-    timeout: float = 120.0,
-    *,
-    connector: Callable[..., Any] = socket.create_connection,
-    sleep: Callable[[float], None] = time.sleep,
-) -> bool:
+def _wait_for_homeassistant(timeout: float = 120.0) -> bool:
     """Wait for Home Assistant's local endpoint after reconstruction."""
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            connection = connector(("127.0.0.1", 8123), timeout=2.0)
+            connection = socket.create_connection(("127.0.0.1", 8123), timeout=2.0)
         except (OSError, TimeoutError):
-            sleep(2.0)
+            time.sleep(2.0)
             continue
         connection.close()
         return True
     return False
-
-
-def _rollback_archive_path(live_dir: Path) -> Path:
-    """Return a collision-resistant pre-restore archive path."""
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    return live_dir.parent / f"labpulse-pre-restore-{timestamp}.tar.gz"
-
-
-def _confirm_restore(live_dir: Path, archive: Path) -> bool:
-    """Require an explicit destructive-restore confirmation."""
-
-    print(f"Restore archive: {archive}")
-    print(f"Target installation: {live_dir}")
-    print("Current LabPulse state will be replaced after a rollback archive is made.")
-    return input("Type RESTORE to continue: ").strip() == "RESTORE"
-
-
-def _run_setup_for_manifest(live_dir: Path, manifest: dict[str, object]) -> int:
-    """Regenerate a restored installation in its recorded runtime mode."""
-
-    return run_setup(
-        str(live_dir),
-        fake_usb=manifest.get("runtime_mode") == "fake_usb",
-        backup=True,
-    )
 
 
 def run_restore_command(
@@ -245,16 +213,24 @@ def run_restore_command(
     except BackupError as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    if not assume_yes and not _confirm_restore(live_dir, archive):
-        print("Restore cancelled; no files were changed.")
-        return 2
+    if not assume_yes:
+        print(f"Restore archive: {archive}")
+        print(f"Target installation: {live_dir}")
+        print("Current LabPulse state will be replaced after a rollback archive is made.")
+        if input("Type RESTORE to continue: ").strip() != "RESTORE":
+            print("Restore cancelled; no files were changed.")
+            return 2
 
+    # A restore may target an empty machine. Build the normal live directory
+    # first so the restored state has the same structure as a fresh install.
     had_user_state = (live_dir / "config.yaml").exists() or (live_dir / "homeassistant" / "config").exists()
     if not (live_dir / "compose.yaml").is_file():
-        if _run_setup_for_manifest(live_dir, manifest) != 0:
+        if run_setup(str(live_dir), fake_usb=manifest.get("runtime_mode") == "fake_usb", backup=True) != 0:
             print("ERROR: Could not scaffold the restore target.", file=sys.stderr)
             return 1
 
+    # Stop only the services that are currently running. Their names are kept
+    # so a failed restore can return the installation to its previous state.
     try:
         docker_prefix = docker_command()
         active_services = running_services(live_dir, docker_prefix)
@@ -266,14 +242,19 @@ def run_restore_command(
     rollback_path: Path | None = None
     restored = False
     try:
+        # The user's current state gets its own full archive before it is
+        # replaced, even though the incoming archive has already been checked.
         if had_user_state:
-            rollback_path = _rollback_archive_path(live_dir)
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            rollback_path = live_dir.parent / f"labpulse-pre-restore-{timestamp}.tar.gz"
             create_backup(live_dir, rollback_path, docker_prefix, quiesce=False)
             print(f"Pre-restore rollback archive: {rollback_path}")
 
         restore_backup(live_dir, archive)
         restored = True
-        if _run_setup_for_manifest(live_dir, manifest) != 0:
+        # Restored config is the source of truth. Recreate generated files from
+        # it instead of trusting potentially stale generated files in a backup.
+        if run_setup(str(live_dir), fake_usb=manifest.get("runtime_mode") == "fake_usb", backup=True) != 0:
             raise BackupError("setup/regeneration failed after restoring state")
         if run_compose(live_dir, ("up", "-d", "--pull", "missing")) != 0:
             raise BackupError("versioned Compose stack did not start")
@@ -283,7 +264,11 @@ def run_restore_command(
             print("Restoring the automatic rollback snapshot...", file=sys.stderr)
             try:
                 rollback_manifest = restore_backup(live_dir, rollback_path)
-                if _run_setup_for_manifest(live_dir, rollback_manifest) != 0:
+                if run_setup(
+                    str(live_dir),
+                    fake_usb=rollback_manifest.get("runtime_mode") == "fake_usb",
+                    backup=True,
+                ) != 0:
                     raise BackupError("setup/regeneration failed during rollback")
             except (BackupError, OSError) as rollback_error:
                 print(
@@ -333,6 +318,9 @@ def run_setup(
 
     previous_setup_command = os.environ.get("LABPULSE_SETUP_COMMAND")
     previous_live_dir = os.environ.get("LABPULSE_LIVE_DIR")
+    # The shell installer reads these environment variables. Restore their old
+    # values in finally so calling setup cannot alter later commands in this
+    # Python process.
     os.environ["LABPULSE_SETUP_COMMAND"] = "labpulse setup"
     if live_dir_override is not None:
         os.environ["LABPULSE_LIVE_DIR"] = str(live_directory(live_dir_override))

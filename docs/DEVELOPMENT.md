@@ -91,19 +91,20 @@ See [Architecture](ARCHITECTURE.md) for the complete ownership model.
 
 ## Package entry-point convention
 
-Standalone process packages use:
+Standalone process packages keep their small command composition at the
+package boundary instead of adding a second forwarding module:
 
 ```text
-package/__main__.py → package/cli.py → importable domain modules
+package/__main__.py → importable domain modules
 ```
 
 Current examples:
 
 | Package | CLI | Domain modules |
 |---|---|---|
-| `hardware` | `src/labpulse/hardware/cli.py` | runner, registry, drivers, publisher |
-| `homeassistant` | `src/labpulse/homeassistant/cli.py` | generator, alarm context, templates |
-| `sms` | `src/labpulse/sms/cli.py` | subscriber, sender, subscriptions |
+| `hardware` | `src/labpulse/hardware/__main__.py` | runner, registry, drivers, publisher |
+| `homeassistant` | `src/labpulse/homeassistant/generator.py` | alarm context and templates |
+| `sms` | `src/labpulse/sms/__main__.py` | subscriber and sender |
 | `deployment` | `src/labpulse/deployment/generate.py` | Compose renderer and install transaction |
 
 CLI modules should:
@@ -126,9 +127,17 @@ backup, restore, diagnostics, and Compose lifecycle commands.
 
 ## Configuration ownership
 
-`src/labpulse/common/config.py` is the only production YAML loader. It returns
-a source-aware `ConfigDocument` whose selected driver options are already
-typed.
+Configuration is split by the concepts being validated:
+
+- `src/labpulse/common/config.py` owns global settings, cross-references,
+  source-aware errors, and the only production YAML loader;
+- `src/labpulse/common/measurement_config.py` owns physical and calculated
+  measurements, including formula validation;
+- `src/labpulse/common/service_config.py` owns drivers, service timing, and
+  dedicated power-service rules.
+
+`load_config()` returns a source-aware `ConfigDocument` whose selected driver
+options are already typed.
 
 When changing configuration:
 
@@ -162,8 +171,7 @@ artifact, and installs managed live files only after all rendering succeeds.
 Home Assistant generation is split by responsibility:
 
 ```text
-src/labpulse/homeassistant/cli.py          standalone arguments/config errors
-src/labpulse/homeassistant/generator.py    core config/dashboard render and file install
+src/labpulse/homeassistant/generator.py    command, config/dashboard render, and file install
 src/labpulse/homeassistant/alarm.py        derived alarm/dashboard render context
 src/labpulse/homeassistant/templates/      final-shaped YAML behavior
 ```
@@ -272,8 +280,14 @@ requirements function, and `DRIVER_DEFINITION` together in one module. See
   state, a real boundary, or a reused contract.
 - Put principal collaborators before runtime facilities and private lifecycle
   bookkeeping so the importance of stored state is immediately visible.
-- Use short comments to signpost unfamiliar procedures. Use longer comments
-  for safety constraints and reasons that the code itself cannot show.
+- Write for an undergraduate physicist who may know basic Python but not
+  advanced Python, shell, YAML/Jinja, MQTT, Docker, or hardware-library idioms.
+- Use short comments to translate complicated expressions, slightly advanced
+  syntax, and unfamiliar procedures into plain language. Narrating nearby code
+  is useful when the syntax would otherwise make the reader stop and decode it.
+- Use longer comments for safety constraints and reasons that the code itself
+  cannot show. Skip narration only when the nearby code is already obvious to
+  that audience.
 - Keep the successful path visible and handle expected failures beside the
   operation that can produce them.
 - Validate untrusted input once at its system boundary. After conversion to a

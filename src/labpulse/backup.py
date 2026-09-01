@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -33,9 +33,6 @@ CONTAINER_SNAPSHOT_PATHS = {
     "homeassistant/config": ("homeassistant", "/config"),
     "mosquitto/data": ("mosquitto", "/mosquitto/data"),
 }
-CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
-
-
 class BackupError(RuntimeError):
     """Raised when a backup or restore cannot complete safely."""
 
@@ -52,15 +49,6 @@ def _temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=False)
-
-
-def _package_version() -> str:
-    """Return the installed LabPulse version without requiring package metadata."""
-
-    try:
-        return version("labpulse")
-    except PackageNotFoundError:
-        return "source-checkout"
 
 
 def _sha256(path: Path) -> str:
@@ -90,43 +78,16 @@ def _capture_host_command(command: Sequence[str]) -> str:
     return output or f"exit {result.returncode}"
 
 
-def _host_report(docker_prefix: Sequence[str]) -> dict[str, str]:
-    """Record reconstruction context without copying host credentials."""
-
-    return {
-        "platform": platform.platform(),
-        "python": platform.python_version(),
-        "docker_command": " ".join(docker_prefix),
-        "clock": _capture_host_command(
-            (
-                "timedatectl",
-                "show",
-                "--property=Timezone",
-                "--property=NTPSynchronized",
-            )
-        ),
-        "watchdog": _capture_host_command(
-            (
-                "systemctl",
-                "show",
-                "--property=RuntimeWatchdogUSec",
-                "--value",
-            )
-        ),
-    }
-
-
 def _compose(
     live_dir: Path,
     docker_prefix: Sequence[str],
     arguments: Sequence[str],
-    runner: CommandRunner,
 ) -> subprocess.CompletedProcess[str]:
     """Run one bounded Compose command or raise an actionable error."""
 
     command = [*docker_prefix, "compose", *arguments]
     try:
-        result = runner(
+        result = subprocess.run(
             command,
             cwd=live_dir,
             capture_output=True,
@@ -147,7 +108,6 @@ def _compose(
 def running_services(
     live_dir: Path,
     docker_prefix: Sequence[str],
-    runner: CommandRunner = subprocess.run,
 ) -> tuple[str, ...]:
     """Return the currently running Compose services in stable order."""
 
@@ -155,7 +115,6 @@ def running_services(
         live_dir,
         docker_prefix,
         ("ps", "--status", "running", "--services"),
-        runner,
     )
     return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
 
@@ -164,29 +123,29 @@ def stop_services(
     live_dir: Path,
     docker_prefix: Sequence[str],
     services: Sequence[str],
-    runner: CommandRunner = subprocess.run,
 ) -> None:
     """Stop selected services for a consistent state snapshot."""
 
     if services:
-        _compose(live_dir, docker_prefix, ("stop", *services), runner)
+        _compose(live_dir, docker_prefix, ("stop", *services))
 
 
 def start_services(
     live_dir: Path,
     docker_prefix: Sequence[str],
     services: Sequence[str],
-    runner: CommandRunner = subprocess.run,
 ) -> None:
     """Restart exactly the services stopped for a snapshot."""
 
     if services:
-        _compose(live_dir, docker_prefix, ("start", *services), runner)
+        _compose(live_dir, docker_prefix, ("start", *services))
 
 
 def _copy_snapshot_path(source: Path, destination: Path) -> None:
     """Copy one state path while rejecting links and special files."""
 
+    # A symbolic link could point outside ~/labpulse-live and pull an unrelated
+    # file into the archive, so backups only follow ordinary files/directories.
     if source.is_symlink():
         raise BackupError(f"Refusing to follow state symlink: {source}")
     if source.is_file():
@@ -228,7 +187,6 @@ def _copy_snapshot_from_container(
     relative: str,
     destination: Path,
     docker_prefix: Sequence[str],
-    runner: CommandRunner,
 ) -> None:
     """Copy container-owned bind-mount state through its stopped service."""
 
@@ -240,7 +198,6 @@ def _copy_snapshot_from_container(
             live_dir,
             docker_prefix,
             ("cp", f"{service}:{container_path}/.", str(destination)),
-            runner,
         )
     except BackupError as error:
         raise BackupError(
@@ -250,22 +207,10 @@ def _copy_snapshot_from_container(
     _validate_snapshot_path(destination)
 
 
-def _runtime_mode(live_dir: Path) -> str:
-    """Infer whether generated Compose currently mounts the fake runtime config."""
-
-    compose_path = live_dir / "compose.yaml"
-    try:
-        compose_text = compose_path.read_text(encoding="utf-8")
-    except OSError:
-        return "real_hardware"
-    return "fake_usb" if "config.fake.yaml:/app/config.yaml" in compose_text else "real_hardware"
-
-
 def _assemble_snapshot(
     live_dir: Path,
     staging_root: Path,
     docker_prefix: Sequence[str],
-    runner: CommandRunner,
 ) -> None:
     """Copy selected state and write its checksum manifest."""
 
@@ -281,6 +226,9 @@ def _assemble_snapshot(
         try:
             _copy_snapshot_path(source, destination)
         except PermissionError as error:
+            # Home Assistant and Mosquitto may create files owned by their
+            # container user. A stopped container can still copy that mounted
+            # state when the host user is not allowed to read it directly.
             if relative not in CONTAINER_SNAPSHOT_PATHS:
                 raise BackupError(f"Cannot read backup state: {error.filename}") from error
             _copy_snapshot_from_container(
@@ -288,39 +236,49 @@ def _assemble_snapshot(
                 relative,
                 destination,
                 docker_prefix,
-                runner,
             )
         included.append(relative)
 
+    # Record the digest of every file so restore can detect a missing, added,
+    # or modified payload before replacing live state.
     checksums = {
         path.relative_to(staging_root).as_posix(): _sha256(path)
         for path in sorted(payload_root.rglob("*"))
         if path.is_file()
     }
+    try:
+        labpulse_version = version("labpulse")
+    except PackageNotFoundError:
+        labpulse_version = "source-checkout"
+    try:
+        compose_text = (live_dir / "compose.yaml").read_text(encoding="utf-8")
+    except OSError:
+        compose_text = ""
+    runtime_mode = "fake_usb" if "config.fake.yaml:/app/config.yaml" in compose_text else "real_hardware"
     manifest: dict[str, Any] = {
         "format_version": BACKUP_FORMAT_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "labpulse_version": _package_version(),
+        "labpulse_version": labpulse_version,
         "source_live_directory": str(live_dir),
-        "runtime_mode": _runtime_mode(live_dir),
+        "runtime_mode": runtime_mode,
         "included_paths": included,
         "files": checksums,
-        "host": _host_report(docker_prefix),
+        "host": {
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "docker_command": " ".join(docker_prefix),
+            "clock": _capture_host_command(
+                ("timedatectl", "show", "--property=Timezone", "--property=NTPSynchronized")
+            ),
+            "watchdog": _capture_host_command(
+                ("systemctl", "show", "--property=RuntimeWatchdogUSec", "--value")
+            ),
+        },
     }
     (staging_root / MANIFEST_NAME).write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
-
-def _inside(path: Path, parent: Path) -> bool:
-    """Return whether a resolved path is inside a resolved parent."""
-
-    try:
-        path.relative_to(parent)
-    except ValueError:
-        return False
-    return True
 
 
 def create_backup(
@@ -330,7 +288,6 @@ def create_backup(
     *,
     force: bool = False,
     quiesce: bool = True,
-    runner: CommandRunner = subprocess.run,
 ) -> Path:
     """Create one checksummed private archive, restarting quiesced services."""
 
@@ -340,7 +297,7 @@ def create_backup(
         raise BackupError(
             f"LabPulse is not set up at {live_dir}; run 'labpulse setup' first"
         )
-    if _inside(archive_path, live_dir):
+    if archive_path.is_relative_to(live_dir):
         raise BackupError("Backup archive must be stored outside the live directory")
     if archive_path.exists() and not force:
         raise BackupError(f"Backup archive already exists: {archive_path}")
@@ -348,19 +305,21 @@ def create_backup(
 
     active_services: tuple[str, ...] = ()
     if quiesce:
-        active_services = running_services(live_dir, docker_prefix, runner)
+        active_services = running_services(live_dir, docker_prefix)
 
     temporary_archive = archive_path.parent / (
         f".{archive_path.name}.creating-{uuid4().hex}"
     )
     try:
+        # Services are stopped only while their mutable state is copied. The
+        # finally block restarts exactly those that were running beforehand.
         if quiesce:
-            stop_services(live_dir, docker_prefix, active_services, runner)
+            stop_services(live_dir, docker_prefix, active_services)
         with _temporary_directory(
             archive_path.parent,
             "labpulse-backup-",
         ) as staging_root:
-            _assemble_snapshot(live_dir, staging_root, docker_prefix, runner)
+            _assemble_snapshot(live_dir, staging_root, docker_prefix)
             with tarfile.open(temporary_archive, "w:gz") as archive:
                 archive.add(staging_root / MANIFEST_NAME, arcname=MANIFEST_NAME)
                 archive.add(staging_root / PAYLOAD_DIRECTORY, arcname=PAYLOAD_DIRECTORY)
@@ -370,20 +329,9 @@ def create_backup(
         if temporary_archive.exists():
             temporary_archive.unlink()
         if quiesce:
-            start_services(live_dir, docker_prefix, active_services, runner)
+            start_services(live_dir, docker_prefix, active_services)
 
     return archive_path
-
-
-def _safe_member_name(name: str) -> bool:
-    """Accept only normalized manifest and payload archive paths."""
-
-    path = PurePosixPath(name)
-    if path.is_absolute() or ".." in path.parts or "." in path.parts:
-        return False
-    return name == MANIFEST_NAME or (
-        bool(path.parts) and path.parts[0] == PAYLOAD_DIRECTORY
-    )
 
 
 def _load_manifest(archive: tarfile.TarFile) -> dict[str, Any]:
@@ -441,7 +389,20 @@ def inspect_backup(archive_path: Path) -> dict[str, Any]:
         checksums: dict[str, str] = manifest["files"]
         archive_files: set[str] = set()
         for member in archive.getmembers():
-            if not _safe_member_name(member.name):
+            member_path = PurePosixPath(member.name)
+            # Absolute paths or ".." components could make extraction write
+            # outside its temporary directory. Only the manifest and payload
+            # tree are valid members of a LabPulse archive.
+            safe_name = (
+                not member_path.is_absolute()
+                and ".." not in member_path.parts
+                and "." not in member_path.parts
+                and (
+                    member.name == MANIFEST_NAME
+                    or (bool(member_path.parts) and member_path.parts[0] == PAYLOAD_DIRECTORY)
+                )
+            )
+            if not safe_name:
                 raise BackupError(f"Unsafe archive path: {member.name}")
             if not (member.isdir() or member.isreg()):
                 raise BackupError(f"Unsafe archive member type: {member.name}")
@@ -468,6 +429,9 @@ def _extract_validated(archive_path: Path, destination: Path) -> dict[str, Any]:
 
     manifest = inspect_backup(archive_path)
     with tarfile.open(archive_path, "r:*") as archive:
+        # Extract members ourselves instead of using tarfile.extract(). Their
+        # names and file types were checked above, and every destination remains
+        # visibly rooted in this temporary directory.
         members = archive.getmembers()
         for member in members:
             if not member.isdir():
@@ -519,6 +483,8 @@ def _apply_payload(live_dir: Path, payload_root: Path) -> None:
         live_dir.parent,
         "labpulse-restore-rollback-",
     ) as local_rollback:
+        # Copy the current state aside before removing anything. If any later
+        # copy fails, the except block can put the complete old state back.
         existing: list[str] = []
         for relative in SNAPSHOT_PATHS:
             target = live_dir / relative

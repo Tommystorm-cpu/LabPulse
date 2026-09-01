@@ -15,6 +15,8 @@ CURRENT_MEASUREMENT_PLACEHOLDER = "{current_measurement}"
 def load_sms_templates() -> dict[str, Any]:
     """Return the validated SMS template catalogue bundled with LabPulse."""
 
+    # lru_cache keeps this validated dictionary for the lifetime of the process,
+    # so every alert uses one consistent reading of the bundled YAML file.
     payload = yaml.safe_load(TEMPLATE_PATH.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"SMS template catalogue must be a mapping: {TEMPLATE_PATH}")

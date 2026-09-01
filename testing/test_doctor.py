@@ -5,12 +5,14 @@ from pathlib import Path
 import shutil
 import subprocess
 from typing import Iterator
+from unittest.mock import patch
 from uuid import uuid4
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 from labpulse import __version__
+from labpulse import doctor
 from labpulse.doctor import CheckStatus, diagnose
 
 
@@ -118,13 +120,10 @@ def test_healthy_diagnostics_are_read_only_and_report_runtime_mode() -> None:
             for path in live_dir.rglob("*")
             if path.is_file()
         }
-        report = diagnose(
-            live_dir,
-            docker_prefix=["docker"],
-            command_runner=healthy_runner,
-            connector=healthy_connector,
-            watchdog_path=live_dir / "watchdog0",
-        )
+        with patch.object(doctor.subprocess, "run", side_effect=healthy_runner), patch.object(
+            doctor.socket, "create_connection", side_effect=healthy_connector
+        ), patch.object(doctor, "WATCHDOG_PATH", live_dir / "watchdog0"):
+            report = diagnose(live_dir, docker_prefix=["docker"])
         if report.exit_code != 0:
             raise AssertionError(report.render())
         if not any(
@@ -187,13 +186,10 @@ def test_service_and_endpoint_failures_include_corrective_actions() -> None:
         ) -> Connection:
             raise ConnectionRefusedError(f"refused {address} after {timeout}s")
 
-        failed = diagnose(
-            live_dir,
-            docker_prefix=["docker"],
-            command_runner=stopped_runner,
-            connector=refused_connector,
-            watchdog_path=live_dir / "watchdog0",
-        )
+        with patch.object(doctor.subprocess, "run", side_effect=stopped_runner), patch.object(
+            doctor.socket, "create_connection", side_effect=refused_connector
+        ), patch.object(doctor, "WATCHDOG_PATH", live_dir / "watchdog0"):
+            failed = diagnose(live_dir, docker_prefix=["docker"])
         failed_names = {
             check.name
             for check in failed.checks
@@ -240,13 +236,10 @@ def test_docker_permission_failure_is_actionable() -> None:
                 )
             return healthy_runner(command, **kwargs)
 
-        denied = diagnose(
-            live_dir,
-            docker_prefix=["docker"],
-            command_runner=denied_docker_runner,
-            connector=healthy_connector,
-            watchdog_path=live_dir / "watchdog0",
-        )
+        with patch.object(doctor.subprocess, "run", side_effect=denied_docker_runner), patch.object(
+            doctor.socket, "create_connection", side_effect=healthy_connector
+        ), patch.object(doctor, "WATCHDOG_PATH", live_dir / "watchdog0"):
+            denied = diagnose(live_dir, docker_prefix=["docker"])
         docker_failure = next(
             check
             for check in denied.checks
@@ -263,11 +256,6 @@ def test_missing_installation_stops_after_the_installation_check() -> None:
     """Return one focused failure when the live directory does not exist."""
 
     missing = REPOSITORY / "testing" / "definitely-not-a-doctor-install"
-    missing_report = diagnose(
-        missing,
-        docker_prefix=["docker"],
-        command_runner=healthy_runner,
-        connector=healthy_connector,
-    )
+    missing_report = diagnose(missing, docker_prefix=["docker"])
     if missing_report.exit_code != 1 or len(missing_report.checks) != 1:
         raise AssertionError(missing_report.render())

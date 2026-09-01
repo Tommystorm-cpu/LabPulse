@@ -134,7 +134,8 @@ def test_complete_round_trip() -> None:
 
     with state_tree() as (live, archive):
         runner = ComposeRunner()
-        result = create_backup(live, archive, ["docker"], runner=runner)
+        with patch("labpulse.backup.subprocess.run", side_effect=runner):
+            result = create_backup(live, archive, ["docker"])
         assert_equal(result, archive, "archive path")
         if os.name != "nt" and archive.stat().st_mode & 0o077:
             raise AssertionError("backup archive permissions are not private")
@@ -153,7 +154,11 @@ def test_complete_round_trip() -> None:
                 raise AssertionError(f"manifest omitted {required}")
 
         assert_equal(
-            runner.commands,
+            [
+                command
+                for command in runner.commands
+                if isinstance(command, list) and command[:2] == ["docker", "compose"]
+            ],
             [
                 [
                     "docker",
@@ -261,8 +266,10 @@ def test_container_copy_fallback_for_unreadable_homeassistant_state() -> None:
                 raise PermissionError(13, "Permission denied", str(source))
             return str(original_copy2(source, destination))
 
-        with patch("labpulse.backup.shutil.copy2", side_effect=permission_denied):
-            create_backup(live, archive, ["docker"], quiesce=False, runner=runner)
+        with patch("labpulse.backup.shutil.copy2", side_effect=permission_denied), patch(
+            "labpulse.backup.subprocess.run", side_effect=runner
+        ):
+            create_backup(live, archive, ["docker"], quiesce=False)
 
         manifest = inspect_backup(archive)
         private_token = "payload/homeassistant/config/.cloud/production_auth.json"

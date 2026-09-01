@@ -53,6 +53,8 @@ DEFAULT_FAKE_POWER_SERVICE = {
 def derive_fake_config(text: str) -> str:
     """Derive the simulator runtime YAML from the user-owned source YAML."""
 
+    # The starter config uses named placeholders for serial ports. Replace only
+    # their first occurrence so explanatory examples in comments stay intact.
     for source, replacement in FAKE_SERIAL_REPLACEMENTS.items():
         text = text.replace(source, replacement, 1)
 
@@ -99,6 +101,9 @@ def convert_power_service_to_fake_serial(text: str) -> str:
 def convert_service_to_fake_serial(text: str, service_name: str, port: str) -> str:
     """Replace one service's driver block while preserving surrounding YAML."""
 
+    # yaml.compose returns nodes with line/column positions in the original
+    # text. Using those positions lets us replace one driver block without
+    # reformatting the user's file or discarding its comments.
     root = yaml.compose(text)
     services_node = _mapping_entry(root, "services")[1]
     service_node = _mapping_entry(services_node, service_name)[1]
@@ -116,6 +121,8 @@ def convert_service_to_fake_serial(text: str, service_name: str, port: str) -> s
         f"{prefix}    port: {json.dumps(port)}{newline}",
         f"{prefix}    baud_rate: 9600{newline}",
     ]
+    # Slice assignment replaces exactly the original driver's lines with the
+    # five generated lines above.
     lines[driver_key.start_mark.line : driver_node.end_mark.line] = replacement
     return "".join(lines)
 
@@ -129,6 +136,8 @@ def _add_default_fake_power_service(text: str) -> str:
         raise ValueError("services must be a YAML mapping")
 
     lines = text.splitlines(keepends=True)
+    # Prefer the point just before the commented real-UPS example. If that
+    # marker is absent, append to the end of the services mapping instead.
     insertion_line = services_node.end_mark.line
     for index, line in enumerate(lines):
         if line.startswith("# Live UPS example"):

@@ -13,7 +13,9 @@ from labpulse.hardware.driver import (
     HardwareDriver,
     HardwareReadings,
 )
-# Driver configuration
+
+
+# Values accepted under driver.options in config.yaml.
 class SerialPipeConfig(BaseModel):
     """Configuration for a standard LabPulse serial device."""
 
@@ -33,35 +35,7 @@ class SerialPipeConfig(BaseModel):
         return normalized
 
 
-# Optional hardware dependency
-# PySerial is container-only. Import it on first connection so config loading,
-# Home Assistant generation, and unrelated drivers never need the dependency.
-_UNLOADED = object()
-serial: Any = _UNLOADED
-
-
-def _load_serial_library() -> Any:
-    """Load PySerial when this driver first connects."""
-
-    global serial
-    if serial is _UNLOADED:
-        try:
-            import serial as pyserial
-        except ImportError as error:
-            raise DriverUnavailable(
-                "Serial dependencies are missing. Install the LabPulse serial extra "
-                "or install pyserial in the container."
-            ) from error
-        serial = pyserial
-    if serial is None:
-        raise DriverUnavailable(
-            "Serial dependencies are missing. Install the LabPulse serial extra "
-            "or install pyserial in the container."
-        )
-    return serial
-
-
-# Standard Arduino serial format
+# Arduino samples use "name: value | name: value" on one serial line.
 def parse_serial_line(line: str) -> dict[str, float] | None:
     """Return finite measurements from one pipe-delimited line."""
 
@@ -87,7 +61,7 @@ def parse_serial_line(line: str) -> dict[str, float] | None:
     return measurements or None
 
 
-# Required driver lifecycle
+# The runner calls this connect/read/close lifecycle for the selected service.
 class SerialPipeDriver(HardwareDriver):
     """Read Arduino measurements using the standard LabPulse serial format."""
 
@@ -97,29 +71,38 @@ class SerialPipeDriver(HardwareDriver):
         super().__init__(service_name)
         self.port = config.port
         self.baud_rate = config.baud_rate
+        self._serial_library: Any | None = None
         self._serial_connection: Any | None = None
 
     def connect(self) -> None:
         """Open the configured serial port or report it as unavailable."""
 
-        serial_library = _load_serial_library()
+        # PySerial is optional outside serial workers, so import it only when
+        # this driver is selected and opening its configured port.
         try:
-            self._serial_connection = serial_library.Serial(self.port, self.baud_rate, timeout=2)
-        except (serial_library.SerialException, OSError) as error:
+            import serial
+        except ImportError as error:
+            raise DriverUnavailable(
+                "Serial dependencies are missing. Install the LabPulse serial extra "
+                "or install pyserial in the container."
+            ) from error
+        try:
+            self._serial_connection = serial.Serial(self.port, self.baud_rate, timeout=2)
+        except (serial.SerialException, OSError) as error:
             self._serial_connection = None
             raise DriverUnavailable(f"failed to open {self.port}: {error}") from error
+        self._serial_library = serial
         self.logger.info("Connected to %s at %s baud", self.port, self.baud_rate)
 
     def read(self) -> HardwareReadings | None:
         """Read and parse one standard pipe-delimited serial line."""
 
-        if self._serial_connection is None:
+        if self._serial_connection is None or self._serial_library is None:
             raise ConnectionLost(f"serial port is not open: {self.port}")
 
-        serial_library = _load_serial_library()
         try:
             line = self._serial_connection.readline().decode("utf-8").strip()
-        except (serial_library.SerialException, OSError, UnicodeDecodeError) as error:
+        except (self._serial_library.SerialException, OSError, UnicodeDecodeError) as error:
             raise ConnectionLost(f"serial read failed on {self.port}: {error}") from error
 
         if not line:
@@ -131,15 +114,15 @@ class SerialPipeDriver(HardwareDriver):
         """Close the serial handle safely and idempotently."""
 
         if self._serial_connection is not None and self._serial_connection.is_open:
-            serial_library = _load_serial_library()
             try:
                 self._serial_connection.close()
-            except (serial_library.SerialException, OSError) as error:
+            except (self._serial_library.SerialException, OSError) as error:
                 self.logger.warning("Failed to close serial port %s: %s", self.port, error)
         self._serial_connection = None
+        self._serial_library = None
 
 
-# Container access and driver registration
+# This becomes the serial-device access granted to the service in Docker Compose.
 def container_requirements(config: SerialPipeConfig, force_simulated: bool) -> ContainerRequirements:
     """Return fake-PTY mounts or the established real serial access."""
 

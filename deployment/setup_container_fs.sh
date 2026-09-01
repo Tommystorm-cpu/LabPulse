@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-time bootstrapper: copy the refactor files into the live Raspberry Pi
-# working directory, then run the generators that users call directly later.
+# Prepare the live Raspberry Pi directory once; later commands regenerate from
+# the preserved config without reinstalling deployment assets.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASSET_DIR="${LABPULSE_SETUP_ASSET_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 PACKAGE_PARENT="${LABPULSE_PACKAGE_PARENT:-$ASSET_DIR/src}"
@@ -18,7 +18,7 @@ HOST_PYTHON="$HOST_VENV/bin/python"
 BACKUP=0
 FAKE_USB=0
 
-# Print usage from one place so normal help and error paths stay consistent.
+# Print the same help text for both --help and invalid options.
 usage() {
   cat <<EOF
 Usage: $SETUP_COMMAND [options]
@@ -149,14 +149,14 @@ backup_if_needed() {
   echo "Backed up existing file: $backup"
 }
 
-# Write heredoc content to a file while preserving the optional backup behavior.
+# These two helpers apply the optional backup rule before writing generated
+# text or copying a package-managed file into the live directory.
 write_file() {
   local path="$1"
   backup_if_needed "$path"
   cat > "$path"
 }
 
-# Copy package-managed files into the live ~/labpulse-live working folder.
 copy_file() {
   local source="$1"
   local destination="$2"
@@ -166,7 +166,7 @@ copy_file() {
 
 echo "Setting up LabPulse container filesystem at: $PROJECT_DIR"
 
-# Create the live folder skeleton expected by Docker volume mounts.
+# Docker bind mounts require these host directories to exist before startup.
 mkdir -p "$PROJECT_DIR"
 mkdir -p "$PROJECT_DIR/homeassistant/config"
 mkdir -p "$PROJECT_DIR/mosquitto/config"
@@ -180,14 +180,16 @@ if [ "$FAKE_USB" -eq 1 ]; then
   mkdir -p /tmp/labpulse-fake-serial
 fi
 
-# Keep a plain-English USB mode for the final summary output.
+# Keep the final operator summary in ordinary language rather than exposing the
+# numeric shell flag used above.
 if [ "$FAKE_USB" -eq 1 ]; then
   USB_MODE_DESCRIPTION="fake USB serial simulator, including UPS power"
 else
   USB_MODE_DESCRIPTION="real Arduino USB serial devices"
 fi
 
-# Minimal local Mosquitto config for the LabPulse stack.
+# Mosquitto stores subscriptions and retained MQTT state in the mounted data
+# directory, while logs remain visible through Docker.
 write_file "$PROJECT_DIR/mosquitto/config/mosquitto.conf" <<'EOF'
 listener 1883
 allow_anonymous true
@@ -196,7 +198,8 @@ persistence_location /mosquitto/data/
 log_dest stdout
 EOF
 
-# Copy the package-managed scripts used by the live Compose project.
+# These are copied into ~/labpulse-live because operators run them after the
+# package installation step has finished.
 copy_file "$ASSET_DIR/deployment/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
 chmod +x "$PROJECT_DIR/generate_compose.sh"
 copy_file "$ASSET_DIR/deployment/generate_homeassistant_config.sh" "$PROJECT_DIR/generate_homeassistant_config.sh"
@@ -230,8 +233,8 @@ if [ "$FAKE_USB" -eq 1 ]; then
   RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"
 fi
 
-# Derive config.fake.yaml only in fake mode. Real setup never rewrites the
-# live user-edited config.yaml.
+# Fake mode derives a separate runtime file. The real hardware settings remain
+# untouched in the user-edited config.yaml for the next real deployment.
 if [ "$FAKE_USB" -eq 1 ]; then
 "$HOST_PYTHON" - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" <<'PY'
 from pathlib import Path
@@ -274,7 +277,7 @@ if [ "$FAKE_USB" -eq 1 ]; then
   NEXT_USB_COMMAND="./setup_usb_devices.py --config config.fake.yaml --fake-usb"
 fi
 
-# Finish by printing the live paths and the normal next commands.
+# Finish with the exact files and commands the operator will use next.
 cat <<EOF
 
 Done.

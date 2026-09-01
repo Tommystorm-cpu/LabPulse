@@ -10,13 +10,9 @@ from jinja2.runtime import Context
 import yaml
 
 from labpulse.common.sms_templates import load_sms_templates
-from labpulse.common.config import (
-    CustomMeasurementConfig,
-    LabPulseConfig,
-    MeasurementConfig,
-)
-from labpulse.common.formula import compile_formula
+from labpulse.common.config import LabPulseConfig
 from labpulse.common.identity import entity_id, slug, stable_id
+from labpulse.common.measurement_config import CustomMeasurementConfig, MeasurementConfig
 from labpulse.common.mqtt_contracts import SMS_SEND_TOPIC
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "alarm"
@@ -91,7 +87,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
     alarmed_measurements_by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
     services: list[dict[str, Any]] = []
 
-    # Physical services and measurements
+    # First turn every physical service and measurement into the common shape
+    # consumed by the Home Assistant templates below.
     for service_name, service_config in config.services.items():
         if not service_config.enabled:
             continue
@@ -194,12 +191,13 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 service["alarm_state_entities"] = []
         services.append(service)
 
-    # Home Assistant-calculated measurements
+    # Custom measurements use that same template shape, but Home Assistant
+    # calculates their values from the physical sensor entities above.
     custom_measurements: list[dict[str, Any]] = []
     custom_alarm_services: list[dict[str, Any]] = []
     custom_alarm_measurements: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for custom_id, custom_config in config.custom_measurements.items():
-        compiled = compile_formula(custom_config.formula, set(custom_config.inputs) | set(custom_config.constants))
+        compiled = custom_config.compiled_formula
         source_entities = {
             alias: entity_id("sensor", *reference.split(".", 1))
             for alias, reference in custom_config.inputs.items()

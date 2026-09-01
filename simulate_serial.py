@@ -32,6 +32,8 @@ def _use_managed_python_when_deployed() -> None:
             "Run 'labpulse setup' to restore the managed environment."
         )
     if Path(sys.executable).resolve() != python_path.resolve():
+        # Replace this process rather than starting a child, so signals and the
+        # final exit code still belong to the command the operator launched.
         os.execv(str(python_path), [str(python_path), *sys.argv])
 
 
@@ -121,6 +123,8 @@ def parse_scenario_assignment(assignment: str) -> tuple[str, str]:
 def receive_message(connection: socket.socket) -> dict[str, Any]:
     """Receive one newline-delimited JSON message from a Unix socket."""
 
+    # A socket may return one message in several chunks. Accumulate bytes until
+    # the newline terminator arrives, with a size limit for malformed clients.
     chunks = bytearray()
     while b"\n" not in chunks:
         chunk = connection.recv(4096)
@@ -374,8 +378,12 @@ class SerialEndpoint:
         except ImportError as error:
             raise RuntimeError("Pseudo-serial simulation requires Linux") from error
 
+        # A pseudo-terminal has two ends: LabPulse opens the slave as if it were
+        # a USB serial port, while the simulator writes samples to the master.
         master_fd, slave_fd = pty.openpty()
         try:
+            # Raw mode prevents the terminal layer from echoing or modifying the
+            # pipe-delimited sensor text.
             tty.setraw(slave_fd)
             os.set_blocking(master_fd, False)
             link_path = sim_dir / name
@@ -394,6 +402,8 @@ class SerialEndpoint:
         try:
             os.write(self.master_fd, payload.encode("utf-8"))
         except BlockingIOError:
+            # Sensor samples are current-state data, so dropping one is safer
+            # than letting an absent reader freeze every simulated device.
             pass
 
     def close(self) -> None:
@@ -501,6 +511,8 @@ class SimulatorService:
 
         self.sim_dir.mkdir(parents=True, exist_ok=True)
         if self.socket_path.exists() or self.socket_path.is_symlink():
+            # A successful status reply means another simulator owns the socket.
+            # A failed reply means a prior crash left only a stale path behind.
             try:
                 send_request(self.sim_dir, {"command": "status"})
             except OSError:
@@ -511,6 +523,8 @@ class SimulatorService:
         try:
             for name in DEVICE_NAMES:
                 self._endpoints[name] = SerialEndpoint.create(self.sim_dir, name)
+            # The local Unix socket is a small control channel for commands such
+            # as danger-high, disconnect, status, and stop.
             self._server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._server_socket.bind(str(self.socket_path))
             self.socket_path.chmod(0o600)
@@ -527,6 +541,8 @@ class SimulatorService:
                     self._emit()
                     next_emission = now + self.interval
                 try:
+                    # The short accept timeout returns control to the loop often
+                    # enough to keep emitting sensor samples on schedule.
                     connection, _ = self._server_socket.accept()
                 except TimeoutError:
                     continue
@@ -589,6 +605,8 @@ def start_service(sim_dir: Path, interval: float, assignments: list[str]) -> Non
 
     log_path = sim_dir / "simulator.log"
     with log_path.open("ab") as log_file:
+        # Start a detached foreground-service command whose output remains
+        # available in simulator.log after this launcher exits.
         process = subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
@@ -598,6 +616,8 @@ def start_service(sim_dir: Path, interval: float, assignments: list[str]) -> Non
             close_fds=True,
         )
 
+    # Do not report success merely because Popen returned. Wait until the new
+    # process answers through its control socket or exits with an error.
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         if process.poll() is not None:

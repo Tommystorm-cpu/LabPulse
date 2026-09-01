@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 import time
 from typing import Any
 
@@ -24,7 +24,7 @@ MEASURE_HIGH_PRECISION = 0xFD
 MEASUREMENT_DELAY_SECONDS = 0.01
 
 
-# Driver configuration
+# Values accepted under driver.options in config.yaml.
 class Sht40Config(BaseModel):
     """I2C configuration for one SHT40 sensor."""
 
@@ -43,33 +43,8 @@ class Sht40Config(BaseModel):
         return address
 
 
-# Optional hardware dependency
-# Keep smbus2 optional and lazy so config generation and unrelated workers can
-# discover this module on development machines without Raspberry Pi libraries.
-_UNLOADED = object()
-smbus2: Any = _UNLOADED
-
-
-def _load_i2c_dependency() -> Any:
-    """Load smbus2 only when an SHT40 worker opens its configured bus."""
-
-    global smbus2
-    if smbus2 is _UNLOADED:
-        try:
-            import smbus2 as smbus2_module
-        except ImportError:
-            smbus2 = None
-        else:
-            smbus2 = smbus2_module
-    if smbus2 is None:
-        raise DriverUnavailable(
-            "SHT40 dependency is missing. Install the LabPulse i2c extra "
-            "or install smbus2 in the container."
-        )
-    return smbus2
-
-
-# Device-specific decoding
+# The sensor appends a checksum byte to each two-byte measurement. Recalculate
+# it here so a damaged I2C response is rejected rather than treated as a value.
 def crc8(data: Sequence[int]) -> int:
     """Return the SHT4x CRC-8 for one two-byte sensor word."""
 
@@ -78,6 +53,8 @@ def crc8(data: Sequence[int]) -> int:
         if not 0 <= value <= 0xFF:
             raise ValueError(f"invalid SHT40 response byte: {value!r}")
         crc ^= value
+        # Process the byte one bit at a time. When the top bit would be shifted
+        # out, XOR with the SHT40's 0x31 checksum polynomial.
         for _ in range(8):
             if crc & 0x80:
                 crc = ((crc << 1) ^ 0x31) & 0xFF
@@ -106,62 +83,53 @@ def decode_measurement(data: Sequence[int]) -> tuple[float, float]:
     return temperature, min(max(humidity, 0.0), 100.0)
 
 
-# Required driver lifecycle
+# The runner calls this connect/read/close lifecycle for the selected service.
 class Sht40Driver(HardwareDriver):
     """Read temperature and relative humidity from one SHT40 over I2C."""
 
-    def __init__(
-        self,
-        service_name: str,
-        config: Sht40Config,
-        *,
-        bus_factory: Callable[[int], Any] | None = None,
-        sleep: Callable[[float], None] = time.sleep,
-    ) -> None:
-        """Store the I2C identity and injectable hardware dependencies."""
+    def __init__(self, service_name: str, config: Sht40Config) -> None:
+        """Store the configured I2C identity."""
 
         super().__init__(service_name)
         self.bus_number = config.bus
         self.address = config.address
-        self._bus_factory = bus_factory or self._default_bus_factory
-        self._sleep = sleep
+        self._smbus2: Any | None = None
         self._i2c_bus: Any | None = None
-
-    @staticmethod
-    def _default_bus_factory(bus_number: int) -> Any:
-        """Open SMBus lazily so hardware-free processes need no I2C library."""
-
-        return _load_i2c_dependency().SMBus(bus_number)
 
     def connect(self) -> None:
         """Open the configured I2C bus or report it as unavailable."""
 
         try:
-            self._i2c_bus = self._bus_factory(self.bus_number)
-        except DriverUnavailable:
+            import smbus2
+        except ImportError as error:
             self._i2c_bus = None
-            raise
-        except (OSError, ImportError) as error:
+            raise DriverUnavailable(
+                "SHT40 dependency is missing. Install the LabPulse i2c extra "
+                "or install smbus2 in the container."
+            ) from error
+        try:
+            self._i2c_bus = smbus2.SMBus(self.bus_number)
+        except OSError as error:
             self._i2c_bus = None
             raise DriverUnavailable(
                 f"failed to open SHT40 at 0x{self.address:02X} on "
                 f"I2C bus {self.bus_number}: {error}"
             ) from error
+        self._smbus2 = smbus2
 
         self.logger.info("Connected to SHT40 on I2C bus %s at 0x%02X", self.bus_number, self.address)
 
     def read(self) -> HardwareReadings:
         """Request one high-precision sample and return normalized measurements."""
 
-        if self._i2c_bus is None:
+        if self._i2c_bus is None or self._smbus2 is None:
             raise ConnectionLost("SHT40 I2C bus is not open")
 
-        dependency = _load_i2c_dependency()
         try:
-            command = dependency.i2c_msg.write(self.address, [MEASURE_HIGH_PRECISION])
+            command = self._smbus2.i2c_msg.write(self.address, [MEASURE_HIGH_PRECISION])
             self._i2c_bus.i2c_rdwr(command)
-            self._sleep(MEASUREMENT_DELAY_SECONDS)
-            response = dependency.i2c_msg.read(self.address, 6)
+            time.sleep(MEASUREMENT_DELAY_SECONDS)
+            response = self._smbus2.i2c_msg.read(self.address, 6)
             self._i2c_bus.i2c_rdwr(response)
             payload = list(response)
         except OSError as error:
@@ -183,9 +151,10 @@ class Sht40Driver(HardwareDriver):
             except (OSError, AttributeError) as error:
                 self.logger.warning("Failed to close SHT40 I2C bus: %s", error)
         self._i2c_bus = None
+        self._smbus2 = None
 
 
-# Container access and driver registration
+# This becomes the I2C-device access granted to the service in Docker Compose.
 def container_requirements(config: Sht40Config, _force_simulated: bool) -> ContainerRequirements:
     """Expose only the configured Raspberry Pi I2C device."""
 

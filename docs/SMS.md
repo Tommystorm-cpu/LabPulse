@@ -19,10 +19,9 @@ Code ownership is split as follows:
 
 | Module | Responsibility |
 |---|---|
-| `src/labpulse/sms/cli.py` | Arguments, config loading, logging, worker composition, signal handling |
+| `src/labpulse/sms/__main__.py` | Arguments, config loading, logging, worker composition, signal handling |
 | `src/labpulse/sms/subscriber.py` | MQTT connection, payload validation, recent-request cache, status/results |
-| `src/labpulse/sms/sender.py` | Formatting, routing, queueing, retry, dry-run and `mmcli` delivery |
-| `src/labpulse/sms/subscriptions.py` | Persistent recipient choices and inbound commands |
+| `src/labpulse/sms/sender.py` | Delivery, ModemManager access, persistent subscriptions, and inbound commands |
 | `src/labpulse/common/mqtt_contracts.py` | Topics and strict `SmsRequest` schema |
 | `src/labpulse/common/sms_templates.yaml` | User-facing SMS copy |
 

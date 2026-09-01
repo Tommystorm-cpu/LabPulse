@@ -13,7 +13,7 @@ import yaml
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
-from labpulse.homeassistant.cli import main as generate_homeassistant
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"

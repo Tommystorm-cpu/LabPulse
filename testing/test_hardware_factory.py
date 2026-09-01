@@ -7,7 +7,7 @@ from typing import Any, Callable, TypeVar
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
-from labpulse.common.config import ServiceConfig
+from labpulse.common.service_config import ServiceConfig
 from labpulse.hardware.driver import ContainerRequirements, HardwareDriver
 from labpulse.hardware.drivers.dht11 import Dht11Config, Dht11Driver
 from labpulse.hardware.registry import get_driver_definition
@@ -98,7 +98,7 @@ def test_serial_factory_keeps_gpio_dependencies_unloaded() -> None:
 
         sys.path.insert(0, {str(REFACTOR_DIR / "src")!r})
 
-        from labpulse.common.config import ServiceConfig
+        from labpulse.common.service_config import ServiceConfig
         from labpulse.hardware.registry import get_driver_definition
 
         dht_dependency = "adafruit_dht"

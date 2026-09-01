@@ -1,29 +1,24 @@
 """Queued SMS delivery for the LabPulse SMS container."""
 
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+import json
 import logging
+from pathlib import Path
 import queue
 import re
 import subprocess
 import threading
 import time
-from collections.abc import Callable, Sequence
-from typing import Protocol
 
 from labpulse.common.mqtt_contracts import SmsRequest
 from labpulse.common.sms_templates import CURRENT_MEASUREMENT_PLACEHOLDER, sms_template
 
 
-CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
-
-
-class SubscriptionLookup(Protocol):
-    """Minimal subscription interface required by outbound routing."""
-
-    def is_subscribed(self, phone_number: str) -> bool:
-        """Return whether one configured recipient currently accepts alerts."""
-
-        ...
+SEND_RETRIES = 3
+RETRY_DELAY_SECONDS = 2.0
+QUEUE_SIZE = 100
+COMMAND_POLL_INTERVAL_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -36,10 +31,12 @@ class DeliveryResult:
     detail: str = ""
 
 
-ResultHandler = Callable[[DeliveryResult], None]
-
 UNSUBSCRIBE_FOOTER = sms_template("formatting", "unsubscribe_footer")
 TEST_PREFIX = sms_template("formatting", "test_prefix")
+UNSUBSCRIBE_COMMAND = "UNSUBSCRIBE"
+SUBSCRIBE_COMMAND = "SUBSCRIBE"
+UNSUBSCRIBE_CONFIRMATION = sms_template("commands", "unsubscribe_confirmation")
+SUBSCRIBE_CONFIRMATION = sms_template("commands", "subscribe_confirmation")
 
 
 @dataclass(frozen=True)
@@ -49,6 +46,68 @@ class InboundSms:
     path: str
     phone_number: str
     text: str
+
+
+class SubscriptionRegistry:
+    """Persist the unsubscribed subset of configured phone numbers."""
+
+    def __init__(self, allowed_numbers: Iterable[str], path: Path) -> None:
+        """Load subscription choices for an exact-number allow-list."""
+
+        self.allowed_numbers = frozenset(number.strip() for number in allowed_numbers)
+        self.path = path
+        # The MQTT delivery thread and modem command thread both consult this
+        # state, so changes and file writes must happen under the same lock.
+        self._lock = threading.Lock()
+        self._unsubscribed: set[str] = set()
+        if path.exists():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                payload = None
+            values = payload.get("unsubscribed") if isinstance(payload, dict) else None
+            if isinstance(values, list):
+                self._unsubscribed = {value for value in values if isinstance(value, str)}
+
+    def is_allowed(self, phone_number: str) -> bool:
+        """Return whether the exact normalized number may issue commands."""
+
+        return phone_number.strip() in self.allowed_numbers
+
+    def is_subscribed(self, phone_number: str) -> bool:
+        """Return whether an allowed number currently receives alerts."""
+
+        normalized = phone_number.strip()
+        with self._lock:
+            return normalized in self.allowed_numbers and normalized not in self._unsubscribed
+
+    def set_subscribed(self, phone_number: str, subscribed: bool) -> bool:
+        """Persist an allowed number's choice and reject unknown numbers."""
+
+        normalized = phone_number.strip()
+        if normalized not in self.allowed_numbers:
+            return False
+        with self._lock:
+            previous = set(self._unsubscribed)
+            if subscribed:
+                self._unsubscribed.discard(normalized)
+            else:
+                self._unsubscribed.add(normalized)
+            try:
+                # Replace a complete temporary file in one operation so a
+                # restart cannot observe half-written JSON. Restore the in-memory
+                # choice too if the disk write fails.
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                temporary_path = self.path.with_suffix(self.path.suffix + ".tmp")
+                temporary_path.write_text(
+                    json.dumps({"unsubscribed": sorted(self._unsubscribed)}, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                temporary_path.replace(self.path)
+                return True
+            except OSError:
+                self._unsubscribed = previous
+                return False
 
 
 def format_sms_message(request: SmsRequest) -> str:
@@ -67,6 +126,8 @@ def format_sms_message(request: SmsRequest) -> str:
     if request.event == "warning":
         lines.extend(("", UNSUBSCRIBE_FOOTER))
     return "\n".join(lines)
+
+
 def mask_phone_number(phone_number: str) -> str:
     """Return a log-safe representation of a recipient number."""
 
@@ -82,14 +143,10 @@ class SmsSender:
         self,
         recipients: Sequence[str],
         logger: logging.Logger,
+        *,
+        subscription_registry: SubscriptionRegistry,
         test_recipients: Sequence[str] = (),
         dry_run: bool = True,
-        runner: CommandRunner = subprocess.run,
-        retries: int = 3,
-        retry_delay_seconds: float = 2.0,
-        sleeper: Callable[[float], None] = time.sleep,
-        queue_size: int = 100,
-        subscription_registry: SubscriptionLookup | None = None,
     ) -> None:
         """Store delivery settings and start the background send worker."""
 
@@ -98,19 +155,19 @@ class SmsSender:
         self.dry_run = dry_run
         self.subscription_registry = subscription_registry
 
+        # Sending and receiving both call mmcli. The re-entrant lock ensures one
+        # complete modem operation finishes before the other thread starts one.
         self._logger = logger
-        self._command_runner = runner
-        self._retries = retries
-        self._retry_delay_seconds = retry_delay_seconds
-        self._sleep = sleeper
         self._modem_lock = threading.RLock()
-        self._result_handler: ResultHandler | None = None
-        self._queue: queue.Queue[tuple[str, SmsRequest] | None] = queue.Queue(maxsize=queue_size)
+        self._result_handler: Callable[[DeliveryResult], None] | None = None
+        # Queue items are (recipient, request) pairs. None is the shutdown signal
+        # consumed after all earlier messages have been sent.
+        self._queue: queue.Queue[tuple[str, SmsRequest] | None] = queue.Queue(maxsize=QUEUE_SIZE)
         self._closed = False
         self._worker_thread = threading.Thread(target=self._worker, name="labpulse-sms-sender", daemon=False)
         self._worker_thread.start()
 
-    def set_result_handler(self, handler: ResultHandler) -> None:
+    def set_result_handler(self, handler: Callable[[DeliveryResult], None]) -> None:
         """Register the callback used for delivery results."""
 
         self._result_handler = handler
@@ -130,7 +187,7 @@ class SmsSender:
 
         active_recipients = []
         for recipient in recipients:
-            if self.subscription_registry is not None and not self.subscription_registry.is_subscribed(recipient):
+            if not self.subscription_registry.is_subscribed(recipient):
                 result = DeliveryResult(
                     request.request_id, mask_phone_number(recipient), "unsubscribed", "recipient has unsubscribed"
                 )
@@ -138,6 +195,8 @@ class SmsSender:
             else:
                 active_recipients.append(recipient)
 
+        # Accept all recipients for one alert or reject the complete alert. This
+        # avoids silently notifying only the first few people when the queue fills.
         available_slots = self._queue.maxsize - self._queue.qsize()
         if self._queue.maxsize and available_slots < len(active_recipients):
             self._logger.error("SMS queue is full; request %s was rejected", request.request_id)
@@ -168,7 +227,7 @@ class SmsSender:
             if modem_id is None:
                 return []
             try:
-                result = self._command_runner(
+                result = subprocess.run(
                     ["mmcli", "-m", modem_id, "--messaging-list-sms"],
                     capture_output=True,
                     text=True,
@@ -182,6 +241,8 @@ class SmsSender:
                 return []
 
             messages = []
+            # ModemManager can repeat an object path in its human-readable
+            # output. dict.fromkeys removes duplicates while preserving order.
             paths = dict.fromkeys(
                 re.findall(r"/org/freedesktop/ModemManager1/SMS/\d+", result.stdout)
             )
@@ -195,7 +256,7 @@ class SmsSender:
         """Read one SMS object and return it only when reception is complete."""
 
         try:
-            result = self._command_runner(
+            result = subprocess.run(
                 ["mmcli", "-s", sms_path, "--output-keyvalue"],
                 capture_output=True,
                 text=True,
@@ -228,6 +289,8 @@ class SmsSender:
         if self._closed:
             return
         self._closed = True
+        # None follows every previously queued message, so the worker drains the
+        # queue before it exits.
         self._queue.put(None)
         self._worker_thread.join(timeout=timeout)
         if self._worker_thread.is_alive():
@@ -256,6 +319,8 @@ class SmsSender:
                     )
                 )
             finally:
+                # Match every queue.get() with task_done(), even when sending
+                # raises an exception.
                 self._queue.task_done()
 
     def _report(self, result: DeliveryResult) -> None:
@@ -267,7 +332,7 @@ class SmsSender:
     def _send_with_mmcli(self, phone_number: str, message: str) -> bool:
         """Send one SMS through the first modem reported by mmcli."""
 
-        for attempt in range(1, self._retries + 1):
+        for attempt in range(1, SEND_RETRIES + 1):
             modem_id = self._get_modem_id()
             if modem_id is None:
                 self._logger.error("No operational cellular modem found")
@@ -276,7 +341,7 @@ class SmsSender:
             sms_path: str | None = None
             try:
                 sms_path = self._create_sms(modem_id, phone_number, message)
-                self._command_runner(
+                subprocess.run(
                     ["mmcli", "-s", sms_path, "--send"],
                     capture_output=True,
                     text=True,
@@ -284,32 +349,34 @@ class SmsSender:
                     timeout=30,
                 )
             except subprocess.TimeoutExpired:
-                self._logger.warning("SMS send timed out on attempt %s/%s", attempt, self._retries)
+                self._logger.warning("SMS send timed out on attempt %s/%s", attempt, SEND_RETRIES)
             except subprocess.CalledProcessError as error:
                 stderr = (error.stderr or "").strip()
                 self._logger.warning(
                     "SMS send failed on attempt %s/%s: %s",
                     attempt,
-                    self._retries,
+                    SEND_RETRIES,
                     stderr or f"mmcli exited with {error.returncode}",
                 )
             except RuntimeError as error:
-                self._logger.warning("SMS setup failed on attempt %s/%s: %s", attempt, self._retries, error)
+                self._logger.warning("SMS setup failed on attempt %s/%s: %s", attempt, SEND_RETRIES, error)
             else:
                 self._logger.info(
                     "SMS sent to %s via %s", mask_phone_number(phone_number), sms_path
                 )
                 return True
             finally:
+                # mmcli creates a stored SMS object before sending it. Always
+                # delete that object so retries do not fill modem storage.
                 if sms_path is not None:
                     self._delete_sms(modem_id, sms_path)
 
-            if attempt < self._retries:
-                self._sleep(self._retry_delay_seconds)
+            if attempt < SEND_RETRIES:
+                time.sleep(RETRY_DELAY_SECONDS)
 
         self._logger.error(
             "SMS delivery failed after %s attempts to %s",
-            self._retries,
+            SEND_RETRIES,
             mask_phone_number(phone_number),
         )
         return False
@@ -318,7 +385,7 @@ class SmsSender:
         """Return the first modem ID visible to ModemManager."""
 
         try:
-            result = self._command_runner(
+            result = subprocess.run(
                 ["mmcli", "-L"],
                 capture_output=True,
                 text=True,
@@ -342,7 +409,7 @@ class SmsSender:
             f"text={quote_mmcli_value(message)},"
             f"number={quote_mmcli_value(phone_number)}"
         )
-        result = self._command_runner(
+        result = subprocess.run(
             ["mmcli", "-m", modem_id, "--messaging-create-sms", sms_args],
             capture_output=True,
             text=True,
@@ -360,7 +427,7 @@ class SmsSender:
         """Delete a created SMS object from ModemManager storage."""
 
         try:
-            self._command_runner(
+            subprocess.run(
                 ["mmcli", "-m", modem_id, f"--messaging-delete-sms={sms_path}"],
                 capture_output=True,
                 text=True,
@@ -373,6 +440,91 @@ class SmsSender:
                 sms_path,
                 type(error).__name__,
             )
+
+
+class SmsCommandMonitor:
+    """Poll received modem messages and apply subscription commands."""
+
+    def __init__(
+        self,
+        sender: SmsSender,
+        registry: SubscriptionRegistry,
+        logger: logging.Logger,
+    ) -> None:
+        """Store dependencies for the inbound-command worker."""
+
+        self.sender = sender
+        self.registry = registry
+        self._logger = logger
+        self._stop_event = threading.Event()
+        # A modem message can appear in more than one poll. Remember it in this
+        # process so its command is applied once before deletion succeeds.
+        self._processed_paths: set[str] = set()
+        self._worker_thread = threading.Thread(
+            target=self._worker, name="labpulse-sms-command-monitor", daemon=False
+        )
+
+    def start(self) -> None:
+        """Start polling for inbound subscription commands."""
+
+        self._worker_thread.start()
+
+    def close(self, timeout: float = 15.0) -> None:
+        """Stop the inbound-command worker and wait for it to finish."""
+
+        self._stop_event.set()
+        if self._worker_thread.ident is not None:
+            self._worker_thread.join(timeout=timeout)
+        if self._worker_thread.is_alive():
+            self._logger.warning("SMS command monitor did not stop within %.1f seconds", timeout)
+
+    def poll_once(self) -> None:
+        """Process every complete received SMS currently stored by the modem."""
+
+        for message in self.sender.list_received_sms():
+            if message.path not in self._processed_paths:
+                self._processed_paths.add(message.path)
+                self._handle_message(message)
+            self.sender.delete_received_sms(message.path)
+
+    def _handle_message(self, message: InboundSms) -> None:
+        """Apply one exact subscription command without replying to outsiders."""
+
+        phone_number = message.phone_number.strip()
+        command = message.text.strip().upper()
+        if not self.registry.is_allowed(phone_number):
+            self._logger.warning(
+                "Ignored inbound SMS command from unconfigured number %s", mask_phone_number(phone_number)
+            )
+            return
+
+        if command == UNSUBSCRIBE_COMMAND:
+            subscribed = False
+            confirmation = UNSUBSCRIBE_CONFIRMATION
+            action = "Unsubscribed"
+        elif command == SUBSCRIBE_COMMAND:
+            subscribed = True
+            confirmation = SUBSCRIBE_CONFIRMATION
+            action = "Subscribed"
+        else:
+            self._logger.info("Ignored unrecognized inbound SMS from %s", mask_phone_number(phone_number))
+            return
+
+        if not self.registry.set_subscribed(phone_number, subscribed):
+            self._logger.error("Could not persist %s request for %s", command.lower(), mask_phone_number(phone_number))
+            return
+        self._logger.info("%s %s", action, mask_phone_number(phone_number))
+        self.sender.send_sms(phone_number, confirmation)
+
+    def _worker(self) -> None:
+        """Poll immediately and then at a bounded interval until shutdown."""
+
+        while not self._stop_event.is_set():
+            try:
+                self.poll_once()
+            except Exception:
+                self._logger.exception("Unexpected SMS command monitor failure")
+            self._stop_event.wait(COMMAND_POLL_INTERVAL_SECONDS)
 
 
 def quote_mmcli_value(value: str) -> str:

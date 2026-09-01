@@ -6,14 +6,16 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
-from labpulse.common.config import MeasurementConfig, MqttConfig, ServiceConfig
+from labpulse.common.config import MqttConfig
 from labpulse.common.identity import entity_id, stable_id
+from labpulse.common.measurement_config import MeasurementConfig
 from labpulse.common.mqtt_contracts import (
     sensor_discovery_topic,
     sensor_state_topic,
     service_status_topic,
     status_discovery_topic,
 )
+from labpulse.common.service_config import ServiceConfig
 
 
 DEFAULT_MEASUREMENT_ICONS = {
@@ -93,8 +95,8 @@ class HomeAssistantMqttPublisher:
         self.mqtt_config = mqtt_config
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"LabPulse-{service_name}")
 
-        # Index once because every driver batch is filtered against the same
-        # service contract before either discovery or state is published.
+        # Keep the validated measurement list beside the publisher because every
+        # driver result is checked against it before reaching MQTT.
         self._measurement_configs = dict(service_config.measurements)
         # Discovery is retained by MQTT, so it only needs publishing when a
         # configured measurement first appears or the broker reconnects.

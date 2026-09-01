@@ -1,6 +1,4 @@
-# ==========================================
-# LabPulse Starter Configuration Template
-# ==========================================
+# LabPulse starter configuration
 #
 # On the Raspberry Pi, edit the live config here:
 #
@@ -10,7 +8,7 @@
 # exist. Alarm thresholds are configured through the generated Home Assistant
 # dashboard. A fresh installation starts with all notifications muted.
 
-# --- Global settings ---
+# Global settings
 mqtt:
   broker: mosquitto
   port: 1883

@@ -8,7 +8,8 @@
 
 namespace PressureMonitorFirmware {
 
-// Device configuration retained from the currently deployed pressure monitor.
+// These values match the deployed monitor so adopting the shared firmware
+// library does not silently change its serial output or sampling rate.
 constexpr unsigned long SAMPLE_INTERVAL_MS = 1000UL;
 constexpr uint16_t SERIAL_BAUD_RATE = 9600;
 constexpr uint8_t PRESSURE_DECIMAL_PLACES = 2;

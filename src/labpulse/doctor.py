@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -16,6 +16,9 @@ import yaml
 from labpulse import __version__
 from labpulse.common.config import ConfigError, LabPulseConfig, format_config_error, load_config
 from labpulse.hardware.registry import get_driver_definition
+
+
+WATCHDOG_PATH = Path("/sys/class/watchdog/watchdog0")
 
 
 class CheckStatus(StrEnum):
@@ -73,10 +76,6 @@ class DoctorReport:
         if self.exit_code:
             lines.append("Run 'labpulse logs' for service-level error details.")
         return "\n".join(lines)
-
-
-CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
-Connector = Callable[..., Any]
 
 
 def _validation_detail(error: Exception) -> str:
@@ -158,26 +157,6 @@ def _validate_config(report: DoctorReport, path: Path, name: str) -> LabPulseCon
     return config
 
 
-def _host_resource_paths(config: LabPulseConfig, *, simulated: bool) -> dict[str, set[Path]]:
-    """Resolve host device and mount paths used by enabled driver containers."""
-
-    resources: dict[str, set[Path]] = {}
-    for service_name, service in config.services.items():
-        if not service.enabled:
-            continue
-        definition = get_driver_definition(service.driver.type)
-        options = service.driver.options
-        requirements = definition.container_requirements(options, simulated)
-        paths = {Path(device.split(":", 1)[0]) for device in requirements.devices}
-        paths.update(Path(mount.split(":", 1)[0]) for mount in requirements.mounts)
-
-        port = getattr(options, "port", None)
-        if isinstance(port, str) and port:
-            paths.add(Path(port))
-        resources[service_name] = paths
-    return resources
-
-
 def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simulated: bool) -> None:
     """Check that configured driver resources are visible on the host."""
 
@@ -185,8 +164,20 @@ def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simu
         report.add(CheckStatus.SKIP, "Hardware resources", "runtime configuration is not valid")
         return
 
+    service_paths: dict[str, set[Path]] = {}
     try:
-        service_paths = _host_resource_paths(config, simulated=simulated)
+        for service_name, service in config.services.items():
+            if not service.enabled:
+                continue
+            requirements = get_driver_definition(service.driver.type).container_requirements(
+                service.driver.options, simulated
+            )
+            paths = {Path(device.split(":", 1)[0]) for device in requirements.devices}
+            paths.update(Path(mount.split(":", 1)[0]) for mount in requirements.mounts)
+            port = getattr(service.driver.options, "port", None)
+            if isinstance(port, str) and port:
+                paths.add(Path(port))
+            service_paths[service_name] = paths
     except (TypeError, ValueError) as error:
         report.add(CheckStatus.FAIL, "Hardware resources", str(error))
         return
@@ -210,10 +201,10 @@ def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simu
             report.add(CheckStatus.PASS, f"Hardware {service_name}", detail or "driver declares no host paths")
 
 
-def _run(runner: CommandRunner, command: Sequence[str], live_dir: Path) -> subprocess.CompletedProcess[str]:
+def _run(command: Sequence[str], live_dir: Path) -> subprocess.CompletedProcess[str]:
     """Run one bounded, non-interactive diagnostic command."""
 
-    return runner(
+    return subprocess.run(
         list(command),
         cwd=live_dir,
         capture_output=True,
@@ -235,7 +226,6 @@ def _check_docker(
     live_dir: Path,
     compose_services: set[str],
     docker_prefix: Sequence[str] | None,
-    runner: CommandRunner,
 ) -> None:
     """Validate Compose syntax and compare expected with running services."""
 
@@ -247,7 +237,7 @@ def _check_docker(
 
     command = [*docker_prefix, "compose"]
     try:
-        engine = _run(runner, [*docker_prefix, "version", "--format", "{{.Server.Version}}"], live_dir)
+        engine = _run([*docker_prefix, "version", "--format", "{{.Server.Version}}"], live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
         report.add(
             CheckStatus.FAIL,
@@ -270,7 +260,7 @@ def _check_docker(
     report.add(CheckStatus.PASS, "Docker daemon", f"server {engine_version} is reachable")
 
     try:
-        version = _run(runner, [*command, "version"], live_dir)
+        version = _run([*command, "version"], live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
         report.add(CheckStatus.FAIL, "Docker Compose", str(error))
         report.add(CheckStatus.SKIP, "Containers", "Docker Compose is unavailable")
@@ -283,7 +273,7 @@ def _check_docker(
     report.add(CheckStatus.PASS, "Docker Compose", compose_version[-1] if compose_version else "command is available")
 
     try:
-        validation = _run(runner, [*command, "config", "--quiet"], live_dir)
+        validation = _run([*command, "config", "--quiet"], live_dir)
     except subprocess.SubprocessError as error:
         report.add(CheckStatus.FAIL, "Compose validation", str(error))
         report.add(CheckStatus.SKIP, "Containers", "Compose validation did not complete")
@@ -295,7 +285,7 @@ def _check_docker(
     report.add(CheckStatus.PASS, "Compose validation", "compose.yaml is valid")
 
     try:
-        running_result = _run(runner, [*command, "ps", "--status", "running", "--services"], live_dir)
+        running_result = _run([*command, "ps", "--status", "running", "--services"], live_dir)
     except subprocess.SubprocessError as error:
         report.add(CheckStatus.FAIL, "Containers", str(error))
         return
@@ -327,12 +317,11 @@ def _check_tcp(
     host: str,
     port: int,
     timeout: float,
-    connector: Connector,
 ) -> None:
     """Check one local TCP endpoint and always close the probe socket."""
 
     try:
-        connection = connector((host, port), timeout=timeout)
+        connection = socket.create_connection((host, port), timeout=timeout)
         connection.close()
     except (OSError, TimeoutError) as error:
         service = "mosquitto" if name == "MQTT" else "homeassistant"
@@ -346,12 +335,12 @@ def _check_tcp(
     report.add(CheckStatus.PASS, name, f"{host}:{port} accepted a connection")
 
 
-def _check_clock(report: DoctorReport, live_dir: Path, runner: CommandRunner) -> None:
+def _check_clock(report: DoctorReport, live_dir: Path) -> None:
     """Report host timezone and NTP synchronization without changing either."""
 
     command = ["timedatectl", "show", "--property=Timezone", "--property=NTPSynchronized"]
     try:
-        result = _run(runner, command, live_dir)
+        result = _run(command, live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
         report.add(
             CheckStatus.WARN,
@@ -388,12 +377,10 @@ def _check_clock(report: DoctorReport, live_dir: Path, runner: CommandRunner) ->
 def _check_watchdog(
     report: DoctorReport,
     live_dir: Path,
-    runner: CommandRunner,
-    watchdog_path: Path,
 ) -> None:
     """Check that a hardware watchdog exists and systemd is servicing it."""
 
-    if not watchdog_path.exists():
+    if not WATCHDOG_PATH.exists():
         report.add(
             CheckStatus.WARN,
             "Hardware watchdog",
@@ -403,7 +390,7 @@ def _check_watchdog(
         return
     try:
         command = ["systemctl", "show", "--property=RuntimeWatchdogUSec", "--value"]
-        result = _run(runner, command, live_dir)
+        result = _run(command, live_dir)
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError) as error:
         report.add(
             CheckStatus.WARN,
@@ -439,9 +426,6 @@ def diagnose(
     *,
     docker_prefix: Sequence[str] | None,
     timeout: float = 1.0,
-    command_runner: CommandRunner = subprocess.run,
-    connector: Connector = socket.create_connection,
-    watchdog_path: Path = Path("/sys/class/watchdog/watchdog0"),
 ) -> DoctorReport:
     """Run all read-only LabPulse deployment checks."""
 
@@ -454,9 +438,14 @@ def diagnose(
         )
         return report
     report.add(CheckStatus.PASS, "Installation", "live directory exists")
-    _check_clock(report, live_dir, command_runner)
-    _check_watchdog(report, live_dir, command_runner, watchdog_path)
 
+    # Clock and watchdog settings live on the Raspberry Pi host rather than in
+    # Docker, so check them before reasoning about generated container state.
+    _check_clock(report, live_dir)
+    _check_watchdog(report, live_dir)
+
+    # compose.yaml tells diagnostics which services should exist and whether
+    # containers mount the real or fake configuration file.
     compose_path = live_dir / "compose.yaml"
     compose_data: Any = None
     compose_services: set[str] = set()
@@ -480,6 +469,8 @@ def diagnose(
             )
     _check_runtime_image(report, compose_data)
 
+    # config.yaml remains the user's source of truth. In fake USB mode the
+    # containers instead read config.fake.yaml, so both files need checking.
     source_config_path = (live_dir / "config.yaml").resolve()
     source_config = _validate_config(report, source_config_path, "Source configuration")
     runtime_config_path = _runtime_config_path(live_dir, compose_data)
@@ -505,6 +496,8 @@ def diagnose(
     else:
         runtime_config = _validate_config(report, runtime_config_path, "Runtime configuration")
 
+    # These are the three LabPulse-owned Home Assistant outputs. User-owned
+    # automations.yaml, scripts.yaml, and scenes.yaml are deliberately excluded.
     generated_files = (
         live_dir / "homeassistant" / "config" / "configuration.yaml",
         live_dir / "homeassistant" / "config" / "packages" / "labpulse_generated.yaml",
@@ -529,15 +522,15 @@ def diagnose(
     _check_hardware(report, runtime_config, simulated=simulated)
 
     if compose_services:
-        _check_docker(report, live_dir, compose_services, docker_prefix, command_runner)
+        _check_docker(report, live_dir, compose_services, docker_prefix)
     else:
         report.add(CheckStatus.SKIP, "Docker Compose", "compose.yaml is unavailable")
         report.add(CheckStatus.SKIP, "Containers", "compose.yaml is unavailable")
 
     # The generated deployment publishes Mosquitto on this host-only endpoint;
     # container config uses the Compose hostname instead.
-    _check_tcp(report, "MQTT", "127.0.0.1", 1883, timeout, connector)
-    _check_tcp(report, "Home Assistant", "127.0.0.1", 8123, timeout, connector)
+    _check_tcp(report, "MQTT", "127.0.0.1", 1883, timeout)
+    _check_tcp(report, "Home Assistant", "127.0.0.1", 8123, timeout)
     return report
 
 

@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 import yaml
@@ -15,7 +16,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 from labpulse.common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
 from labpulse.common.config import load_config
 import labpulse.homeassistant.generator as generator
-from labpulse.homeassistant.cli import main as generate_homeassistant
+from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
@@ -401,9 +402,12 @@ def test_strict_and_malformed_templates_fail() -> None:
     else:
         raise AssertionError("StrictUndefined was not active")
     for malformed in ("views: {}\n", "- not-a-mapping\n"):
-        try:
-            generator._validate_dashboard(malformed)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("malformed dashboard shape passed validation")
+        template = SimpleNamespace(render=lambda **_kwargs: malformed)
+        environment = SimpleNamespace(get_template=lambda _name: template)
+        with patch.object(generator, "_environment", return_value=environment):
+            try:
+                generator._render_dashboard(object())  # type: ignore[arg-type]
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("malformed dashboard shape passed validation")

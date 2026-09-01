@@ -153,7 +153,6 @@ def test_restore_command_delegates_confirmation_choice(live_dir: Path) -> None:
 
 def test_restore_rebuilds_and_validates_the_installation(live_dir: Path) -> None:
     archive = live_dir.parent / "labpulse-state.tar.gz"
-    rollback = live_dir.parent / "automatic-rollback.tar.gz"
     manifest = {"runtime_mode": "real_hardware"}
     with patch.object(
         control, "inspect_backup", return_value=manifest
@@ -164,11 +163,9 @@ def test_restore_rebuilds_and_validates_the_installation(live_dir: Path) -> None
     ), patch.object(control, "stop_services") as stop_services, patch.object(
         control, "create_backup"
     ) as create_rollback, patch.object(
-        control, "_rollback_archive_path", return_value=rollback
-    ), patch.object(
         control, "restore_backup", return_value=manifest
     ) as restore_state, patch.object(
-        control, "_run_setup_for_manifest", return_value=0
+        control, "run_setup", return_value=0
     ) as regenerate, patch.object(
         control, "run_compose", return_value=0
     ) as compose, patch.object(
@@ -182,11 +179,12 @@ def test_restore_rebuilds_and_validates_the_installation(live_dir: Path) -> None
     stop_services.assert_called_once_with(
         live_dir.resolve(), ["docker"], ("homeassistant", "mosquitto")
     )
-    create_rollback.assert_called_once_with(
-        live_dir.resolve(), rollback, ["docker"], quiesce=False
-    )
+    rollback = create_rollback.call_args.args[1]
+    assert rollback.parent == live_dir.parent
+    assert rollback.name.startswith("labpulse-pre-restore-")
+    create_rollback.assert_called_once_with(live_dir.resolve(), rollback, ["docker"], quiesce=False)
     restore_state.assert_called_once_with(live_dir.resolve(), archive)
-    regenerate.assert_called_once_with(live_dir.resolve(), manifest)
+    regenerate.assert_called_once_with(str(live_dir.resolve()), fake_usb=False, backup=True)
     compose.assert_called_once_with(
         live_dir.resolve(), ("up", "-d", "--pull", "missing")
     )
@@ -198,7 +196,7 @@ def test_restore_cancellation_makes_no_changes(live_dir: Path) -> None:
     manifest = {"runtime_mode": "real_hardware"}
     with patch.object(
         control, "inspect_backup", return_value=manifest
-    ), patch.object(control, "_confirm_restore", return_value=False):
+    ), patch("builtins.input", return_value="cancel"):
         result = control.run_restore_command(
             live_dir.resolve(), archive, assume_yes=False
         )
@@ -215,7 +213,7 @@ def test_restore_can_reconstruct_a_blank_installation(
     with patch.object(
         control, "inspect_backup", return_value=manifest
     ), patch.object(
-        control, "_run_setup_for_manifest", return_value=0
+        control, "run_setup", return_value=0
     ) as scaffold, patch.object(
         control, "docker_command", return_value=["docker"]
     ), patch.object(
@@ -232,13 +230,12 @@ def test_restore_can_reconstruct_a_blank_installation(
         result = control.run_restore_command(blank_live, archive, assume_yes=True)
 
     assert result == 0
-    scaffold.assert_any_call(blank_live, manifest)
+    scaffold.assert_any_call(str(blank_live), fake_usb=False, backup=True)
     unexpected_rollback.assert_not_called()
 
 
 def test_failed_restore_regeneration_rolls_back(live_dir: Path) -> None:
     archive = live_dir.parent / "labpulse-state.tar.gz"
-    rollback = live_dir.parent / "automatic-rollback.tar.gz"
     manifest = {"runtime_mode": "real_hardware"}
     with patch.object(
         control, "inspect_backup", return_value=manifest
@@ -249,11 +246,9 @@ def test_failed_restore_regeneration_rolls_back(live_dir: Path) -> None:
     ), patch.object(control, "stop_services"), patch.object(
         control, "create_backup"
     ), patch.object(
-        control, "_rollback_archive_path", return_value=rollback
-    ), patch.object(
         control, "restore_backup", side_effect=(manifest, manifest)
     ) as restore_state, patch.object(
-        control, "_run_setup_for_manifest", side_effect=(1, 0)
+        control, "run_setup", side_effect=(1, 0)
     ) as regeneration, patch.object(control, "start_services") as restart_previous:
         result = control.run_restore_command(
             live_dir.resolve(), archive, assume_yes=True

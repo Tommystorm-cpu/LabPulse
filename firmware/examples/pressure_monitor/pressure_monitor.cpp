@@ -5,7 +5,6 @@
 namespace PressureMonitorFirmware {
 namespace {
 
-// PRESSURE_CONFIG combines the header's pin mapping with its calibration.
 LabPulse::LinearPressureSensor pressureSensor(PRESSURE_CONFIG);
 LabPulse::Sht40Sensor environmentSensor(SHT40_CONFIG);
 

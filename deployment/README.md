@@ -25,8 +25,7 @@ The current sources of generation behavior are:
 ```text
 src/labpulse/deployment/compose.py       Compose rendering
 src/labpulse/deployment/generate.py      unified staging/install transaction
-src/labpulse/homeassistant/cli.py        standalone HA command boundary
-src/labpulse/homeassistant/generator.py  core/dashboard file generation
+src/labpulse/homeassistant/generator.py  HA command and core/dashboard generation
 src/labpulse/homeassistant/alarm.py      alarm context/package generation
 ```
 

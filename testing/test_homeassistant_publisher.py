@@ -1,7 +1,8 @@
 import json
 from typing import Any
 
-from labpulse.common.config import MqttConfig, ServiceConfig
+from labpulse.common.config import MqttConfig
+from labpulse.common.service_config import ServiceConfig
 from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher
 
 

@@ -5,11 +5,11 @@
 namespace TurboPumpFirmware {
 namespace {
 
-// Sensor objects use the pin mappings and calibration from turbo_pump.h.
 LabPulse::PulseFlowSensor flow1(FLOW1_CONFIG);
 LabPulse::PulseFlowSensor flow2(FLOW2_CONFIG);
 
-// Temperature sensor and mapping arrays share the same indexes.
+// Keep this order aligned with TEMPERATURES; the index selects both the
+// physical input and the name written to serial.
 LabPulse::ThermistorSensor temperatures[] = {
     LabPulse::ThermistorSensor(TEMPERATURE_CONFIGS[0]),
     LabPulse::ThermistorSensor(TEMPERATURE_CONFIGS[1]),
@@ -35,7 +35,6 @@ void emitSample(unsigned long elapsedMilliseconds) {
   LabPulse::PulseFlowSensor::samplePairAndReset(
       flow1, flow2, elapsedMilliseconds, flow1Reading, flow2Reading);
 
-  // Write one complete sample using measurement names from turbo_pump.h.
   LabPulse::PipeSampleWriter sample(Serial);
   sample.value(FLOW1.name, flow1Reading, FLOW_DECIMAL_PLACES);
   sample.value(FLOW2.name, flow2Reading, FLOW_DECIMAL_PLACES);
