@@ -29,6 +29,14 @@ def build_compose(
         raise ValueError("config mount source cannot be empty")
     config = document.config
     enabled_services = [(name, service) for name, service in config.services.items() if service.enabled]
+    # Fake-USB mode never starts physical actuator workers. Regeneration uses
+    # --remove-orphans, so changing into fake mode also stops any old output
+    # container and lets its orderly shutdown apply the configured safe state.
+    enabled_outputs = (
+        []
+        if force_simulated
+        else [(name, output) for name, output in config.outputs.items() if output.enabled]
+    )
     if not enabled_services:
         raise ValueError("configuration has no enabled hardware services")
 
@@ -137,4 +145,33 @@ def build_compose(
         ])
         service_lines.extend([f"    container_name: {container_name}", f"    command: {command}", ""])
         lines.extend(service_lines)
+
+    # Outputs use their own MQTT subscriber process because commands and
+    # fail-safe timing have a different lifecycle from polled measurements.
+    for output_name, output in enabled_outputs:
+        slug = service_slug(output_name)
+        container_name = f"labpulse-output-{slug}"
+        definition = get_driver_definition(output.driver.type)
+        requirements = definition.container_requirements(output.driver.options, force_simulated)
+        output_lines = [
+            f"  {container_name}:",
+            "    <<: *labpulse-runtime-base",
+            "    volumes:",
+            "      - ./logs:/app/logs",
+            f"      - {config_mount_source}:/app/config.yaml:ro",
+            "      - /etc/localtime:/etc/localtime:ro",
+        ]
+        if requirements.devices:
+            output_lines.append("    devices:")
+            output_lines.extend(
+                f"      - {device}:{device}" for device in requirements.devices
+            )
+        output_lines.extend(f"      - {mount}" for mount in requirements.mounts)
+        if requirements.privileged:
+            output_lines.append("    privileged: true")
+        command = json.dumps([
+            "python", "-m", "labpulse.output", "--config", "/app/config.yaml", "--output", output_name
+        ])
+        output_lines.extend([f"    container_name: {container_name}", f"    command: {command}", ""])
+        lines.extend(output_lines)
     return "\n".join(lines)

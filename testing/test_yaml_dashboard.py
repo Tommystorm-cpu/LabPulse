@@ -174,6 +174,37 @@ def entity_occurrences(value: object, entity_id: str) -> int:
     return int(value == entity_id)
 
 
+def test_controlled_outputs_appear_on_monitor_and_diagnostics() -> None:
+    """Expose discovered MQTT switches on both operator-facing views."""
+
+    config = dashboard_config()
+    config["outputs"] = {
+        "cooling_valve_enable": {
+            "label": "Cooling Valve Enable",
+            "icon": "mdi:valve",
+            "driver": {
+                "type": "labpulse.gpio_output",
+                "options": {"gpio_line": 18, "safe_state": False},
+            },
+            "maximum_active_seconds": 300,
+        },
+        "disabled_output": {
+            "enabled": False,
+            "label": "Disabled Output",
+            "driver": {
+                "type": "labpulse.gpio_output",
+                "options": {"gpio_line": 19},
+            },
+        },
+    }
+    _paths, dashboard, _text = generate(config)
+    output_entity = "switch.labpulse_output_cooling_valve_enable"
+    if entity_occurrences(dashboard, output_entity) != 2:
+        raise AssertionError("enabled output is not shown once on Monitor and Diagnostics")
+    if entity_occurrences(dashboard, "switch.labpulse_output_disabled_output") != 0:
+        raise AssertionError("disabled output appeared on the dashboard")
+
+
 def walk_dashboard(value: object):
     """Yield every nested dashboard value for focused action assertions."""
 

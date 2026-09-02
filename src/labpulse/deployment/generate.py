@@ -162,10 +162,14 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Generated {compose_output}")
     print(f"LabPulse runtime image: {runtime_image}")
-    print("LabPulse service containers:")
+    print("LabPulse worker containers:")
     for service_name, service in document.config.services.items():
         if service.enabled:
             print(f"  labpulse-{service_slug(service_name)} -> {service_name}")
+    if not args.fake_usb:
+        for output_name, output in document.config.outputs.items():
+            if output.enabled:
+                print(f"  labpulse-output-{service_slug(output_name)} -> output {output_name}")
     return 0
 
 

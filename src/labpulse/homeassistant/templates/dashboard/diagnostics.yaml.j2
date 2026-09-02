@@ -60,6 +60,22 @@
         name: Last outage duration
 [% endif %]
 [% endfor %]
+[% if model.outputs %]
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Controlled Outputs
+      heading_style: title
+      icon: mdi:electric-switch
+    - type: entities
+      show_header_toggle: false
+      entities:
+[% for output in model.outputs %]
+      - entity: [[ output.entity_id ]]
+        name: [[ output.label | yaml_scalar ]]
+[% endfor %]
+[% endif %]
 [% if model.custom_measurements %]
   - type: grid
     column_span: 1

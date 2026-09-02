@@ -72,6 +72,19 @@ class HardwareDriver(ABC):
         """Release hardware resources safely and idempotently."""
 
 
+class HardwareOutputDriver(HardwareDriver):
+    """Hardware driver that can hold and change one logical output state."""
+
+    @property
+    @abstractmethod
+    def safe_state(self) -> bool:
+        """Return the logical state applied on startup and shutdown."""
+
+    @abstractmethod
+    def set_state(self, active: bool) -> None:
+        """Apply one logical output state or raise a classified driver error."""
+
+
 # Container requirements end up almost directly in the generated Docker
 # Compose file, where they give each service container access to the hardware
 # it needs.

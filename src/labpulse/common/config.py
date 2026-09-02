@@ -10,6 +10,7 @@ import yaml
 
 from labpulse.common.identity import slug, title
 from labpulse.common.measurement_config import CustomMeasurementConfig, validate_setup_id
+from labpulse.common.output_config import OutputConfig
 from labpulse.common.service_config import ServiceConfig
 
 
@@ -172,6 +173,7 @@ class LabPulseConfig(BaseModel):
     dashboards: dict[str, DashboardConfig] = Field(default_factory=dict)
     setups: dict[str, SetupConfig]
     services: dict[str, ServiceConfig]
+    outputs: dict[str, OutputConfig] = Field(default_factory=dict)
     custom_measurements: dict[str, CustomMeasurementConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -189,6 +191,10 @@ class LabPulseConfig(BaseModel):
             validate_setup_id(setup_id)
             if setup.dashboard != "main" and setup.dashboard not in self.dashboards:
                 raise ValueError(f"setup {setup_id} references unknown dashboard: {setup.dashboard}")
+
+        for output_id in self.outputs:
+            if not output_id or slug(output_id) != output_id:
+                raise ValueError("output IDs must use lowercase letters, numbers, and underscores")
 
         # Physical measurements may be shared by several experimental setups.
         available_setup_ids = set(self.setups)
@@ -233,6 +239,33 @@ class LabPulseConfig(BaseModel):
                     raise ValueError(
                         f"custom measurement {custom_id} input {alias} references unknown physical measurement: {reference}"
                     )
+
+        # A GPIO character device can be shared by containers, but an
+        # individual line can have only one owner. Catch exact configured line
+        # collisions before Docker starts competing workers.
+        gpio_owners: dict[tuple[str, int], str] = {}
+        configured_workers = [
+            (f"service {name}", service)
+            for name, service in self.services.items()
+            if service.enabled
+        ]
+        configured_workers.extend(
+            (f"output {name}", output)
+            for name, output in self.outputs.items()
+            if output.enabled
+        )
+        for owner, worker in configured_workers:
+            chip = getattr(worker.driver.options, "gpio_chip", None)
+            line = getattr(worker.driver.options, "gpio_line", None)
+            if not isinstance(chip, str) or not isinstance(line, int):
+                continue
+            key = (chip, line)
+            previous = gpio_owners.get(key)
+            if previous is not None:
+                raise ValueError(
+                    f"{owner} and {previous} both use {chip} line {line}"
+                )
+            gpio_owners[key] = owner
         return self
 
 

@@ -495,6 +495,114 @@ services:
         project_dir.rmdir()
 
 
+def test_generic_gpio_compose_is_least_privilege() -> None:
+    """Expose only the selected GPIO chip to a generic input service."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    project_dir = TEST_TMP_DIR / f"gpio-deployment-{uuid4().hex}"
+    project_dir.mkdir()
+    try:
+        config_path = project_dir / "config.yaml"
+        config_path.write_text(
+            """mqtt: {broker: mosquitto}
+sms: {dry_run: true}
+setups:
+  equipment: {}
+services:
+  equipment_running:
+    label: Equipment Running
+    driver:
+      type: labpulse.gpio_input
+      options:
+        gpio_chip: /dev/gpiochip2
+        gpio_line: 17
+        active_high: true
+    measurements:
+      state:
+        setups: [equipment]
+        state_class: null
+""",
+            encoding="utf-8",
+        )
+        compose = compose_document(config_path, project_dir, force_simulated=False)
+        service = compose["services"]["labpulse-equipment-running"]
+        if service.get("devices") != ["/dev/gpiochip2:/dev/gpiochip2"]:
+            raise AssertionError(f"unexpected GPIO device mapping: {service.get('devices')!r}")
+        if service.get("privileged") is True or "/dev:/dev" in service.get("volumes", []):
+            raise AssertionError("generic GPIO service received broad device privileges")
+    finally:
+        for path in sorted(project_dir.rglob("*"), reverse=True):
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                path.rmdir()
+        project_dir.rmdir()
+
+
+def test_gpio_output_compose_is_isolated_and_omitted_in_fake_mode() -> None:
+    """Run one least-privilege output worker only in real-hardware mode."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    project_dir = TEST_TMP_DIR / f"gpio-output-deployment-{uuid4().hex}"
+    project_dir.mkdir()
+    try:
+        config_path = project_dir / "config.yaml"
+        config_path.write_text(
+            """mqtt: {broker: mosquitto}
+sms: {dry_run: true}
+setups:
+  monitor: {}
+services:
+  monitor:
+    label: Monitor
+    driver:
+      type: labpulse.serial_pipe
+      options: {port: /tmp/monitor}
+    measurements:
+      value: {setups: [monitor]}
+outputs:
+  cooling_valve_enable:
+    label: Cooling Valve Enable
+    driver:
+      type: labpulse.gpio_output
+      options:
+        gpio_chip: /dev/gpiochip2
+        gpio_line: 18
+        active_high: true
+        safe_state: false
+    maximum_active_seconds: 300
+""",
+            encoding="utf-8",
+        )
+        compose = compose_document(config_path, project_dir, force_simulated=False)
+        output = compose["services"]["labpulse-output-cooling-valve-enable"]
+        if output["command"] != [
+            "python",
+            "-m",
+            "labpulse.output",
+            "--config",
+            "/app/config.yaml",
+            "--output",
+            "cooling_valve_enable",
+        ]:
+            raise AssertionError(f"unexpected output command: {output['command']!r}")
+        if output.get("devices") != ["/dev/gpiochip2:/dev/gpiochip2"]:
+            raise AssertionError(f"unexpected output device mapping: {output.get('devices')!r}")
+        if output.get("privileged") is True or "/dev:/dev" in output.get("volumes", []):
+            raise AssertionError("GPIO output received broad device privileges")
+
+        fake_compose = compose_document(config_path, project_dir, force_simulated=True)
+        if "labpulse-output-cooling-valve-enable" in fake_compose["services"]:
+            raise AssertionError("fake-USB mode retained a physical actuator worker")
+    finally:
+        for path in sorted(project_dir.rglob("*"), reverse=True):
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                path.rmdir()
+        project_dir.rmdir()
+
+
 def test_sms_delivery_mode_controls_modem_access() -> None:
     """Give only real-delivery SMS workers the modem-specific Compose settings."""
 

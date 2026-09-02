@@ -26,6 +26,24 @@ Home Assistant generator.
 Create a driver for GPIO, I2C, SPI, vendor libraries, network APIs, or protocols
 that cannot reasonably emit the standard serial format.
 
+### Controlled-output driver
+
+Output drivers are a separate capability. Inherit `HardwareOutputDriver`,
+implement the normal `connect/read/close` lifecycle plus `safe_state` and
+`set_state(active)`, and configure instances under top-level `outputs`, never
+under `services`.
+
+An output `connect()` must acquire the device in its safe state. `set_state()`
+must retain ownership and verify the state before returning. `close()` must
+attempt the safe state before release and tolerate repeated calls. The shared
+output MQTT worker owns command validation, availability, reconnect timing,
+maximum-active timing, and Home Assistant discovery; the hardware driver must
+not subscribe to MQTT itself.
+
+Physical outputs are omitted in fake-USB mode. Add hardware-free tests for
+polarity, atomic safe startup, readback, failed writes, and safe release before
+adding any real-device acceptance procedure.
+
 ## Driver module structure
 
 Copy:
@@ -239,6 +257,10 @@ They do not own:
 - notification decisions;
 - Home Assistant entity IDs;
 - MQTT topics.
+
+Output drivers are the deliberate exception to the read-only measurement
+contract. Their diagnostic `read()` returns `state` as `0.0` or `1.0`, while
+commands enter only through the dedicated output worker.
 
 These remain shared configuration and platform concerns.
 

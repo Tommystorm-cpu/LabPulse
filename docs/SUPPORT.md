@@ -58,7 +58,8 @@ project's release-qualification workflow:
 - Raspberry Pi OS 64-bit based on Debian 13 (Trixie);
 - other 64-bit Debian-based Linux systems;
 - additional serial devices that implement the documented protocol;
-- new in-tree drivers before their recorded real-device smoke test.
+- new in-tree drivers before their recorded real-device smoke test;
+- generic GPIO input monitoring before its recorded real-device smoke test.
 
 Problems on provisional environments are welcome as bug reports, but fixes may
 require reproduction on the reference deployment.
@@ -120,7 +121,7 @@ The following are the supported pre-1.0 core:
 - matching AMD64 and ARM64 LabPulse runtime images from GHCR;
 - generation and operation of `~/labpulse-live`;
 - typed configuration through `~/labpulse-live/config.yaml`;
-- built-in serial, DHT11, and X1200 measurement acquisition;
+- built-in serial, generic GPIO input, DHT11, and X1200 measurement acquisition;
 - fake-USB simulation;
 - MQTT discovery, measurement state, and service health;
 - generated Home Assistant dashboards, thresholds, alarms, and mutes;
@@ -139,7 +140,7 @@ These capabilities remain experimental:
 - external driver or integration packages;
 - protocol-level Qubex, Triton, or other external integrations;
 - grouped-service deployment;
-- equipment commands or other controlled outputs.
+- manual generic GPIO output control and other equipment commands.
 
 Experimental capabilities may be exercised and reported on, but they do not
 carry the same compatibility or recovery expectations as the supported core.

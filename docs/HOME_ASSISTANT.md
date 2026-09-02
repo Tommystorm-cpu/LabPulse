@@ -25,8 +25,8 @@ Broker: 127.0.0.1
 Port: 1883
 ```
 
-Home Assistant uses host networking. LabPulse sensor and SMS containers use
-`mosquitto:1883` on the Compose network.
+Home Assistant uses host networking. LabPulse sensor, output, and SMS
+containers use `mosquitto:1883` on the Compose network.
 
 ## Generated files
 
@@ -91,6 +91,12 @@ presentation group but remains one physical MQTT entity and one alarm.
 Dedicated power monitoring is displayed separately from experimental setup
 membership.
 
+Enabled physical outputs appear in a separate Controlled Outputs card. Each is
+an MQTT switch whose availability follows the output worker and GPIO line.
+Changing the switch publishes a non-retained command; the worker publishes the
+verified GPIO latch state back to the same entity. An `ON` display confirms the
+Pi output latch, not movement of the attached relay, valve, or equipment.
+
 Setups use the main Monitor tab unless their config selects a declared custom
 dashboard. Custom operator tabs use the same setup presentation, follow their
 configured order, and appear between Monitor and Alarm Setup.
@@ -113,6 +119,22 @@ Diagnostics is organized by physical sensor service, followed by a Calculated
 Measurements section when custom measurements are configured. It shows service
 status and the measurements produced by each hub, which helps distinguish a
 complete device failure from an individual or calculated measurement alarm.
+Controlled outputs are also listed so their MQTT availability and last
+verified logical state can be checked without leaving LabPulse.
+
+## Controlled-output discovery and safety
+
+Each output worker publishes retained MQTT switch discovery, state, and
+availability. Its command topic is QoS 1 but deliberately non-retained. The
+worker uses a clean MQTT session and rejects retained, malformed, lowercase,
+or wrong-topic commands, preventing an old broker message from switching an
+output on after restart.
+
+Loss of MQTT command authority forces the configured safe state. Startup,
+shutdown, GPIO failure, and an optional maximum-active timer follow the same
+safe-state policy. These are best-effort software controls; external hardware
+must provide the safe state while the Pi is booting, unpowered, or unable to
+drive the GPIO.
 
 ## Measurement discovery and identity
 

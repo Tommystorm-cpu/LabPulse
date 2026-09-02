@@ -38,6 +38,7 @@ configuration source is always `~/labpulse-live/config.yaml`.
 | Global config, cross-references, and loading | `src/labpulse/common/config.py` |
 | Physical and calculated measurement config | `src/labpulse/common/measurement_config.py` |
 | Driver, service, and power config | `src/labpulse/common/service_config.py` |
+| Controlled-output config | `src/labpulse/common/output_config.py` |
 | Fake runtime derivation | `src/labpulse/common/fake_config.py` |
 | Stable IDs | `src/labpulse/common/identity.py` |
 | MQTT and SMS request contracts | `src/labpulse/common/mqtt_contracts.py` |
@@ -51,6 +52,7 @@ configuration source is always `~/labpulse-live/config.yaml`.
 | Hardware lifecycle | `src/labpulse/hardware/runner.py` |
 | Serial parsing | `src/labpulse/hardware/drivers/serial_pipe.py` |
 | MQTT discovery/state publication | `src/labpulse/hardware/homeassistant_publisher.py` |
+| Controlled-output MQTT lifecycle | `src/labpulse/output/service.py` |
 | Home Assistant command and file generation | `src/labpulse/homeassistant/generator.py` |
 | Alarm/render context | `src/labpulse/homeassistant/alarm.py` |
 | Dashboard and alarm behavior | `src/labpulse/homeassistant/templates/` |

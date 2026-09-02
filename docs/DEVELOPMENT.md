@@ -217,7 +217,7 @@ Focused suites:
 | Driver registry and options | `test_hardware_factory.py` |
 | Runner lifecycle and retry | `test_hardware_runner.py` |
 | Serial protocol and driver | `test_serial_parser.py`, `test_serial_driver.py` |
-| DHT11 and X1200 | `test_dht11_driver.py`, `test_x1200_ups_driver.py` |
+| GPIO input/output, DHT11, and X1200 | `test_gpio_input_driver.py`, `test_gpio_output_driver.py`, `test_output_mqtt_service.py`, `test_dht11_driver.py`, `test_x1200_ups_driver.py` |
 | MQTT discovery/state | `test_homeassistant_publisher.py` |
 | Home Assistant context/generation | `test_homeassistant_entities.py`, `test_homeassistant_generator.py` |
 | Home Assistant dashboard YAML | `test_yaml_dashboard.py` |

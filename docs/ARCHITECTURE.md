@@ -6,11 +6,12 @@ the source of truth, and which files are user-owned or generated.
 
 ## Product boundary
 
-LabPulse monitors laboratory infrastructure and produces best-effort alerts.
-It does not control equipment and is not a safety-rated alarm, emergency
-shutdown system, or protective interlock. Independent protection remains
-necessary wherever delayed, missing, or incorrect telemetry could cause harm
-or loss. See [Product scope and safety boundary](PRODUCT_SCOPE.md).
+LabPulse monitors laboratory infrastructure, produces best-effort alerts, and
+can expose explicitly configured non-safety GPIO outputs. It is not a
+safety-rated alarm, emergency shutdown system, or protective interlock.
+Independent protection remains necessary wherever delayed, missing, or
+incorrect telemetry or control could cause harm or loss. See
+[Product scope and safety boundary](PRODUCT_SCOPE.md).
 
 ## Runtime topology
 
@@ -30,6 +31,12 @@ Home Assistant  labpulse-sms
   dashboard       routing and deduplication
   alarm state     modem delivery or dry-run logging
   MQTT requests
+
+Home Assistant MQTT switch
+            │ live ON/OFF command
+            ▼
+one labpulse-output-<output> container per enabled output
+  MQTT subscriber → safety policy → persistent GPIO line request
 ```
 
 Generated Compose always contains:
@@ -37,11 +44,18 @@ Generated Compose always contains:
 - `homeassistant`;
 - `mosquitto`;
 - `labpulse-sms`;
-- one `labpulse-<service-slug>` container for every enabled service.
+- one `labpulse-<service-slug>` container for every enabled service;
+- one `labpulse-output-<output-slug>` container for every enabled output in
+  real-hardware mode.
 
 Hardware services do not share a Python process. A blocked or failed device
 therefore does not stop another sensor service, and Docker can restart workers
 independently.
+
+Output workers likewise do not share a process. They own GPIO continuously,
+subscribe only to their own command topic, publish verified latch state and
+availability, and apply their configured safe state when command authority is
+lost. Fake-USB mode omits physical actuator workers.
 
 ## Installed host layout
 
@@ -103,7 +117,7 @@ package code. They are not independent configuration sources.
 
 ## Command surfaces
 
-LabPulse has one public operator CLI and four package-level process entry
+LabPulse has one public operator CLI and five package-level process entry
 points.
 
 ### Operator CLI
@@ -139,6 +153,7 @@ package/__main__.py → package/cli.py → domain modules
 | Command | CLI responsibility | Domain owner |
 |---|---|---|
 | `python -m labpulse.hardware` | Compose one hardware worker | `src/labpulse/hardware/` |
+| `python -m labpulse.output` | Compose one MQTT-controlled output worker | `src/labpulse/output/` |
 | `python -m labpulse.sms` | Load config and compose the SMS worker | subscriber, sender, subscriptions |
 | `python -m labpulse.homeassistant` | Generate Home Assistant files | `src/labpulse/homeassistant/` |
 | `python -m labpulse.deployment` | Generate deployment files | `src/labpulse/deployment/` |
@@ -151,7 +166,8 @@ domain modules do not inspect `sys.argv` or exit the interpreter.
 `src/labpulse/common/config.py` is the only production LabPulse YAML loader and
 owns the final cross-section validation. Physical and calculated measurement
 models live in `common/measurement_config.py`; driver, service, and power models
-live in `common/service_config.py`.
+live in `common/service_config.py`; controlled-output policy lives in
+`common/output_config.py`.
 
 The loader returns a `ConfigDocument` containing:
 
@@ -168,6 +184,7 @@ common.config.load_config()
   ├── deployment generation
   ├── Home Assistant generation
   ├── one hardware process per service
+  ├── one output process per enabled output
   ├── SMS worker
   └── diagnostics
 ```
@@ -218,6 +235,10 @@ identity.
 Compose mounts the derived file as `/app/config.yaml`. `labpulse config`
 detects that runtime mode, regenerates the derived file, validates it, and
 keeps the deployment simulated.
+
+Physical output containers are omitted in fake-USB mode. When generation
+switches modes, Compose's orphan removal stops an old output worker so its
+shutdown path applies the configured safe state before releasing GPIO.
 
 ## Hardware process
 
@@ -440,6 +461,7 @@ src/labpulse/
   common/            configuration, IDs, MQTT contracts, shared logging/copy
   deployment/        Compose renderer and atomic unified generation
   hardware/          CLI, driver API/registry, runner, parser, MQTT publisher
+  output/            controlled-output MQTT subscriber and fail-safe lifecycle
   homeassistant/     CLI, render context, generators, final YAML templates
   sms/               CLI, MQTT subscriber, delivery, subscriptions
 
@@ -465,3 +487,9 @@ where possible. Driver code and runtime images must therefore be trusted.
 
 Do not expose Mosquitto outside the host without authentication,
 authorization, and transport security.
+
+Controlled outputs inherit this trusted-local-broker boundary. Topic
+allow-listing, non-retained commands, and clean subscriber sessions prevent
+accidental stale replay, but they do not authenticate Home Assistant as the
+publisher. The current output feature must not be exposed to untrusted broker
+clients.

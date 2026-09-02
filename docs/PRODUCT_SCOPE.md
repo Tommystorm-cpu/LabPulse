@@ -10,6 +10,9 @@ LabPulse is a laboratory infrastructure **monitoring and alerting aid**. It:
 - presents current and historical state in Home Assistant;
 - evaluates configured warning conditions;
 - creates operator-facing notifications; and
+- exposes explicitly configured, manually operated non-safety GPIO outputs;
+- forces controlled outputs toward a configured safe state when software
+  command authority is unavailable; and
 - provides diagnostics for installation and runtime faults.
 
 LabPulse helps people notice and investigate abnormal conditions. It does not
@@ -43,8 +46,10 @@ Monitoring means that LabPulse may:
 - compare observations with operator-configured thresholds; and
 - expose read-only state to documented external integrations.
 
-Drivers publish facts and classified acquisition failures. They do not decide
-whether equipment may start, continue operating, or shut down.
+Measurement drivers publish facts and classified acquisition failures. Output
+workers may apply an explicit Home Assistant command to one configured GPIO,
+but they do not decide automatically whether equipment may start, continue
+operating, or shut down.
 
 ## Meaning of alerting
 
@@ -68,26 +73,28 @@ Operators remain responsible for:
 
 ## Equipment control
 
-The current LabPulse product does not command monitored equipment. Drivers read
-hardware; Home Assistant evaluates and displays state; the SMS worker delivers
-notification requests.
+The controlled-output scope is deliberately narrow: an explicitly enabled
+Home Assistant MQTT switch may request logical `ON` or `OFF` from one configured
+GPIO output. The output has a configured safe state and may have a maximum
+active time. LabPulse publishes GPIO latch readback and availability as command
+acknowledgement and records command handling in the worker log.
 
-Outputs such as changing a setpoint, acknowledging a device,
-starting or stopping equipment, or actuating a relay are outside the current
-product scope. They must not be added by extending the measurement driver
-contract or by treating an ordinary MQTT publication as a control command.
+Commands use one allow-listed topic per output. They are not retained or queued
+for an offline worker; retained, malformed, and wrong-topic messages are
+rejected. Startup, orderly shutdown, MQTT loss, GPIO failure, and timer expiry
+all have defined fail-safe handling. Fake-USB mode omits physical output
+workers.
 
-Any future control capability requires a separate, explicitly enabled design
-with:
+This is not proof that attached equipment moved, and it is not an interlock.
+The interface board must establish the safe state without software and provide
+appropriate electrical protection. Manual override, position or flow feedback,
+and independent local protection remain external responsibilities.
 
-- a documented non-safety use case and risk assessment;
-- a narrow allow-list of devices and operations;
-- separate authentication and authorization from measurement publication;
-- command identity, expiry, acknowledgement, audit, and replay protection;
-- defined behavior for timeout, restart, stale state, and communication loss;
-- manual override and independent local interlocks;
-- simulation and failure-path testing; and
-- clear user-visible experimental status.
+Setpoint changes, automatic alarm-driven actuation, multi-step sequences,
+remote public-network control, and safety functions remain outside the current
+product scope. Expanding beyond a manual binary output requires a separate risk
+assessment, stronger authorization and command-expiry design, audit needs, and
+failure-path testing.
 
 
 ## Contribution boundary
@@ -95,12 +102,14 @@ with:
 Contributions must preserve this separation:
 
 - sensor drivers acquire measurements and health only;
+- output drivers implement the separate output lifecycle and never masquerade
+  as measurement services;
 - the hardware runner owns retry, freshness, and lifecycle behavior;
 - Home Assistant owns thresholds and operator-facing alarm state;
 - notification workers deliver requests but do not assert receipt or response;
 - generic external integration work begins read-only; and
-- equipment commands require an approved control contract rather than
-  driver-specific shortcuts.
+- equipment-command expansion requires an approved control contract rather
+  than driver-specific shortcuts.
 
 A proposal that introduces actuation, automatic shutdown, safety claims, or
 reliance on LabPulse for hazard mitigation must be discussed before

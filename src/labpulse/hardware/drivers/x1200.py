@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -17,6 +16,7 @@ from labpulse.hardware.driver import (
     HardwareIssue,
     HardwareReadings,
 )
+from labpulse.hardware.drivers._gpio import read_gpio
 
 
 BATTERY_VOLTAGE_REGISTER = 0x02
@@ -67,31 +67,6 @@ def decode_state_of_charge(raw: int) -> float:
     """Decode the X1200 MAX17043 8.8 fixed-point SOC register."""
 
     return raw / 256.0
-
-
-# Raspberry Pi OS releases use two incompatible gpioget command forms, so try
-# the current form first and fall back to the older one.
-def read_mains_gpio(chip: str, line: int, active_high: bool) -> float:
-    """Read the mains-detection GPIO, supporting either libgpiod CLI version."""
-
-    chip_name = Path(chip).name
-    result = subprocess.run(["gpioget", "-c", chip_name, str(line)], capture_output=True, text=True, check=False, timeout=2)
-    if result.returncode != 0:
-        legacy_result = subprocess.run(["gpioget", chip_name, str(line)], capture_output=True, text=True, check=False, timeout=2)
-        if legacy_result.returncode != 0:
-            modern_detail = result.stderr.strip() or f"gpioget exited {result.returncode}"
-            legacy_detail = legacy_result.stderr.strip() or f"gpioget exited {legacy_result.returncode}"
-            raise OSError(f"libgpiod 2.x read failed: {modern_detail}; libgpiod 1.x read failed: {legacy_detail}")
-        result = legacy_result
-
-    raw = result.stdout.strip()
-    value = raw.rsplit("=", 1)[-1].strip().lower()
-    if value not in {"0", "1", "active", "inactive"}:
-        raise ValueError(f"unexpected gpioget output: {raw!r}")
-
-    asserted = value in {"1", "active"}
-    mains_present = asserted if active_high else not asserted
-    return 1.0 if mains_present else 0.0
 
 
 # The runner calls this connect/read/close lifecycle for the selected service.
@@ -153,7 +128,11 @@ class X1200Driver(HardwareDriver):
         }
 
         try:
-            values["mains_present"] = read_mains_gpio(self.gpio_chip, self.gpio_line, self.mains_present_active_high)
+            values["mains_present"] = read_gpio(
+                self.gpio_chip,
+                self.gpio_line,
+                self.mains_present_active_high,
+            )
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             if not self._mains_read_was_faulted:
                 self.logger.error("X1200 mains GPIO read failed: %s", error)

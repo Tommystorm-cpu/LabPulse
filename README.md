@@ -3,11 +3,13 @@
 LabPulse is a Raspberry Pi monitoring platform for laboratory infrastructure.
 It reads Arduino serial, GPIO, I2C, and simulated sensors; publishes numeric
 measurements and service health over MQTT; generates a Home Assistant dashboard
-and alarm package; and can deliver notification requests through an SMS modem.
+and alarm package; can expose explicitly configured fail-safe GPIO switches;
+and can deliver notification requests through an SMS modem.
 
-LabPulse is a monitoring and best-effort alerting aid. It is not a safety-rated
-controller, protective interlock, emergency shutdown system, or guaranteed
-notification channel. See [Product scope and safety boundary](docs/PRODUCT_SCOPE.md).
+LabPulse monitoring, alerts, and controlled outputs are not safety-rated. It is
+not a protective interlock, emergency shutdown system, or guaranteed
+notification channel. See
+[Product scope and safety boundary](docs/PRODUCT_SCOPE.md).
 
 ## Current system
 
@@ -23,6 +25,7 @@ Docker Compose
   mosquitto
   labpulse-sms
   labpulse-<service>                  one per enabled sensor service
+  labpulse-output-<output>            one per enabled physical output
 ```
 
 Each hardware container selects one configured driver, normalizes readings,
@@ -30,6 +33,11 @@ and publishes MQTT discovery, state, and health. Home Assistant owns threshold
 interpretation, alarm timing, persistent alarm state, dashboard presentation,
 mutes, Test mode, and notification creation. The SMS worker independently
 validates, routes, deduplicates, queues, and delivers requests.
+
+Each output container holds one GPIO line, accepts only live Home Assistant
+MQTT switch commands, publishes verified latch state, and returns to its
+configured safe state on startup, shutdown, MQTT loss, or optional active-time
+expiry. External hardware must independently establish its safe state.
 
 The repository `config.yaml` is a new-install template. An installed Pi always
 uses:
@@ -103,6 +111,7 @@ src/labpulse/
   common/            validated config, stable IDs, MQTT contracts
   deployment/        Compose rendering and atomic unified generation
   hardware/          driver API, registry, runner, parser, MQTT publisher
+  output/            MQTT output subscriber and fail-safe lifecycle
   homeassistant/     CLI, render context, generators, YAML templates
   sms/               CLI, subscriber, delivery, subscriptions
 

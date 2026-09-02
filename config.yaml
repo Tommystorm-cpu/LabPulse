@@ -60,6 +60,25 @@ setups:
     icon: mdi:home-thermometer-outline
     order: 40
 
+# Physical outputs are deliberately separate from read-only services. Each
+# enabled output becomes a Home Assistant MQTT switch and its own container.
+# Fake-USB mode omits all physical output containers.
+outputs: {}
+# Example:
+# outputs:
+#   cooling_valve_enable:
+#     label: Cooling Valve Enable
+#     icon: mdi:valve
+#     driver:
+#       type: labpulse.gpio_output
+#       options:
+#         gpio_chip: /dev/gpiochip0
+#         gpio_line: 18
+#         active_high: true
+#         safe_state: false
+#     reconnect_interval_seconds: 5
+#     maximum_active_seconds: 300
+
 services:
   # Measurements normally expire in Home Assistant after 300 seconds without
   # an MQTT sample. Override maximum_measurement_age_seconds per service.
@@ -259,6 +278,23 @@ services:
   #       setups: [cryogenics_room]
   #       unit: Hz
   #   maximum_measurement_age_seconds: 30
+
+  # Generic digital GPIO input example. It publishes state as 0.0 or 1.0 and
+  # can use the same threshold alarms as other numeric measurements.
+  # equipment_running:
+  #   label: Equipment Running
+  #   driver:
+  #     type: labpulse.gpio_input
+  #     options:
+  #       gpio_chip: /dev/gpiochip0
+  #       gpio_line: 17
+  #       active_high: true
+  #   measurements:
+  #     state:
+  #       label: Equipment Running
+  #       setups: [cryogenics_room]
+  #       state_class: null
+  #   read_interval_seconds: 1
 
   # Verified X1200 UPS hardware. Fake-USB setup changes only this service's
   # transport to the UPS simulator while preserving these measurements and IDs.

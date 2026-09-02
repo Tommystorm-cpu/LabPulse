@@ -54,6 +54,7 @@ service_health:
 dashboards: {}
 setups: {}
 services: {}
+outputs: {}
 custom_measurements: {}
 ```
 
@@ -71,11 +72,12 @@ The same validated document is consumed differently:
 
 | Consumer | Reads from the document |
 |---|---|
-| Compose generator | enabled services, runtime image inputs, driver resources, SMS mode |
+| Compose generator | enabled services and outputs, runtime image inputs, driver resources, SMS mode |
 | Hardware CLI | one selected service, its typed driver options, MQTT settings |
-| Home Assistant generator | enabled services, dashboards, setups, physical and custom measurements, health and power timing |
+| Home Assistant generator | enabled services and outputs, dashboards, setups, measurements, health and power timing |
 | SMS CLI | MQTT settings, delivery mode, normal and test recipients |
-| Doctor | source/runtime agreement, enabled services, declared host resources |
+| Output CLI | one selected output, its typed driver options, MQTT settings, and safety timing |
+| Doctor | source/runtime agreement, enabled workers, declared host resources |
 
 ## MQTT
 
@@ -186,6 +188,88 @@ Fields:
 An ordinary measurement must select at least one declared setup. One
 measurement may appear in several setups without creating duplicate MQTT
 entities or alarm state.
+
+## Controlled outputs
+
+Physical outputs are separate from read-only `services`:
+
+```yaml
+outputs:
+  cooling_valve_enable:
+    label: Cooling Valve Enable
+    icon: mdi:valve
+    driver:
+      type: labpulse.gpio_output
+      options:
+        gpio_chip: /dev/gpiochip0
+        gpio_line: 18
+        active_high: true
+        safe_state: false
+    reconnect_interval_seconds: 5
+    maximum_active_seconds: 300
+```
+
+Each enabled output becomes one `labpulse-output-...` container and one MQTT
+switch such as `switch.labpulse_output_cooling_valve_enable`. The switch is
+shown under Controlled Outputs on the Monitor and Diagnostics views.
+
+| Field | Default | Meaning |
+|---|---:|---|
+| `enabled` | `true` | Whether to generate and run this output worker |
+| `label` | required | Home Assistant switch and device label |
+| `icon` | `mdi:toggle-switch` | Material Design switch icon |
+| `driver` | required | Output-capable driver and its options |
+| `reconnect_interval_seconds` | `5` | Delay before retrying unavailable hardware |
+| `maximum_active_seconds` | none | Optional automatic return to safe state, up to 86400 seconds |
+
+Output IDs use lowercase letters, numbers, and underscores. LabPulse rejects
+an output that selects an input-only driver or a GPIO line already claimed by
+another enabled LabPulse service or output.
+
+The output worker subscribes to its Home Assistant command topic at QoS 1.
+Only exact, live `ON` and `OFF` messages are accepted. Home Assistant is told
+not to retain commands, and the worker rejects any retained command it does
+receive. State and availability are retained so the UI can recover accurately
+after reconnecting.
+
+The current local broker does not authenticate publishers inside the Compose
+network. The worker therefore cannot prove that a valid command came from Home
+Assistant rather than another process with broker access. Keep Mosquitto bound
+to localhost as generated and do not expose this experimental control path to
+an untrusted network.
+
+On startup, orderly shutdown, or loss of MQTT command authority, the worker
+applies `safe_state`. It also retries unavailable GPIO hardware while keeping
+the Home Assistant switch unavailable. If `maximum_active_seconds` is set,
+logical `ON` returns automatically to `safe_state: false` when that timer
+expires. Repeated `ON` commands do not extend the original timer. A maximum
+active time cannot be combined with `safe_state: true`.
+
+`labpulse setup --fake-usb` does not run physical output containers. Returning
+to real-hardware mode starts each output in its safe state.
+
+### Generic GPIO output
+
+The `labpulse.gpio_output` driver has these options:
+
+| Option | Default | Constraint |
+|---|---:|---|
+| `gpio_chip` | `/dev/gpiochip0` | `/dev/gpiochipN` |
+| `gpio_line` | none | Required Linux GPIO line offset, 0 to 53 |
+| `active_high` | `true` | Electrical high represents logical `ON` |
+| `safe_state` | `false` | Logical state used without command authority |
+
+The worker requests and holds the line using the libgpiod 2.x Python binding;
+it does not release and reacquire GPIO for each command. After every write, it
+reads back the GPIO latch before publishing the switch state. This confirms
+only the Pi output, not that the connected relay, valve, or equipment moved.
+
+The generated container receives only the configured `/dev/gpiochipN` device.
+The custom interface must accept 3.3 V logic and provide any buffering,
+isolation, level shifting, load switching, separate load supply, and inductive
+flyback protection required by the equipment. Never power a relay or solenoid
+directly from GPIO. A physical pull resistor must hold the same safe state
+while the Pi is booting, unpowered, or after LabPulse releases the line.
 
 ## Services
 
@@ -453,6 +537,51 @@ The driver consumes each snapshot once. If publishing stops, the ordinary
 service `maximum_measurement_age_seconds` setting makes the service stale and
 reconnects it. MQTT is ordinary network access, so this driver requests no
 host devices or privileged container permissions.
+
+### Generic GPIO input
+
+Use one service for each digital input:
+
+```yaml
+services:
+  equipment_running:
+    label: Equipment Running
+    driver:
+      type: labpulse.gpio_input
+      options:
+        gpio_chip: /dev/gpiochip0
+        gpio_line: 17
+        active_high: true
+    measurements:
+      state:
+        label: Equipment Running
+        setups: [cryogenics_room]
+        state_class: null
+    read_interval_seconds: 1
+```
+
+| Option | Default | Constraint |
+|---|---:|---|
+| `gpio_chip` | `/dev/gpiochip0` | `/dev/gpiochipN` |
+| `gpio_line` | none | Required, 0 to 53 |
+| `active_high` | `true` | `true` means electrical high publishes `1.0` |
+
+The sole measurement must be named `state`. LabPulse publishes it as an
+ordinary numeric sensor: logically inactive is `0.0` and active is `1.0`.
+Normal numeric alarm thresholds therefore apply; for example, a minimum of
+`0.7` treats the inactive state as low. A dedicated Home Assistant binary
+sensor is not generated yet.
+
+The default read interval is 1 second. This is intended for stable equipment
+states, switches, and relay contacts, not for counting short pulses. The
+generated container receives only the selected GPIO chip device and uses the
+packaged `gpioget` tool. `gpio_line` is the Linux GPIO line offset, not the
+physical header-pin number.
+
+Raspberry Pi GPIO is 3.3 V logic and is not 5 V tolerant. The custom hardware
+must provide a defined high or low level and any required isolation, level
+conversion, and pull resistor; never connect a higher-voltage signal directly
+to the Pi. `active_high: false` inverts an active-low interface in software.
 
 ### DHT11
 

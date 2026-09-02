@@ -40,6 +40,7 @@ class HomeAssistantRenderModel:
     """
 
     services: tuple[dict[str, Any], ...]
+    outputs: tuple[dict[str, Any], ...]
     dashboards: tuple[dict[str, Any], ...]
     setups: tuple[dict[str, Any], ...]
     monitor_setups: tuple[dict[str, Any], ...]
@@ -358,8 +359,19 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 if config.setups[setup_id].dashboard == dashboard_id
             ),
         })
+    outputs = tuple(
+        {
+            "name": output_name,
+            "label": output_config.label,
+            "icon": output_config.icon,
+            "entity_id": entity_id("switch", "output", output_name),
+        }
+        for output_name, output_config in config.outputs.items()
+        if output_config.enabled
+    )
     return HomeAssistantRenderModel(
         services=tuple(services),
+        outputs=outputs,
         dashboards=tuple(dashboard_records),
         setups=tuple(setups),
         monitor_setups=monitor_setups,

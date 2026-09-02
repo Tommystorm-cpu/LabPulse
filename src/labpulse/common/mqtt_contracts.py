@@ -11,6 +11,7 @@ SMS_SUBSCRIPTION_TOPIC = SMS_SEND_TOPIC
 SMS_STATUS_TOPIC = "labpulse/sms/status"
 SMS_RESULT_TOPIC_PREFIX = "labpulse/sms/result"
 SMS_STATUS_DISCOVERY_TOPIC = "homeassistant/sensor/labpulse_sms_status/config"
+OUTPUT_TOPIC_PREFIX = "home/output"
 
 
 class SmsRequest(BaseModel):
@@ -62,3 +63,27 @@ def status_discovery_topic(service_name: str) -> str:
     """Return the Home Assistant discovery topic for one service status."""
 
     return f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/sensor/{service_name}_status/config"
+
+
+def output_command_topic(output_name: str) -> str:
+    """Return the non-retained command topic for one controlled output."""
+
+    return f"{OUTPUT_TOPIC_PREFIX}/{output_name}/set"
+
+
+def output_state_topic(output_name: str) -> str:
+    """Return the retained logical-state topic for one controlled output."""
+
+    return f"{OUTPUT_TOPIC_PREFIX}/{output_name}/state"
+
+
+def output_availability_topic(output_name: str) -> str:
+    """Return the retained availability topic for one controlled output."""
+
+    return f"{OUTPUT_TOPIC_PREFIX}/{output_name}/availability"
+
+
+def output_discovery_topic(output_name: str) -> str:
+    """Return the Home Assistant MQTT switch discovery topic for one output."""
+
+    return f"{HOME_ASSISTANT_DISCOVERY_PREFIX}/switch/labpulse_output_{output_name}/config"

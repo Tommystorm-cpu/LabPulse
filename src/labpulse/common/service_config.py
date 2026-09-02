@@ -71,13 +71,26 @@ class ServiceConfig(BaseModel):
     def validate_hardware_contract(self) -> "ServiceConfig":
         """Validate driver-specific fields and the normalized UPS measurements."""
 
+        from labpulse.hardware.driver import HardwareOutputDriver
+        from labpulse.hardware.registry import get_driver_definition
+
+        definition = get_driver_definition(self.driver.type)
+        if issubclass(definition.driver_class, HardwareOutputDriver):
+            raise ValueError("output drivers must be configured under the top-level outputs section")
+
         measurement_names = list(self.measurements)
         for measurement_id in measurement_names:
             if not measurement_id or slug(measurement_id) != measurement_id:
                 raise ValueError("measurement IDs must use lowercase letters, numbers, and underscores")
 
         serial_pipe_driver_id = "labpulse.serial_pipe"
+        gpio_input_driver_id = "labpulse.gpio_input"
         x1200_driver_id = "labpulse.x1200"
+
+        if self.driver.type == gpio_input_driver_id and measurement_names != ["state"]:
+            raise ValueError(
+                "labpulse.gpio_input services require exactly one measurement named: state"
+            )
 
         if self.driver.type == x1200_driver_id and self.power_detection is None:
             raise ValueError("labpulse.x1200 services require power_detection")

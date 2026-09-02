@@ -250,6 +250,51 @@ Verify:
 Malformed or unit-bearing values are rejected. See
 [Serial protocol](SERIAL_PROTOCOL.md).
 
+## Generic GPIO input is unavailable
+
+Check the configured GPIO chip on the host and the generated service mapping:
+
+```bash
+ls -l /dev/gpiochip0
+labpulse doctor
+labpulse logs -f labpulse-SERVICE-SLUG
+```
+
+Confirm that `gpio_line` is the Linux line offset rather than the physical
+header-pin number, and that no other process has claimed the line. A floating
+input can change unpredictably; the interface hardware must provide a defined
+level with an appropriate pull resistor. Use `active_high: false` when the
+external interface asserts the input low.
+
+The service container should receive only its configured `/dev/gpiochipN`.
+After changing `~/labpulse-live/config.yaml`, run `labpulse up` to validate the
+configuration and regenerate Compose.
+
+## GPIO output is unavailable or does not move the equipment
+
+Inspect the selected output worker and GPIO chip:
+
+```bash
+ls -l /dev/gpiochip0
+labpulse doctor
+labpulse logs -f labpulse-output-OUTPUT-SLUG
+```
+
+An unavailable Home Assistant switch means the output worker cannot currently
+control its configured line or has lost MQTT. LabPulse forces the logical safe
+state on startup, orderly shutdown, MQTT disconnection, and maximum-active-time
+expiry. Retained, lowercase, malformed, and unexpected-topic commands are
+rejected.
+
+Confirm that `gpio_line` is a Linux line offset, that no process outside
+LabPulse owns it, and that `active_high` matches the interface board. The
+published state is GPIO latch readback; it does not prove that a relay or valve
+moved. Diagnose the external supply, driver, flyback protection, wiring, and a
+separate feedback input independently.
+
+Fake-USB mode intentionally omits output workers. Switches left in Home
+Assistant discovery remain unavailable until real-hardware mode is restored.
+
 ## DHT11 is unavailable
 
 Confirm real rather than fake mode and inspect:

@@ -10,6 +10,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 from labpulse.common.service_config import ServiceConfig
 from labpulse.hardware.driver import ContainerRequirements, HardwareDriver
 from labpulse.hardware.drivers.dht11 import Dht11Config, Dht11Driver
+from labpulse.hardware.drivers.gpio_input import GpioInputDriver
 from labpulse.hardware.registry import get_driver_definition
 from labpulse.hardware.drivers.serial_pipe import (
     SerialPipeConfig,
@@ -201,8 +202,8 @@ def test_config_loading_applies_driver_defaults_and_registry_reports_ids() -> No
     assert_equal(driver_config.baud_rate, 9600, "default baud rate")
     message = assert_raises(
         ValueError,
-        "Available drivers: labpulse.dht11, labpulse.mqtt_json, "
-        "labpulse.serial_pipe, labpulse.sht40, labpulse.x1200",
+        "Available drivers: labpulse.dht11, labpulse.gpio_input, labpulse.gpio_output, "
+        "labpulse.mqtt_json, labpulse.serial_pipe, labpulse.sht40, labpulse.x1200",
         lambda: get_driver_definition("example.unknown"),
     )
     if "example.unknown" not in message:
@@ -239,6 +240,34 @@ def test_gpio_dht11_requires_pin() -> None:
             driver={"type": "labpulse.dht11", "options": {}}
         ),
     )
+
+
+def test_generic_gpio_input_driver_builds() -> None:
+    """Check validated GPIO settings reach the generic input driver."""
+
+    service_config = make_service_config(
+        driver={
+            "type": "labpulse.gpio_input",
+            "options": {
+                "gpio_chip": "/dev/gpiochip2",
+                "gpio_line": 17,
+                "active_high": False,
+            },
+        },
+        measurements={
+            "state": {
+                "label": "Equipment Running",
+                "setups": ["test_setup"],
+                "state_class": None,
+            }
+        },
+    )
+
+    driver = create_driver("equipment_running", service_config)
+    assert_equal(isinstance(driver, GpioInputDriver), True, "driver type")
+    assert_equal(driver.gpio_chip, "/dev/gpiochip2", "GPIO chip")
+    assert_equal(driver.gpio_line, 17, "GPIO line")
+    assert_equal(driver.active_high, False, "GPIO polarity")
 
 
 def test_x1200_i2c_gpio_driver_builds() -> None:

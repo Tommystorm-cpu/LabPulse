@@ -152,8 +152,14 @@ def _validate_config(report: DoctorReport, path: Path, name: str) -> LabPulseCon
         report.add(CheckStatus.FAIL, name, _validation_detail(error))
         return None
 
-    enabled = sum(service.enabled for service in config.services.values())
-    report.add(CheckStatus.PASS, name, f"{path.name} is valid ({enabled} enabled hardware services)")
+    enabled_services = sum(service.enabled for service in config.services.values())
+    enabled_outputs = sum(output.enabled for output in config.outputs.values())
+    report.add(
+        CheckStatus.PASS,
+        name,
+        f"{path.name} is valid ({enabled_services} enabled hardware services, "
+        f"{enabled_outputs} enabled outputs)",
+    )
     return config
 
 
@@ -178,6 +184,22 @@ def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simu
             if isinstance(port, str) and port:
                 paths.add(Path(port))
             service_paths[service_name] = paths
+        if not simulated:
+            for output_name, output in config.outputs.items():
+                if not output.enabled:
+                    continue
+                requirements = get_driver_definition(
+                    output.driver.type
+                ).container_requirements(output.driver.options, False)
+                paths = {
+                    Path(device.split(":", 1)[0])
+                    for device in requirements.devices
+                }
+                paths.update(
+                    Path(mount.split(":", 1)[0])
+                    for mount in requirements.mounts
+                )
+                service_paths[f"output {output_name}"] = paths
     except (TypeError, ValueError) as error:
         report.add(CheckStatus.FAIL, "Hardware resources", str(error))
         return

@@ -49,6 +49,7 @@ def test_hardware_dependencies_are_grouped_by_transport() -> None:
     assert extras["gpio"] == [
         "adafruit-blinka>=8,<9",
         "adafruit-circuitpython-dht>=4,<5",
+        "gpiod>=2,<3",
         "lgpio>=0.2,<1",
     ]
 

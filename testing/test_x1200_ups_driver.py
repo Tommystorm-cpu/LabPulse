@@ -2,10 +2,9 @@
 
 import sys
 from types import SimpleNamespace
-from collections.abc import Callable
 from unittest.mock import patch
 
-from labpulse.hardware.drivers import x1200
+from labpulse.hardware.drivers import _gpio
 from labpulse.hardware.drivers.x1200 import (
     BATTERY_VOLTAGE_REGISTER,
     STATE_OF_CHARGE_REGISTER,
@@ -13,7 +12,6 @@ from labpulse.hardware.drivers.x1200 import (
     X1200Driver,
     decode_state_of_charge,
     decode_voltage,
-    read_mains_gpio,
     register_word,
 )
 from labpulse.hardware.driver import ConnectionLost
@@ -58,23 +56,6 @@ def command_result(
     return SimpleNamespace(stdout=stdout, stderr=stderr, returncode=returncode)
 
 
-def sequence_runner(
-    results: list[object],
-    commands: list[list[str]],
-) -> Callable[..., object]:
-    """Return queued results while recording each attempted command."""
-
-    pending = list(results)
-
-    def run(command: list[str], **_kwargs: object) -> object:
-        """Record a command and return its queued fake result."""
-
-        commands.append(command)
-        return pending.pop(0)
-
-    return run
-
-
 def healthy_registers() -> dict[int, int]:
     """Return live-like 4.13 V and 94.2% X1200 register values."""
 
@@ -109,68 +90,13 @@ def connect_to_fake_bus(driver: X1200Driver, bus: FakeBus) -> None:
         driver.connect()
 
 
-def test_active_high_gpio_values() -> None:
-    """Normalize X1200 high/low values to mains present/absent."""
-
-    with patch.object(x1200.subprocess, "run", return_value=command_result("1\n")):
-        present = read_mains_gpio("/dev/gpiochip0", 6, True)
-    with patch.object(x1200.subprocess, "run", return_value=command_result("0\n")):
-        absent = read_mains_gpio("/dev/gpiochip0", 6, True)
-    if present != 1.0 or absent != 0.0:
-        raise AssertionError("active-high GPIO values were not normalized")
-
-
-def test_configurable_polarity() -> None:
-    """Support an inverted signal without changing lifecycle logic."""
-
-    with patch.object(x1200.subprocess, "run", return_value=command_result("0\n")):
-        mains_present = read_mains_gpio("/dev/gpiochip0", 6, False)
-    if mains_present != 1.0:
-        raise AssertionError("active-low GPIO did not normalize to mains present")
-
-
-def test_libgpiod_cli_versions() -> None:
-    """Support libgpiod v2 output and fall back to the v1 syntax."""
-
-    modern_commands: list[list[str]] = []
-    with patch.object(
-        x1200.subprocess,
-        "run",
-        side_effect=sequence_runner([command_result('"6"=active\n')], modern_commands),
-    ):
-        modern = read_mains_gpio("/dev/gpiochip0", 6, True)
-    if modern != 1.0 or modern_commands != [
-        ["gpioget", "-c", "gpiochip0", "6"]
-    ]:
-        raise AssertionError(f"libgpiod 2.x command is incorrect: {modern_commands!r}")
-
-    legacy_commands: list[list[str]] = []
-    with patch.object(
-        x1200.subprocess,
-        "run",
-        side_effect=sequence_runner(
-            [
-                command_result("", 1, "invalid option -- c"),
-                command_result("0\n"),
-            ],
-            legacy_commands,
-        ),
-    ):
-        legacy = read_mains_gpio("/dev/gpiochip0", 6, True)
-    if legacy != 0.0 or legacy_commands != [
-        ["gpioget", "-c", "gpiochip0", "6"],
-        ["gpioget", "gpiochip0", "6"],
-    ]:
-        raise AssertionError(f"libgpiod 1.x fallback is incorrect: {legacy_commands!r}")
-
-
 def test_register_conversion_is_read_only() -> None:
     """Decode X1200 battery telemetry without issuing configuration writes."""
 
     bus = FakeBus(healthy_registers())
     driver = make_driver()
     connect_to_fake_bus(driver, bus)
-    with patch.object(x1200.subprocess, "run", return_value=command_result("1\n")):
+    with patch.object(_gpio.subprocess, "run", return_value=command_result("1\n")):
         batch = driver.read()
     measurements = dict(batch.values)
     expected = {
@@ -200,7 +126,7 @@ def test_full_charge_soc_is_capped() -> None:
     registers[STATE_OF_CHARGE_REGISTER] = round(100.98046875 * 256)
     driver = make_driver()
     connect_to_fake_bus(driver, FakeBus(registers))
-    with patch.object(x1200.subprocess, "run", return_value=command_result("1\n")):
+    with patch.object(_gpio.subprocess, "run", return_value=command_result("1\n")):
         measurements = dict(driver.read().values)
     if measurements != {
         "voltage": 4.13,
@@ -264,7 +190,7 @@ def test_gpio_fault_omits_only_mains_measurement() -> None:
 
     driver = make_driver()
     connect_to_fake_bus(driver, FakeBus(healthy_registers()))
-    with patch.object(x1200.subprocess, "run", return_value=command_result("", 1, "line unavailable")):
+    with patch.object(_gpio.subprocess, "run", return_value=command_result("", 1, "line unavailable")):
         batch = driver.read()
     measurements = dict(batch.values)
     if measurements != {"voltage": 4.13, "battery_level": 94.2}:
