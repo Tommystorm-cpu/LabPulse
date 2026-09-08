@@ -7,10 +7,9 @@
       id: natural
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
       to: 'on'
-    - trigger: button.pressed
+    - platform: state
       id: resend
-      target:
-        entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
+      entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
     action:
     - condition: template
       value_template: >-

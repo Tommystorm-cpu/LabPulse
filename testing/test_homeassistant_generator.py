@@ -111,8 +111,11 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     resend = f"input_button.{helper}_resend_active_alert"
     for item in (danger, fault):
         trigger = next(value for value in item["trigger"] if value.get("id") == "resend")
-        assert trigger["trigger"] == "button.pressed"
-        assert trigger["target"]["entity_id"] == resend
+        assert trigger == {
+            "platform": "state",
+            "id": "resend",
+            "entity_id": resend,
+        }
 
     publish = next(
         item for item in walk(danger)

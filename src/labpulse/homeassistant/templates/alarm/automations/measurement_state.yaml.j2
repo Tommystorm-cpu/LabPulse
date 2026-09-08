@@ -61,10 +61,9 @@
            >= states(
              '[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]'
            ) | float(70) }}
-    - trigger: button.pressed
+    - platform: state
       id: resend
-      target:
-        entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
+      entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
     condition:
     - condition: template
       value_template: >-
