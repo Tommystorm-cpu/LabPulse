@@ -27,11 +27,11 @@ script:
             "state": "Notification",
             "title": [[
               sms.notifications.phone_book.title
-              | render_fragment(model=model)
+              | render_fragment()
             ]],
             "message": [[
               sms.notifications.phone_book.message
-              | render_fragment(model=model)
+              | render_fragment()
             ]],
             "test_mode": is_state(
               '[[ 'input_boolean.labpulse_notification_test_mode' ]]',

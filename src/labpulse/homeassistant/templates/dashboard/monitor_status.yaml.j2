@@ -31,14 +31,22 @@
     - type: entity-filter
       entities:
 [% for service in model.services %]
-      - entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
+      - type: simple-entity
+        entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
         name: [[ (service.label ~ ': confirmed service fault') | yaml_scalar ]]
         icon: mdi:lan-disconnect
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
 [% endfor %]
 [% for service, measurement in model.alarm_measurements %]
-      - entity: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]
+      - type: simple-entity
+        entity: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]
         name: [[ (measurement.label ~ ': alarm state') | yaml_scalar ]]
         icon: mdi:alert-outline
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
         conditions:
         - condition: state
           state: [Danger, Sensor Fault]
@@ -60,9 +68,13 @@
 [% endif %]
 [% endfor %]
 [% for service in model.power_alarm_services %]
-      - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+      - type: simple-entity
+        entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
         name: 'Power monitoring: lifecycle state'
         icon: mdi:power-plug-off-outline
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
 [% endfor %]
       conditions:
       - condition: or

@@ -87,11 +87,11 @@
                 "state": "Sensor Fault",
                 "title": [[
                   sms.alerts.service_fault.title
-                  | render_fragment(service=service, model=model)
+                  | render_fragment(service=service)
                 ]],
                 "message": [[
                   sms.alerts.service_fault.message
-                  | render_fragment(service=service, model=model)
+                  | render_fragment(service=service)
                 ]],
                 "test_mode": is_state(
                   '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
@@ -174,11 +174,11 @@
                 "state": "Normal",
                 "title": [[
                   sms.alerts.service_recovery.title
-                  | render_fragment(service=service, model=model)
+                  | render_fragment(service=service)
                 ]],
                 "message": [[
                   sms.alerts.service_recovery.message
-                  | render_fragment(service=service, model=model)
+                  | render_fragment(service=service)
                 ]],
                 "test_mode": is_state(
                   '[[ 'input_boolean.labpulse_notification_test_mode' ]]',

@@ -1,0 +1,26 @@
+# Complete example; requires a separate publisher of current timestamped records.
+mqtt:
+  broker: mosquitto
+sms:
+  dry_run: true
+setups:
+  cryostat:
+    label: Cryostat
+services:
+  triton:
+    label: Triton Logfile
+    driver:
+      type: labpulse.mqtt_json
+      options:
+        broker: mosquitto
+        topic: labpulse/triton/measurements
+        parameters:
+          cold_plate_temperature: Cold Plate T(K)
+        maximum_record_age_seconds: 30
+    maximum_measurement_age_seconds: 45
+    measurements:
+      cold_plate_temperature:
+        label: Cold Plate Temperature
+        setups: [cryostat]
+        unit: K
+        device_class: temperature

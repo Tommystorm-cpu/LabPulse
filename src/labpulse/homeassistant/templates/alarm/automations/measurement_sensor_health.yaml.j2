@@ -1,29 +1,44 @@
 {# A sensor fault means the reading is missing or is not a number. Pause high/low
    alarms until valid readings return. #}
   - alias: LabPulse [[ measurement.label ]] Sensor Fault
-    mode: restart
+    mode: parallel
     trigger:
     - platform: state
+      id: natural
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
       to: 'on'
+    - platform: state
+      id: manual
+      entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
+      to: Sensor Fault
     action:
-    - delay:
-        seconds: [[ service.sensor_fault_confirm_seconds | yaml_scalar ]]
-    - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
-      state: 'on'
-    - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
-      state: 'off'
-    - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'service_fault_active') | yaml_scalar ]]
-      state: 'off'
     - condition: template
       value_template: >-
-        {{ not is_state(
-          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
-          'Sensor Fault'
-        ) }}
+        {{ trigger.id == 'natural' or trigger.to_state.context.user_id is not none }}
+{# A deliberate frontend selection represents an already-confirmed state.
+   Sensor-driven faults retain their delay and ownership checks. #}
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: "{{ trigger.id == 'natural' }}"
+        sequence:
+        - delay:
+            seconds: [[ service.sensor_fault_confirm_seconds | yaml_scalar ]]
+        - condition: state
+          entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
+          state: 'on'
+        - condition: state
+          entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+          state: 'off'
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', service.name, 'service_fault_active') | yaml_scalar ]]
+          state: 'off'
+        - condition: template
+          value_template: >-
+            {{ not is_state(
+              '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
+              'Sensor Fault'
+            ) }}
     - service: input_select.select_option
       target:
         entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
@@ -101,11 +116,11 @@
                 "state": "Sensor Fault",
                 "title": [[
                   sms.alerts.measurement_sensor_fault.title
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]],
                 "message": ([[
                   sms.alerts.measurement_sensor_fault.message
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]]) ~ "\n[[ measurement.notification_context ]]",
                 "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
                 "current_measurement": raw
@@ -237,11 +252,11 @@
                 ),
                 "title": [[
                   sms.alerts.measurement_sensor_recovery.title
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]],
                 "message": ([[
                   sms.alerts.measurement_sensor_recovery.message
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]]) ~ "\n[[ measurement.notification_context ]]",
                 "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
                 "current_measurement": states('[[ measurement.entity_id ]]')

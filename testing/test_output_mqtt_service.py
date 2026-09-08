@@ -347,6 +347,44 @@ def test_failed_readback_never_publishes_available() -> None:
         raise AssertionError(f"failed output readback published unsafe availability: {availability!r}")
 
 
+def test_write_and_readback_failures_recover_with_a_new_safety_window() -> None:
+    """Recover failed active outputs safely and give later commands a fresh timer."""
+
+    for failure in ("write", "readback"):
+        service, driver, client = make_service(maximum_active_seconds=5.0)
+        with patch.object(output_service.time, "monotonic", return_value=10.0):
+            service._maintain_output()
+            service.on_connect(client, None, None, 0, None)
+            service.on_message(client, None, message(b"ON"))
+        with patch.object(output_service.time, "monotonic", return_value=11.0):
+            if failure == "write":
+                driver.fail_write = True
+                service.on_message(client, None, message(b"OFF"))
+            else:
+                driver.fail_read = True
+                service.on_connect(client, None, None, 0, None)
+        assert driver.close_count == 1
+        assert client.published[-1]["payload"] == "offline"
+        driver.fail_write = driver.fail_read = False
+        service.on_message(client, None, message(b"ON"))
+        assert driver.state is False
+        with patch.object(output_service.time, "monotonic", return_value=12.9):
+            service._maintain_output()
+        assert driver.connect_count == 1
+        with patch.object(output_service.time, "monotonic", return_value=13.0):
+            service._maintain_output()
+            assert driver.state is False
+            assert client.published[-1]["payload"] == "online"
+            service.on_message(client, None, message(b"ON"))
+        with patch.object(output_service.time, "monotonic", return_value=15.1):
+            service._maintain_output()
+        assert driver.state is True
+        with patch.object(output_service.time, "monotonic", return_value=18.0):
+            service._maintain_output()
+        assert driver.state is False
+        service.close()
+
+
 def test_shutdown_forces_safe_and_flushes_offline_state() -> None:
     """Return safe before release and flush retained offline availability."""
 

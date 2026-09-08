@@ -148,6 +148,36 @@ def test_generated_package() -> None:
         item for item in package["automation"]
         if item["alias"] == "LabPulse Pressure Danger"
     )
+    recovery = next(
+        item for item in package["automation"]
+        if item["alias"] == "LabPulse Pressure Recovery"
+    )
+    sensor_fault = next(
+        item for item in package["automation"]
+        if item["alias"] == "LabPulse Pressure Sensor Fault"
+    )
+    alarm_state = "input_select.labpulse_pressure_monitor_pressure_alarm_state"
+    for automation, target_state in (
+        (danger, "Danger"),
+        (recovery, "Normal"),
+        (sensor_fault, "Sensor Fault"),
+    ):
+        manual_trigger = next(
+            trigger
+            for trigger in automation["trigger"]
+            if trigger.get("id") == "manual"
+        )
+        assert_equal(manual_trigger["platform"], "state", "manual alarm trigger type")
+        assert_equal(manual_trigger["entity_id"], alarm_state, "manual alarm trigger entity")
+        assert_equal(manual_trigger["to"], target_state, "manual alarm trigger state")
+        if not any(
+            "trigger.to_state.context.user_id is not none" in str(condition.get("value_template", ""))
+            for condition in automation.get("condition", automation.get("action", []))
+            if isinstance(condition, dict)
+        ):
+            raise AssertionError(
+                f"{automation['alias']} does not distinguish a direct dashboard change"
+            )
     publish_actions = [
         item
         for item in walk(danger)
@@ -221,12 +251,12 @@ def test_generated_package() -> None:
                 + required_fragment
             )
 
-    sensor_fault = next(
-        item
-        for item in package["automation"]
-        if item["alias"] == "LabPulse Pressure Sensor Fault"
+    natural_fault_sequence = next(
+        item["choose"][0]["sequence"]
+        for item in sensor_fault["action"]
+        if "choose" in item
     )
-    post_delay_conditions = sensor_fault["action"][1:4]
+    post_delay_conditions = natural_fault_sequence[1:4]
     condition_entities = {
         item.get("entity_id")
         for item in post_delay_conditions

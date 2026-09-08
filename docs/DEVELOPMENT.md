@@ -14,8 +14,8 @@ Development requires:
 - Bash for deployment-script syntax and Linux workflows;
 - no physical hardware for the normal test suite.
 
-Development can take place on Windows, macOS, or Linux. The supported runtime
-host is defined separately in [Supported environments](SUPPORT.md).
+Development can take place on Windows, macOS, or Linux. The qualified runtime
+host and provisional alternatives are described in [Installation](INSTALLATION.md#requirements).
 
 ## Editable installation
 
@@ -33,11 +33,15 @@ data declarations.
 For direct module execution without pipx:
 
 ```bash
+python -m venv .venv
+# Linux/macOS: source .venv/bin/activate
+# PowerShell: .venv/Scripts/Activate.ps1
 python -m pip install -e ".[dev]"
 python -m labpulse.control --help
 python -m labpulse.hardware --help
 python -m labpulse.homeassistant --help
 python -m labpulse.sms --help
+python -m labpulse.output --help
 python -m labpulse.deployment --help
 ```
 
@@ -78,6 +82,7 @@ src/labpulse/
   deployment/        Compose rendering and unified generation
   hardware/          hardware service and driver system
   homeassistant/     Home Assistant generation
+  output/            controlled-output worker
   sms/               notification delivery
 
 deployment/          packaged Linux workflow scripts
@@ -95,7 +100,7 @@ Standalone process packages keep their small command composition at the
 package boundary instead of adding a second forwarding module:
 
 ```text
-package/__main__.py → importable domain modules
+package/__main__.py -> importable domain modules
 ```
 
 Current examples:
@@ -104,6 +109,7 @@ Current examples:
 |---|---|---|
 | `hardware` | `src/labpulse/hardware/__main__.py` | runner, registry, drivers, publisher |
 | `homeassistant` | `src/labpulse/homeassistant/generator.py` | alarm context and templates |
+| `output` | `src/labpulse/output/__main__.py` | MQTT service and output driver |
 | `sms` | `src/labpulse/sms/__main__.py` | subscriber and sender |
 | `deployment` | `src/labpulse/deployment/generate.py` | Compose renderer and install transaction |
 
@@ -125,12 +131,19 @@ The public operator command is different: `control.py` intentionally
 coordinates complete installed workflows such as setup, guarded config edits,
 backup, restore, diagnostics, and Compose lifecycle commands.
 
+Home Assistant SMS fragments in `src/labpulse/common/sms_templates.yaml`
+receive generation-time records explicitly through `render_fragment`, for
+example `render_fragment(service=service, measurement=measurement)`. They do
+not inherit the surrounding template's variables. Shared identity helpers such
+as `entity_id` remain available. Square-bracket expressions are expanded by
+LabPulse; Home Assistant's runtime expressions remain text for evaluation later.
+
 ## Configuration ownership
 
 Configuration is split by the concepts being validated:
 
 - `src/labpulse/common/config.py` owns global settings, cross-references,
-  source-aware errors, and the only production YAML loader;
+  source-aware errors, and the authoritative validated configuration loader;
 - `src/labpulse/common/measurement_config.py` owns physical and calculated
   measurements, including formula validation;
 - `src/labpulse/common/service_config.py` owns drivers, service timing, and
@@ -159,7 +172,7 @@ Compose rendering is pure text generation in:
 src/labpulse/deployment/compose.py
 ```
 
-The unified install transaction is in:
+The staged installation procedure is in:
 
 ```text
 src/labpulse/deployment/generate.py
@@ -167,6 +180,7 @@ src/labpulse/deployment/generate.py
 
 It loads one config document, renders Compose, stages every Home Assistant
 artifact, and installs managed live files only after all rendering succeeds.
+Replacement is atomic per file, not across the complete output set.
 
 Home Assistant generation is split by responsibility:
 
@@ -222,11 +236,12 @@ Focused suites:
 | Home Assistant context/generation | `test_homeassistant_entities.py`, `test_homeassistant_generator.py` |
 | Home Assistant dashboard YAML | `test_yaml_dashboard.py` |
 | Power and setup alarm behavior | `test_power_monitor.py`, `test_setup_grouping.py`, `test_notification_context.py` |
-| Compose and atomic generation | `test_deployment_generation.py`, `test_unified_generation.py` |
+| Compose and staged generation | `test_deployment_generation.py`, `test_unified_generation.py` |
 | Packaging and container release | `test_packaging.py`, `test_container_release.py` |
 | Fake hardware and USB mapping | `test_simulate_serial.py`, `test_usb_setup.py` |
 | SMS pipeline | `test_sms_container.py` |
 | Firmware layout | `test_firmware_layout.py` |
+| Documentation links and complete config examples | `test_documentation.py` |
 
 Tests that simulate device failures intentionally emit warning or error logs.
 
@@ -246,7 +261,9 @@ Source assets live under `deployment/` and are copied into the flat live
 directory by setup.
 
 ```bash
-bash -n deployment/*.sh
+for script in deployment/*.sh; do
+  bash -n "$script" || exit 1
+done
 ```
 
 Do not run `setup_container_fs.sh` on a development workstation unless a real
@@ -264,7 +281,7 @@ protocol logic.
 
 A direct driver keeps its configuration, implementation, optional container
 requirements function, and `DRIVER_DEFINITION` together in one module. See
-[Driver development](DRIVER_DEVELOPMENT.md).
+the [hardware driver package guide](../src/labpulse/hardware/drivers/README.md).
 
 ## Code quality
 
@@ -293,7 +310,8 @@ requirements function, and `DRIVER_DEFINITION` together in one module. See
 - Validate untrusted input once at its system boundary. After conversion to a
   typed internal object, trust it instead of repeating validation downstream.
 - Put behavior in the package that owns the decision.
-- Keep `common` dependency-light and limited to genuinely shared contracts.
+- Keep `common` dependency-light and use it for shared contracts and utilities,
+  including file-writing functions used by several generators.
 - Centralize IDs and MQTT topics.
 - Keep alarm decisions in Home Assistant.
 - Use strict option models and explicit failure classes.
@@ -306,15 +324,14 @@ requirements function, and `DRIVER_DEFINITION` together in one module. See
 
 Document only current behavior:
 
-- installation or host prerequisites → `INSTALLATION.md`;
-- config schema → `CONFIGURATION.md`;
-- operator commands → `OPERATIONS.md`;
-- symptom-led recovery → `TROUBLESHOOTING.md`;
-- Home Assistant behavior → `HOME_ASSISTANT.md`;
-- SMS behavior → `SMS.md`;
-- component ownership/contracts → `ARCHITECTURE.md`;
-- contributor workflow → this guide or `DRIVER_DEVELOPMENT.md`;
-- unimplemented work → `ROADMAP.md`.
+- installation or host prerequisites -> `INSTALLATION.md`;
+- config schema -> `CONFIGURATION.md`;
+- every user-visible feature and operator command -> `USER_GUIDE.md`;
+- symptom-led recovery -> the final troubleshooting section of `INSTALLATION.md`;
+- component ownership/contracts -> `ARCHITECTURE.md`;
+- code-local ownership and contracts -> the nearest folder `README.md`;
+- contributor workflow -> this guide;
+- unimplemented work -> `ROADMAP.md`.
 
 Do not create parallel implementation-history or refactor documents.
 
@@ -355,3 +372,45 @@ Hardware-free tests cannot establish:
 
 Record the source revision, Pi model, OS, configuration, procedure, observed
 result, and logs for real-hardware acceptance.
+
+## Change a feature without losing its contract
+
+Use the [package README hierarchy](../src/labpulse/README.md) and architecture
+guide to trace the existing procedure first.
+For a new physical measurement, match firmware/driver output to its config key,
+choose its unit and setup membership, then test parser/driver output and MQTT
+discovery. For a calculated measurement, add inputs/constants/formula to config
+and verify valid, invalid-input, and zero-denominator rendering in
+`test_custom_measurements.py`.
+
+For a dashboard change, edit the owning concrete template and only add render
+model fields when data genuinely needs deriving. Check normal, shared, empty,
+custom, and power setups. For an alarm change, follow helper state, derived
+conditions/history, transition actions, and notification gates together; add
+failure/recovery and mute/Test-mode assertions. For SMS copy, edit the shared
+catalogue, pass generation-time records explicitly, preserve runtime expressions
+and `{current_measurement}`, and run notification/SMS tests. Avoid scattering
+one operation across helpers merely to shorten it.
+
+The release workflow runs on published GitHub releases. Its validation job
+checks the tag against setuptools-scm, runs pytest, builds and checks wheel/sdist,
+smoke-installs both, performs fake setup, and tests a locally built container.
+Separate dependent jobs publish to TestPyPI and build/push AMD64/ARM64 images
+with provenance/SBOM. Full-version and major.minor image tags are emitted;
+the latter can advance with patch releases. A build for both architectures is
+not a recorded real-hardware test on both architectures. See the
+[workflow source](../.github/workflows/release.yml) before performing a release.
+
+For shell syntax checks, run each script separately; `bash -n deployment/*.sh`
+only treats the first expansion as the script and the rest as arguments:
+
+```bash
+for script in deployment/*.sh testing/real_hardware/*.sh; do
+  bash -n "$script" || exit 1
+done
+```
+
+Documentation checks run with `python -m pytest testing/test_documentation.py`.
+They validate maintained relative file links and complete config examples using
+the real schema and generators. Fragment snippets are labelled and are not
+standalone deployment files.

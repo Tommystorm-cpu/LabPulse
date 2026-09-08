@@ -8,7 +8,13 @@
       heading: Configure Alarms
       heading_style: title
       icon: mdi:tune-variant
-[% for setup in model.setups %]
+[% for dashboard in model.alarm_setup_groups %]
+    - type: heading
+      heading: [[ dashboard.label | yaml_scalar ]]
+      heading_style: subtitle
+      icon: [[ dashboard.icon ]]
+      grid_options: {columns: full}
+[% for setup in dashboard.setups %]
 {# Show either Mute or Unmute in the same place. The button always says what it
    will do when pressed. #}
     - type: grid
@@ -76,6 +82,7 @@
           action: navigate
           navigation_path: /labpulse-monitor/alarm-setup-[[ setup.setup_id ]]
 [% endfor %]
+[% endfor %]
 [% for service in power_services %]
 {# Power covers the whole installation, so its mute control is not placed under
    one lab setup. #}
@@ -83,6 +90,7 @@
       entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
       name: Power Monitoring
       icon: mdi:battery-charging
+      columns: 3
       hide_state: true
       tap_action:
         action: navigate

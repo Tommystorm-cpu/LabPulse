@@ -58,6 +58,16 @@ outputs: {}
 custom_measurements: {}
 ```
 
+The top-level example is a schema skeleton, not a runnable deployment: Compose
+requires at least one enabled sensor service. Other YAML blocks in this guide
+are **fragments** to place under the shown key, not complete files. Use the
+[complete examples](#complete-examples) for standalone validation.
+
+`mqtt`, `setups`, and `services` are required mappings. `sms` defaults to dry-run
+with empty recipient lists; `service_health` defaults to 10/15-second confirmation;
+`dashboards`, `outputs`, and `custom_measurements` default to empty mappings.
+`mqtt.broker` has no default; `mqtt.port` defaults to 1883.
+
 Configuration is validated with Pydantic before generation and service startup.
 Unknown driver IDs, invalid driver options, missing setup references, unstable
 measurement IDs, unknown fields, and invalid timing values fail early. File,
@@ -116,7 +126,8 @@ sms:
 - Empty and duplicate numbers are rejected within each list.
 - At least one normal recipient is required when `dry_run` is `false`.
 
-Use example numbers in committed configuration. See [SMS](SMS.md).
+Use example numbers in committed configuration. See
+[SMS behavior](USER_GUIDE.md#sms-behaviour).
 
 ## Whole-service health
 
@@ -219,8 +230,8 @@ shown under Controlled Outputs on the Monitor and Diagnostics views.
 | `label` | required | Home Assistant switch and device label |
 | `icon` | `mdi:toggle-switch` | Material Design switch icon |
 | `driver` | required | Output-capable driver and its options |
-| `reconnect_interval_seconds` | `5` | Delay before retrying unavailable hardware |
-| `maximum_active_seconds` | none | Optional automatic return to safe state, up to 86400 seconds |
+| `reconnect_interval_seconds` | `5` | Seconds; greater than 0 and at most 3600 |
+| `maximum_active_seconds` | none | Seconds; greater than 0 and at most 86400 when supplied |
 
 Output IDs use lowercase letters, numbers, and underscores. LabPulse rejects
 an output that selects an input-only driver or a GPIO line already claimed by
@@ -358,8 +369,9 @@ measurements:
 | `icon` | derived | Explicit `mdi:` override |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
 
-Measurement IDs are mapping keys, so they are inherently unique and preserve
-their YAML order. Hardware readings not listed in `measurements` are ignored.
+Measurement IDs are mapping keys and preserve their YAML order. Use each key
+once: the current YAML loader does not reject duplicate keys and a later
+entry can replace an earlier one before validation. Hardware readings not listed in `measurements` are ignored.
 
 Changing `label`, `short_label`, or `group` preserves identity. Changing a
 measurement mapping key creates a new MQTT topic, Home Assistant entity, alarm helpers, and
@@ -425,7 +437,7 @@ numbers and must be used when declared.
 | `precision` | `2` | Result rounding from 0 to 10 decimal places |
 | `alarmed` | `true` | Whether to create the normal threshold alarm controls |
 | `unit` | none | Result unit shown by Home Assistant |
-| `device_class` | none | Result semantic category and threshold-editor hint |
+| `device_class` | none | Result semantic category and bulk-deadband grouping |
 | `icon` | none | Optional explicit `mdi:` icon |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
 
@@ -436,7 +448,14 @@ an unavailable dependency pauses and clears the custom threshold state without
 sending a duplicate custom sensor-fault notification. Once inputs recover,
 normal observation-window alarm evaluation resumes.
 
-The service ID `custom` is reserved whenever custom measurements are present.
+The service ID `custom` is reserved whenever custom measurements are present;
+physical service IDs `custom_<custom-id>` also cannot collide with the synthetic
+alarm service. Input aliases/constants must be usable lowercase arithmetic
+names, not Python keywords or `true`, `false`, `none`, `null`, `states`, or
+`is_number`. Inputs must reference distinct physical measurements, and aliases
+cannot overlap constants. Formulas are limited to 500 characters and 100 syntax
+tree nodes. Referenced physical services should be enabled; the current
+cross-reference validator checks existence, not whether the input worker runs.
 
 ### Units and icons
 
@@ -482,7 +501,8 @@ driver:
 - The default runner interval is zero because the serial read blocks with its
   own timeout.
 
-See [Serial protocol](SERIAL_PROTOCOL.md).
+See the [Arduino serial behavior](USER_GUIDE.md#sensor-services-and-drivers) and
+[firmware guide](../firmware/README.md).
 
 ### Named JSON over MQTT
 
@@ -511,7 +531,7 @@ driver:
 | `port` | `1883` | Internal broker TCP port |
 | `topic` | required | Exact MQTT topic; wildcards are rejected |
 | `parameters` | required | LabPulse measurement ID to source-field mapping |
-| `maximum_record_age_seconds` | `300` | Reject snapshots whose source timestamp is older than this |
+| `maximum_record_age_seconds` | `300` | Seconds, 2–86400; reject older source timestamps |
 
 The corresponding keys under the service's `measurements` section must match
 the left side of the `parameters` mapping. Source names on the right are exact
@@ -532,6 +552,17 @@ Messages use this versioned contract:
   }
 }
 ```
+
+`parameters` must be non-empty; mapping keys use lowercase alphanumeric words
+separated by single underscores, and source headers must be non-blank.
+Messages are limited to 1,000,000 bytes, must use protocol version 1, and need
+a finite Unix timestamp no more than 60 seconds ahead of receipt. Boolean,
+non-numeric, null, absent, and non-finite fields are unavailable. A message
+with no usable mapped readings is rejected. The timestamp shown above is an
+illustration and must be replaced by the current record time for a live test.
+The default polling interval is 0.1 seconds. This input driver has no TLS or
+username/password options; an external secured listener may feed the internal
+broker separately, as discussed in the [publisher guide](../firmware/README.md).
 
 The driver consumes each snapshot once. If publishing stops, the ordinary
 service `maximum_measurement_age_seconds` setting makes the service stale and
@@ -578,10 +609,13 @@ generated container receives only the selected GPIO chip device and uses the
 packaged `gpioget` tool. `gpio_line` is the Linux GPIO line offset, not the
 physical header-pin number.
 
-Raspberry Pi GPIO is 3.3 V logic and is not 5 V tolerant. The custom hardware
-must provide a defined high or low level and any required isolation, level
-conversion, and pull resistor; never connect a higher-voltage signal directly
-to the Pi. `active_high: false` inverts an active-low interface in software.
+Raspberry Pi GPIO uses 3.3 V logic. The official
+[GPIO documentation](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#gpio-and-the-40-pin-header)
+describes inputs as 3.3 V tolerant and warns against direct motor loads. The
+custom hardware must provide a defined high or low level and any required
+isolation, level conversion, and pull resistor; never connect a higher-voltage
+signal directly to the Pi. `active_high: false` inverts an active-low interface
+in software.
 
 ### DHT11
 
@@ -674,9 +708,24 @@ confirmation values accept 1 to 3600 seconds.
 
 ## Fake configuration
 
-`labpulse setup --fake-usb` derives `config.fake.yaml`. It replaces starter
-serial placeholders, converts DHT11 to simulated serial, and converts the power
-service to the UPS pseudo-serial endpoint. It does not alter `config.yaml`.
+`labpulse setup --fake-usb` derives `config.fake.yaml` without altering the
+source. Substitution is deliberately narrow:
+
+- named `FAKE_PRESSURE_PORT`, `FAKE_PUMP_ROOM_PORT`, `FAKE_TURBO_PUMP_PORT`,
+  and `FAKE_UPS_PORT` placeholders map to fixed pseudo-terminal paths;
+- the service named `room_environment` is converted only when it uses DHT11 or SHT40;
+- one enabled `power_detection` service is converted to the UPS endpoint;
+- when no power service is configured, a default simulated UPS service is added;
+- configured but disabled power services are not silently enabled, and more
+  than one enabled power service is rejected by fake derivation;
+- arbitrary serial paths, renamed environment services, GPIO inputs, and MQTT
+  sources are not automatically simulated;
+- Compose omits physical output workers in fake mode.
+
+Inspect the derived config before expecting a custom installation to run
+without hardware. The simulator's fixed channel names must match the configured
+measurement names. See
+[simulation controls](USER_GUIDE.md#choose-real-hardware-or-simulation).
 
 Do not edit `config.fake.yaml` manually. The current `labpulse config` workflow
 detects whether generated Compose is using fake USB, regenerates
@@ -708,3 +757,37 @@ labpulse doctor
 Direct generator wrappers exist under `~/labpulse-live`, but using them alone
 does not provide the editor's complete validation, rollback, Home Assistant
 check, and service refresh workflow.
+
+## Settings owned by Home Assistant
+
+Threshold values, alarm mode, observation/recovery settings, deadband, mutes,
+and Test mode are edited in Home Assistant and stored with its state. They are
+not fields to add to the LabPulse YAML. See the complete
+[alarm behavior](USER_GUIDE.md#measurement-alarm-behaviour).
+Changing YAML labels preserves IDs; changing keys can create new helpers and
+leave old entities behind. Back up Home Assistant state before identity changes.
+
+## Complete examples
+
+The following files are complete source configurations validated by
+`testing/test_documentation.py`. Each uses dry-run SMS with no recipients and
+no active physical outputs. They are examples for isolated development, not
+instructions to overwrite an existing live installation.
+
+| File | Demonstrates |
+|---|---|
+| [minimal-serial.yaml](examples/minimal-serial.yaml) | One pressure sample on a known simulator endpoint |
+| [calculated-measurement.yaml](examples/calculated-measurement.yaml) | Two physical temperatures, a calculated difference, grouping and a custom tab |
+| [mqtt-input.yaml](examples/mqtt-input.yaml) | Exact external header mapping into a configured measurement |
+
+From a development checkout with dependencies installed, generate into a
+scratch directory without starting services:
+
+```bash
+python -m labpulse.deployment --config docs/examples/minimal-serial.yaml --compose-output testing/tmp/doc-example/compose.yaml --project-dir testing/tmp/doc-example --ha-config-dir testing/tmp/doc-example/homeassistant/config
+```
+
+This checks the schema and renders files; it does not start a broker, simulator,
+Home Assistant, or hardware. The serial example already uses a fake path, so
+the serial driver's fake-path handling supplies its mounts without changing
+the configuration through the setup workflow.

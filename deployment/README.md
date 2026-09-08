@@ -32,3 +32,15 @@ src/labpulse/homeassistant/alarm.py      alarm context/package generation
 Setup and guarded editing use the unified deployment generator so Compose and
 Home Assistant output are built from one validated document before managed
 live files are replaced.
+
+The scripts accept live paths and version/image selections from the operator
+command; they do not own the configuration schema. A failed validation or
+generation step must leave operator-owned configuration and the last installed
+managed files intact. Host permission, missing-command, and generator failures
+are reported to the calling command with a non-zero exit status.
+
+Coverage is primarily in `testing/test_control_cli.py`,
+`testing/test_deployment_generation.py`, and
+`testing/test_unified_generation.py`. See [Installation](../docs/INSTALLATION.md)
+for the deployed workflow and [Development](../docs/DEVELOPMENT.md) before
+running these Linux-oriented scripts directly.

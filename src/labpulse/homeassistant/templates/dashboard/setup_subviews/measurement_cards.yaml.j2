@@ -14,10 +14,12 @@
       entity: [[ measurement.entity_id ]]
       name: [[ measurement.short_label | yaml_scalar ]]
       grid_options: {columns: [[ ('full' if mobile else 6) ]]}
-      tap_action: {action: none}
+{# Match the Monitor dashboard: selecting the live reading opens Home
+   Assistant's more-info dialog, including the measurement history graph. #}
+      tap_action: {action: more-info}
       hold_action: {action: none}
       double_tap_action: {action: none}
-      icon_tap_action: {action: none}
+      icon_tap_action: {action: more-info}
     - type: tile
       entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
       name: Alarm state
@@ -111,12 +113,34 @@
               name: Alarm mode
             - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
               name: Measurement notifications muted
-            - entity: [[ entity_id('input_number', service_name, measurement.name, 'minimum_threshold') ]]
-              name: Minimum threshold
-            - entity: [[ entity_id('input_number', service_name, measurement.name, 'maximum_threshold') ]]
-              name: Maximum threshold
-            - entity: [[ entity_id('input_number', service_name, measurement.name, 'recovery_deadband') ]]
-              name: Recovery deadband
+[% for role, label, active_modes in (
+  ('minimum_threshold', 'Minimum threshold', ['Low Only', 'Range']),
+  ('maximum_threshold', 'Maximum threshold', ['High Only', 'Range']),
+  ('recovery_deadband', 'Recovery deadband', ['Low Only', 'High Only', 'Range'])
+) %]
+{# Keep inactive settings visible for context, but replace their input control
+   with Home Assistant's native read-only entity row. #}
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+                state: [[ active_modes | yaml_scalar ]]
+              row:
+                entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+                name: [[ label ]]
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+                state_not: [[ active_modes | yaml_scalar ]]
+              row:
+                type: simple-entity
+                entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+                name: [[ label ]]
+                tap_action: {action: none}
+                hold_action: {action: none}
+                double_tap_action: {action: none}
+[% endfor %]
           - type: entities
             title: Confirmation timing
             show_header_toggle: false
@@ -136,12 +160,32 @@
             name: Alarm mode
           - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
             name: Measurement notifications muted
-          - entity: [[ entity_id('input_number', service_name, measurement.name, 'minimum_threshold') ]]
-            name: Minimum threshold
-          - entity: [[ entity_id('input_number', service_name, measurement.name, 'maximum_threshold') ]]
-            name: Maximum threshold
-          - entity: [[ entity_id('input_number', service_name, measurement.name, 'recovery_deadband') ]]
-            name: Recovery deadband
+[% for role, label, active_modes in (
+  ('minimum_threshold', 'Minimum threshold', ['Low Only', 'Range']),
+  ('maximum_threshold', 'Maximum threshold', ['High Only', 'Range']),
+  ('recovery_deadband', 'Recovery deadband', ['Low Only', 'High Only', 'Range'])
+) %]
+          - type: conditional
+            conditions:
+            - condition: state
+              entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+              state: [[ active_modes | yaml_scalar ]]
+            row:
+              entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+              name: [[ label ]]
+          - type: conditional
+            conditions:
+            - condition: state
+              entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+              state_not: [[ active_modes | yaml_scalar ]]
+            row:
+              type: simple-entity
+              entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+              name: [[ label ]]
+              tap_action: {action: none}
+              hold_action: {action: none}
+              double_tap_action: {action: none}
+[% endfor %]
         - type: entities
           title: Confirmation timing
           show_header_toggle: false
@@ -154,8 +198,9 @@
             name: Required recovery
 [% endif %]
         - type: entities
-{# Live status is deliberately read-only. Editable thresholds remain grouped
-   above, while this section explains what the automation currently sees. #}
+{# Live status explains what the automation currently sees. Alarm state stays
+   editable here for deliberate transition testing; Active Problems renders
+   that same helper read-only to prevent accidental changes. #}
           title: Live status
           show_header_toggle: false
           entities:

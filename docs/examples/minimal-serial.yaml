@@ -1,0 +1,20 @@
+# Complete development example: start the simulator separately on Linux.
+mqtt:
+  broker: mosquitto
+sms:
+  dry_run: true
+setups:
+  compressed_air:
+    label: Compressed Air
+services:
+  pressure_monitor:
+    label: Pressure Monitor
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /tmp/labpulse-fake-serial/pressure
+    measurements:
+      pressure:
+        setups: [compressed_air]
+        unit: bar
+        device_class: pressure

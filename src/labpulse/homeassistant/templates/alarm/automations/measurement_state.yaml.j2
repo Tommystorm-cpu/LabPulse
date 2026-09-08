@@ -51,6 +51,7 @@
     mode: single
     trigger:
     - platform: template
+      id: natural
       value_template: >
         {{ is_state('[[ entity_id('binary_sensor', service.name, 'service_unhealthy') ]]', 'off')
            and is_state('[[ entity_id('input_boolean', service.name, 'service_fault_active') ]]', 'off')
@@ -60,16 +61,32 @@
            >= states(
              '[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]'
            ) | float(70) }}
-    condition:
-    - condition: state
+    - platform: state
+      id: manual
       entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      state: Normal
-    - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
-      state: 'off'
+      to: Danger
+    condition:
     - condition: template
       value_template: >-
-        {{ not is_state('[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]', 'Disabled') }}
+        {{ trigger.id == 'natural' or trigger.to_state.context.user_id is not none }}
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'manual' or is_state(
+          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
+          'Normal'
+        ) }}
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'manual' or is_state(
+          '[[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') ]]',
+          'off'
+        ) }}
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'manual' or not is_state(
+          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]',
+          'Disabled'
+        ) }}
     action:
     - service: input_select.select_option
       target:
@@ -177,11 +194,11 @@
                 "state": "Danger",
                 "title": [[
                   sms.alerts.measurement_warning.title
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]],
                 "message": ([[
                   sms.alerts.measurement_warning.message
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]]) ~ "\n[[ measurement.notification_context ]]",
                 "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
                 "current_measurement": states('[[ measurement.entity_id ]]')
@@ -192,6 +209,7 @@
     mode: single
     trigger:
     - platform: template
+      id: natural
       value_template: >
         {{ is_state('[[ entity_id('binary_sensor', service.name, 'service_unhealthy') ]]', 'off')
            and is_state('[[ entity_id('input_boolean', service.name, 'service_fault_active') ]]', 'off')
@@ -201,13 +219,26 @@
           {{ states(
             '[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]'
           ) | int(120) }}
-    condition:
-    - condition: state
+    - platform: state
+      id: manual
       entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      state: Danger
-    - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
-      state: 'off'
+      to: Normal
+    condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'natural' or trigger.to_state.context.user_id is not none }}
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'manual' or is_state(
+          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
+          'Danger'
+        ) }}
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'manual' or is_state(
+          '[[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') ]]',
+          'off'
+        ) }}
     action:
     - service: input_select.select_option
       target:
@@ -275,11 +306,11 @@
                 "state": "Normal",
                 "title": [[
                   sms.alerts.measurement_recovery.title
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]],
                 "message": ([[
                   sms.alerts.measurement_recovery.message
-                  | render_fragment(service=service, measurement=measurement, model=model)
+                  | render_fragment(service=service, measurement=measurement)
                 ]]) ~ "\n[[ measurement.notification_context ]]",
                 "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
                 "current_measurement": states('[[ measurement.entity_id ]]')

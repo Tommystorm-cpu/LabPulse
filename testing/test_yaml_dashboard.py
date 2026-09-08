@@ -291,6 +291,7 @@ def test_plain_yaml_and_registration() -> None:
         "numeric-input",
         "select-options",
         "section",
+        "simple-entity",
     }
     unsupported = card_types(dashboard).difference(allowed)
     if unsupported:
@@ -339,6 +340,56 @@ def test_custom_dashboard_tabs_precede_alarm_setup() -> None:
         raise AssertionError("room dashboard does not contain its assigned setup")
     if "No setups are currently assigned" not in yaml.safe_dump(spare):
         raise AssertionError("empty declared dashboard lacks an explanatory card")
+
+
+def test_alarm_setup_navigation_is_grouped_and_qualified_by_dashboard() -> None:
+    """Keep same-named setup controls distinguishable by their dashboard."""
+
+    config = dashboard_config()
+    config["dashboards"] = {
+        "experiments": {
+            "label": "Experiments",
+            "order": 10,
+            "icon": "mdi:test-tube",
+        },
+    }
+    config["setups"]["alpha_setup"].update(  # type: ignore[index]
+        {"label": "Shared Name", "icon": "mdi:flask-outline"}
+    )
+    config["setups"]["beta_setup"].update(  # type: ignore[index]
+        {
+            "label": "Shared Name",
+            "icon": "mdi:flask-outline",
+            "dashboard": "experiments",
+        }
+    )
+
+    _, dashboard, _ = generate(config=config)
+    landing = view_by_path(dashboard, "alarm-setup")
+    configure_cards = landing["sections"][0]["cards"]
+    dashboard_headings = [
+        (card.get("heading"), card.get("icon"))
+        for card in configure_cards
+        if card.get("type") == "heading" and card.get("heading_style") == "subtitle"
+    ]
+    if dashboard_headings != [
+        ("Monitor", "mdi:monitor-dashboard"),
+        ("Experiments", "mdi:test-tube"),
+    ]:
+        raise AssertionError(
+            f"alarm setup dashboard groups are missing or unordered: {dashboard_headings!r}"
+        )
+
+    alpha = view_by_path(dashboard, "alarm-setup-alpha_setup")
+    beta = view_by_path(dashboard, "alarm-setup-beta_setup")
+    if alpha["title"] != "Monitor — Shared Name":
+        raise AssertionError("main-dashboard setup subview lacks dashboard context")
+    if beta["title"] != "Experiments — Shared Name":
+        raise AssertionError("custom-dashboard setup subview lacks dashboard context")
+    if headings(alpha)[:1] != ["Monitor — Shared Name"]:
+        raise AssertionError("main setup header lacks dashboard context")
+    if headings(beta)[:1] != ["Experiments — Shared Name"]:
+        raise AssertionError("custom setup header lacks dashboard context")
 
 
 def test_non_alarmed_measurement_remains_visible_without_alarm_entities() -> None:
@@ -528,6 +579,11 @@ def test_monitor_setup_and_subcategory_projections() -> None:
         "hub_b_alpha_other_hub": ["alpha_setup"],
     }
     for row in measurement_problem_rows:
+        if row.get("type") != "simple-entity":
+            raise AssertionError("Monitor alarm problem is not rendered read-only")
+        for action in ("tap_action", "hold_action", "double_tap_action"):
+            if row.get(action) != {"action": "none"}:
+                raise AssertionError(f"Monitor alarm problem permits {action}")
         alarm_state_entity = row["entity"]
         muted_entity = alarm_state_entity.replace(
             "input_select.", "input_boolean."
@@ -669,10 +725,20 @@ def test_alarm_controls_are_grouped_by_setup() -> None:
             if desktop["cards"][6].get("type") != "conditional":
                 raise AssertionError("Configure is not on the right of the summary row")
 
-    # Summary values stay read-only while mute is an explicit state-aware action.
+    # The live reading opens Home Assistant's history graph. Other summary
+    # values stay read-only while mute is an explicit state-aware action.
     for view in setup_views:
         for section in view["sections"][2:]:
-            for tile in section["cards"][:4]:
+            measurement_tile = section["cards"][0]
+            for action in ("tap_action", "icon_tap_action"):
+                if measurement_tile.get(action) != {"action": "more-info"}:
+                    raise AssertionError(
+                        f"measurement tile does not open history through {action}"
+                    )
+            for action in ("hold_action", "double_tap_action"):
+                if measurement_tile.get(action) != {"action": "none"}:
+                    raise AssertionError(f"measurement tile permits unexpected {action}")
+            for tile in section["cards"][1:4]:
                 for action in (
                     "tap_action",
                     "hold_action",
@@ -746,6 +812,53 @@ def test_alarm_controls_are_grouped_by_setup() -> None:
                 raise AssertionError("measurement tiles still force the pressure icon")
     if "name: Mute\n" in landing_rendered or "name: Unmute\n" in landing_rendered:
         raise AssertionError("setup mute actions still use ambiguous labels")
+
+
+def test_alarm_mode_disables_irrelevant_threshold_inputs() -> None:
+    """Show inactive thresholds as read-only values in both editor layouts."""
+
+    _, dashboard, _ = generate()
+    setup_view = view_by_path(dashboard, "alarm-setup-alpha_setup")
+    behavior_cards = [
+        item
+        for item in walk_dashboard(setup_view)
+        if isinstance(item, dict)
+        and item.get("type") == "entities"
+        and str(item.get("title", "")).endswith(": Alarm behaviour")
+    ]
+    if not behavior_cards:
+        raise AssertionError("alarm behaviour editors are missing")
+
+    expected_modes = {
+        "minimum_threshold": ["Low Only", "Range"],
+        "maximum_threshold": ["High Only", "Range"],
+        "recovery_deadband": ["Low Only", "High Only", "Range"],
+    }
+    for card in behavior_cards:
+        conditional_rows = [
+            row for row in card["entities"] if row.get("type") == "conditional"
+        ]
+        if len(conditional_rows) != 6:
+            raise AssertionError("threshold inputs do not have active and disabled rows")
+        for role, active_modes in expected_modes.items():
+            matching = [
+                row
+                for row in conditional_rows
+                if str(row.get("row", {}).get("entity", "")).endswith(role)
+            ]
+            if len(matching) != 2:
+                raise AssertionError(f"{role} does not have two mode projections")
+            editable = next(row for row in matching if "state" in row["conditions"][0])
+            disabled = next(row for row in matching if "state_not" in row["conditions"][0])
+            if editable["conditions"][0]["state"] != active_modes:
+                raise AssertionError(f"{role} is editable in the wrong alarm modes")
+            if disabled["conditions"][0]["state_not"] != active_modes:
+                raise AssertionError(f"{role} is disabled in the wrong alarm modes")
+            if disabled["row"].get("type") != "simple-entity":
+                raise AssertionError(f"{role} disabled row is still an input control")
+            for action in ("tap_action", "hold_action", "double_tap_action"):
+                if disabled["row"].get(action) != {"action": "none"}:
+                    raise AssertionError(f"{role} disabled row permits {action}")
 
 
 def test_setup_mute_controls_warn_only_for_shared_measurements() -> None:

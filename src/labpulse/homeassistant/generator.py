@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 import yaml
 
 from labpulse.common.config import ConfigDocument, ConfigError, format_config_error, load_config
 from labpulse.common.identity import entity_id, slug, stable_id
+from labpulse.common.generated_files import replace_text
 
 from .alarm import (
     HomeAssistantRenderModel,
@@ -24,6 +23,12 @@ from .alarm import (
 
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+# Relative paths owned by LabPulse, shared with staged deployment installation.
+CONFIGURATION_FILE = Path("configuration.yaml")
+ALARM_FILE = Path("packages/labpulse_generated.yaml")
+DASHBOARD_FILE = Path("labpulse-dashboard.yaml")
+MANAGED_FILES = (CONFIGURATION_FILE, ALARM_FILE, DASHBOARD_FILE)
+
 # Home Assistant expects these files even when the user has not created any UI
 # automations, scripts, or scenes. LabPulse creates empty lists but never
 # replaces existing user-owned versions.
@@ -81,30 +86,14 @@ def _render_configuration() -> str:
     return rendered.rstrip() + "\n"
 
 
-def _replace_text(path: Path, text: str) -> None:
-    """Replace one generated file without leaving a half-written file."""
+def ensure_ui_files(ha_config_dir: Path) -> None:
+    """Create missing user-owned files without replacing existing content."""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Write beside the final file. The Raspberry Pi can then swap the finished
-    # file into place in one step.
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".generating",
-        text=True,
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(text)
-        # A complete write is made visible in one operation. Home Assistant can
-        # never observe half of a generated YAML document.
-        os.replace(temporary_name, path)
-    except Exception:
-        try:
-            Path(temporary_name).unlink()
-        except FileNotFoundError:
-            pass
-        raise
+    for filename in UI_FILES:
+        path = ha_config_dir / filename
+        if not path.exists():
+            replace_text(path, "[]\n")
+            print(f"Created {path}")
 
 
 def generate_homeassistant(document: ConfigDocument, ha_config_dir: Path) -> None:
@@ -115,21 +104,15 @@ def generate_homeassistant(document: ConfigDocument, ha_config_dir: Path) -> Non
     # Finish all three files before saving any of them. If one is broken, the
     # existing Home Assistant setup stays unchanged.
     outputs = {
-        ha_config_dir / "configuration.yaml": _render_configuration(),
-        ha_config_dir / "packages" / "labpulse_generated.yaml": render_alarm(context),
-        ha_config_dir / "labpulse-dashboard.yaml": _render_dashboard(context),
+        ha_config_dir / CONFIGURATION_FILE: _render_configuration(),
+        ha_config_dir / ALARM_FILE: render_alarm(context),
+        ha_config_dir / DASHBOARD_FILE: _render_dashboard(context),
     }
 
     for path, text in outputs.items():
-        _replace_text(path, text)
+        replace_text(path, text)
         print(f"Generated {path}")
-    # Users can edit these three files in Home Assistant. Create missing files,
-    # but never replace files that are already there.
-    for filename in UI_FILES:
-        path = ha_config_dir / filename
-        if not path.exists():
-            _replace_text(path, "[]\n")
-            print(f"Created {path}")
+    ensure_ui_files(ha_config_dir)
 
 
 def main(argv: list[str] | None = None) -> int:

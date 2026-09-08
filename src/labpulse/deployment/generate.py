@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import shutil
 import sys
-import tempfile
 from uuid import uuid4
 
 from labpulse import __version__
@@ -19,7 +18,12 @@ from labpulse.deployment.compose import (
     build_compose,
     service_slug,
 )
-from labpulse.homeassistant.generator import generate_homeassistant
+from labpulse.common.generated_files import replace_text
+from labpulse.homeassistant.generator import (
+    MANAGED_FILES,
+    ensure_ui_files,
+    generate_homeassistant,
+)
 
 
 def _mount_source(config_path: Path, project_dir: Path) -> str:
@@ -29,28 +33,6 @@ def _mount_source(config_path: Path, project_dir: Path) -> str:
         return "./" + config_path.relative_to(project_dir).as_posix()
     except ValueError:
         return config_path.as_posix()
-
-
-def _replace_text(path: Path, text: str) -> None:
-    """Atomically replace one generated text file on its destination filesystem."""
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".generating",
-        text=True,
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(text)
-        os.replace(temporary_name, path)
-    except Exception:
-        try:
-            Path(temporary_name).unlink()
-        except FileNotFoundError:
-            pass
-        raise
 
 
 def generate_deployment(
@@ -84,24 +66,11 @@ def generate_deployment(
 
         # No live generated file is touched until both Compose and every owned
         # Home Assistant artifact have been built successfully.
-        _replace_text(compose_output, compose_text)
-        owned_homeassistant_files = (
-            (staged_ha_dir / "configuration.yaml", ha_config_dir / "configuration.yaml"),
-            (
-                staged_ha_dir / "packages" / "labpulse_generated.yaml",
-                ha_config_dir / "packages" / "labpulse_generated.yaml",
-            ),
-            (staged_ha_dir / "labpulse-dashboard.yaml", ha_config_dir / "labpulse-dashboard.yaml"),
-        )
-        for staged_path, live_path in owned_homeassistant_files:
-            _replace_text(live_path, staged_path.read_text(encoding="utf-8"))
-
-        # These files are user-owned. Home Assistant needs them to exist, but
-        # regeneration must never replace them.
-        for filename in ("automations.yaml", "scripts.yaml", "scenes.yaml"):
-            ui_path = ha_config_dir / filename
-            if not ui_path.exists():
-                _replace_text(ui_path, "[]\n")
+        replace_text(compose_output, compose_text)
+        for relative_path in MANAGED_FILES:
+            staged_path = staged_ha_dir / relative_path
+            replace_text(ha_config_dir / relative_path, staged_path.read_text(encoding="utf-8"))
+        ensure_ui_files(ha_config_dir)
     finally:
         shutil.rmtree(staging_root)
 
@@ -152,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             project_dir.mkdir(parents=True, exist_ok=True)
             (project_dir / "logs").mkdir(parents=True, exist_ok=True)
-            _replace_text(compose_output, compose_text)
+            replace_text(compose_output, compose_text)
     except ConfigError as error:
         print(format_config_error(error), file=sys.stderr)
         return 1

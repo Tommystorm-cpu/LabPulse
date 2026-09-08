@@ -1,82 +1,61 @@
 # LabPulse documentation
 
-These guides describe the current LabPulse package, generated deployment, and
-supported workflows.
+The guides here explain complete workflows that cross several code packages.
+Implementation details for one package live in the nearest source-folder
+README.
 
-## Operator path
+## New operator
 
-Read in this order for a new installation:
+1. Read [Installation](INSTALLATION.md) and complete either the real-hardware
+   or simulation path.
+2. Use the [User Guide](USER_GUIDE.md) to understand every feature and its
+   normal, failure and recovery behaviour.
+3. Use [Configuration](CONFIGURATION.md) when editing
+   `~/labpulse-live/config.yaml`.
+4. Return to [Installation troubleshooting](INSTALLATION.md#troubleshooting)
+   when a layer does not work.
 
-1. [Product scope and safety boundary](PRODUCT_SCOPE.md)
-2. [Supported environments](SUPPORT.md)
-3. [Installation](INSTALLATION.md)
-4. [Configuration reference](CONFIGURATION.md)
-5. [Operations](OPERATIONS.md)
-6. [Home Assistant and alarms](HOME_ASSISTANT.md)
-7. [SMS notifications](SMS.md)
-8. [Troubleshooting](TROUBLESHOOTING.md)
+## Existing operator
 
-The normal operator surface is the unified `labpulse` command. The installed
-configuration source is always `~/labpulse-live/config.yaml`.
+- [User Guide](USER_GUIDE.md): commands, dashboards, alarms, SMS, outputs,
+  simulation, diagnostics, backups and limitations.
+- [Configuration](CONFIGURATION.md): fields, defaults, constraints and complete
+  examples.
+- [Installation](INSTALLATION.md): updates, reconstruction and symptom-led
+  troubleshooting.
+- [Hardware](HARDWARE.md): current interface boundary and placeholders for the
+  future photographed build record.
 
-## Contributor path
+The installed source of truth is always `~/labpulse-live/config.yaml`. The
+repository `config.yaml` is a starter template. Generated Compose, fake-runtime
+and Home Assistant files are not independent settings.
 
-1. [Architecture](ARCHITECTURE.md)
-2. [Development](DEVELOPMENT.md)
-3. [Driver development](DRIVER_DEVELOPMENT.md)
-4. [Standard serial protocol](SERIAL_PROTOCOL.md)
-5. [Firmware](../firmware/README.md)
-6. [Contributing](../CONTRIBUTING.md)
-7. [Roadmap](../ROADMAP.md)
+## Contributor
 
-## Sources of truth
+1. Read [Architecture](ARCHITECTURE.md) for process boundaries and data flow.
+2. Read the nearest package README, starting with
+   [`src/labpulse`](../src/labpulse/README.md).
+3. Use [Development](DEVELOPMENT.md) for setup, tests, packaging, CI and
+   real-Pi acceptance.
+4. Use the [roadmap](../ROADMAP.md) for planned work; do not infer features from
+   historical or future descriptions.
 
-| Subject | Current source of truth |
+## Authoritative homes
+
+| Subject | Owner |
 |---|---|
-| Installed sensor configuration | `~/labpulse-live/config.yaml` |
-| New-install template | repository `config.yaml` |
-| Global config, cross-references, and loading | `src/labpulse/common/config.py` |
-| Physical and calculated measurement config | `src/labpulse/common/measurement_config.py` |
-| Driver, service, and power config | `src/labpulse/common/service_config.py` |
-| Controlled-output config | `src/labpulse/common/output_config.py` |
-| Fake runtime derivation | `src/labpulse/common/fake_config.py` |
-| Stable IDs | `src/labpulse/common/identity.py` |
-| MQTT and SMS request contracts | `src/labpulse/common/mqtt_contracts.py` |
-| Operator commands | `src/labpulse/control.py` |
-| Backup archive behavior | `src/labpulse/backup.py` |
-| Diagnostics | `src/labpulse/doctor.py` |
-| Compose rendering | `src/labpulse/deployment/compose.py` |
-| Atomic deployment installation | `src/labpulse/deployment/generate.py` |
-| Driver contract | `src/labpulse/hardware/driver.py` |
-| Driver discovery | `src/labpulse/hardware/registry.py` |
-| Hardware lifecycle | `src/labpulse/hardware/runner.py` |
-| Serial parsing | `src/labpulse/hardware/drivers/serial_pipe.py` |
-| MQTT discovery/state publication | `src/labpulse/hardware/homeassistant_publisher.py` |
-| Controlled-output MQTT lifecycle | `src/labpulse/output/service.py` |
-| Home Assistant command and file generation | `src/labpulse/homeassistant/generator.py` |
-| Alarm/render context | `src/labpulse/homeassistant/alarm.py` |
-| Dashboard and alarm behavior | `src/labpulse/homeassistant/templates/` |
-| SMS process composition | `src/labpulse/sms/__main__.py` |
-| SMS intake and deduplication | `src/labpulse/sms/subscriber.py` |
-| SMS delivery | `src/labpulse/sms/sender.py` |
-| SMS subscription commands | `src/labpulse/sms/sender.py` |
+| Project summary, safety and maturity | [Root README](../README.md) |
+| First installation, updates, reconstruction and troubleshooting | [Installation](INSTALLATION.md) |
+| Every user-visible feature and its behaviour | [User Guide](USER_GUIDE.md) |
+| YAML sections, fields, defaults and examples | [Configuration](CONFIGURATION.md) |
+| Cross-process design, ownership and failure boundaries | [Architecture](ARCHITECTURE.md) |
+| Development, tests, packaging and release process | [Development](DEVELOPMENT.md) |
+| Physical interface status and future build evidence | [Hardware](HARDWARE.md) |
+| One Python package or template tree | Its folder `README.md` |
+| Arduino library, examples and serial wire format | [Firmware README](../firmware/README.md) |
+| Future work and historical acceptance | [Roadmap](../ROADMAP.md) |
 
-`compose.yaml`, `config.fake.yaml`, and generated Home Assistant YAML are
-outputs. Change their owning source and regenerate rather than editing them as
-independent configuration.
-
-## Where changes belong
-
-| Change | Documentation owner |
-|---|---|
-| Host prerequisites or first installation | `INSTALLATION.md` |
-| YAML field or built-in driver option | `CONFIGURATION.md` |
-| Operator command or maintenance workflow | `OPERATIONS.md` |
-| Home Assistant entity, dashboard, or alarm behavior | `HOME_ASSISTANT.md` |
-| SMS routing, delivery, or subscription behavior | `SMS.md` |
-| Cross-process ownership or contract | `ARCHITECTURE.md` |
-| Contributor workflow or package structure | `DEVELOPMENT.md` |
-| Hardware extension contract | `DRIVER_DEVELOPMENT.md` |
-| Serial wire format | `SERIAL_PROTOCOL.md` |
-| Symptom and recovery action | `TROUBLESHOOTING.md` |
-| Work not implemented in current code | `ROADMAP.md` |
+LabPulse is a monitoring aid, not a safety interlock or guaranteed
+notification path. Hardware-free tests validate software contracts; wiring,
+calibration, modem delivery and attached-equipment behaviour need physical
+acceptance.

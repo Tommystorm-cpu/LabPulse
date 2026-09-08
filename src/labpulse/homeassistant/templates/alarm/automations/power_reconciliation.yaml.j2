@@ -119,11 +119,11 @@
                 "state": "On Battery",
                 "title": [[
                   sms.alerts.power_warning.title
-                  | render_fragment(service=service, power=power, model=model)
+                  | render_fragment(service=service, power=power)
                 ]],
                 "message": ([[
                   sms.alerts.power_warning.message
-                  | render_fragment(service=service, power=power, model=model)
+                  | render_fragment(service=service, power=power)
                 ]]) ~ "\n[[ power.mains_present.notification_context ]]",
                 "test_mode": is_state(
                   '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
@@ -208,11 +208,11 @@
                 "state": "Normal",
                 "title": [[
                   sms.alerts.power_recovery.title
-                  | render_fragment(service=service, power=power, model=model)
+                  | render_fragment(service=service, power=power)
                 ]],
                 "message": ([[
                   sms.alerts.power_recovery.message
-                  | render_fragment(service=service, power=power, model=model)
+                  | render_fragment(service=service, power=power)
                 ]]) ~ "\n[[ power.mains_present.notification_context ]]",
                 "test_mode": is_state(
                   '[[ 'input_boolean.labpulse_notification_test_mode' ]]',

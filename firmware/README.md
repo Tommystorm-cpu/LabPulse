@@ -215,7 +215,13 @@ The writer emits finite valid values and writes `null` otherwise:
 temperature: 18.42 | pressure: null
 ```
 
-See [Serial protocol](../docs/SERIAL_PROTOCOL.md).
+Each physical line is one UTF-8/ASCII sample. Fields are separated by `|` and
+each field is `name: value`. Names must match configured measurement keys;
+values are finite decimal numbers or `null`. Whitespace around fields is
+ignored, duplicate names are invalid, unknown names are ignored by the service,
+and a malformed field does not prevent other valid fields on that line from
+being published. The Pi-side contract and parser ownership are documented in
+the [driver package guide](../src/labpulse/hardware/drivers/README.md).
 
 ### `PulseFlowSensor`
 

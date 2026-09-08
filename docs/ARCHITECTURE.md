@@ -11,21 +11,21 @@ can expose explicitly configured non-safety GPIO outputs. It is not a
 safety-rated alarm, emergency shutdown system, or protective interlock.
 Independent protection remains necessary wherever delayed, missing, or
 incorrect telemetry or control could cause harm or loss. See
-[Product scope and safety boundary](PRODUCT_SCOPE.md).
+[User guide and safety boundary](USER_GUIDE.md).
 
 ## Runtime topology
 
 ```text
 physical or simulated sensors
-            │
-            ▼
+            |
+            v
 one labpulse-<service> container per enabled service
-  hardware CLI → driver → runner → MQTT publisher
-            │
-            ▼
+  hardware CLI -> driver -> runner -> MQTT publisher
+            |
+            v
         Mosquitto
-         │      │
-         ▼      ▼
+         |      |
+         v      v
 Home Assistant  labpulse-sms
   discovery       request validation
   dashboard       routing and deduplication
@@ -33,10 +33,10 @@ Home Assistant  labpulse-sms
   MQTT requests
 
 Home Assistant MQTT switch
-            │ live ON/OFF command
-            ▼
+            | live ON/OFF command
+            v
 one labpulse-output-<output> container per enabled output
-  MQTT subscriber → safety policy → persistent GPIO line request
+  MQTT subscriber -> safety policy -> persistent GPIO line request
 ```
 
 Generated Compose always contains:
@@ -144,10 +144,11 @@ scaffolding; it does not own configuration schema or generated Compose logic.
 
 ### Package process entry points
 
-Each package with a standalone process follows the same boundary:
+Each package with a standalone process keeps command composition at its package
+boundary:
 
 ```text
-package/__main__.py → package/cli.py → domain modules
+package/__main__.py or generator.py -> importable domain modules
 ```
 
 | Command | CLI responsibility | Domain owner |
@@ -158,12 +159,12 @@ package/__main__.py → package/cli.py → domain modules
 | `python -m labpulse.homeassistant` | Generate Home Assistant files | `src/labpulse/homeassistant/` |
 | `python -m labpulse.deployment` | Generate deployment files | `src/labpulse/deployment/` |
 
-`cli.py` modules own argument parsing and process composition. Importable
+The entry-point modules own argument parsing and process composition. Importable
 domain modules do not inspect `sys.argv` or exit the interpreter.
 
 ## Configuration model and flow
 
-`src/labpulse/common/config.py` is the only production LabPulse YAML loader and
+`src/labpulse/common/config.py` is the authoritative validated LabPulse configuration loader and
 owns the final cross-section validation. Physical and calculated measurement
 models live in `common/measurement_config.py`; driver, service, and power models
 live in `common/service_config.py`; controlled-output policy lives in
@@ -177,16 +178,16 @@ The loader returns a `ConfigDocument` containing:
 
 ```text
 config.yaml
-  │
-  ▼
+  |
+  v
 common.config.load_config()
-  │
-  ├── deployment generation
-  ├── Home Assistant generation
-  ├── one hardware process per service
-  ├── one output process per enabled output
-  ├── SMS worker
-  └── diagnostics
+  |
+  +-- deployment generation
+  +-- Home Assistant generation
+  +-- one hardware process per service
+  +-- one output process per enabled output
+  +-- SMS worker
+  \-- diagnostics
 ```
 
 Each independent process loads once at startup. Consumers receive typed data
@@ -199,7 +200,8 @@ Cross-component values are centralized:
 - stable IDs: `common/identity.py`;
 - MQTT topics and SMS request schema: `common/mqtt_contracts.py`;
 - message copy: `common/sms_templates.yaml` through `sms_templates.py`;
-- fake-runtime derivation: `common/fake_config.py`.
+- fake-runtime derivation: `common/fake_config.py`;
+- single-file replacement: `common/generated_files.py`.
 
 ## Deployment generation
 
@@ -210,15 +212,16 @@ validated document and driver resource declarations.
 
 ```text
 load one ConfigDocument
-  ├── render Compose in memory
-  └── render Home Assistant into a staging directory
-          │
-          ▼
+  +-- render Compose in memory
+  \-- render Home Assistant into a staging directory
+          |
+          v
 replace managed live files only after every render succeeds
 ```
 
-This prevents a valid Compose file from being installed alongside invalid or
-partially rendered Home Assistant files. Setup and `labpulse config` use the
+A render failure leaves live output unchanged. Installation then replaces each
+file individually; a filesystem failure during replacement can leave a mixed
+set. This is not an atomic transaction across all files. Setup and `labpulse config` use the
 unified path with `--ha-config-dir`.
 
 The shell files `generate_compose.sh` and
@@ -252,12 +255,12 @@ The flow is:
 
 ```text
 hardware/__main__.py
-  → load ConfigDocument
-  → select ServiceConfig
-  → registry.get_driver_definition(driver.type)
-  → construct driver from typed configuration
-  → construct HomeAssistantMqttPublisher
-  → HardwareServiceRunner.run_forever()
+  -> load ConfigDocument
+  -> select ServiceConfig
+  -> registry.get_driver_definition(driver.type)
+  -> construct driver from typed configuration
+  -> construct HomeAssistantMqttPublisher
+  -> HardwareServiceRunner.run_forever()
 ```
 
 Ownership is strict:
@@ -272,7 +275,8 @@ Ownership is strict:
 | Devices, mounts, and privileged requirements | Driver definition |
 | Thresholds, alarm transitions, and notifications | Home Assistant |
 
-Drivers do not publish MQTT or manage retry sleeps. The runner does not import
+Drivers do not publish LabPulse output/discovery or manage retry sleeps. The
+MQTT JSON driver subscribes to an external input stream as its acquisition transport. The runner does not import
 vendor hardware libraries or understand device protocols.
 
 ## Driver contract
@@ -424,18 +428,19 @@ The worker then:
 
 ```text
 subscriber
-  → validate SmsRequest
-  → reject duplicate/recent requests
-  → select test or normal recipients
-  → apply subscription choices and cooldown
-  → queue sequential delivery
-  → send through mmcli or log a dry run
-  → publish status and per-request result
+  -> validate SmsRequest
+  -> reject duplicate/recent requests
+  -> select test or normal recipients
+  -> apply subscription choices and cooldown
+  -> queue sequential delivery
+  -> send through mmcli or log a dry run
+  -> publish status and per-request result
 ```
 
 `subscriber.py` owns MQTT intake and request caching. `sender.py` owns message
 formatting, recipient routing, queueing, retries, and ModemManager calls.
-`subscriptions.py` owns inbound `SUBSCRIBE` and `UNSUBSCRIBE` processing.
+`SmsCommandMonitor` and `SubscriptionRegistry` in `sender.py` own inbound
+`SUBSCRIBE` and `UNSUBSCRIBE` processing and persistence.
 
 ## Backup, restore, and diagnostics
 
@@ -459,7 +464,7 @@ src/labpulse/
   backup.py          archive creation, validation, extraction, restore
   doctor.py          read-only installation/runtime diagnostics
   common/            configuration, IDs, MQTT contracts, shared logging/copy
-  deployment/        Compose renderer and atomic unified generation
+  deployment/        Compose renderer and staged unified generation
   hardware/          CLI, driver API/registry, runner, parser, MQTT publisher
   output/            controlled-output MQTT subscriber and fail-safe lifecycle
   homeassistant/     CLI, render context, generators, final YAML templates
@@ -473,7 +478,8 @@ docs/                current operator and contributor documentation
 ```
 
 New behavior belongs in the package that owns the decision. `common` is only
-for contracts genuinely shared by multiple packages.
+for contracts and utilities genuinely shared by multiple packages, including
+`common/generated_files.py` for atomic single-file replacement.
 
 ## Security boundary
 
@@ -493,3 +499,29 @@ allow-listing, non-retained commands, and clean subscriber sessions prevent
 accidental stale replay, but they do not authenticate Home Assistant as the
 publisher. The current output feature must not be exposed to untrusted broker
 clients.
+
+## Follow a complete reading
+
+```mermaid
+sequenceDiagram
+    participant Sensor
+    participant Driver
+    participant Runner
+    participant MQTT as Mosquitto
+    participant HA as Home Assistant
+    participant SMS as SMS worker
+    Sensor->>Driver: Raw sample
+    Driver->>Runner: HardwareReadings or classified failure
+    Runner->>MQTT: Discovery if needed, numeric state, then health
+    MQTT->>HA: State and discovery
+    HA->>HA: Expiry, danger history, recovery, mute checks
+    HA->>MQTT: Notification request when eligible
+    MQTT->>SMS: Request
+    SMS->>SMS: Validate, deduplicate, route, queue, deliver
+    SMS->>MQTT: Delivery result
+```
+
+A sample, an alarm transition, an accepted request, and a delivered SMS are
+separate events. Failure at one boundary is not proof of failure at another.
+The [package README hierarchy](../src/labpulse/README.md) follows the local code
+ownership and contracts behind this sequence.

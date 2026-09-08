@@ -154,10 +154,10 @@ class OutputMqttService:
             retain=True,
         )
         with self._lock:
-            if self._driver_ready and self._publish_current_state():
-                self._publish_availability("online")
-            else:
+            if not self._driver_ready:
                 self._publish_availability("offline")
+            elif self._publish_current_state():
+                self._publish_availability("online")
 
     def on_disconnect(
         self,
@@ -240,13 +240,8 @@ class OutputMqttService:
                     self.driver.connect()
                     self.driver.set_state(self.driver.safe_state)
                 except (DriverError, OSError, ValueError) as error:
-                    self.driver.close()
-                    self._next_driver_connect_at = (
-                        now + self.output_config.reconnect_interval_seconds
-                    )
                     self._logger.error("Output hardware unavailable: %s", error)
-                    if self._mqtt_connected:
-                        self._publish_availability("offline")
+                    self._prepare_for_reconnect(now)
                     return
                 self._driver_ready = True
                 self._active_deadline = None
@@ -254,8 +249,6 @@ class OutputMqttService:
                 if self._mqtt_connected:
                     if self._publish_current_state():
                         self._publish_availability("online")
-                    else:
-                        self._publish_availability("offline")
                 return
 
             if self._active_deadline is not None and now >= self._active_deadline:
@@ -270,14 +263,7 @@ class OutputMqttService:
             readings = self.driver.read()
         except (DriverError, OSError, ValueError) as error:
             self._logger.error("Output state change failed during %s: %s", reason, error)
-            self.driver.close()
-            self._driver_ready = False
-            self._active_deadline = None
-            self._next_driver_connect_at = (
-                time.monotonic() + self.output_config.reconnect_interval_seconds
-            )
-            if self._mqtt_connected:
-                self._publish_availability("offline")
+            self._prepare_for_reconnect(time.monotonic())
             return
 
         active_now = readings.values.get("state") == 1.0
@@ -300,14 +286,22 @@ class OutputMqttService:
             readings = self.driver.read()
         except (DriverError, OSError, ValueError) as error:
             self._logger.error("Output readback failed: %s", error)
-            self.driver.close()
-            self._driver_ready = False
-            self._next_driver_connect_at = (
-                time.monotonic() + self.output_config.reconnect_interval_seconds
-            )
+            self._prepare_for_reconnect(time.monotonic())
             return False
         self._publish_state(readings.values.get("state") == 1.0)
         return True
+
+    def _prepare_for_reconnect(self, current_time: float) -> None:
+        """Close failed hardware, clear its active timer, and schedule recovery."""
+
+        # Callers hold the service lock so commands cannot use the driver while
+        # it is being closed and marked unavailable.
+        self.driver.close()
+        self._driver_ready = False
+        self._active_deadline = None
+        self._next_driver_connect_at = current_time + self.output_config.reconnect_interval_seconds
+        if self._mqtt_connected:
+            self._publish_availability("offline")
 
     def _publish_state(self, active: bool) -> None:
         """Publish the verified logical output state as retained ON or OFF."""

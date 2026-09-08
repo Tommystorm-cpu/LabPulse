@@ -12,12 +12,13 @@ so the intended behavior and test boundary can be agreed.
 
 Read:
 
-1. [Product scope and safety boundary](docs/PRODUCT_SCOPE.md)
+1. [User guide and safety boundary](docs/USER_GUIDE.md)
 2. [Architecture](docs/ARCHITECTURE.md)
 3. [Development](docs/DEVELOPMENT.md)
-4. [Driver development](docs/DRIVER_DEVELOPMENT.md) when adding hardware
-5. [Serial protocol](docs/SERIAL_PROTOCOL.md) when changing firmware or serial
-   output
+4. [Hardware driver package guide](src/labpulse/hardware/drivers/README.md)
+   when adding direct hardware support
+5. [Firmware guide](firmware/README.md) when changing Arduino firmware or
+   serial output
 
 ## Development principles
 
@@ -86,7 +87,7 @@ A direct-hardware driver must include:
 - example configuration and documentation;
 - a recorded real-device smoke test before release.
 
-See [Driver development](docs/DRIVER_DEVELOPMENT.md).
+See the [hardware driver package guide](src/labpulse/hardware/drivers/README.md).
 
 ## Documentation style
 

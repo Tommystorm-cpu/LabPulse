@@ -1,9 +1,13 @@
 """Focused tests for setup-aware, non-duplicated alarm notifications."""
 
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
+from jinja2 import UndefinedError
+import pytest
 import yaml
 
 
@@ -12,6 +16,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 from labpulse.common.config import LabPulseConfig
 from labpulse.common.identity import entity_id, stable_id
 from labpulse.homeassistant.alarm import build_template_context, render_alarm
+import labpulse.homeassistant.alarm as alarm
 
 
 def config_data() -> dict[str, object]:
@@ -41,6 +46,40 @@ def config_data() -> dict[str, object]:
             }
         },
     }
+
+
+def test_bulk_deadband_controls_do_not_depend_on_target_order() -> None:
+    """Keep installation-wide controls when setup targets appear first."""
+
+    config = LabPulseConfig.model_validate(config_data())
+    original = build_template_context(config)
+    reordered_targets = tuple(reversed(original.bulk_alarm_targets))
+    assert reordered_targets[0]["target_id"] != "all"
+    with patch.object(alarm, "_bulk_targets", return_value=reordered_targets):
+        reordered = build_template_context(config)
+    assert reordered.bulk_deadband_groups == original.bulk_deadband_groups
+    assert reordered.bulk_apply_entities == original.bulk_apply_entities
+
+
+def test_sms_fragments_require_explicit_context() -> None:
+    """Reject ambient model access while preserving explicit and runtime values."""
+
+    model = build_template_context(LabPulseConfig.model_validate(config_data()))
+    templates = deepcopy(alarm.load_sms_templates())
+    templates["alerts"]["service_fault"]["title"] = '"[[ service.label ]] {{ runtime_value }}"'
+    with patch.object(alarm, "load_sms_templates", return_value=templates):
+        rendered = render_alarm(model)
+    assert any(
+        "Shared Sensor Hub {{ runtime_value }}" in value
+        for value in walk(yaml.safe_load(rendered))
+        if isinstance(value, str)
+    )
+
+    # The outer template has model, but the fragment caller does not pass it.
+    templates["alerts"]["service_fault"]["title"] = '"[[ model.sms_send_topic ]]"'
+    with patch.object(alarm, "load_sms_templates", return_value=templates):
+        with pytest.raises(UndefinedError, match="model"):
+            render_alarm(model)
 
 
 def walk(value: object) -> Iterable[object]:
