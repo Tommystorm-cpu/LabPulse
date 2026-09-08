@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version as distribution_version
+import json
 import os
 from pathlib import Path
 import shlex
@@ -13,7 +15,11 @@ import subprocess
 import sys
 import time
 from typing import Sequence
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 import webbrowser
+
+from packaging.version import InvalidVersion, Version
 
 from labpulse import __version__
 from labpulse.backup import (
@@ -33,6 +39,10 @@ DEFAULT_LIVE_DIR = Path("~/labpulse-live")
 HOME_ASSISTANT_URL = "http://localhost:8123"
 FIRMWARE_SOURCE_URL = "https://github.com/Tommystorm-cpu/LabPulse/tree/main/firmware"
 FIRMWARE_ARCHIVE_URL = "https://github.com/Tommystorm-cpu/LabPulse/archive/refs/heads/main.zip"
+TEST_PYPI_INDEX_URL = "https://test.pypi.org/simple/"
+PYPI_INDEX_URL = "https://pypi.org/simple/"
+TEST_PYPI_PROJECT_URL = "https://test.pypi.org/pypi/labpulse/json"
+UPDATE_CHECK_TIMEOUT_SECONDS = 2.0
 FIRMWARE_HELP = f"""\
 LabPulse firmware is currently distributed through the project repository.
 
@@ -338,6 +348,170 @@ def run_setup(
                 os.environ["LABPULSE_LIVE_DIR"] = previous_live_dir
 
 
+def latest_published_version(*, timeout: float = 15.0) -> str:
+    """Return the latest LabPulse version reported by TestPyPI."""
+
+    request = Request(
+        TEST_PYPI_PROJECT_URL,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": f"LabPulse/{__version__}",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.load(response)
+    except (OSError, URLError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"could not check TestPyPI: {error}") from error
+
+    info = payload.get("info") if isinstance(payload, dict) else None
+    version = info.get("version") if isinstance(info, dict) else None
+    if not isinstance(version, str) or not version.strip():
+        raise RuntimeError("TestPyPI returned no latest LabPulse version")
+    return version.strip()
+
+
+def notify_if_update_available() -> None:
+    """Print a best-effort notice when TestPyPI has a newer release."""
+
+    try:
+        latest = latest_published_version(timeout=UPDATE_CHECK_TIMEOUT_SECONDS)
+        try:
+            installed = distribution_version("labpulse")
+        except PackageNotFoundError:
+            installed = __version__
+        installed_version = Version(installed)
+        latest_version = Version(latest)
+    except (RuntimeError, InvalidVersion):
+        return
+
+    if latest_version > installed_version:
+        print(
+            f"\nA newer LabPulse version is available: {latest} "
+            f"(installed: {installed}). Run 'labpulse update'."
+        )
+
+
+def run_update_command(live_dir: Path, requested_version: str | None) -> int:
+    """Install one release, regenerate the deployment, and recreate the stack."""
+
+    compose_path = live_dir / "compose.yaml"
+    config_path = live_dir / "config.yaml"
+    if not compose_path.is_file() or not config_path.is_file():
+        print(
+            f"ERROR: LabPulse is not set up at {live_dir}. "
+            "Run 'labpulse setup' first.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        target_version = requested_version or latest_published_version()
+        compose_text = compose_path.read_text(encoding="utf-8")
+    except (OSError, RuntimeError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    if target_version == __version__:
+        print(f"LabPulse {__version__} is already the latest requested version.")
+        return 0
+
+    pipx = shutil.which("pipx")
+    fresh_labpulse = shutil.which("labpulse")
+    if pipx is None:
+        print("ERROR: Cannot update because pipx is not on PATH.", file=sys.stderr)
+        return 127
+    if fresh_labpulse is None:
+        print(
+            "ERROR: Cannot locate the pipx-installed labpulse command on PATH.",
+            file=sys.stderr,
+        )
+        return 127
+
+    fake_usb = "config.fake.yaml:/app/config.yaml" in compose_text
+    print(f"Updating LabPulse {__version__} -> {target_version}...")
+    install_command = [
+        pipx,
+        "install",
+        "--force",
+        "--index-url",
+        TEST_PYPI_INDEX_URL,
+        f"--pip-args=--extra-index-url {PYPI_INDEX_URL}",
+        f"labpulse=={target_version}",
+    ]
+    try:
+        install_result = subprocess.run(install_command, check=False).returncode
+    except FileNotFoundError as error:
+        print(f"ERROR: Cannot run {error.filename!r}.", file=sys.stderr)
+        return 127
+    if install_result != 0:
+        print("ERROR: pipx could not install the requested release.", file=sys.stderr)
+        return install_result
+
+    # The current Python process still contains the old package. Run setup via
+    # the replaced entry point so all generated files come from the new release.
+    setup_command = [
+        fresh_labpulse,
+        "--live-dir",
+        str(live_dir),
+        "setup",
+        "--backup",
+    ]
+    if fake_usb:
+        setup_command.append("--fake-usb")
+    try:
+        setup_result = subprocess.run(setup_command, check=False).returncode
+    except FileNotFoundError as error:
+        print(f"ERROR: Cannot run updated command {error.filename!r}.", file=sys.stderr)
+        return 127
+    if setup_result != 0:
+        print(
+            "ERROR: The package was updated, but setup failed. "
+            "The existing containers were not deliberately recreated.",
+            file=sys.stderr,
+        )
+        return setup_result
+
+    compose_result = run_compose(
+        live_dir,
+        ("up", "-d", "--pull", "missing", "--remove-orphans", "--force-recreate"),
+    )
+    if compose_result != 0:
+        print(
+            "ERROR: Generated files were updated, but the container stack "
+            "could not be completely recreated.",
+            file=sys.stderr,
+        )
+        return compose_result
+
+    print("Waiting for Home Assistant before final diagnostics...")
+    if not _wait_for_homeassistant():
+        print(
+            "ERROR: Containers were recreated, but Home Assistant did not "
+            "become ready within 120 seconds. Inspect its logs.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        doctor_result = subprocess.run(
+            [fresh_labpulse, "--live-dir", str(live_dir), "doctor", "--timeout", "5"],
+            check=False,
+        ).returncode
+    except FileNotFoundError as error:
+        print(f"ERROR: Cannot run updated command {error.filename!r}.", file=sys.stderr)
+        return 127
+    if doctor_result != 0:
+        print(
+            "ERROR: The update completed, but final diagnostics reported failures.",
+            file=sys.stderr,
+        )
+        return doctor_result
+
+    print(f"LabPulse {target_version} is installed and all containers were recreated.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the operator command-line parser."""
 
@@ -356,6 +530,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     setup_parser.add_argument(
         "--backup", action="store_true", help="back up generated and package-managed files before replacement"
+    )
+
+    update_parser = commands.add_parser(
+        "update",
+        help="install a newer release, refresh setup, and recreate the stack",
+    )
+    update_parser.add_argument(
+        "version",
+        nargs="?",
+        help="release to install (default: latest version published on TestPyPI)",
     )
 
     up_parser = commands.add_parser("up", help="start the stack or selected services in the background")
@@ -443,67 +627,81 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
     arguments = parser.parse_args(argv)
+    try:
+        if arguments.action == "help":
+            help_parser = (
+                arguments.help_command_parsers.get(arguments.topic)
+                if arguments.topic
+                else arguments.help_root_parser
+            )
+            help_parser.print_help()
+            return 0
+        if arguments.action == "firmware":
+            return show_firmware_help()
+        if arguments.action == "version":
+            print(f"LabPulse {__version__}")
+            return 0
+        if arguments.action == "setup":
+            return run_setup(
+                arguments.live_dir,
+                fake_usb=arguments.fake_usb,
+                backup=arguments.backup,
+            )
+        if arguments.action == "open":
+            return open_homeassistant()
 
-    if arguments.action == "help":
-        help_parser = (
-            arguments.help_command_parsers.get(arguments.topic)
-            if arguments.topic
-            else arguments.help_root_parser
-        )
-        help_parser.print_help()
-        return 0
-    if arguments.action == "firmware":
-        return show_firmware_help()
-    if arguments.action == "version":
-        print(f"LabPulse {__version__}")
-        return 0
-    if arguments.action == "setup":
-        return run_setup(arguments.live_dir, fake_usb=arguments.fake_usb, backup=arguments.backup)
-    if arguments.action == "open":
-        return open_homeassistant()
+        live_dir = live_directory(arguments.live_dir)
+        if arguments.action == "update":
+            return run_update_command(live_dir, arguments.version)
+        if arguments.action == "backup":
+            return run_backup_command(
+                live_dir, Path(arguments.output), force=arguments.force
+            )
+        if arguments.action == "restore":
+            return run_restore_command(
+                live_dir, Path(arguments.archive), assume_yes=arguments.yes
+            )
+        if arguments.action == "config":
+            return run_config_editor(live_dir)
+        if arguments.action == "doctor":
+            if arguments.timeout <= 0:
+                parser.error("doctor --timeout must be greater than zero")
+            try:
+                docker_prefix = docker_command()
+            except ValueError as error:
+                print(f"WARNING: {error}", file=sys.stderr)
+                docker_prefix = None
+            return run_doctor(live_dir, docker_prefix, timeout=arguments.timeout)
 
-    live_dir = live_directory(arguments.live_dir)
-    if arguments.action == "backup":
-        return run_backup_command(live_dir, Path(arguments.output), force=arguments.force)
-    if arguments.action == "restore":
-        return run_restore_command(live_dir, Path(arguments.archive), assume_yes=arguments.yes)
-    if arguments.action == "config":
-        return run_config_editor(live_dir)
-    if arguments.action == "doctor":
-        if arguments.timeout <= 0:
-            parser.error("doctor --timeout must be greater than zero")
-        try:
-            docker_prefix = docker_command()
-        except ValueError as error:
-            print(f"WARNING: {error}", file=sys.stderr)
-            docker_prefix = None
-        return run_doctor(live_dir, docker_prefix, timeout=arguments.timeout)
+        compose_arguments: list[str]
+        if arguments.action == "up":
+            compose_arguments = ["up", "-d", "--pull", "missing"]
+            compose_arguments.extend(arguments.services)
+        elif arguments.action == "down":
+            compose_arguments = ["down", *arguments.services]
+        elif arguments.action == "restart":
+            compose_arguments = ["restart", *arguments.services]
+        elif arguments.action == "ps":
+            compose_arguments = ["ps"]
+            if arguments.all:
+                compose_arguments.append("--all")
+        elif arguments.action == "logs":
+            compose_arguments = ["logs"]
+            if arguments.follow:
+                compose_arguments.append("--follow")
+            if arguments.tail is not None:
+                compose_arguments.extend(["--tail", arguments.tail])
+            if arguments.timestamps:
+                compose_arguments.append("--timestamps")
+            compose_arguments.extend(arguments.services)
+        else:  # pragma: no cover - argparse restricts this value.
+            raise AssertionError(f"unsupported action: {arguments.action}")
 
-    compose_arguments: list[str]
-    if arguments.action == "up":
-        compose_arguments = ["up", "-d", "--pull", "missing"]
-        compose_arguments.extend(arguments.services)
-    elif arguments.action == "down":
-        compose_arguments = ["down", *arguments.services]
-    elif arguments.action == "restart":
-        compose_arguments = ["restart", *arguments.services]
-    elif arguments.action == "ps":
-        compose_arguments = ["ps"]
-        if arguments.all:
-            compose_arguments.append("--all")
-    elif arguments.action == "logs":
-        compose_arguments = ["logs"]
-        if arguments.follow:
-            compose_arguments.append("--follow")
-        if arguments.tail is not None:
-            compose_arguments.extend(["--tail", arguments.tail])
-        if arguments.timestamps:
-            compose_arguments.append("--timestamps")
-        compose_arguments.extend(arguments.services)
-    else:  # pragma: no cover - argparse restricts this value.
-        raise AssertionError(f"unsupported action: {arguments.action}")
-
-    return run_compose(live_dir, compose_arguments)
+        return run_compose(live_dir, compose_arguments)
+    finally:
+        # Read distribution metadata in the notifier so a successful update
+        # checks the newly installed package rather than this process's import.
+        notify_if_update_available()
 
 
 def alias_arguments(action: str, arguments: Sequence[str]) -> list[str]:

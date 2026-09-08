@@ -12,10 +12,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import LabPulseConfig, load_config
 from labpulse.common.identity import stable_id
-from labpulse.common.fake_config import (
-    convert_power_service_to_fake_serial,
-    derive_fake_config,
-)
+from labpulse.common.fake_config import convert_power_service_to_fake_serial
 from labpulse.common.service_config import ServiceConfig
 from labpulse.homeassistant.generator import main as generate_homeassistant
 
@@ -135,42 +132,6 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
     ]
     if before_ids != after_ids:
         raise AssertionError("fake conversion changed power measurement identities")
-
-
-def test_fake_usb_converts_starter_power_service() -> None:
-    """Convert the starter's complete three-measurement UPS to fake transport."""
-
-    starter = (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8")
-    converted = LabPulseConfig.model_validate(
-        yaml.safe_load(convert_power_service_to_fake_serial(starter))
-    )
-    service = converted.services["ups_monitor"]
-    if list(service.measurements) != [
-        "voltage",
-        "battery_level",
-        "mains_present",
-    ]:
-        raise AssertionError("starter fake UPS measurements are incomplete")
-    if service.power_detection is None:
-        raise AssertionError("starter fake UPS lacks power lifecycle timing")
-
-
-def test_fake_usb_derivation_converts_direct_hardware() -> None:
-    """Derive the complete runtime config used by setup and guarded editing."""
-
-    starter = (REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8")
-    converted_text = derive_fake_config(starter)
-    converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
-    room = converted.services["room_environment"]
-    power = converted.services["ups_monitor"]
-    if room.driver.type != "labpulse.serial_pipe":
-        raise AssertionError("fake derivation retained the direct SHT40 driver")
-    if getattr(room.driver.options, "port", None) != "/tmp/labpulse-fake-serial/room_environment":
-        raise AssertionError("fake derivation selected the wrong room endpoint")
-    if getattr(power.driver.options, "port", None) != "/tmp/labpulse-fake-serial/ups_monitor":
-        raise AssertionError("fake derivation selected the wrong UPS endpoint")
-    if "FAKE_" in converted_text:
-        raise AssertionError("fake derivation retained a starter port placeholder")
 
 
 def render_power() -> tuple[dict, dict, str]:

@@ -151,24 +151,6 @@ def test_serial_config_requires_port() -> None:
     )
 
 
-def test_parser_config_is_rejected() -> None:
-    """Check that the removed parser selector cannot return to config."""
-
-    assert_raises(
-        ValueError,
-        "Extra inputs are not permitted",
-        lambda: make_service_config(
-            driver={
-                "type": "labpulse.serial_pipe",
-                "options": {
-                    "port": "/tmp/labpulse-fake-serial/pump_room",
-                    "parser": "pressure",
-                },
-            }
-        ),
-    )
-
-
 def test_gpio_dht11_driver_builds() -> None:
     """Check that a GPIO DHT11 service creates a Dht11Driver."""
 

@@ -405,6 +405,7 @@ Home Assistant owns:
 - direct power loss, restoration, and power-sensor faults;
 - global, setup, measurement, and power mutes;
 - Test mode;
+- explicit resend requests for active measurement alerts;
 - persistent notification and SMS request creation.
 
 Python publishes measurements and health facts. It does not decide whether a

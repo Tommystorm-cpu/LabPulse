@@ -36,8 +36,12 @@
       show_header_toggle: false
       entities:
 [% if service.power.alarmed %]
-      - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+      - type: simple-entity
+        entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
         name: Power state
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
       - entity: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]
         name: External power present
       - entity: [[ entity_id('sensor', service.name, 'voltage') ]]

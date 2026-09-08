@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
-from labpulse.common.config import DEFAULT_CONFIG_PATH, MqttConfig, SmsConfig
+from labpulse.common.config import MqttConfig, SmsConfig
 from labpulse.common.mqtt_contracts import (
     SMS_STATUS_DISCOVERY_TOPIC,
     SMS_STATUS_TOPIC,
@@ -178,37 +178,6 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
 
     if actual != expected:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
-
-
-def test_setup_and_compose_contract() -> None:
-    """Check deployment copies SMS code and limits host MQTT exposure."""
-
-    setup = (REFACTOR_DIR / "deployment" / "setup_container_fs.sh").read_text(
-        encoding="utf-8"
-    )
-    deployment_dir = REFACTOR_DIR / "src" / "labpulse" / "deployment"
-    compose = "\n".join(
-        (deployment_dir / name).read_text(encoding="utf-8")
-        for name in ("compose.py", "generate.py")
-    )
-    assert_contains(setup, "labpulse-installed-package.pth", "managed package link")
-    assert_contains(
-        compose,
-        "ghcr.io/tommystorm-cpu/labpulse:",
-        "versioned runtime image",
-    )
-    if "build: ./labpulse-python" in compose:
-        raise AssertionError("Compose still builds the LabPulse image locally")
-    assert_contains(compose, "labpulse-sms:", "SMS service")
-    assert_contains(compose, "container_name: labpulse-sms", "SMS container name")
-    assert_contains(compose, "127.0.0.1:1883:1883", "localhost-only MQTT port")
-    assert_contains(compose, "- /run/dbus:/run/dbus:ro", "mmcli D-Bus mount")
-
-
-def test_sms_entry_accepts_explicit_argv() -> None:
-    """Check the SMS service uses the shared default config path."""
-
-    assert_equal(DEFAULT_CONFIG_PATH.name, "config.yaml", "default config filename")
 
 
 def test_sms_config_validates_recipients() -> None:

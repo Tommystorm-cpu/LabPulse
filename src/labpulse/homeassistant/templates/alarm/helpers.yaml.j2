@@ -127,6 +127,17 @@ input_select:
 [% endfor %]
 [% endif %]
 
+[% if model.alarm_measurements %]
+input_button:
+{# Alarm state is automation-owned. This button repeats the notification for
+   whichever actionable state is already active without changing that state. #}
+[% for service, measurement in model.alarm_measurements %]
+  labpulse_[[ measurement.measurement_id ]]_resend_active_alert:
+    name: '[[ measurement.label ]] Resend Active Alert'
+    icon: mdi:message-alert-outline
+[% endfor %]
+[% endif %]
+
 input_boolean:
 {# These on/off helpers remember global mute, local mute, and whether a fault or
    alarm is currently active. #}

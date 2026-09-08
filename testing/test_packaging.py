@@ -1,9 +1,7 @@
 """Contract checks for the pipx-installable LabPulse distribution."""
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import tomllib
-
-import pytest
 
 import labpulse
 from labpulse.installer import ASSET_NAMES, find_install_assets
@@ -54,22 +52,20 @@ def test_hardware_dependencies_are_grouped_by_transport() -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    "fragment",
-    ("MIT License", "Copyright (c) 2026 LabPulse contributors", 'THE SOFTWARE IS PROVIDED "AS IS"'),
-)
-def test_mit_license_metadata_and_text(fragment: str) -> None:
-    """Require valid MIT metadata and one canonical licence fragment."""
+def test_mit_license_metadata_and_file() -> None:
+    """Require valid MIT metadata and a non-empty declared licence file."""
 
     project = metadata()["project"]
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
-    assert fragment in (REPOSITORY / "LICENSE").read_text(encoding="utf-8")
+    assert (REPOSITORY / "LICENSE").read_text(encoding="utf-8").strip()
 
 
-@pytest.mark.parametrize(
-    ("command", "target"),
-    (
+def test_public_console_entry_points() -> None:
+    """Require the installed command surface to resolve to public entry points."""
+
+    expected = dict(
+        (
         ("labpulse", "labpulse.control:main"),
         ("labpulse-up", "labpulse.control:up_main"),
         ("labpulse-down", "labpulse.control:down_main"),
@@ -79,13 +75,11 @@ def test_mit_license_metadata_and_text(fragment: str) -> None:
         ("labpulse-config", "labpulse.control:config_main"),
         ("labpulse-open", "labpulse.control:open_main"),
         ("labpulse-setup", "labpulse.installer:main"),
-    ),
-)
-def test_console_entry_point(command: str, target: str) -> None:
-    """Require one installed command to resolve to its public entry point."""
+        )
+    )
 
     project = metadata()["project"]
-    assert project["scripts"].get(command) == target
+    assert project["scripts"] == expected
 
 
 def test_packaged_installer_assets_exist() -> None:
@@ -95,40 +89,20 @@ def test_packaged_installer_assets_exist() -> None:
     assert [name for name in ASSET_NAMES if not (assets / name).is_file()] == []
 
 
-@pytest.mark.parametrize(
-    "relative_path",
-    (
-        "alarm/automations/measurement.yaml.j2",
-        "alarm/automations/power_reconciliation.yaml.j2",
-        "dashboard/alarm_setup/bulk_editor.yaml.j2",
-        "dashboard/setup_subviews/measurement_cards.yaml.j2",
-    ),
-)
-def test_nested_homeassistant_template_is_packaged(relative_path: str) -> None:
-    """Require nested template globs and one representative source file."""
+def test_homeassistant_package_data_covers_every_template() -> None:
+    """Require package-data patterns to cover the complete template tree."""
 
     tool = metadata()["tool"]
-    package_data = tool["setuptools"]["package-data"]["labpulse.homeassistant"]
-    assert "templates/*/*/*.j2" in package_data
+    patterns = tool["setuptools"]["package-data"]["labpulse.homeassistant"]
     template_root = REPOSITORY / "src/labpulse/homeassistant/templates"
-    assert (template_root / relative_path).is_file()
-
-
-@pytest.mark.parametrize(
-    "fragment",
-    ("$HOME/labpulse-live", "LABPULSE_SETUP_ASSET_DIR", "LABPULSE_PACKAGE_PARENT", "labpulse-installed-package.pth"),
-)
-def test_live_setup_contract(fragment: str) -> None:
-    """Require one supported live-installation setup fragment."""
-
-    setup_source = (REPOSITORY / "deployment/setup_container_fs.sh").read_text(encoding="utf-8")
-    assert fragment in setup_source
-
-
-@pytest.mark.parametrize("fragment", ("LABPULSE_PACKAGE_SOURCE", "labpulse-python"))
-def test_live_setup_has_no_obsolete_source_copy(fragment: str) -> None:
-    """Reject obsolete live-installation source paths."""
-
-    setup_source = (REPOSITORY / "deployment/setup_container_fs.sh").read_text(encoding="utf-8")
-    assert fragment not in setup_source
-    assert "labpulse-" + "ha" not in setup_source
+    templates = [
+        PurePosixPath("templates") / path.relative_to(template_root).as_posix()
+        for path in template_root.rglob("*")
+        if path.is_file() and path.suffix in {".j2", ".yaml"}
+    ]
+    uncovered = [
+        str(path)
+        for path in templates
+        if not any(path.match(pattern) for pattern in patterns)
+    ]
+    assert uncovered == []

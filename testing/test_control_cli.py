@@ -1,6 +1,7 @@
 """Contract tests for the pipx-installed LabPulse operator commands."""
 
 from contextlib import redirect_stdout
+from io import BytesIO
 from io import StringIO
 from pathlib import Path
 import os
@@ -11,6 +12,9 @@ import pytest
 
 from labpulse import __version__
 from labpulse import control
+
+
+_NOTIFY_IF_UPDATE_AVAILABLE = control.notify_if_update_available
 
 
 def completed(command: list[str], returncode: int = 0) -> subprocess.CompletedProcess:
@@ -30,6 +34,14 @@ def live_dir(workspace_tmp_path: Path) -> Path:
         "version: 1\n", encoding="utf-8"
     )
     return workspace_tmp_path
+
+
+@pytest.fixture(autouse=True)
+def update_notice() -> object:
+    """Prevent command-routing tests from contacting TestPyPI."""
+
+    with patch.object(control, "notify_if_update_available") as notice:
+        yield notice
 
 
 @pytest.mark.parametrize(
@@ -127,6 +139,206 @@ def test_setup_command_delegates_installer_arguments(live_dir: Path) -> None:
 
     assert result == 0
     installer.assert_called_once_with(["--fake-usb", "--backup"])
+
+
+@pytest.mark.parametrize("version", [None, "0.2.0"])
+def test_update_command_accepts_an_optional_version(
+    live_dir: Path, version: str | None
+) -> None:
+    """Route both latest and explicitly pinned updates through one workflow."""
+
+    arguments = ["--live-dir", str(live_dir), "update"]
+    if version is not None:
+        arguments.append(version)
+    with patch.object(control, "run_update_command", return_value=0) as update:
+        result = control.main(arguments)
+
+    assert result == 0
+    update.assert_called_once_with(live_dir.resolve(), version)
+
+
+def test_latest_version_comes_from_test_pypi_metadata() -> None:
+    """Use TestPyPI's project metadata rather than the dependency index."""
+
+    response = BytesIO(b'{"info": {"version": "0.2.0"}}')
+    with patch.object(control, "urlopen", return_value=response) as open_url:
+        version = control.latest_published_version(timeout=3.0)
+
+    assert version == "0.2.0"
+    request = open_url.call_args.args[0]
+    assert request.full_url == control.TEST_PYPI_PROJECT_URL
+    assert open_url.call_args.kwargs == {"timeout": 3.0}
+
+
+def test_newer_release_prints_update_notice(capsys: pytest.CaptureFixture[str]) -> None:
+    """Recommend the simple update command only for a newer release."""
+
+    with patch.object(control, "distribution_version", return_value="0.9.9"), patch.object(
+        control, "latest_published_version", return_value="0.10.0"
+    ) as latest:
+        _NOTIFY_IF_UPDATE_AVAILABLE()
+
+    assert capsys.readouterr().out == (
+        "\nA newer LabPulse version is available: 0.10.0 "
+        "(installed: 0.9.9). Run 'labpulse update'.\n"
+    )
+    latest.assert_called_once_with(timeout=control.UPDATE_CHECK_TIMEOUT_SECONDS)
+
+
+@pytest.mark.parametrize("published", ["0.9.9", "0.9.8", "0.9.9rc1"])
+def test_current_or_older_release_prints_no_notice(
+    published: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Do not describe equal or older releases as updates."""
+
+    with patch.object(control, "distribution_version", return_value="0.9.9"), patch.object(
+        control, "latest_published_version", return_value=published
+    ):
+        _NOTIFY_IF_UPDATE_AVAILABLE()
+
+    assert capsys.readouterr().out == ""
+
+
+def test_failed_update_check_is_silent(capsys: pytest.CaptureFixture[str]) -> None:
+    """An offline version check must not interfere with an operator command."""
+
+    with patch.object(
+        control,
+        "latest_published_version",
+        side_effect=RuntimeError("network unavailable"),
+    ):
+        _NOTIFY_IF_UPDATE_AVAILABLE()
+
+    assert capsys.readouterr().out == ""
+
+
+def test_commands_run_the_post_command_update_check(update_notice: object) -> None:
+    """Run the shared check after an ordinary command finishes."""
+
+    with patch.object(control.webbrowser, "open", return_value=True):
+        assert control.main(["open"]) == 0
+
+    update_notice.assert_called_once_with()
+
+
+def test_update_runs_a_distribution_aware_post_command_check(
+    live_dir: Path, update_notice: object
+) -> None:
+    """The shared check reads fresh metadata after an update command."""
+
+    with patch.object(control, "run_update_command", return_value=0):
+        assert control.main(["--live-dir", str(live_dir), "update"]) == 0
+
+    update_notice.assert_called_once_with()
+
+
+@pytest.mark.parametrize("fake_usb", [False, True])
+def test_update_installs_refreshes_and_recreates_every_container(
+    live_dir: Path, fake_usb: bool
+) -> None:
+    """Hand setup to the new CLI and retain the active hardware mode."""
+
+    if fake_usb:
+        (live_dir / "compose.yaml").write_text(
+            "volumes:\n  - ./config.fake.yaml:/app/config.yaml:ro\n",
+            encoding="utf-8",
+        )
+
+    commands = {
+        "pipx": "/usr/bin/pipx",
+        "labpulse": "/home/lab/.local/bin/labpulse",
+    }
+    with patch.object(control, "__version__", "0.1.1"), patch.object(
+        control, "latest_published_version", return_value="0.2.0"
+    ), patch.object(
+        control.shutil, "which", side_effect=lambda command: commands.get(command)
+    ), patch.object(
+        control.subprocess,
+        "run",
+        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"]), completed(["labpulse", "doctor"])),
+    ) as run, patch.object(
+        control, "run_compose", return_value=0
+    ) as compose, patch.object(
+        control, "_wait_for_homeassistant", return_value=True
+    ):
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 0
+    install = run.call_args_list[0]
+    assert install.args[0] == [
+        "/usr/bin/pipx",
+        "install",
+        "--force",
+        "--index-url",
+        "https://test.pypi.org/simple/",
+        "--pip-args=--extra-index-url https://pypi.org/simple/",
+        "labpulse==0.2.0",
+    ]
+    setup = run.call_args_list[1]
+    expected_setup = [
+        "/home/lab/.local/bin/labpulse",
+        "--live-dir",
+        str(live_dir.resolve()),
+        "setup",
+        "--backup",
+    ]
+    if fake_usb:
+        expected_setup.append("--fake-usb")
+    assert setup.args[0] == expected_setup
+    compose.assert_called_once_with(
+        live_dir.resolve(),
+        ("up", "-d", "--pull", "missing", "--remove-orphans", "--force-recreate"),
+    )
+    doctor = run.call_args_list[2]
+    assert doctor.args[0] == [
+        "/home/lab/.local/bin/labpulse",
+        "--live-dir",
+        str(live_dir.resolve()),
+        "doctor",
+        "--timeout",
+        "5",
+    ]
+
+
+def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
+    """Avoid setup and container downtime when TestPyPI matches the CLI."""
+
+    with patch.object(control, "__version__", "0.2.0"), patch.object(
+        control, "latest_published_version", return_value="0.2.0"
+    ), patch.object(
+        control.shutil,
+        "which",
+        side_effect=lambda command: f"/usr/bin/{command}",
+    ) as find_command, patch.object(control.subprocess, "run") as run, patch.object(
+        control, "run_compose"
+    ) as compose:
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 0
+    find_command.assert_not_called()
+    run.assert_not_called()
+    compose.assert_not_called()
+
+
+def test_failed_pipx_update_leaves_setup_and_containers_alone(live_dir: Path) -> None:
+    """Stop immediately when the new command could not be installed."""
+
+    commands = {
+        "pipx": "/usr/bin/pipx",
+        "labpulse": "/home/lab/.local/bin/labpulse",
+    }
+    with patch.object(control, "__version__", "0.1.1"), patch.object(
+        control, "latest_published_version", return_value="0.2.0"
+    ), patch.object(
+        control.shutil, "which", side_effect=lambda command: commands.get(command)
+    ), patch.object(
+        control.subprocess, "run", return_value=completed(["pipx"], returncode=1)
+    ) as run, patch.object(control, "run_compose") as compose:
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 1
+    assert run.call_count == 1
+    compose.assert_not_called()
 
 
 def test_backup_command_delegates_resolved_paths(live_dir: Path) -> None:

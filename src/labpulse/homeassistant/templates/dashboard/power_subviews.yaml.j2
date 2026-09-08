@@ -24,8 +24,12 @@
       - entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
         name: Sensor hub fault active
       - type: divider
-      - entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+      - type: simple-entity
+        entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
         name: Power lifecycle state
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
       - entity: [[ entity_id('input_boolean', service.name, 'power', 'muted') ]]
         name: Power alerts muted
       - type: divider

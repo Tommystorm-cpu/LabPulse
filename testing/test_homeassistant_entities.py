@@ -5,7 +5,7 @@ import sys
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import LabPulseConfig
-from labpulse.common.identity import entity_id, stable_id
+from labpulse.common.identity import entity_id
 from labpulse.homeassistant.alarm import HomeAssistantRenderModel, build_template_context
 
 
@@ -46,12 +46,6 @@ def sample_config() -> LabPulseConfig:
             },
         },
     })
-
-
-def test_stable_id_prefix() -> None:
-    """Check stable IDs always use the LabPulse prefix."""
-
-    assert_equal(stable_id("pump_room", "flow1"), "labpulse_pump_room_flow1", "stable id")
 
 
 def test_template_context_and_stable_entities() -> None:

@@ -61,29 +61,30 @@
            >= states(
              '[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]'
            ) | float(70) }}
-    - platform: state
-      id: manual
-      entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      to: Danger
+    - trigger: button.pressed
+      id: resend
+      target:
+        entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
     condition:
     - condition: template
       value_template: >-
-        {{ trigger.id == 'natural' or trigger.to_state.context.user_id is not none }}
+        {{ (trigger.id == 'natural' and is_state(
+             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
+             'Normal'
+           ))
+           or (trigger.id == 'resend' and is_state(
+             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
+             'Danger'
+           )) }}
     - condition: template
       value_template: >-
-        {{ trigger.id == 'manual' or is_state(
-          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
-          'Normal'
-        ) }}
-    - condition: template
-      value_template: >-
-        {{ trigger.id == 'manual' or is_state(
+        {{ trigger.id == 'resend' or is_state(
           '[[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') ]]',
           'off'
         ) }}
     - condition: template
       value_template: >-
-        {{ trigger.id == 'manual' or not is_state(
+        {{ trigger.id == 'resend' or not is_state(
           '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]',
           'Disabled'
         ) }}
@@ -219,26 +220,13 @@
           {{ states(
             '[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]'
           ) | int(120) }}
-    - platform: state
-      id: manual
-      entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      to: Normal
     condition:
-    - condition: template
-      value_template: >-
-        {{ trigger.id == 'natural' or trigger.to_state.context.user_id is not none }}
-    - condition: template
-      value_template: >-
-        {{ trigger.id == 'manual' or is_state(
-          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
-          'Danger'
-        ) }}
-    - condition: template
-      value_template: >-
-        {{ trigger.id == 'manual' or is_state(
-          '[[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') ]]',
-          'off'
-        ) }}
+    - condition: state
+      entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
+      state: Danger
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
+      state: 'off'
     action:
     - service: input_select.select_option
       target:

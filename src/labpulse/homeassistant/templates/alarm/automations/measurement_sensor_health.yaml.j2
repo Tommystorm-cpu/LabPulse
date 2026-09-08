@@ -7,16 +7,19 @@
       id: natural
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
       to: 'on'
-    - platform: state
-      id: manual
-      entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      to: Sensor Fault
+    - trigger: button.pressed
+      id: resend
+      target:
+        entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
     action:
     - condition: template
       value_template: >-
-        {{ trigger.id == 'natural' or trigger.to_state.context.user_id is not none }}
-{# A deliberate frontend selection represents an already-confirmed state.
-   Sensor-driven faults retain their delay and ownership checks. #}
+        {{ trigger.id == 'natural' or is_state(
+          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
+          'Sensor Fault'
+        ) }}
+{# A resend repeats an already-confirmed fault. Sensor-driven faults retain
+   their delay and ownership checks. #}
     - choose:
       - conditions:
         - condition: template

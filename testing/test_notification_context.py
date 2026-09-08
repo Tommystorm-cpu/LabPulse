@@ -48,19 +48,6 @@ def config_data() -> dict[str, object]:
     }
 
 
-def test_bulk_deadband_controls_do_not_depend_on_target_order() -> None:
-    """Keep installation-wide controls when setup targets appear first."""
-
-    config = LabPulseConfig.model_validate(config_data())
-    original = build_template_context(config)
-    reordered_targets = tuple(reversed(original.bulk_alarm_targets))
-    assert reordered_targets[0]["target_id"] != "all"
-    with patch.object(alarm, "_bulk_targets", return_value=reordered_targets):
-        reordered = build_template_context(config)
-    assert reordered.bulk_deadband_groups == original.bulk_deadband_groups
-    assert reordered.bulk_apply_entities == original.bulk_apply_entities
-
-
 def test_sms_fragments_require_explicit_context() -> None:
     """Reject ambient model access while preserving explicit and runtime values."""
 

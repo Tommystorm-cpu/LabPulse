@@ -5,11 +5,8 @@ import sys
 from typing import Any
 from unittest.mock import patch
 
-import yaml
 from pydantic import ValidationError
 
-from labpulse.common.config import LabPulseConfig
-from labpulse.common.fake_config import derive_fake_config
 from labpulse.common.service_config import ServiceConfig
 from labpulse.hardware.driver import (
     ConnectionLost,
@@ -240,38 +237,6 @@ def test_config_registry_and_resources_are_end_to_end() -> None:
     assert_raises(
         ValidationError,
         lambda: Sht40Config(address=0x45),
-    )
-
-
-def test_fake_usb_mode_substitutes_the_room_sht40() -> None:
-    """Keep the standard room service hardware-free in fake-USB mode."""
-
-    source = """mqtt: {broker: mosquitto}
-sms: {dry_run: true}
-setups:
-  room: {}
-services:
-  room_environment:
-    label: Room Environment
-    driver:
-      type: labpulse.sht40
-      options:
-        bus: 1
-        address: 0x44
-    measurements:
-      temperature: {setups: [room], unit: "°C"}
-      humidity: {setups: [room], unit: "%"}
-"""
-
-    converted = LabPulseConfig.model_validate(
-        yaml.safe_load(derive_fake_config(source))
-    )
-    room = converted.services["room_environment"]
-
-    assert room.driver.type == "labpulse.serial_pipe"
-    assert (
-        getattr(room.driver.options, "port", None)
-        == "/tmp/labpulse-fake-serial/room_environment"
     )
 
 

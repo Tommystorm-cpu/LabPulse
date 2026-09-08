@@ -312,27 +312,34 @@ See [Development](DEVELOPMENT.md).
 
 ## Updating
 
-Select the desired TestPyPI version explicitly. To install or replace the
-selected pinned example:
+Update to the latest LabPulse version published on TestPyPI:
 
 ```bash
-pipx install --force \
-  --index-url https://test.pypi.org/simple/ \
-  --pip-args="--extra-index-url https://pypi.org/simple/" \
-  "labpulse==0.1.1"
-labpulse version
-labpulse setup --backup
-labpulse up
-labpulse doctor
+labpulse update
 ```
 
-`--force` replaces the existing pipx environment with the requested version.
-`labpulse setup --backup` then refreshes package-managed deployment assets
-while preserving the live configuration and state.
+If that version is already installed, the command exits without changing the
+installation or restarting containers. To select a specific release instead:
+
+```bash
+labpulse update 0.1.1
+```
+
+Every LabPulse command performs a quick, best-effort check for a newer release
+after it finishes. When one is available, the command prints the installed and
+available versions and suggests `labpulse update`. A failed check is silent and
+never changes the command's result, so normal operation is unaffected when the
+Pi is offline or TestPyPI is unavailable.
+
+Update resolves the latest version from TestPyPI only, installs that exact
+version with pipx, refreshes package-managed deployment assets with backups,
+preserves the active real-hardware or fake-USB mode, pulls images, and
+recreates every container. It then waits for Home Assistant and runs
+`labpulse doctor` through the newly installed command.
 
 `--backup` creates timestamped copies of package-managed files before setup
 replaces them. The live `config.yaml` and existing Home Assistant configuration
-directory are preserved regardless.
+directory are preserved by the update workflow.
 
 Create a state backup and review the release notes before updating an installed
 Pi.

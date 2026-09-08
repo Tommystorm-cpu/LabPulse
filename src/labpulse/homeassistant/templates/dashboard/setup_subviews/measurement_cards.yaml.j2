@@ -198,16 +198,19 @@
             name: Required recovery
 [% endif %]
         - type: entities
-{# Live status explains what the automation currently sees. Alarm state stays
-   editable here for deliberate transition testing; Active Problems renders
-   that same helper read-only to prevent accidental changes. #}
+{# Live status explains what the automation currently sees. Alarm state is
+   automation-owned, so expose it through a read-only row. #}
           title: Live status
           show_header_toggle: false
           entities:
           - entity: [[ measurement.entity_id ]]
             name: Current value
-          - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+          - type: simple-entity
+            entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
             name: Alarm state
+            tap_action: {action: none}
+            hold_action: {action: none}
+            double_tap_action: {action: none}
           - entity: [[ entity_id('sensor', service_name, measurement.name, 'observed_danger_percent') ]]
             name: Observed danger
           - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'danger_zone') ]]
@@ -216,6 +219,24 @@
             name: Recovery zone
           - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'sensor_fault_zone') ]]
             name: Sensor fault
+          - type: conditional
+            conditions:
+            - condition: state
+              entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+              state: [Danger, Sensor Fault]
+            row:
+              type: button
+              entity: [[ entity_id('input_button', service_name, measurement.name, 'resend_active_alert') ]]
+              name: Resend active alert
+              icon: mdi:message-alert-outline
+              action_name: Resend
+              tap_action:
+                action: perform-action
+                perform_action: input_button.press
+                target:
+                  entity_id: [[ entity_id('input_button', service_name, measurement.name, 'resend_active_alert') ]]
+                confirmation:
+                  text: Resend this alert using the current Test Mode and mute settings?
           - type: button
             entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
             name: Close editor

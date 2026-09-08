@@ -69,6 +69,11 @@ next setup or configuration operation will replace.
 `labpulse setup` prepares the live directory but does not start the stack.
 `labpulse up` starts it; `labpulse down` removes containers without deleting
 bind-mounted state; `labpulse restart` restarts all or selected services.
+`labpulse update` installs the latest published release, refreshes generated
+files, and recreates the complete stack only when the version has changed.
+After every LabPulse command finishes, a short version check prints a
+`labpulse update` reminder only when TestPyPI has a newer release. The check is
+silent on network failure and does not change the command's result.
 
 ## Choose real hardware or simulation
 
@@ -163,6 +168,7 @@ MQTT Last Will and Home Assistant expiry provide separate failure indications.
 
 ```text
 labpulse setup       create or refresh the installation
+labpulse update      install the latest release and recreate the stack
 labpulse up          start all or selected services
 labpulse down        stop/remove containers without deleting state
 labpulse restart     restart all or selected services
@@ -279,7 +285,15 @@ Deadband prevents repeated transitions near a boundary.
 Missing/unavailable telemetry follows the Sensor Fault path after its
 confirmation period. When healthy data returns, normal observation begins
 again. Alarm state and notification delivery are separate: muting a
-notification never makes a dangerous state Normal.
+notification never makes a dangerous state Normal. Alarm state is read-only
+on the dashboard and changes only when these measurement rules run.
+
+When an active Danger or Sensor Fault alert needs to be delivered again, open
+that measurement's alarm controls and press **Resend active alert**. The action
+keeps the alarm state unchanged and repeats the matching warning using the
+current Test mode, measurement mute, setup mute, and global mute settings. For
+example, after an alarm was first sent to test recipients, disable Test mode
+and use this button to send the still-active alert to the normal recipients.
 
 Thresholds, observation window, dangerous proportion, recovery time and
 deadband are adjusted in Home Assistant. They are not YAML fields. Home
@@ -492,4 +506,3 @@ GPIO/I2C enablement and wiring are not restored from an archive.
 
 Future work belongs in the repository [roadmap](../ROADMAP.md), not in this
 guide as if it already exists.
-
