@@ -36,6 +36,9 @@
         - condition: state
           entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
           state: 'off'
+        - condition: state
+          entity_id: input_boolean.labpulse_update_maintenance
+          state: 'off'
         sequence:
         - service: persistent_notification.create
           data:
@@ -129,6 +132,9 @@
           state: 'off'
         - condition: state
           entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
+          state: 'off'
+        - condition: state
+          entity_id: input_boolean.labpulse_update_maintenance
           state: 'off'
         sequence:
         - service: persistent_notification.create

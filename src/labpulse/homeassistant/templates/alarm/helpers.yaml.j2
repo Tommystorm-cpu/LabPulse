@@ -148,6 +148,8 @@ input_boolean:
   labpulse_notification_test_mode:
     name: LabPulse Notification Test Mode
     initial: true
+  labpulse_update_maintenance:
+    name: LabPulse Update Maintenance
 [% if model.bulk_alarm_targets %]
   [[ 'input_boolean.labpulse_bulk_alarm_editor_expanded'.split('.', 1)[1] ]]:
     name: Bulk Alarm Editor Expanded

@@ -10,7 +10,11 @@ import yaml
 from jinja2 import UndefinedError
 
 from labpulse.common.config import load_config
-from labpulse.common.mqtt_contracts import SMS_ALERT_PAYLOAD_FIELDS, SMS_SEND_TOPIC
+from labpulse.common.mqtt_contracts import (
+    SMS_ALERT_PAYLOAD_FIELDS,
+    SMS_SEND_TOPIC,
+    UPDATE_MAINTENANCE_TOPIC,
+)
 import labpulse.homeassistant.generator as generator
 from labpulse.homeassistant.generator import main as generate_homeassistant
 
@@ -90,7 +94,11 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     required = {
         "input_select": {f"{helper}_alarm_state", f"{helper}_alarm_mode"},
         "input_number": {f"{helper}_minimum_threshold", f"{helper}_maximum_threshold"},
-        "input_boolean": {f"{helper}_alarm_muted", "labpulse_global_notifications_muted"},
+        "input_boolean": {
+            f"{helper}_alarm_muted",
+            "labpulse_global_notifications_muted",
+            "labpulse_update_maintenance",
+        },
         "input_button": {f"{helper}_resend_active_alert"},
         "script": {"labpulse_apply_bulk_alarm_settings"},
     }
@@ -105,6 +113,11 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
         "LabPulse Pressure Sensor Recovery",
     }
     assert all(aliases.count(alias) == 1 for alias in expected)
+
+    maintenance = automation(package, "LabPulse Synchronize Update Maintenance")
+    assert maintenance["trigger"] == [
+        {"platform": "mqtt", "topic": UPDATE_MAINTENANCE_TOPIC}
+    ]
 
     danger = automation(package, "LabPulse Pressure Danger")
     fault = automation(package, "LabPulse Pressure Sensor Fault")
@@ -139,6 +152,19 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
         "input_select.labpulse_pressure_monitor_pressure_alarm_state",
         "input_select.labpulse_pressure_monitor_temperature_alarm_state",
     }
+
+    for alias in (
+        "LabPulse Pressure Sensor Fault",
+        "LabPulse Pressure Sensor Recovery",
+        "LabPulse Air Pressure Sensor Hub Service Fault",
+        "LabPulse Air Pressure Sensor Hub Service Restored",
+    ):
+        conditions = {
+            (item.get("entity_id"), item.get("state"))
+            for item in walk(automation(package, alias)["action"])
+            if isinstance(item, dict) and item.get("condition") == "state"
+        }
+        assert ("input_boolean.labpulse_update_maintenance", "off") in conditions
 
 
 def test_threshold_helpers_restore_state_without_seed_files() -> None:

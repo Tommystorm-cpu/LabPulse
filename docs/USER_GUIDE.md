@@ -71,6 +71,11 @@ next setup or configuration operation will replace.
 bind-mounted state; `labpulse restart` restarts all or selected services.
 `labpulse update` installs the latest published release, refreshes generated
 files, and recreates the complete stack only when the version has changed.
+It temporarily suppresses sensor-health notifications and keeps the SMS worker
+stopped until every configured physical measurement has published a fresh
+value. If telemetry readiness times out, SMS remains stopped and the command
+reports how to resume it and clear maintenance mode after the underlying
+problem is repaired.
 After every LabPulse command finishes, a short version check prints a
 `labpulse update` reminder only when TestPyPI has a newer release. The check is
 silent on network failure and does not change the command's result.

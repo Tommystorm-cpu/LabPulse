@@ -19,7 +19,9 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 import webbrowser
 
+import paho.mqtt.client as mqtt
 from packaging.version import InvalidVersion, Version
+import yaml
 
 from labpulse import __version__
 from labpulse.backup import (
@@ -33,6 +35,11 @@ from labpulse.backup import (
 )
 from labpulse.installer import find_install_assets, main as installer_main
 from labpulse.doctor import run_doctor
+from labpulse.common.config import ConfigError, load_config
+from labpulse.common.mqtt_contracts import (
+    UPDATE_MAINTENANCE_TOPIC,
+    sensor_state_topic,
+)
 
 
 DEFAULT_LIVE_DIR = Path("~/labpulse-live")
@@ -43,6 +50,9 @@ TEST_PYPI_INDEX_URL = "https://test.pypi.org/simple/"
 PYPI_INDEX_URL = "https://pypi.org/simple/"
 TEST_PYPI_PROJECT_URL = "https://test.pypi.org/pypi/labpulse/json"
 UPDATE_CHECK_TIMEOUT_SECONDS = 2.0
+UPDATE_MQTT_HOST = "127.0.0.1"
+UPDATE_MQTT_PORT = 1883
+UPDATE_TELEMETRY_TIMEOUT_SECONDS = 120.0
 FIRMWARE_HELP = f"""\
 LabPulse firmware is currently distributed through the project repository.
 
@@ -392,6 +402,100 @@ def notify_if_update_available() -> None:
         )
 
 
+def publish_update_maintenance(enabled: bool) -> bool:
+    """Publish the retained flag that suppresses update-only health alerts."""
+
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id=f"LabPulse-update-{os.getpid()}",
+    )
+    try:
+        client.connect(UPDATE_MQTT_HOST, UPDATE_MQTT_PORT, 15)
+        client.loop_start()
+        result = client.publish(
+            UPDATE_MAINTENANCE_TOPIC,
+            "ON" if enabled else "OFF",
+            qos=1,
+            retain=True,
+        )
+        result.wait_for_publish(timeout=5.0)
+        return result.is_published()
+    except (OSError, RuntimeError) as error:
+        print(f"ERROR: Could not set update maintenance mode: {error}", file=sys.stderr)
+        return False
+    finally:
+        client.disconnect()
+        client.loop_stop()
+
+
+def wait_for_fresh_telemetry(config_path: Path, timeout: float) -> bool:
+    """Wait until every enabled physical measurement publishes a fresh value."""
+
+    try:
+        config = load_config(config_path).config
+    except (ConfigError, OSError):
+        return False
+    required_topics = {
+        sensor_state_topic(service_name, measurement_name)
+        for service_name, service in config.services.items()
+        if service.enabled
+        for measurement_name in service.measurements
+    }
+    if not required_topics:
+        return True
+
+    received_topics: set[str] = set()
+    connected = False
+
+    def on_connect(
+        client: mqtt.Client,
+        _userdata: object,
+        _flags: object,
+        reason_code: object,
+        _properties: object,
+    ) -> None:
+        """Subscribe after the broker accepts the maintenance probe."""
+
+        nonlocal connected
+        if not getattr(reason_code, "is_failure", False):
+            connected = True
+            client.subscribe([(topic, 0) for topic in sorted(required_topics)])
+
+    def on_message(
+        _client: mqtt.Client,
+        _userdata: object,
+        message: mqtt.MQTTMessage,
+    ) -> None:
+        """Count only numeric measurement payloads from expected topics."""
+
+        try:
+            float(message.payload.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return
+        received_topics.add(message.topic)
+
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id=f"LabPulse-update-readiness-{os.getpid()}",
+    )
+    client.on_connect = on_connect
+    client.on_message = on_message
+    try:
+        client.connect(UPDATE_MQTT_HOST, UPDATE_MQTT_PORT, 15)
+        client.loop_start()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if connected and required_topics <= received_topics:
+                return True
+            time.sleep(0.2)
+        return False
+    except (OSError, RuntimeError):
+        return False
+    finally:
+        client.disconnect()
+        client.loop_stop()
+
+
 def run_update_command(live_dir: Path, requested_version: str | None) -> int:
     """Install one release, regenerate the deployment, and recreate the stack."""
 
@@ -472,23 +576,107 @@ def run_update_command(live_dir: Path, requested_version: str | None) -> int:
         )
         return setup_result
 
-    compose_result = run_compose(
-        live_dir,
-        ("up", "-d", "--pull", "missing", "--remove-orphans", "--force-recreate"),
-    )
-    if compose_result != 0:
+    # SMS must not be subscribed while Home Assistant observes the planned
+    # container outage. The retained maintenance flag also suppresses matching
+    # persistent notifications in the newly generated automations.
+    if run_compose(live_dir, ("stop", "labpulse-sms")) != 0:
+        print("ERROR: Could not stop SMS delivery before the update.", file=sys.stderr)
+        return 1
+    if not publish_update_maintenance(True):
+        run_compose(live_dir, ("up", "-d", "labpulse-sms"))
+        return 1
+
+    def maintenance_failure(message: str, return_code: int = 1) -> int:
+        """Keep all notification delivery suppressed after an unsafe update."""
+
+        print(f"ERROR: {message}", file=sys.stderr)
         print(
-            "ERROR: Generated files were updated, but the container stack "
-            "could not be completely recreated.",
+            "Update maintenance mode remains active and SMS delivery remains "
+            "stopped to prevent transitional alert spam. Repair the reported "
+            "problem, then run 'labpulse up labpulse-sms' to resume notifications.",
             file=sys.stderr,
         )
-        return compose_result
+        return return_code
 
-    print("Waiting for Home Assistant before final diagnostics...")
+    # Load Home Assistant's new maintenance-aware automation while every sensor
+    # is still healthy. Only then recreate the broker and runtime workers.
+    homeassistant_result = run_compose(
+        live_dir,
+        (
+            "up",
+            "-d",
+            "--pull",
+            "missing",
+            "--force-recreate",
+            "homeassistant",
+        ),
+    )
+    if homeassistant_result != 0:
+        return maintenance_failure(
+            "Generated files were updated, but Home Assistant could not be recreated.",
+            homeassistant_result,
+        )
+
+    print("Waiting for Home Assistant to load update maintenance mode...")
     if not _wait_for_homeassistant():
+        return maintenance_failure(
+            "Home Assistant was recreated, but did not become "
+            "ready within 120 seconds. Inspect its logs."
+        )
+
+    try:
+        compose_data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+        services = compose_data.get("services") if isinstance(compose_data, dict) else None
+        if not isinstance(services, dict):
+            raise ValueError("compose.yaml has no services mapping")
+        runtime_services = [
+            name
+            for name in services
+            if name not in {"homeassistant", "labpulse-sms"}
+        ]
+        if not runtime_services:
+            raise ValueError("compose.yaml has no broker or runtime services")
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        return maintenance_failure(f"Could not plan runtime recreation: {error}")
+
+    runtime_result = run_compose(
+        live_dir,
+        (
+            "up",
+            "-d",
+            "--pull",
+            "missing",
+            "--remove-orphans",
+            "--force-recreate",
+            *runtime_services,
+        ),
+    )
+    if runtime_result != 0:
+        return maintenance_failure(
+            "Home Assistant entered maintenance mode, but the broker and runtime "
+            "workers could not be completely recreated.",
+            runtime_result,
+        )
+
+    runtime_config_path = live_dir / ("config.fake.yaml" if fake_usb else "config.yaml")
+    print("Waiting for fresh telemetry before resuming notifications...")
+    if not wait_for_fresh_telemetry(
+        runtime_config_path,
+        UPDATE_TELEMETRY_TIMEOUT_SECONDS,
+    ):
+        return maintenance_failure(
+            "Not every configured measurement published fresh telemetry within "
+            "120 seconds. Inspect sensor logs."
+        )
+
+    if not publish_update_maintenance(False):
+        return maintenance_failure(
+            "Fresh telemetry is available, but update maintenance mode could "
+            "not be cleared."
+        )
+    if run_compose(live_dir, ("up", "-d", "labpulse-sms")) != 0:
         print(
-            "ERROR: Containers were recreated, but Home Assistant did not "
-            "become ready within 120 seconds. Inspect its logs.",
+            "ERROR: Telemetry is healthy, but SMS delivery could not be restarted.",
             file=sys.stderr,
         )
         return 1
@@ -697,7 +885,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:  # pragma: no cover - argparse restricts this value.
             raise AssertionError(f"unsupported action: {arguments.action}")
 
-        return run_compose(live_dir, compose_arguments)
+        compose_result = run_compose(live_dir, compose_arguments)
+        if (
+            compose_result == 0
+            and arguments.action == "up"
+            and arguments.services == ["labpulse-sms"]
+            and not publish_update_maintenance(False)
+        ):
+            print(
+                "ERROR: SMS started, but update maintenance mode could not be cleared.",
+                file=sys.stderr,
+            )
+            return 1
+        return compose_result
     finally:
         # Read distribution metadata in the notifier so a successful update
         # checks the newly installed package rather than this process's import.

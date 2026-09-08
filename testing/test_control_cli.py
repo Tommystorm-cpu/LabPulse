@@ -6,7 +6,7 @@ from io import StringIO
 from pathlib import Path
 import os
 import subprocess
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -238,11 +238,21 @@ def test_update_installs_refreshes_and_recreates_every_container(
 ) -> None:
     """Hand setup to the new CLI and retain the active hardware mode."""
 
-    if fake_usb:
-        (live_dir / "compose.yaml").write_text(
-            "volumes:\n  - ./config.fake.yaml:/app/config.yaml:ro\n",
-            encoding="utf-8",
-        )
+    config_mount = (
+        "    volumes:\n    - ./config.fake.yaml:/app/config.yaml:ro\n"
+        if fake_usb
+        else ""
+    )
+    worker_config = config_mount or "    image: example/labpulse\n"
+    (live_dir / "compose.yaml").write_text(
+        "services:\n"
+        "  homeassistant: {}\n"
+        "  mosquitto: {}\n"
+        "  labpulse-sms: {}\n"
+        "  labpulse-pressure:\n"
+        f"{worker_config}",
+        encoding="utf-8",
+    )
 
     commands = {
         "pipx": "/usr/bin/pipx",
@@ -260,7 +270,11 @@ def test_update_installs_refreshes_and_recreates_every_container(
         control, "run_compose", return_value=0
     ) as compose, patch.object(
         control, "_wait_for_homeassistant", return_value=True
-    ):
+    ), patch.object(
+        control, "wait_for_fresh_telemetry", return_value=True
+    ) as telemetry, patch.object(
+        control, "publish_update_maintenance", return_value=True
+    ) as maintenance:
         result = control.run_update_command(live_dir.resolve(), None)
 
     assert result == 0
@@ -285,9 +299,38 @@ def test_update_installs_refreshes_and_recreates_every_container(
     if fake_usb:
         expected_setup.append("--fake-usb")
     assert setup.args[0] == expected_setup
-    compose.assert_called_once_with(
-        live_dir.resolve(),
-        ("up", "-d", "--pull", "missing", "--remove-orphans", "--force-recreate"),
+    assert compose.call_args_list == [
+        call(live_dir.resolve(), ("stop", "labpulse-sms")),
+        call(
+            live_dir.resolve(),
+            (
+                "up",
+                "-d",
+                "--pull",
+                "missing",
+                "--force-recreate",
+                "homeassistant",
+            ),
+        ),
+        call(
+            live_dir.resolve(),
+            (
+                "up",
+                "-d",
+                "--pull",
+                "missing",
+                "--remove-orphans",
+                "--force-recreate",
+                "mosquitto",
+                "labpulse-pressure",
+            ),
+        ),
+        call(live_dir.resolve(), ("up", "-d", "labpulse-sms")),
+    ]
+    maintenance.assert_has_calls([call(True), call(False)])
+    telemetry.assert_called_once_with(
+        live_dir.resolve() / ("config.fake.yaml" if fake_usb else "config.yaml"),
+        control.UPDATE_TELEMETRY_TIMEOUT_SECONDS,
     )
     doctor = run.call_args_list[2]
     assert doctor.args[0] == [
@@ -318,6 +361,69 @@ def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
     find_command.assert_not_called()
     run.assert_not_called()
     compose.assert_not_called()
+
+
+def test_update_keeps_sms_stopped_when_telemetry_does_not_recover(
+    live_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Do not resume real delivery while update transitions are unresolved."""
+
+    (live_dir / "compose.yaml").write_text(
+        "services:\n"
+        "  homeassistant: {}\n"
+        "  mosquitto: {}\n"
+        "  labpulse-sms: {}\n"
+        "  labpulse-pressure: {}\n",
+        encoding="utf-8",
+    )
+
+    commands = {
+        "pipx": "/usr/bin/pipx",
+        "labpulse": "/home/lab/.local/bin/labpulse",
+    }
+    with patch.object(control, "__version__", "0.1.1"), patch.object(
+        control, "latest_published_version", return_value="0.2.0"
+    ), patch.object(
+        control.shutil, "which", side_effect=lambda command: commands.get(command)
+    ), patch.object(
+        control.subprocess,
+        "run",
+        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"])),
+    ), patch.object(
+        control, "run_compose", return_value=0
+    ) as compose, patch.object(
+        control, "_wait_for_homeassistant", return_value=True
+    ), patch.object(
+        control, "wait_for_fresh_telemetry", return_value=False
+    ), patch.object(
+        control, "publish_update_maintenance", return_value=True
+    ) as maintenance:
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 1
+    assert call(live_dir.resolve(), ("up", "-d", "labpulse-sms")) not in compose.call_args_list
+    maintenance.assert_called_once_with(True)
+    error = capsys.readouterr().err
+    assert "maintenance mode remains active" in error
+    assert "SMS delivery remains stopped" in error
+
+
+def test_starting_sms_after_repair_clears_update_maintenance(live_dir: Path) -> None:
+    """Make the documented recovery command restore health notifications."""
+
+    with patch.dict(
+        os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
+    ), patch.object(
+        control.subprocess, "run", return_value=completed(["docker"])
+    ), patch.object(
+        control, "publish_update_maintenance", return_value=True
+    ) as maintenance:
+        result = control.main(
+            ["--live-dir", str(live_dir), "up", "labpulse-sms"]
+        )
+
+    assert result == 0
+    maintenance.assert_called_once_with(False)
 
 
 def test_failed_pipx_update_leaves_setup_and_containers_alone(live_dir: Path) -> None:

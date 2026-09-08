@@ -406,6 +406,8 @@ Home Assistant owns:
 - global, setup, measurement, and power mutes;
 - Test mode;
 - explicit resend requests for active measurement alerts;
+- retained update-maintenance state that suppresses planned sensor-health
+  transitions until every physical measurement is fresh;
 - persistent notification and SMS request creation.
 
 Python publishes measurements and health facts. It does not decide whether a

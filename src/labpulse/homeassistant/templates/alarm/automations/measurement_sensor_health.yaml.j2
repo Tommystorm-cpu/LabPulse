@@ -54,6 +54,9 @@
         - condition: state
           entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
           state: 'off'
+        - condition: state
+          entity_id: input_boolean.labpulse_update_maintenance
+          state: 'off'
         - condition: template
           value_template: [[ measurement.setup_notifications_unmuted_template | yaml_scalar ]]
         sequence:
@@ -204,6 +207,9 @@
           state: 'off'
         - condition: state
           entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
+          state: 'off'
+        - condition: state
+          entity_id: input_boolean.labpulse_update_maintenance
           state: 'off'
         - condition: template
           value_template: [[ measurement.setup_notifications_unmuted_template | yaml_scalar ]]

@@ -11,6 +11,7 @@ SMS_SUBSCRIPTION_TOPIC = SMS_SEND_TOPIC
 SMS_STATUS_TOPIC = "labpulse/sms/status"
 SMS_RESULT_TOPIC_PREFIX = "labpulse/sms/result"
 SMS_STATUS_DISCOVERY_TOPIC = "homeassistant/sensor/labpulse_sms_status/config"
+UPDATE_MAINTENANCE_TOPIC = "labpulse/system/update_maintenance"
 OUTPUT_TOPIC_PREFIX = "home/output"
 
 

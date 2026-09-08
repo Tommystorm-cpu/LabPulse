@@ -334,8 +334,18 @@ Pi is offline or TestPyPI is unavailable.
 Update resolves the latest version from TestPyPI only, installs that exact
 version with pipx, refreshes package-managed deployment assets with backups,
 preserves the active real-hardware or fake-USB mode, pulls images, and
-recreates every container. It then waits for Home Assistant and runs
-`labpulse doctor` through the newly installed command.
+recreates every container. During that planned outage it stops the SMS worker
+and publishes a retained maintenance flag, preventing temporary unavailable
+measurements from producing fault/recovery notifications. It waits for Home
+Assistant and for a fresh value from every configured physical measurement,
+then clears maintenance mode, starts SMS delivery, and runs `labpulse doctor`
+through the newly installed command.
+
+If fresh telemetry does not return within two minutes, update exits with SMS
+delivery stopped and update maintenance mode active instead of risking a
+notification flood. Repair the reported sensor or container problem, confirm
+readings are current, then run `labpulse up labpulse-sms`; that command also
+clears update maintenance mode.
 
 `--backup` creates timestamped copies of package-managed files before setup
 replaces them. The live `config.yaml` and existing Home Assistant configuration

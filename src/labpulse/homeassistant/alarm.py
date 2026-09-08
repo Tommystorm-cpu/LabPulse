@@ -12,7 +12,7 @@ from labpulse.common.sms_templates import load_sms_templates
 from labpulse.common.config import LabPulseConfig
 from labpulse.common.identity import entity_id, slug, stable_id
 from labpulse.common.measurement_config import CustomMeasurementConfig, MeasurementConfig
-from labpulse.common.mqtt_contracts import SMS_SEND_TOPIC
+from labpulse.common.mqtt_contracts import SMS_SEND_TOPIC, UPDATE_MAINTENANCE_TOPIC
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "alarm"
 
@@ -49,6 +49,7 @@ class HomeAssistantRenderModel:
     alarm_measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
     power_alarm_services: tuple[dict[str, Any], ...]
     sms_send_topic: str
+    update_maintenance_topic: str
     bulk_alarm_targets: tuple[dict[str, Any], ...]
     bulk_alarm_target_options: tuple[str, ...]
     bulk_target_counts: dict[str, int]
@@ -418,6 +419,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         alarm_measurements=tuple(alarm_measurements),
         power_alarm_services=power_alarm_services,
         sms_send_topic=SMS_SEND_TOPIC,
+        update_maintenance_topic=UPDATE_MAINTENANCE_TOPIC,
         bulk_alarm_targets=bulk_alarm_targets,
         bulk_alarm_target_options=tuple(target["option"] for target in bulk_alarm_targets),
         bulk_target_counts={
