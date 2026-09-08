@@ -193,8 +193,8 @@ def test_dashboard_assignment_and_alarm_navigation_include_dashboard_context() -
     assert view(dashboard, "alarm-setup-beta_setup")["title"] == "Experiments — Shared Name"
 
 
-def test_monitor_projects_measurements_and_keeps_problem_states_read_only() -> None:
-    """Project logical membership while exposing canonical read-only faults."""
+def test_monitor_projects_measurements_and_links_problems_to_their_settings() -> None:
+    """Project membership while linking read-only faults to useful detail views."""
 
     _, dashboard, _ = generate()
     monitor = view(dashboard, "monitor")
@@ -212,11 +212,52 @@ def test_monitor_projects_measurements_and_keeps_problem_states_read_only() -> N
         if str(row.get("entity", "")).endswith("_alarm_state")
     ]
     assert len(alarm_rows) == 6
+    expected_paths = {
+        "input_select.labpulse_hub_a_alpha_general_alarm_state": "/labpulse-monitor/alarm-setup-alpha_setup",
+        "input_select.labpulse_hub_a_alpha_only_alarm_state": "/labpulse-monitor/alarm-setup-alpha_setup",
+        "input_select.labpulse_hub_a_shared_alarm_state": "/labpulse-monitor/alarm-setup-alpha_setup",
+        "input_select.labpulse_hub_a_beta_only_alarm_state": "/labpulse-monitor/alarm-setup-beta_setup",
+        "input_select.labpulse_hub_a_global_room_alarm_state": "/labpulse-monitor/alarm-setup-room_conditions",
+        "input_select.labpulse_hub_b_alpha_other_hub_alarm_state": "/labpulse-monitor/alarm-setup-alpha_setup",
+    }
     for row in alarm_rows:
         assert row.get("type") == "simple-entity"
-        assert all(row.get(action) == {"action": "none"} for action in (
-            "tap_action", "hold_action", "double_tap_action"
-        ))
+        assert row.get("tap_action") == {
+            "action": "navigate",
+            "navigation_path": expected_paths[row["entity"]],
+        }
+        assert row.get("hold_action") == {"action": "none"}
+        assert row.get("double_tap_action") == {"action": "none"}
+
+    service_rows = [
+        row for row in problems["entities"]
+        if str(row.get("entity", "")).endswith("_service_fault_active")
+    ]
+    assert service_rows
+    assert all(row.get("tap_action") == {
+        "action": "navigate",
+        "navigation_path": "/labpulse-monitor/diagnostics",
+    } for row in service_rows)
+
+
+def test_power_problem_links_to_its_alarm_setup_page() -> None:
+    """Open the matching power alarm configuration from Current Problems."""
+
+    _, dashboard, _ = generate(config_path=REPOSITORY / "testing" / "ups_test_pi_config.yaml")
+    monitor = view(dashboard, "monitor")
+    problems = next(
+        item for item in walk(monitor)
+        if isinstance(item, dict) and item.get("type") == "entity-filter"
+        and item.get("card", {}).get("title") == "Active Problems"
+    )
+    power_row = next(
+        row for row in problems["entities"]
+        if str(row.get("entity", "")).endswith("_power_state")
+    )
+    assert power_row.get("tap_action") == {
+        "action": "navigate",
+        "navigation_path": "/labpulse-monitor/alarm-power-ups_monitor",
+    }
 
 
 def test_alarm_setup_measurements_open_history_and_status_is_read_only() -> None:
@@ -248,6 +289,59 @@ def test_alarm_setup_measurements_open_history_and_status_is_read_only() -> None
         assert all(row.get(action) == {"action": "none"} for action in (
             "tap_action", "hold_action", "double_tap_action"
         ))
+
+
+def test_alarm_summary_tiles_explain_inactive_and_violated_limits() -> None:
+    """Color danger red, inactive thresholds disabled, and violated limits red."""
+
+    _, dashboard, _ = generate()
+    setup = view(dashboard, "alarm-setup-alpha_setup")
+    conditional_tiles = [
+        item for item in walk(setup)
+        if isinstance(item, dict) and item.get("type") == "conditional"
+        and item.get("card", {}).get("type") == "tile"
+    ]
+
+    alarm_tiles = [
+        item for item in conditional_tiles
+        if str(item["card"].get("entity", "")).endswith("_alarm_state")
+    ]
+    assert alarm_tiles
+    assert {item["card"].get("color") for item in alarm_tiles} == {None, "red"}
+    assert all(
+        item["conditions"][0].get("state") == "Danger"
+        for item in alarm_tiles if item["card"].get("color") == "red"
+    )
+    assert all(
+        item["conditions"][0].get("state_not") == "Danger"
+        for item in alarm_tiles if item["card"].get("color") is None
+    )
+
+    for suffix, active_modes, comparison in (
+        ("_minimum_threshold", ["Low Only", "Range"], "below"),
+        ("_maximum_threshold", ["High Only", "Range"], "above"),
+    ):
+        threshold_tiles = [
+            item for item in conditional_tiles
+            if str(item["card"].get("entity", "")).endswith(suffix)
+        ]
+        assert threshold_tiles
+        assert {item["card"].get("color") for item in threshold_tiles} == {
+            None, "disabled", "red"
+        }
+        for item in threshold_tiles:
+            color = item["card"].get("color")
+            if color == "disabled":
+                assert item["conditions"][0]["state_not"] == active_modes
+            else:
+                assert item["conditions"][0]["state"] == active_modes
+                numeric_condition = (
+                    item["conditions"][1]
+                    if color == "red"
+                    else item["conditions"][1]["conditions"][0]
+                )
+                assert numeric_condition["condition"] == "numeric_state"
+                assert numeric_condition[comparison].endswith(suffix)
 
 
 def test_alarm_mode_disables_irrelevant_threshold_inputs() -> None:

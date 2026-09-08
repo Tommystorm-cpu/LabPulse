@@ -50,6 +50,8 @@ TEST_PYPI_INDEX_URL = "https://test.pypi.org/simple/"
 PYPI_INDEX_URL = "https://pypi.org/simple/"
 TEST_PYPI_PROJECT_URL = "https://test.pypi.org/pypi/labpulse/json"
 UPDATE_CHECK_TIMEOUT_SECONDS = 2.0
+UPDATE_CHECK_CACHE_SECONDS = 6 * 60 * 60
+UPDATE_CHECK_FAILURE_CACHE_SECONDS = 10 * 60
 UPDATE_MQTT_HOST = "127.0.0.1"
 UPDATE_MQTT_PORT = 1883
 UPDATE_TELEMETRY_TIMEOUT_SECONDS = 120.0
@@ -381,11 +383,64 @@ def latest_published_version(*, timeout: float = 15.0) -> str:
     return version.strip()
 
 
-def notify_if_update_available() -> None:
-    """Print a best-effort notice when TestPyPI has a newer release."""
+def update_check_cache_path() -> Path:
+    """Return the per-user cache file used by post-command version checks."""
+
+    configured_root = os.environ.get("XDG_CACHE_HOME")
+    cache_root = Path(configured_root).expanduser() if configured_root else Path.home() / ".cache"
+    return cache_root / "labpulse" / "version-check.json"
+
+
+def read_update_check_cache(cache_path: Path) -> tuple[bool, str | None]:
+    """Return whether a fresh cached check exists and its published version."""
 
     try:
-        latest = latest_published_version(timeout=UPDATE_CHECK_TIMEOUT_SECONDS)
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        checked_at = float(payload["checked_at"])
+        latest = payload.get("latest")
+        if latest is not None and not isinstance(latest, str):
+            return False, None
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False, None
+
+    maximum_age = (
+        UPDATE_CHECK_CACHE_SECONDS if latest is not None else UPDATE_CHECK_FAILURE_CACHE_SECONDS
+    )
+    age = time.time() - checked_at
+    return (True, latest) if 0 <= age < maximum_age else (False, None)
+
+
+def write_update_check_cache(cache_path: Path, latest: str | None) -> None:
+    """Best-effort persist a successful or failed remote version check."""
+
+    temporary_path = cache_path.with_suffix(".tmp")
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path.write_text(
+            json.dumps({"checked_at": time.time(), "latest": latest}) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(cache_path)
+    except OSError:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def notify_if_update_available(
+    *, force_refresh: bool = False, cache_path: Path | None = None
+) -> None:
+    """Print a cached, best-effort notice when a newer release exists."""
+
+    selected_cache_path = cache_path or update_check_cache_path()
+    cache_is_fresh, latest = read_update_check_cache(selected_cache_path)
+    try:
+        if force_refresh or not cache_is_fresh:
+            latest = latest_published_version(timeout=UPDATE_CHECK_TIMEOUT_SECONDS)
+            write_update_check_cache(selected_cache_path, latest)
+        if latest is None:
+            return
         try:
             installed = distribution_version("labpulse")
         except PackageNotFoundError:
@@ -393,6 +448,7 @@ def notify_if_update_available() -> None:
         installed_version = Version(installed)
         latest_version = Version(latest)
     except (RuntimeError, InvalidVersion):
+        write_update_check_cache(selected_cache_path, None)
         return
 
     if latest_version > installed_version:
@@ -901,7 +957,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         # Read distribution metadata in the notifier so a successful update
         # checks the newly installed package rather than this process's import.
-        notify_if_update_available()
+        notify_if_update_available(force_refresh=arguments.action == "update")
 
 
 def alias_arguments(action: str, arguments: Sequence[str]) -> list[str]:

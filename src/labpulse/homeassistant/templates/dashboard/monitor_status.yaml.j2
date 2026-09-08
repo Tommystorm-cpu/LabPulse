@@ -35,7 +35,9 @@
         entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
         name: [[ (service.label ~ ': confirmed service fault') | yaml_scalar ]]
         icon: mdi:lan-disconnect
-        tap_action: {action: none}
+        tap_action:
+          action: navigate
+          navigation_path: /labpulse-monitor/diagnostics
         hold_action: {action: none}
         double_tap_action: {action: none}
 [% endfor %]
@@ -44,7 +46,9 @@
         entity: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]
         name: [[ (measurement.label ~ ': alarm state') | yaml_scalar ]]
         icon: mdi:alert-outline
-        tap_action: {action: none}
+        tap_action:
+          action: navigate
+          navigation_path: /labpulse-monitor/alarm-setup-[[ measurement.setup_ids[0] ]]
         hold_action: {action: none}
         double_tap_action: {action: none}
         conditions:
@@ -72,7 +76,9 @@
         entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
         name: 'Power monitoring: lifecycle state'
         icon: mdi:power-plug-off-outline
-        tap_action: {action: none}
+        tap_action:
+          action: navigate
+          navigation_path: /labpulse-monitor/alarm-power-[[ service.service_id ]]
         hold_action: {action: none}
         double_tap_action: {action: none}
 [% endfor %]

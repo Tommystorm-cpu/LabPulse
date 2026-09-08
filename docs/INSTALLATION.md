@@ -326,10 +326,12 @@ labpulse update 0.1.1
 ```
 
 Every LabPulse command performs a quick, best-effort check for a newer release
-after it finishes. When one is available, the command prints the installed and
-available versions and suggests `labpulse update`. A failed check is silent and
-never changes the command's result, so normal operation is unaffected when the
-Pi is offline or TestPyPI is unavailable.
+after it finishes. The TestPyPI result is cached for six hours, so normal
+commands do not wait for the network each time. When an update is available,
+the cached result still prints the installed and available versions and suggests
+`labpulse update`. A failed check is silent and cached for ten minutes, so normal
+operation remains responsive when the Pi is offline or TestPyPI is unavailable.
+The `labpulse update` command always fetches fresh release metadata.
 
 Update resolves the latest version from TestPyPI only, installs that exact
 version with pipx, refreshes package-managed deployment assets with backups,

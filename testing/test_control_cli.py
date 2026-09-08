@@ -3,6 +3,7 @@
 from contextlib import redirect_stdout
 from io import BytesIO
 from io import StringIO
+import json
 from pathlib import Path
 import os
 import subprocess
@@ -170,13 +171,15 @@ def test_latest_version_comes_from_test_pypi_metadata() -> None:
     assert open_url.call_args.kwargs == {"timeout": 3.0}
 
 
-def test_newer_release_prints_update_notice(capsys: pytest.CaptureFixture[str]) -> None:
+def test_newer_release_prints_update_notice(
+    workspace_tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Recommend the simple update command only for a newer release."""
 
     with patch.object(control, "distribution_version", return_value="0.9.9"), patch.object(
         control, "latest_published_version", return_value="0.10.0"
     ) as latest:
-        _NOTIFY_IF_UPDATE_AVAILABLE()
+        _NOTIFY_IF_UPDATE_AVAILABLE(cache_path=workspace_tmp_path / "version-check.json")
 
     assert capsys.readouterr().out == (
         "\nA newer LabPulse version is available: 0.10.0 "
@@ -187,19 +190,21 @@ def test_newer_release_prints_update_notice(capsys: pytest.CaptureFixture[str]) 
 
 @pytest.mark.parametrize("published", ["0.9.9", "0.9.8", "0.9.9rc1"])
 def test_current_or_older_release_prints_no_notice(
-    published: str, capsys: pytest.CaptureFixture[str]
+    published: str, workspace_tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Do not describe equal or older releases as updates."""
 
     with patch.object(control, "distribution_version", return_value="0.9.9"), patch.object(
         control, "latest_published_version", return_value=published
     ):
-        _NOTIFY_IF_UPDATE_AVAILABLE()
+        _NOTIFY_IF_UPDATE_AVAILABLE(cache_path=workspace_tmp_path / "version-check.json")
 
     assert capsys.readouterr().out == ""
 
 
-def test_failed_update_check_is_silent(capsys: pytest.CaptureFixture[str]) -> None:
+def test_failed_update_check_is_silent(
+    workspace_tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """An offline version check must not interfere with an operator command."""
 
     with patch.object(
@@ -207,9 +212,27 @@ def test_failed_update_check_is_silent(capsys: pytest.CaptureFixture[str]) -> No
         "latest_published_version",
         side_effect=RuntimeError("network unavailable"),
     ):
-        _NOTIFY_IF_UPDATE_AVAILABLE()
+        cache_path = workspace_tmp_path / "version-check.json"
+        _NOTIFY_IF_UPDATE_AVAILABLE(cache_path=cache_path)
 
     assert capsys.readouterr().out == ""
+    assert json.loads(cache_path.read_text(encoding="utf-8"))["latest"] is None
+
+
+def test_post_command_update_check_reuses_cached_metadata(
+    workspace_tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Avoid another network delay while continuing to print the update notice."""
+
+    cache_path = workspace_tmp_path / "version-check.json"
+    with patch.object(control, "distribution_version", return_value="0.9.9"), patch.object(
+        control, "latest_published_version", return_value="0.10.0"
+    ) as latest:
+        _NOTIFY_IF_UPDATE_AVAILABLE(cache_path=cache_path)
+        _NOTIFY_IF_UPDATE_AVAILABLE(cache_path=cache_path)
+
+    assert capsys.readouterr().out.count("A newer LabPulse version is available") == 2
+    latest.assert_called_once_with(timeout=control.UPDATE_CHECK_TIMEOUT_SECONDS)
 
 
 def test_commands_run_the_post_command_update_check(update_notice: object) -> None:
@@ -218,7 +241,7 @@ def test_commands_run_the_post_command_update_check(update_notice: object) -> No
     with patch.object(control.webbrowser, "open", return_value=True):
         assert control.main(["open"]) == 0
 
-    update_notice.assert_called_once_with()
+    update_notice.assert_called_once_with(force_refresh=False)
 
 
 def test_update_runs_a_distribution_aware_post_command_check(
@@ -229,7 +252,7 @@ def test_update_runs_a_distribution_aware_post_command_check(
     with patch.object(control, "run_update_command", return_value=0):
         assert control.main(["--live-dir", str(live_dir), "update"]) == 0
 
-    update_notice.assert_called_once_with()
+    update_notice.assert_called_once_with(force_refresh=True)
 
 
 @pytest.mark.parametrize("fake_usb", [False, True])

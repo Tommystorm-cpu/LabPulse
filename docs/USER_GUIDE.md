@@ -305,6 +305,12 @@ deadband are adjusted in Home Assistant. They are not YAML fields. Home
 Assistant restores most helpers from its state; installation automations
 initialize missing values safely.
 
+The alarm summary uses color as a quick explanation of the current settings:
+an unused minimum or maximum is grey, a threshold currently crossed by the
+live reading is red, and the alarm-state tile is red while its state is
+**Danger**. A crossed threshold can appear red before the alarm state changes
+because the observation-window requirement has not yet been satisfied.
+
 ## Power alarm behaviour
 
 Power monitoring uses `mains_present` plus battery telemetry as one composite
