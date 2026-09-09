@@ -205,7 +205,7 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
     problems = next(
         item for item in walk(monitor)
         if isinstance(item, dict) and item.get("type") == "entity-filter"
-        and item.get("card", {}).get("title") == "Active Problems"
+        and item.get("card", {}).get("title") == "Current Problems"
     )
     alarm_rows = [
         row for row in problems["entities"]
@@ -231,13 +231,18 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
 
     service_rows = [
         row for row in problems["entities"]
-        if str(row.get("entity", "")).endswith("_service_fault_active")
+        if str(row.get("entity", "")).endswith("_service_offline_incident_active")
     ]
     assert service_rows
     assert all(row.get("tap_action") == {
         "action": "navigate",
         "navigation_path": "/labpulse-monitor/diagnostics",
     } for row in service_rows)
+    availability_rows = [
+        row for row in problems["entities"]
+        if str(row.get("entity", "")).endswith("_availability_incident_active")
+    ]
+    assert availability_rows
 
 
 def test_power_problem_links_to_its_alarm_setup_page() -> None:
@@ -248,7 +253,7 @@ def test_power_problem_links_to_its_alarm_setup_page() -> None:
     problems = next(
         item for item in walk(monitor)
         if isinstance(item, dict) and item.get("type") == "entity-filter"
-        and item.get("card", {}).get("title") == "Active Problems"
+        and item.get("card", {}).get("title") == "Current Problems"
     )
     power_row = next(
         row for row in problems["entities"]

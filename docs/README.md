@@ -12,8 +12,8 @@ README.
    normal, failure and recovery behaviour.
 3. Use [Configuration](CONFIGURATION.md) when editing
    `~/labpulse-live/config.yaml`.
-4. Return to [Installation troubleshooting](INSTALLATION.md#troubleshooting)
-   when a layer does not work.
+4. Use [Operations](OPERATIONS.md) for normal incident/update handling and
+   [Troubleshooting](TROUBLESHOOTING.md) when state or delivery is unexpected.
 
 ## Existing operator
 
@@ -23,6 +23,10 @@ README.
   examples.
 - [Installation](INSTALLATION.md): updates, reconstruction and symptom-led
   troubleshooting.
+- [Operations](OPERATIONS.md): interpreting state, notification controls, and
+  safe update recovery.
+- [Troubleshooting](TROUBLESHOOTING.md): service, reading, delivery, and
+  maintenance problems.
 - [Hardware](HARDWARE.md): current interface boundary and placeholders for the
   future photographed build record.
 
@@ -46,6 +50,8 @@ and Home Assistant files are not independent settings.
 |---|---|
 | Project summary, safety and maturity | [Root README](../README.md) |
 | First installation, updates, reconstruction and troubleshooting | [Installation](INSTALLATION.md) |
+| Day-to-day incident and update handling | [Operations](OPERATIONS.md) |
+| Incident and notification diagnosis | [Troubleshooting](TROUBLESHOOTING.md) |
 | Every user-visible feature and its behaviour | [User Guide](USER_GUIDE.md) |
 | YAML sections, fields, defaults and examples | [Configuration](CONFIGURATION.md) |
 | Cross-process design, ownership and failure boundaries | [Architecture](ARCHITECTURE.md) |

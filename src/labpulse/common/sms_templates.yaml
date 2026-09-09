@@ -6,9 +6,9 @@
 # {current_measurement} after Home Assistant has evaluated the surrounding message.
 
 alerts:
-  service_fault:
+  service_offline:
     title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Service Fault: [[ service.label ]]")
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Service Offline: [[ service.label ]]")
     message: >-
       "LabPulse cannot communicate with [[ service.label ]]. All measurements from this service are temporarily unavailable.\nService status: {current_measurement}."
 
@@ -30,15 +30,15 @@ alerts:
     message: >-
       "Current Measurement: {current_measurement}. \nRecovered after " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') ~ " to " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') ~ "; deadband " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'recovery_deadband') ]]') ~ "."
 
-  measurement_sensor_fault:
+  reading_unavailable:
     title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Sensor Fault Alert: [[ service.label ]] - [[ measurement.label ]]")
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Reading Unavailable: [[ service.label ]] - [[ measurement.label ]]")
     message: >-
-      "Sensor fault reason: " ~ reason ~ ". \nService status: " ~ service_status ~ "." ~ "\nCurrent Measurement: {current_measurement}"
+      "No fresh numeric reading is available. The cause may be the sensor, wiring, firmware, parsing, or MQTT.\nCurrent Measurement: {current_measurement}"
 
-  measurement_sensor_recovery:
+  reading_available:
     title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Sensor Restored: [[ service.label ]] - [[ measurement.label ]]")
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Reading Available: [[ service.label ]] - [[ measurement.label ]]")
     message: >-
       "Valid numeric telemetry resumed. \nService status: " ~ states('[[ entity_id('sensor', service.name, 'status') ]]') ~ ". \nAlarm state: " ~ states('[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]') ~ "." ~ "\nCurrent Measurement: {current_measurement}"
 
@@ -53,18 +53,6 @@ alerts:
       ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Power Recovery Alert")
     message: >-
       "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unavailable") ~ ".\nBattery voltage: {current_measurement} V.\nThe GPIO6 signal remained present for [[ power.config.restore_confirm_seconds ]] seconds."
-
-  power_sensor_fault:
-    title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Sensor Fault Alert: [[ service.label ]] - External Power Detection")
-    message: >-
-      "The X1200 GPIO6 external-power signal is unavailable or invalid. This is being treated as a sensor fault, not a power outage.\nRaw GPIO state: {current_measurement}.\nService status: " ~ states('[[ entity_id('sensor', service.name, 'status') ]]') ~ "."
-
-  power_sensor_recovery:
-    title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Sensor Restored: [[ service.label ]] - External Power Detection")
-    message: >-
-      "The X1200 GPIO6 external-power signal is available again.\nCurrent mains state: {current_measurement}.\nService status: " ~ states('[[ entity_id('sensor', service.name, 'status') ]]') ~ "."
 
 formatting:
   test_prefix: "[TEST]"

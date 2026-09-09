@@ -1,5 +1,6 @@
-{# This file handles high/low alarms for one measurement. measurement.yaml.j2
-   includes it once for every configured measurement. #}
+{# High/low alarm state is evaluated only from an available reading. Delivery
+   goes through the shared incident scripts so mute and maintenance rules have
+   exactly one implementation. #}
   - alias: LabPulse [[ measurement.label ]] Initialize Alarm Timing
     mode: single
     trigger:
@@ -9,296 +10,159 @@
       event_type: automation_reloaded
     condition:
     - condition: state
-      entity_id: [[
-        entity_id('input_boolean', service.name, measurement.name, 'alarm_timing_initialized')
-        | yaml_scalar
-      ]]
+      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_timing_initialized') | yaml_scalar ]]
       state: 'off'
     action:
     - service: input_number.set_value
       target:
-        entity_id: [[
-          entity_id('input_number', service.name, measurement.name, 'required_danger_percent')
-          | yaml_scalar
-        ]]
-      data:
-        value: 70
+        entity_id: [[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') | yaml_scalar ]]
+      data: {value: 70}
     - service: input_number.set_value
       target:
-        entity_id: [[
-          entity_id('input_number', service.name, measurement.name, 'observation_window_seconds')
-          | yaml_scalar
-        ]]
-      data:
-        value: 120
+        entity_id: [[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') | yaml_scalar ]]
+      data: {value: 120}
     - service: input_number.set_value
       target:
-        entity_id: [[
-          entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds')
-          | yaml_scalar
-        ]]
-      data:
-        value: 120
+        entity_id: [[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') | yaml_scalar ]]
+      data: {value: 120}
     - service: input_boolean.turn_on
       target:
-        entity_id: [[
-          entity_id('input_boolean', service.name, measurement.name, 'alarm_timing_initialized')
-          | yaml_scalar
-        ]]
-{# Wait until the saved settings are ready. Starting Home Assistant should not
-   count as a new alarm. #}
+        entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_timing_initialized') | yaml_scalar ]]
+
   - alias: LabPulse [[ measurement.label ]] Danger
     mode: single
     trigger:
     - platform: template
       id: natural
       value_template: >
-        {{ is_state('[[ entity_id('binary_sensor', service.name, 'service_unhealthy') ]]', 'off')
-           and is_state('[[ entity_id('input_boolean', service.name, 'service_fault_active') ]]', 'off')
-           and states(
-             '[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]'
-           ) | float(0)
-           >= states(
-             '[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]'
-           ) | float(70) }}
+        {{ is_state('input_boolean.labpulse_update_maintenance', 'off')
+           and is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]', 'on')
+[% for blocking_service_name in measurement.blocking_service_names %]
+           and is_state('[[ entity_id('binary_sensor', blocking_service_name, 'service_offline') ]]', 'off')
+           and is_state('[[ entity_id('input_boolean', blocking_service_name, 'service_offline_incident_active') ]]', 'off')
+[% endfor %]
+           and states('[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]') | float(0)
+             >= states('[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]') | float(70)
+           and as_timestamp(now()) - as_timestamp(
+             states('input_datetime.labpulse_update_maintenance_cleared'), as_timestamp(now())
+           ) >= states('[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]') | int(120) }}
     - platform: state
       id: resend
       entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
     condition:
+    - condition: state
+      entity_id: input_boolean.labpulse_update_maintenance
+      state: 'off'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+      state: 'on'
+[% for blocking_service_name in measurement.blocking_service_names %]
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', blocking_service_name, 'service_offline') | yaml_scalar ]]
+      state: 'off'
+    - condition: state
+      entity_id: [[ entity_id('input_boolean', blocking_service_name, 'service_offline_incident_active') | yaml_scalar ]]
+      state: 'off'
+[% endfor %]
     - condition: template
       value_template: >-
         {{ (trigger.id == 'natural' and is_state(
-             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
-             'Normal'
-           ))
+             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]', 'Normal'))
            or (trigger.id == 'resend' and is_state(
-             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]',
-             'Danger'
-           )) }}
-    - condition: template
-      value_template: >-
-        {{ trigger.id == 'resend' or is_state(
-          '[[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') ]]',
-          'off'
-        ) }}
+             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]', 'Danger')) }}
     - condition: template
       value_template: >-
         {{ trigger.id == 'resend' or not is_state(
-          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]',
-          'Disabled'
-        ) }}
+          '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]', 'Disabled') }}
     action:
     - service: input_select.select_option
       target:
         entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
+      data: {option: Danger}
+    - variables:
+        mode: "{{ states('[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]') }}"
+        minimum: "{{ states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') }}"
+        maximum: "{{ states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') }}"
+        observed: "{{ states('[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]') | float(0) }}"
+        window: "{{ states('[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]') | int(120) }}"
+        threshold: >-
+          {{ 'below ' ~ minimum if mode == 'Low Only' else 'above ' ~ maximum if mode == 'High Only' else 'outside ' ~ minimum ~ ' to ' ~ maximum }}
+    - service: script.labpulse_open_incident
       data:
-        option: Danger
-    - choose:
-      - conditions:
-        - condition: state
-          entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_muted') | yaml_scalar ]]
-          state: 'off'
-        - condition: state
-          entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
-          state: 'off'
-        - condition: template
-          value_template: [[ measurement.setup_notifications_unmuted_template | yaml_scalar ]]
-        sequence:
-        - service: persistent_notification.create
-          data:
-            title: >
-              {{ (
-                '[TEST] '
-                if is_state(
-                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
-                  'on'
-                )
-                else ''
-              ) ~ 'LabPulse [[ service.label ]] - [[ measurement.label ]] warning' }}
-            message: >
-              {% set mode = states(
-                '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]'
-              ) %}
-              {% set minimum = states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]'
-              ) %}
-              {% set maximum = states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]'
-              ) %}
-              {% set observed = states(
-                '[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]'
-              ) | float(0) %}
-              {% set window = states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]'
-              ) | int(120) %}
-              {% set danger_seconds = (observed * window / 100) | round(0) %}
-              {% set threshold =
-                'below ' ~ minimum
-                if mode == 'Low Only'
-                else 'above ' ~ maximum
-                if mode == 'High Only'
-                else 'outside ' ~ minimum ~ ' to ' ~ maximum
-              %}
-              [[ service.label ]] / [[ measurement.label ]] is in Danger.
+        notification_id: labpulse_[[ measurement.measurement_id ]]_danger
+        title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse [[ measurement.label ]] danger' }}
+        message: >-
+          [[ service.label ]] / [[ measurement.label ]] is in Danger.
+          Current measurement: {{ states('[[ measurement.entity_id ]]') }} {{ state_attr('[[ measurement.entity_id ]]', 'unit_of_measurement') or '' }}.
+          Active threshold: {{ threshold }}. Evidence: {{ observed | round(1) }}% of the last {{ window }} seconds.
+          [[ measurement.notification_context ]]
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_sms_requested') | yaml_scalar ]]
+        delivery_allowed: >-
+          {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
+             and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
+        sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ measurement.measurement_id ]]_danger_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "warning",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "[[ measurement.name ]]",
+            "measurement_label": "[[ measurement.label ]]",
+            "state": "Danger",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Danger: [[ service.label ]] - [[ measurement.label ]]',
+            "message": 'Current measurement: ' ~ states('[[ measurement.entity_id ]]') ~ '. Active threshold: ' ~ threshold ~ '. [[ measurement.notification_context ]]',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ measurement.entity_id ]]')
+          } | to_json }}
 
-              Current Measurement:
-              {{ states('[[ measurement.entity_id ]]') }}
-              {{ state_attr(
-                '[[ measurement.entity_id ]]',
-                'unit_of_measurement'
-              ) or '' }}.
-              Active threshold: {{ threshold }}.
-              Danger evidence: {{ observed | round(1) }}% of the last {{ window }} seconds
-              (about {{ danger_seconds }} seconds);
-              {{ states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]'
-              ) }}%
-              is required. [[ measurement.notification_context ]]
-            notification_id: labpulse_[[ measurement.measurement_id ]]_status
-        - service: mqtt.publish
-          data:
-            topic: [[ model.sms_send_topic | yaml_scalar ]]
-            qos: 1
-            retain: false
-            payload: >
-              {% set mode = states(
-                '[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]'
-              ) %}
-              {% set minimum = states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]'
-              ) %}
-              {% set maximum = states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]'
-              ) %}
-              {% set observed = states(
-                '[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]'
-              ) | float(0) %}
-              {% set window = states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]'
-              ) | int(120) %}
-              {% set danger_seconds = (observed * window / 100) | round(0) %}
-              {% set threshold =
-                'below ' ~ minimum
-                if mode == 'Low Only'
-                else 'above ' ~ maximum
-                if mode == 'High Only'
-                else 'outside ' ~ minimum ~ ' to ' ~ maximum
-              %}
-              {{ {
-                "request_id": "labpulse_[[ measurement.measurement_id ]]_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
-                "event": "warning",
-                "service": "[[ service.name ]]",
-                "service_label": "[[ service.label ]]",
-                "measurement": "[[ measurement.name ]]",
-                "measurement_label": "[[ measurement.label ]]",
-                "state": "Danger",
-                "title": [[
-                  sms.alerts.measurement_warning.title
-                  | render_fragment(service=service, measurement=measurement)
-                ]],
-                "message": ([[
-                  sms.alerts.measurement_warning.message
-                  | render_fragment(service=service, measurement=measurement)
-                ]]) ~ "\n[[ measurement.notification_context ]]",
-                "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
-                "current_measurement": states('[[ measurement.entity_id ]]')
-              } | to_json }}
-{# Recovery uses its own confirmation interval and deadband. A reading merely
-   crossing the danger threshold is not enough to announce a stable recovery. #}
   - alias: LabPulse [[ measurement.label ]] Recovery
     mode: single
     trigger:
     - platform: template
-      id: natural
       value_template: >
-        {{ is_state('[[ entity_id('binary_sensor', service.name, 'service_unhealthy') ]]', 'off')
-           and is_state('[[ entity_id('input_boolean', service.name, 'service_fault_active') ]]', 'off')
+        {{ is_state('input_boolean.labpulse_update_maintenance', 'off')
+           and is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]', 'on')
            and is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'recovery_zone') ]]', 'on') }}
       for:
         seconds: >-
-          {{ states(
-            '[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]'
-          ) | int(120) }}
+          {{ states('[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]') | int(120) }}
     condition:
     - condition: state
       entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
       state: Danger
-    - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'sensor_fault_zone') | yaml_scalar ]]
-      state: 'off'
     action:
+    - service: script.labpulse_close_incident
+      data:
+        notification_id: labpulse_[[ measurement.measurement_id ]]_danger
+        recovery_title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse [[ measurement.label ]] recovered' }}
+        recovery_message: >-
+          [[ service.label ]] / [[ measurement.label ]] returned to its deadband-adjusted safe range.
+          Current measurement: {{ states('[[ measurement.entity_id ]]') }}. [[ measurement.notification_context ]]
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_sms_requested') | yaml_scalar ]]
+        delivery_allowed: >-
+          {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
+             and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
+        recovery_sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ measurement.measurement_id ]]_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "recovery",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "[[ measurement.name ]]",
+            "measurement_label": "[[ measurement.label ]]",
+            "state": "Normal",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Recovery: [[ service.label ]] - [[ measurement.label ]]',
+            "message": 'The reading returned to its safe range. [[ measurement.notification_context ]]',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ measurement.entity_id ]]')
+          } | to_json }}
     - service: input_select.select_option
       target:
         entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      data:
-        option: Normal
-    - choose:
-      - conditions:
-        - condition: state
-          entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_muted') | yaml_scalar ]]
-          state: 'off'
-        - condition: state
-          entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
-          state: 'off'
-        - condition: template
-          value_template: [[ measurement.setup_notifications_unmuted_template | yaml_scalar ]]
-        sequence:
-        - service: persistent_notification.create
-          data:
-            title: >
-              {{ (
-                '[TEST] '
-                if is_state(
-                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
-                  'on'
-                )
-                else ''
-              ) ~ 'LabPulse [[ service.label ]] - [[ measurement.label ]] recovery' }}
-            message: >
-              [[ service.label ]] / [[ measurement.label ]] has recovered.
-
-              Current Measurement:
-              {{ states('[[ measurement.entity_id ]]') }}
-              {{ state_attr(
-                '[[ measurement.entity_id ]]',
-                'unit_of_measurement'
-              ) or '' }}.
-              It remained inside the deadband-adjusted recovery zone for
-              {{ states(
-                '[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]'
-              ) }}
-              seconds. Thresholds:
-              {{ states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') }}
-              to
-              {{ states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') }};
-              deadband
-              {{ states('[[ entity_id('input_number', service.name, measurement.name, 'recovery_deadband') ]]') }}.
-              [[ measurement.notification_context ]]
-            notification_id: labpulse_[[ measurement.measurement_id ]]_status
-        - service: mqtt.publish
-          data:
-            topic: [[ model.sms_send_topic | yaml_scalar ]]
-            qos: 1
-            retain: false
-            payload: >
-              {{ {
-                "request_id":
-                  "labpulse_[[ measurement.measurement_id ]]_recovery_"
-                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
-                "event": "recovery",
-                "service": "[[ service.name ]]",
-                "service_label": "[[ service.label ]]",
-                "measurement": "[[ measurement.name ]]",
-                "measurement_label": "[[ measurement.label ]]",
-                "state": "Normal",
-                "title": [[
-                  sms.alerts.measurement_recovery.title
-                  | render_fragment(service=service, measurement=measurement)
-                ]],
-                "message": ([[
-                  sms.alerts.measurement_recovery.message
-                  | render_fragment(service=service, measurement=measurement)
-                ]]) ~ "\n[[ measurement.notification_context ]]",
-                "test_mode": is_state('[[ 'input_boolean.labpulse_notification_test_mode' ]]', 'on'),
-                "current_measurement": states('[[ measurement.entity_id ]]')
-              } | to_json }}
+      data: {option: Normal}

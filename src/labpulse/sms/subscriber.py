@@ -16,6 +16,7 @@ from labpulse.common.mqtt_contracts import (
     SMS_STATUS_DISCOVERY_TOPIC,
     SMS_STATUS_TOPIC,
     SMS_SUBSCRIPTION_TOPIC,
+    UPDATE_MAINTENANCE_TOPIC,
     SmsRequest,
     sms_result_topic,
 )
@@ -134,6 +135,7 @@ class SmsSubscriber:
         self._sender = sender
         self._request_cache = RecentRequestCache(request_cache_path)
         self._logger = logging.getLogger("LabPulse.SMS")
+        self._maintenance_active = False
         # A persistent MQTT session preserves QoS 1 messages while this service
         # is briefly offline. QoS 1 may redeliver, so RecentRequestCache removes
         # duplicates before they reach the modem.
@@ -187,8 +189,17 @@ class SmsSubscriber:
         if reason_code != 0:
             self._logger.error("SMS MQTT connection failed: %s", reason_code)
             return
-        self._logger.info("SMS service subscribing to %s", SMS_SUBSCRIPTION_TOPIC)
-        client.subscribe(SMS_SUBSCRIPTION_TOPIC, qos=1)
+        # Default to suppression until the broker delivers the retained
+        # maintenance state. This prevents queued QoS-one alerts from racing
+        # ahead of the retained flag when the worker reconnects.
+        self._maintenance_active = True
+        self._logger.info(
+            "SMS service subscribing to %s and maintenance state",
+            SMS_SUBSCRIPTION_TOPIC,
+        )
+        client.subscribe(
+            [(SMS_SUBSCRIPTION_TOPIC, 1), (UPDATE_MAINTENANCE_TOPIC, 1)]
+        )
         self._publish_json(
             SMS_STATUS_DISCOVERY_TOPIC,
             {
@@ -213,6 +224,24 @@ class SmsSubscriber:
         message: mqtt.MQTTMessage,
     ) -> None:
         """Validate and enqueue one inbound MQTT request."""
+
+        if getattr(message, "topic", SMS_SUBSCRIPTION_TOPIC) == UPDATE_MAINTENANCE_TOPIC:
+            try:
+                payload = json.loads(message.payload.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._logger.warning("Ignored invalid update maintenance payload")
+                return
+            state = payload.get("state") if isinstance(payload, dict) else None
+            if state not in {"ON", "OFF"}:
+                self._logger.warning("Ignored update maintenance payload without ON/OFF state")
+                return
+            self._maintenance_active = state == "ON"
+            self._logger.info("SMS update maintenance is %s", state)
+            return
+
+        if self._maintenance_active:
+            self._logger.warning("Discarded SMS request during update maintenance")
+            return
 
         try:
             request = parse_sms_payload(message.payload)

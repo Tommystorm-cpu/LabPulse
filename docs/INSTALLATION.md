@@ -334,20 +334,24 @@ operation remains responsive when the Pi is offline or TestPyPI is unavailable.
 The `labpulse update` command always fetches fresh release metadata.
 
 Update resolves the latest version from TestPyPI only, installs that exact
-version with pipx, refreshes package-managed deployment assets with backups,
-preserves the active real-hardware or fake-USB mode, pulls images, and
-recreates every container. During that planned outage it stops the SMS worker
-and publishes a retained maintenance flag, preventing temporary unavailable
-measurements from producing fault/recovery notifications. It waits for Home
-Assistant and for a fresh value from every configured physical measurement,
-then clears maintenance mode, starts SMS delivery, and runs `labpulse doctor`
-through the newly installed command.
+version with pipx using fresh package-index metadata, refreshes package-managed
+deployment assets with backups, preserves the active real-hardware or fake-USB
+mode, pulls images, and recreates every container. During that planned outage
+it publishes a retained maintenance request before recreating runtime services.
+Home Assistant applies maintenance and publishes an acknowledgement with the
+same request ID; update does not stop SMS or disrupt any container until that
+acknowledgement arrives. It then stops the SMS worker. Every notification
+path is gated before an SMS MQTT request can be queued. Update waits only for
+fresh required physical readings, lets classification settle, then clears
+maintenance and verifies the matching acknowledgement before starting SMS and
+running `labpulse doctor` through the newly installed command.
 
-If fresh telemetry does not return within two minutes, update exits with SMS
-delivery stopped and update maintenance mode active instead of risking a
-notification flood. Repair the reported sensor or container problem, confirm
-readings are current, then run `labpulse up labpulse-sms`; that command also
-clears update maintenance mode.
+If maintenance acknowledgement or required fresh telemetry does not arrive
+within two minutes, update exits with SMS delivery stopped and update
+maintenance active instead of risking a notification flood. Repair the
+reported service or required reading, confirm telemetry is current, then run
+`labpulse up labpulse-sms`; that command clears maintenance with the same
+acknowledged handshake before resuming delivery.
 
 `--backup` creates timestamped copies of package-managed files before setup
 replaces them. The live `config.yaml` and existing Home Assistant configuration
@@ -592,9 +596,10 @@ value, enough observations satisfy the danger proportion/window, and Test mode
 or mutes have not been confused with alarm state. Recovery requires continuous
 safe data beyond the deadband for the complete recovery time.
 
-Sensor Fault also has a confirmation delay. A complete service failure can
-suppress subordinate measurement-fault notifications while leaving fault state
-visible. Inspect Alarm Setup and the User Guide's
+Reading unavailable has its own confirmation delay. A complete service outage
+suppresses subordinate reading incidents while leaving service health and raw
+availability visible. Optional unavailable readings are deliberately silent.
+Inspect Alarm Setup and the User Guide's
 [alarm behaviour](USER_GUIDE.md#measurement-alarm-behaviour).
 
 ### Alarm state changes but no SMS is received

@@ -20,6 +20,30 @@
       hold_action: {action: none}
       double_tap_action: {action: none}
       icon_tap_action: {action: more-info}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
+        state: Unavailable
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
+        name: Reading availability
+        icon: mdi:alert-outline
+        color: amber
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
+        state: Unavailable — optional
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
+        name: Reading availability
+        icon: mdi:information-outline
+        color: disabled
 [% for danger, state_condition, color in (
   (true, 'state', 'red'),
   (false, 'state_not', none)
@@ -104,12 +128,12 @@
    state or hide the reading from Monitor. #}
     - type: conditional
       conditions:
-      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
         state: [[ ('on' if muted else 'off') | yaml_scalar ]]
       grid_options: {columns: [[ (4 if mobile else 6) ]]}
       card:
         type: tile
-        entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+        entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
         name: [[ label | yaml_scalar ]]
         icon: [[ icon ]]
         hide_state: true
@@ -117,7 +141,7 @@
           action: perform-action
           perform_action: [[ action ]]
           target:
-            entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+            entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
         icon_tap_action: {action: none}
 [% endfor %]
 [% for expanded, label, icon, action in (
@@ -162,7 +186,7 @@
             entities:
             - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
               name: Alarm mode
-            - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+            - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
               name: Measurement notifications muted
 [% for role, label, active_modes in (
   ('minimum_threshold', 'Minimum threshold', ['Low Only', 'Range']),
@@ -209,7 +233,7 @@
           entities:
           - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
             name: Alarm mode
-          - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_muted') ]]
+          - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
             name: Measurement notifications muted
 [% for role, label, active_modes in (
   ('minimum_threshold', 'Minimum threshold', ['Low Only', 'Range']),
@@ -268,13 +292,28 @@
             name: Danger zone
           - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'recovery_zone') ]]
             name: Recovery zone
-          - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'sensor_fault_zone') ]]
-            name: Sensor fault
+          - entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
+            name: Reading availability
+[% if measurement.availability_required %]
+          - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'availability_incident_active') ]]
+            name: Confirmed unavailable incident
+[% endif %]
           - type: conditional
             conditions:
+[% if measurement.availability_required %]
+            - condition: or
+              conditions:
+              - condition: state
+                entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+                state: Danger
+              - condition: state
+                entity: [[ entity_id('input_boolean', service_name, measurement.name, 'availability_incident_active') ]]
+                state: 'on'
+[% else %]
             - condition: state
               entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
-              state: [Danger, Sensor Fault]
+              state: Danger
+[% endif %]
             row:
               type: button
               entity: [[ entity_id('input_button', service_name, measurement.name, 'resend_active_alert') ]]

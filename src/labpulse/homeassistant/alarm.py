@@ -12,7 +12,11 @@ from labpulse.common.sms_templates import load_sms_templates
 from labpulse.common.config import LabPulseConfig
 from labpulse.common.identity import entity_id, slug, stable_id
 from labpulse.common.measurement_config import CustomMeasurementConfig, MeasurementConfig
-from labpulse.common.mqtt_contracts import SMS_SEND_TOPIC, UPDATE_MAINTENANCE_TOPIC
+from labpulse.common.mqtt_contracts import (
+    SMS_SEND_TOPIC,
+    UPDATE_MAINTENANCE_ACK_TOPIC,
+    UPDATE_MAINTENANCE_TOPIC,
+)
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates" / "alarm"
 
@@ -46,10 +50,13 @@ class HomeAssistantRenderModel:
     monitor_setups: tuple[dict[str, Any], ...]
     custom_measurements: tuple[dict[str, Any], ...]
     custom_alarm_services: tuple[dict[str, Any], ...]
+    measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
     alarm_measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
     power_alarm_services: tuple[dict[str, Any], ...]
     sms_send_topic: str
     update_maintenance_topic: str
+    update_maintenance_ack_topic: str
+    send_recovery_sms: bool
     bulk_alarm_targets: tuple[dict[str, Any], ...]
     bulk_alarm_target_options: tuple[str, ...]
     bulk_target_counts: dict[str, int]
@@ -127,6 +134,10 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "group": measurement_config.group,
                 "device_class": measurement_config.device_class,
                 "alarmed": measurement_config.alarmed,
+                "availability_policy": measurement_config.availability.value,
+                "availability_required": measurement_config.availability.value == "required",
+                "unavailable_confirm_seconds": measurement_config.unavailable_confirm_seconds,
+                "availability_recovery_confirm_seconds": measurement_config.availability_recovery_confirm_seconds,
                 "config": measurement_config,
                 "setup_ids": selected_setups,
                 "notification_context": notification_context,
@@ -134,6 +145,10 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "entity_id": entity_id("sensor", service_name, name),
                 "setup_notifications_unmuted_template": "{{ " + (checks or "true") + " }}",
                 "threshold": _threshold(measurement_name, measurement_config),
+                "reading_notification_mute_entity": entity_id(
+                    "input_boolean", service_name, name, "reading_notifications_muted"
+                ),
+                "blocking_service_names": (service_name,),
             }
             service_measurements.append(measurement)
             for setup_id in selected_setups:
@@ -147,33 +162,21 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "label": service_config.label,
             "service_id": service_id,
             "config": service_config,
-            "health_fault_confirm_seconds": config.service_health.fault_confirm_seconds,
+            "health_offline_confirm_seconds": config.service_health.offline_confirm_seconds,
             "health_recovery_confirm_seconds": config.service_health.recovery_confirm_seconds,
-            "sensor_fault_confirm_seconds": min(15, service_config.maximum_measurement_age_seconds),
             "measurements": service_measurements,
             "power": None,
         }
-        # Service health is separate from individual sensor health. This
-        # template tells Home Assistant when every reading from a live process
-        # is unusable, which is a stronger signal than one bad measurement.
-        checks = [
+        # Missing required readings make an otherwise connected service
+        # degraded. They never turn a connected service into an outage.
+        required_checks = [
             f"not is_number(states('{entity_id('sensor', service_name, item['name'])}'))"
-            for item in service_measurements
+            for item in service_measurements if item["availability_required"]
         ]
-        service["all_measurements_invalid_template"] = "(" + " and ".join(checks or ["true"]) + ")"
-        if service_config.power_detection is None:
-            alarmed_measurements = [
-                item for item in service_measurements if item["alarmed"]
-            ]
-            service["subordinate_notification_ids"] = [
-                f"labpulse_{item['measurement_id']}_status"
-                for item in alarmed_measurements
-            ]
-            service["alarm_state_entities"] = [
-                entity_id("input_select", service_name, item["name"], "alarm_state")
-                for item in alarmed_measurements
-            ]
-        else:
+        service["any_required_measurement_invalid_template"] = (
+            "(" + " or ".join(required_checks or ["false"]) + ")"
+        )
+        if service_config.power_detection is not None:
             # Voltage, battery level, and mains presence describe one power
             # event. Separate alarms could send conflicting messages.
             by_name = {item["name"]: item for item in service_measurements}
@@ -185,12 +188,25 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "maximum_measurement_age_seconds": service_config.maximum_measurement_age_seconds,
                 "alarmed": all(item["alarmed"] for item in service_measurements),
             }
-            if service["power"]["alarmed"]:
-                service["subordinate_notification_ids"] = [f"labpulse_{service_id}_power"]
-                service["alarm_state_entities"] = [entity_id("input_select", service_name, "power", "state")]
-            else:
-                service["subordinate_notification_ids"] = []
-                service["alarm_state_entities"] = []
+        required_measurements = [
+            item for item in service_measurements if item["availability_required"]
+        ]
+        service["subordinate_notification_ids"] = [
+            f"labpulse_{item['measurement_id']}_availability"
+            for item in required_measurements
+        ]
+        service["subordinate_incident_entities"] = [
+            entity_id("input_boolean", item["service_name"], item["name"], "availability_incident_active")
+            for item in required_measurements
+        ]
+        service["subordinate_notification_sent_entities"] = [
+            entity_id("input_boolean", item["service_name"], item["name"], "availability_notification_sent")
+            for item in required_measurements
+        ]
+        service["subordinate_sms_requested_entities"] = [
+            entity_id("input_boolean", item["service_name"], item["name"], "availability_sms_requested")
+            for item in required_measurements
+        ]
         physical_services.append(service)
 
     # Home Assistant calculates these values; no hardware worker owns them.
@@ -199,6 +215,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
     # This preserves the shared alarm structure while its sensor entity remains
     # sensor.labpulse_custom_<id>. The synthetic service tracks input faults.
     custom_measurements: list[dict[str, Any]] = []
+    custom_measurement_services: list[dict[str, Any]] = []
     custom_alarm_services: list[dict[str, Any]] = []
     custom_alarm_measurements: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for custom_id, custom_config in config.custom_measurements.items():
@@ -241,6 +258,10 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "group": custom_config.group,
             "device_class": custom_config.device_class,
             "alarmed": custom_config.alarmed,
+            "availability_policy": custom_config.availability.value,
+            "availability_required": custom_config.availability.value == "required",
+            "unavailable_confirm_seconds": custom_config.unavailable_confirm_seconds,
+            "availability_recovery_confirm_seconds": custom_config.availability_recovery_confirm_seconds,
             "config": custom_config,
             "setup_ids": selected_setups,
             "notification_context": f"{prefix}: {', '.join(labels)}. Calculated from physical LabPulse measurements.",
@@ -251,6 +272,12 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "source_entities": source_entities,
             "availability_template": availability_template,
             "state_template": state_template,
+            "reading_notification_mute_entity": entity_id(
+                "input_boolean", synthetic_service_name, "value", "reading_notifications_muted"
+            ),
+            "blocking_service_names": tuple(sorted({
+                reference.split(".", 1)[0] for reference in custom_config.inputs.values()
+            })),
         }
         custom_measurements.append(custom_measurement)
         for setup_id in selected_setups:
@@ -258,28 +285,14 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             if custom_config.alarmed:
                 alarmed_measurements_by_setup[setup_id].append(custom_measurement)
 
+        synthetic_alarm_service = {
+            "name": synthetic_service_name,
+            "label": "Calculated Measurements",
+            "service_id": synthetic_service_name,
+            "measurement": custom_measurement,
+        }
+        custom_measurement_services.append(synthetic_alarm_service)
         if custom_config.alarmed:
-            dependency_checks = [f"not is_number(states('{source}'))" for source in source_entities.values()]
-            dependency_services = sorted({
-                reference.split(".", 1)[0]
-                for reference in custom_config.inputs.values()
-            })
-            for service_name in dependency_services:
-                unhealthy_entity = entity_id("binary_sensor", service_name, "service_unhealthy")
-                fault_active_entity = entity_id("input_boolean", service_name, "service_fault_active")
-                dependency_checks.append(f"is_state('{unhealthy_entity}', 'on')")
-                dependency_checks.append(f"is_state('{fault_active_entity}', 'on')")
-            dependency_checks.append(f"not is_number(states('{output_entity}'))")
-            synthetic_alarm_service = {
-                "name": synthetic_service_name,
-                "label": "Calculated Measurements",
-                "service_id": synthetic_service_name,
-                "sensor_fault_confirm_seconds": 15,
-                "unhealthy_template": "{{ " + " or ".join(dependency_checks) + " }}",
-                "alarm_state_entities": [entity_id("input_select", synthetic_service_name, "value", "alarm_state")],
-                "subordinate_notification_ids": [f"labpulse_{custom_measurement['measurement_id']}_status"],
-                "measurement": custom_measurement,
-            }
             custom_alarm_services.append(synthetic_alarm_service)
             custom_alarm_measurements.append((synthetic_alarm_service, custom_measurement))
 
@@ -334,6 +347,14 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             if measurement["alarmed"]:
                 alarm_measurements.append((physical_service, measurement))
     alarm_measurements.extend(custom_alarm_measurements)
+    measurements = [
+        (service, measurement)
+        for service in physical_services
+        for measurement in service["measurements"]
+    ]
+    measurements.extend(
+        (service, service["measurement"]) for service in custom_measurement_services
+    )
     power_alarm_services = tuple(
         service
         for service in physical_services
@@ -416,10 +437,13 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         monitor_setups=monitor_setups,
         custom_measurements=tuple(custom_measurements),
         custom_alarm_services=tuple(custom_alarm_services),
+        measurements=tuple(measurements),
         alarm_measurements=tuple(alarm_measurements),
         power_alarm_services=power_alarm_services,
         sms_send_topic=SMS_SEND_TOPIC,
         update_maintenance_topic=UPDATE_MAINTENANCE_TOPIC,
+        update_maintenance_ack_topic=UPDATE_MAINTENANCE_ACK_TOPIC,
+        send_recovery_sms=config.sms.send_recovery_sms,
         bulk_alarm_targets=bulk_alarm_targets,
         bulk_alarm_target_options=tuple(target["option"] for target in bulk_alarm_targets),
         bulk_target_counts={

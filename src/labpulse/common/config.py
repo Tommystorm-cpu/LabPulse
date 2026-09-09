@@ -33,6 +33,7 @@ class SmsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = Field(default=True, strict=True)
+    send_recovery_sms: bool = Field(default=False, strict=True)
     recipients: list[str] = Field(default_factory=list)
     test_recipients: list[str] = Field(default_factory=list)
 
@@ -67,7 +68,7 @@ class ServiceHealthConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    fault_confirm_seconds: int = Field(default=10, ge=1, le=3600)
+    offline_confirm_seconds: int = Field(default=10, ge=1, le=3600)
     recovery_confirm_seconds: int = Field(default=15, ge=1, le=3600)
 
 

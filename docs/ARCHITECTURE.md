@@ -400,18 +400,39 @@ Home Assistant owns:
 - threshold mode and values;
 - danger observation percentage and window;
 - recovery duration and deadband;
-- `Normal`, `Danger`, and `Sensor Fault` states;
-- whole-service fault and recovery confirmation;
-- direct power loss, restoration, and power-sensor faults;
+- `Normal` and `Danger` threshold states for available readings;
+- Online, Degraded, and Offline service-health classification;
+- required/optional reading-availability classification and confirmation;
+- direct power loss and restoration;
 - global, setup, measurement, and power mutes;
 - Test mode;
 - explicit resend requests for active measurement alerts;
-- retained update-maintenance state that suppresses planned sensor-health
-  transitions until every physical measurement is fresh;
-- persistent notification and SMS request creation.
+- retained update-maintenance request and acknowledgement state;
+- one central incident dispatcher for persistent notification and SMS request
+  creation, suppression, and recovery eligibility.
 
 Python publishes measurements and health facts. It does not decide whether a
 measurement is dangerous.
+
+The notification path is deliberately one-way:
+
+```text
+MQTT facts
+  -> service / reading / alarm classification
+  -> confirmed incident transition
+  -> central dispatcher
+  -> persistent Home Assistant problem and optional SMS request
+```
+
+Stable incident and persistent-notification IDs plus restored delivery flags
+prevent duplicates after a Home Assistant restart. Service outages suppress
+their subordinate reading incidents. A recovery always dismisses the matching
+problem, but creates a recovery message only if the opening notification was
+actually created; recovery SMS additionally requires `send_recovery_sms`.
+On startup Home Assistant republishes its restored maintenance helper as a
+retained request. This gives a fresh broker an explicit OFF state while
+preserving ON after an interrupted update; the SMS subscriber remains
+fail-closed until it receives that retained state.
 
 ## SMS process
 

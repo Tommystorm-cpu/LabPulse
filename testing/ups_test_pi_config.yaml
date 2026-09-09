@@ -11,7 +11,7 @@ sms:
     - "+447700900001"
 
 service_health:
-  fault_confirm_seconds: 10
+  offline_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
 setups: {}

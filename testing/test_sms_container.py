@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import subprocess
 from unittest.mock import patch
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -15,6 +16,7 @@ from labpulse.common.mqtt_contracts import (
     SMS_STATUS_DISCOVERY_TOPIC,
     SMS_STATUS_TOPIC,
     SMS_SUBSCRIPTION_TOPIC,
+    UPDATE_MAINTENANCE_TOPIC,
     SmsRequest,
     sms_result_topic,
 )
@@ -452,7 +454,11 @@ def test_subscriber_uses_persistent_qos_one_session() -> None:
     subscriber.connect()
     assert_equal(client.connected_to, ("mosquitto", 1883, 60), "MQTT connection")
     subscriber.on_connect(client, None, None, 0, None)
-    assert_equal(client.subscriptions, [(SMS_SUBSCRIPTION_TOPIC, 1)], "QoS 1 subscription")
+    assert_equal(
+        client.subscriptions,
+        [([(SMS_SUBSCRIPTION_TOPIC, 1), (UPDATE_MAINTENANCE_TOPIC, 1)], 0)],
+        "QoS 1 alert and maintenance subscriptions",
+    )
     assert_equal(client.published[-2][0], SMS_STATUS_DISCOVERY_TOPIC, "status discovery topic")
     assert_equal(client.published[-1][0], SMS_STATUS_TOPIC, "online status topic")
     assert_equal(client.published[-1][2:], (1, True), "retained online status")
@@ -477,6 +483,32 @@ def test_payload_parser_is_strict() -> None:
         except ValueError:
             continue
         raise AssertionError(f"invalid payload accepted: {payload!r}")
+
+
+def test_subscriber_discards_queued_alerts_during_maintenance() -> None:
+    """Do not deliver queued QoS-one requests until retained maintenance is off."""
+
+    sender = FakeSender()
+    client = FakeSmsClient()
+    with patch.object(sms_subscriber.mqtt, "Client", return_value=client):
+        subscriber = SmsSubscriber(MqttConfig(broker="mosquitto"), sender, SMS_TEST_STATE)
+    subscriber.on_connect(client, None, None, 0, None)
+    alert = type(
+        "Message", (),
+        {
+            "topic": SMS_SUBSCRIPTION_TOPIC,
+            "payload": json.dumps(request_payload(f"maintenance-{uuid4()}")).encode(),
+        },
+    )()
+    subscriber.on_message(client, None, alert)
+    assert_equal(sender.requests, [], "queued alert suppressed before maintenance state")
+    maintenance_off = type(
+        "Message", (),
+        {"topic": UPDATE_MAINTENANCE_TOPIC, "payload": b'{"request_id":"ready","state":"OFF"}'},
+    )()
+    subscriber.on_message(client, None, maintenance_off)
+    subscriber.on_message(client, None, alert)
+    assert_equal(len(sender.requests), 1, "alert accepted after maintenance clears")
 
 
 def test_subscriber_deduplicates_and_rate_limits() -> None:
@@ -730,7 +762,7 @@ def test_shared_sms_template_catalogue() -> None:
         SUBSCRIBE_CONFIRMATION,
         "subscribe confirmation source",
     )
-    assert_equal(len(templates["alerts"]), 10, "alert template pairs")
+    assert_equal(len(templates["alerts"]), 8, "alert template pairs")
     for name, alert in templates["alerts"].items():
         assert_equal("[TEST]" in alert["title"], True, f"{name} template test prefix")
         assert_contains(

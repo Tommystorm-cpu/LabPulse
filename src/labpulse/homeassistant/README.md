@@ -17,10 +17,12 @@ LabPulse manages `configuration.yaml`, `packages/labpulse_generated.yaml` and
 `scenes.yaml` are created but existing versions are preserved. Rendered output
 is parsed as YAML; guarded configuration also runs Home Assistant's check.
 
-The render model covers physical and calculated measurements, setups, outputs,
-dashboard grouping and alarm controls. Home Assistant owns thresholds,
-observation/recovery periods, deadbands, mutes, Test mode and notification
-requests. Hardware, topics and delivery remain in their owning packages.
+The render model covers physical and calculated measurements, service health,
+required/optional reading availability, setups, outputs, dashboard grouping,
+alarm controls, and stable incident identities. Home Assistant owns thresholds,
+availability decisions, confirmation/recovery periods, mutes, Test mode, and
+the central notification dispatcher. Hardware services publish facts only; SMS
+delivery remains in its owning package.
 
 Relevant tests include generator, entity, dashboard, grouping, power and
 notification-context suites. See [templates](templates/README.md), the

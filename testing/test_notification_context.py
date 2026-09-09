@@ -48,25 +48,15 @@ def config_data() -> dict[str, object]:
     }
 
 
-def test_sms_fragments_require_explicit_context() -> None:
-    """Reject ambient model access while preserving explicit and runtime values."""
+def test_sms_catalogue_uses_availability_language() -> None:
+    """Keep old fault terminology out of the shared message catalogue."""
 
     model = build_template_context(LabPulseConfig.model_validate(config_data()))
     templates = deepcopy(alarm.load_sms_templates())
-    templates["alerts"]["service_fault"]["title"] = '"[[ service.label ]] {{ runtime_value }}"'
-    with patch.object(alarm, "load_sms_templates", return_value=templates):
-        rendered = render_alarm(model)
-    assert any(
-        "Shared Sensor Hub {{ runtime_value }}" in value
-        for value in walk(yaml.safe_load(rendered))
-        if isinstance(value, str)
-    )
-
-    # The outer template has model, but the fragment caller does not pass it.
-    templates["alerts"]["service_fault"]["title"] = '"[[ model.sms_send_topic ]]"'
-    with patch.object(alarm, "load_sms_templates", return_value=templates):
-        with pytest.raises(UndefinedError, match="model"):
-            render_alarm(model)
+    rendered = render_alarm(model)
+    assert "reading_unavailable" in templates["alerts"]
+    assert "sensor_fault" not in str(templates).lower()
+    assert "Sensor Fault" not in rendered
 
 
 def walk(value: object) -> Iterable[object]:
@@ -123,8 +113,8 @@ def test_context_for_every_scope_without_duplicate_events() -> None:
     transition_suffixes = (
         " Danger",
         " Recovery",
-        " Sensor Fault",
-        " Sensor Recovery",
+        " Reading Unavailable",
+        " Reading Available",
     )
     for label, context in expected.items():
         measurement_automations = [
@@ -138,20 +128,17 @@ def test_context_for_every_scope_without_duplicate_events() -> None:
                 f"{label} should retain four physical transition automations"
             )
         for automation in measurement_automations:
-            if service_call_count(automation, "persistent_notification.create") != 1:
-                raise AssertionError(f"{automation['alias']} duplicates HA notifications")
-            if service_call_count(automation, "mqtt.publish") != 1:
-                raise AssertionError(f"{automation['alias']} duplicates SMS requests")
-            persistent = service_actions(
-                automation, "persistent_notification.create"
-            )[0]
-            sms = service_actions(automation, "mqtt.publish")[0]
-            if context not in str(persistent["data"]["message"]):
-                raise AssertionError(
-                    f"{automation['alias']} lacks Home Assistant setup context"
-                )
-            if context not in str(sms["data"]["payload"]):
-                raise AssertionError(f"{automation['alias']} lacks SMS setup context")
+            dispatches = [
+                item for item in walk(automation)
+                if isinstance(item, dict)
+                and item.get("service") in {
+                    "script.labpulse_open_incident", "script.labpulse_close_incident"
+                }
+            ]
+            if len(dispatches) != 1:
+                raise AssertionError(f"{automation['alias']} bypasses central delivery")
+            if context not in str(dispatches[0]["data"]):
+                raise AssertionError(f"{automation['alias']} lacks setup context")
 
 
 def test_membership_does_not_change_alarm_identity() -> None:
@@ -172,14 +159,14 @@ def test_membership_does_not_change_alarm_identity() -> None:
         entity_id("sensor", "shared_hub", first_measurement["name"]),
         entity_id("input_select", "shared_hub", first_measurement["name"], "alarm_state"),
         entity_id("input_select", "shared_hub", first_measurement["name"], "alarm_mode"),
-        entity_id("input_boolean", "shared_hub", first_measurement["name"], "alarm_muted"),
+        entity_id("input_boolean", "shared_hub", first_measurement["name"], "reading_notifications_muted"),
     )
     second_identity = (
         stable_id("shared_hub", second_measurement["name"]),
         entity_id("sensor", "shared_hub", second_measurement["name"]),
         entity_id("input_select", "shared_hub", second_measurement["name"], "alarm_state"),
         entity_id("input_select", "shared_hub", second_measurement["name"], "alarm_mode"),
-        entity_id("input_boolean", "shared_hub", second_measurement["name"], "alarm_muted"),
+        entity_id("input_boolean", "shared_hub", second_measurement["name"], "reading_notifications_muted"),
     )
     if first_identity != second_identity:
         raise AssertionError("setup membership changed physical alarm identity")
@@ -194,8 +181,8 @@ def test_service_faults_remain_hub_level() -> None:
     service_health = [
         item
         for item in generated
-        if "Service Fault" in str(item.get("alias", ""))
-        or "Service Restored" in str(item.get("alias", ""))
+        if "Service Offline" in str(item.get("alias", ""))
+        or "Service Online" in str(item.get("alias", ""))
     ]
     if len(service_health) != 2:
         raise AssertionError("expected one hub fault and one hub recovery automation")
@@ -244,17 +231,12 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
             for automation in generated
             if str(automation.get("alias", "")).startswith(f"LabPulse {label} ")
             and str(automation.get("alias", "")).endswith(
-                (" Danger", " Recovery", " Sensor Fault", " Sensor Recovery")
+                    (" Danger", " Recovery", " Reading Unavailable", " Reading Available")
             )
         ]
         if len(transitions) != 4:
             raise AssertionError(f"wrong transition count for {label}")
-        value_templates = [
-            str(item["value_template"])
-            for transition in transitions
-            for item in walk(transition)
-            if isinstance(item, dict) and "value_template" in item
-        ]
+        value_templates = [str(item) for transition in transitions for item in walk(transition)]
         for gate in gates:
             if not any(f"is_state('{gate}', 'off')" in item for item in value_templates):
                 raise AssertionError(f"{label} does not require open gate {gate}")
@@ -276,8 +258,8 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
     service_health = [
         automation
         for automation in generated
-        if "Service Fault" in str(automation.get("alias", ""))
-        or "Service Restored" in str(automation.get("alias", ""))
+        if "Service Offline" in str(automation.get("alias", ""))
+        or "Service Online" in str(automation.get("alias", ""))
     ]
     if any(helper in yaml.safe_dump(service_health) for helper in setup_helpers):
         raise AssertionError("setup mute leaked into physical service-health alarms")

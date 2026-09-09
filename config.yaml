@@ -16,6 +16,8 @@ mqtt:
 sms:
   # Keep true for safe testing; set false on the real Pi to send through mmcli.
   dry_run: true
+  # Recoveries always clear Home Assistant incidents. SMS recoveries are opt-in.
+  send_recovery_sms: false
   # Emergency contact numbers for system alerts.
   recipients:
     - "+447700900000"
@@ -26,7 +28,7 @@ sms:
 # Whole sensor-service failures produce one hub-level warning instead of one
 # stale-measurement warning per sensor. These timers also reject brief USB glitches.
 service_health:
-  fault_confirm_seconds: 10
+  offline_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
 # Optional extra operator dashboard tabs. Setups use dashboard: <ID> to move
@@ -93,6 +95,13 @@ services:
       pressure:
         label: Pressure
         setups: [compressed_air]
+        # Required readings create an availability incident if they stop
+        # publishing. Use availability: optional for installed spare or known-
+        # broken channels that should remain visible without alerting or
+        # blocking an update.
+        availability: required
+        unavailable_confirm_seconds: 60
+        availability_recovery_confirm_seconds: 15
         # Set alarmed: false to display this reading without creating alarm
         # helpers, controls, or notifications. The default is true.
         # device_class selects LabPulse semantics and the default icon without

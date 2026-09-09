@@ -19,6 +19,7 @@ from labpulse.common.config import (
 from labpulse.hardware.drivers.serial_pipe import SerialPipeConfig
 from labpulse.hardware.drivers.sht40 import Sht40Config
 from labpulse.hardware.drivers.x1200 import X1200Config
+from labpulse.common.measurement_config import AvailabilityPolicy
 
 
 def repository_data() -> dict[str, object]:
@@ -66,6 +67,8 @@ def test_valid_document_and_typed_driver_options() -> None:
     pressure = document.config.services["pressure_monitor"].measurements["pressure"]
     if pressure.alarmed is not True:
         raise AssertionError("measurements are not alarmed by default")
+    if pressure.availability is not AvailabilityPolicy.REQUIRED:
+        raise AssertionError("measurements are not required by default")
     if document.config.setups["compressed_air"].dashboard != "main":
         raise AssertionError("setups do not default to the main dashboard")
 
@@ -131,6 +134,26 @@ def test_alarm_and_dashboard_configuration_contracts() -> None:
     mixed_power_alarm = repository_data()
     mixed_power_alarm["services"]["ups_monitor"]["measurements"]["voltage"]["alarmed"] = False  # type: ignore[index]
     expect_error(mixed_power_alarm, "must all use the same alarmed value")
+
+
+def test_reading_availability_policy_and_timing_are_strict() -> None:
+    """Accept required/optional intent and reject ambiguous availability values."""
+
+    configured = repository_data()
+    pressure = configured["services"]["pressure_monitor"]["measurements"]["pressure"]  # type: ignore[index]
+    pressure["availability"] = "optional"
+    pressure["unavailable_confirm_seconds"] = 240
+    parsed = load_config(
+        REPOSITORY / "configured.yaml",
+        text=yaml.safe_dump(configured, sort_keys=False),
+    ).config.services["pressure_monitor"].measurements["pressure"]
+    assert parsed.availability is AvailabilityPolicy.OPTIONAL
+    assert parsed.unavailable_confirm_seconds == 240
+
+    invalid = repository_data()
+    invalid["services"]["pressure_monitor"]["measurements"]["pressure"]["availability"] = "disabled"  # type: ignore[index]
+    error = expect_error(invalid, "required")
+    assert error.problems[0].location[-1] == "availability"
 
 
 def test_file_failures_use_the_same_error_model() -> None:

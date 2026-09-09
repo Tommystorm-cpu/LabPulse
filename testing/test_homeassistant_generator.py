@@ -13,6 +13,7 @@ from labpulse.common.config import load_config
 from labpulse.common.mqtt_contracts import (
     SMS_ALERT_PAYLOAD_FIELDS,
     SMS_SEND_TOPIC,
+    UPDATE_MAINTENANCE_ACK_TOPIC,
     UPDATE_MAINTENANCE_TOPIC,
 )
 import labpulse.homeassistant.generator as generator
@@ -95,12 +96,19 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
         "input_select": {f"{helper}_alarm_state", f"{helper}_alarm_mode"},
         "input_number": {f"{helper}_minimum_threshold", f"{helper}_maximum_threshold"},
         "input_boolean": {
-            f"{helper}_alarm_muted",
+            f"{helper}_reading_notifications_muted",
+            f"{helper}_availability_incident_active",
+            f"{helper}_availability_notification_sent",
+            f"{helper}_alarm_notification_sent",
             "labpulse_global_notifications_muted",
             "labpulse_update_maintenance",
         },
         "input_button": {f"{helper}_resend_active_alert"},
-        "script": {"labpulse_apply_bulk_alarm_settings"},
+        "script": {
+            "labpulse_apply_bulk_alarm_settings",
+            "labpulse_open_incident",
+            "labpulse_close_incident",
+        },
     }
     for domain, identifiers in required.items():
         assert identifiers <= package[domain].keys()
@@ -109,8 +117,8 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     expected = {
         "LabPulse Pressure Danger",
         "LabPulse Pressure Recovery",
-        "LabPulse Pressure Sensor Fault",
-        "LabPulse Pressure Sensor Recovery",
+        "LabPulse Pressure Reading Unavailable",
+        "LabPulse Pressure Reading Available",
     }
     assert all(aliases.count(alias) == 1 for alias in expected)
 
@@ -118,11 +126,27 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     assert maintenance["trigger"] == [
         {"platform": "mqtt", "topic": UPDATE_MAINTENANCE_TOPIC}
     ]
+    acknowledgement = next(
+        item for item in walk(maintenance)
+        if isinstance(item, dict)
+        and item.get("service") == "mqtt.publish"
+    )
+    assert acknowledgement["data"]["topic"] == UPDATE_MAINTENANCE_ACK_TOPIC
+    assert acknowledgement["data"]["retain"] is True
+    startup_sync = automation(
+        package, "LabPulse Publish Restored Update Maintenance State"
+    )
+    startup_publish = next(
+        item for item in walk(startup_sync)
+        if isinstance(item, dict) and item.get("service") == "mqtt.publish"
+    )
+    assert startup_publish["data"]["topic"] == UPDATE_MAINTENANCE_TOPIC
+    assert "homeassistant-startup-" in startup_publish["data"]["payload"]
 
     danger = automation(package, "LabPulse Pressure Danger")
-    fault = automation(package, "LabPulse Pressure Sensor Fault")
+    unavailable = automation(package, "LabPulse Pressure Reading Unavailable")
     resend = f"input_button.{helper}_resend_active_alert"
-    for item in (danger, fault):
+    for item in (danger, unavailable):
         trigger = next(value for value in item["trigger"] if value.get("id") == "resend")
         assert trigger == {
             "platform": "state",
@@ -130,34 +154,58 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
             "entity_id": resend,
         }
 
-    publish = next(
+    dispatch = next(
         item for item in walk(danger)
-        if isinstance(item, dict) and item.get("service") == "mqtt.publish"
+        if isinstance(item, dict) and item.get("service") == "script.labpulse_open_incident"
     )
-    assert publish["data"]["topic"] == SMS_SEND_TOPIC
-    payload = str(publish["data"]["payload"])
+    payload = str(dispatch["data"]["sms_payload"])
     assert all(f'"{field}"' in payload for field in SMS_ALERT_PAYLOAD_FIELDS)
     assert "Affected setup: Air Pressure." in payload
+    central_publish = next(
+        item for item in walk(package["script"]["labpulse_open_incident"])
+        if isinstance(item, dict) and item.get("service") == "mqtt.publish"
+    )
+    assert central_publish["data"]["topic"] == SMS_SEND_TOPIC
+    open_incident = package["script"]["labpulse_open_incident"]["sequence"]
+    maintenance_gate_index = next(
+        index for index, item in enumerate(open_incident)
+        if item.get("condition") == "state"
+        and item.get("entity_id") == "input_boolean.labpulse_update_maintenance"
+        and item.get("state") == "off"
+    )
+    notification_index = next(
+        index for index, item in enumerate(open_incident)
+        if item.get("service") == "persistent_notification.create"
+    )
+    sms_index = next(
+        index for index, item in enumerate(open_incident)
+        if item.get("service") == "mqtt.publish"
+    )
+    assert maintenance_gate_index < notification_index < sms_index
 
-    service_fault = automation(package, "LabPulse Air Pressure Sensor Hub Service Fault")
-    normalized = {
-        entity
-        for item in walk(service_fault["action"])
-        if isinstance(item, dict)
-        and item.get("service") == "input_select.select_option"
-        and item.get("data", {}).get("option") == "Normal"
-        for entity in item["target"]["entity_id"]
-    }
-    assert normalized == {
-        "input_select.labpulse_pressure_monitor_pressure_alarm_state",
-        "input_select.labpulse_pressure_monitor_temperature_alarm_state",
-    }
+    close_incident = str(package["script"]["labpulse_close_incident"])
+    assert "original_notification_sent" in close_incident
+    assert "original_sms_requested" in close_incident
+    assert "input_boolean.labpulse_update_maintenance" in close_incident
+
+    incident_alias_suffixes = (
+        " Danger", " Recovery", " Reading Unavailable", " Reading Available",
+        " Service Offline", " Service Online", " Power Lost", " Power Restored",
+    )
+    for generated_automation in package["automation"]:
+        if str(generated_automation.get("alias", "")).endswith(incident_alias_suffixes):
+            assert not any(
+                isinstance(item, dict)
+                and item.get("service") == "persistent_notification.create"
+                for item in walk(generated_automation)
+            )
+
+    assert package["input_select"][f"{helper}_alarm_state"]["options"] == ["Normal", "Danger"]
+    assert "Sensor Fault" not in paths.package.read_text(encoding="utf-8")
 
     for alias in (
-        "LabPulse Pressure Sensor Fault",
-        "LabPulse Pressure Sensor Recovery",
-        "LabPulse Air Pressure Sensor Hub Service Fault",
-        "LabPulse Air Pressure Sensor Hub Service Restored",
+        "LabPulse Pressure Reading Unavailable",
+        "LabPulse Air Pressure Sensor Hub Service Offline",
     ):
         conditions = {
             (item.get("entity_id"), item.get("state"))
@@ -178,6 +226,39 @@ def test_threshold_helpers_restore_state_without_seed_files() -> None:
         assert "initial" not in helper
     assert package["input_select"]["labpulse_pressure_monitor_pressure_alarm_mode"]["options"][0] == "Disabled"
     assert package["input_select"]["labpulse_pressure_monitor_pressure_alarm_state"]["options"][0] == "Normal"
+
+
+def test_optional_reading_is_visible_without_availability_incident() -> None:
+    """Keep optional telemetry and alarms while treating absence as non-actionable."""
+
+    root = REPOSITORY / "testing" / "tmp" / f"generator-optional-{uuid4().hex}"
+    data = sample_config()
+    data["services"]["pressure_monitor"]["measurements"]["pressure"]["availability"] = "optional"  # type: ignore[index]
+    config_path = root / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    ha_dir = root / "homeassistant" / "config"
+    assert generate_homeassistant([str(config_path), str(ha_dir)]) == 0
+    text = (ha_dir / "packages" / "labpulse_generated.yaml").read_text(encoding="utf-8")
+    package = yaml.safe_load(text)
+    helper = "labpulse_pressure_monitor_pressure"
+    assert f"{helper}_reading_notifications_muted" in package["input_boolean"]
+    assert f"{helper}_availability_incident_active" not in package["input_boolean"]
+    assert automation(package, "LabPulse Pressure Danger")
+    assert not any(
+        item["alias"] == "LabPulse Pressure Reading Unavailable"
+        for item in package["automation"]
+    )
+    availability_sensors = [
+        sensor
+        for block in package["template"]
+        for sensor in block.get("sensor", [])
+    ]
+    status = next(
+        sensor for sensor in availability_sensors
+        if sensor["unique_id"] == f"{helper}_availability"
+    )
+    assert "Unavailable — optional" in status["state"]
 
 
 def test_first_install_mutes_once_without_overriding_restored_state() -> None:

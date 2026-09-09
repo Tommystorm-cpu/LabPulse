@@ -24,13 +24,27 @@
       square: false
       cards:
       - type: tile
-        entity: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') ]]
-        name: Service Health
+        entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+        name: Service health
         icon: mdi:heart-pulse
       - type: tile
-        entity: [[ entity_id('input_boolean', service.name, 'service_fault_active') ]]
-        name: Confirmed service fault
+        entity: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') ]]
+        name: Confirmed offline incident
         icon: mdi:alert-circle-outline
+    - type: entities
+      title: Service incident details
+      show_header_toggle: false
+      entities:
+      - type: attribute
+        entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+        attribute: reason
+        name: Reason
+      - type: attribute
+        entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+        attribute: condition_age_seconds
+        name: Condition age (seconds)
+      - entity: [[ entity_id('input_datetime', service.name, 'service_offline_started') ]]
+        name: Confirmed incident started
     - type: entities
       title: Latest measurements
       show_header_toggle: false
@@ -38,6 +52,20 @@
 [% for measurement in service.measurements %]
       - entity: [[ measurement.entity_id ]]
         name: [[ measurement.label | yaml_scalar ]]
+      - entity: [[ entity_id('sensor', service.name, measurement.name, 'availability') ]]
+        name: [[ (measurement.label ~ ' availability') | yaml_scalar ]]
+      - type: attribute
+        entity: [[ entity_id('sensor', service.name, measurement.name, 'availability') ]]
+        attribute: policy
+        name: [[ (measurement.label ~ ' policy') | yaml_scalar ]]
+      - type: attribute
+        entity: [[ entity_id('sensor', service.name, measurement.name, 'availability') ]]
+        attribute: condition_age_seconds
+        name: [[ (measurement.label ~ ' condition age (seconds)') | yaml_scalar ]]
+[% if measurement.availability_required %]
+      - entity: [[ entity_id('input_datetime', service.name, measurement.name, 'availability_incident_started') ]]
+        name: [[ (measurement.label ~ ' confirmed incident started') | yaml_scalar ]]
+[% endif %]
 [% endfor %]
 [% if service.power is not none and service.power.alarmed %]
 {# These power details are useful for fault finding, but too technical for the
@@ -54,8 +82,8 @@
         double_tap_action: {action: none}
       - entity: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]
         name: External power present
-      - entity: [[ entity_id('binary_sensor', service.name, 'power', 'sensor_fault') ]]
-        name: Power sensor fault
+      - entity: [[ entity_id('sensor', service.name, 'mains_present', 'availability') ]]
+        name: External-power reading availability
       - entity: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]
         name: Outage active
       - entity: [[ entity_id('sensor', service.name, 'power', 'last_outage_started') ]]
@@ -95,5 +123,15 @@
 [% for measurement in model.custom_measurements %]
       - entity: [[ measurement.entity_id ]]
         name: [[ measurement.label | yaml_scalar ]]
+      - entity: [[ entity_id('sensor', measurement.service_name, measurement.name, 'availability') ]]
+        name: [[ (measurement.label ~ ' availability') | yaml_scalar ]]
+      - type: attribute
+        entity: [[ entity_id('sensor', measurement.service_name, measurement.name, 'availability') ]]
+        attribute: policy
+        name: [[ (measurement.label ~ ' policy') | yaml_scalar ]]
+      - type: attribute
+        entity: [[ entity_id('sensor', measurement.service_name, measurement.name, 'availability') ]]
+        attribute: condition_age_seconds
+        name: [[ (measurement.label ~ ' condition age (seconds)') | yaml_scalar ]]
 [% endfor %]
 [% endif %]

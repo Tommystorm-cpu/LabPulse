@@ -1,7 +1,4 @@
-{# A measurement can have a dangerous value or stop producing valid readings.
-   Generate alarms for both cases. #}
+{# Alarm condition is independent from reading availability. #}
 [% for service, measurement in model.alarm_measurements %]
 [% include "automations/measurement_state.yaml.j2" %]
-[% include "automations/measurement_sensor_health.yaml.j2" %]
 [% endfor %]
-[% include "automations/custom_measurement_health.yaml.j2" %]

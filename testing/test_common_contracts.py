@@ -145,21 +145,21 @@ def test_service_health_config_contract() -> None:
         },
     }
     defaulted = LabPulseConfig.model_validate(base)
-    assert_equal(defaulted.service_health.fault_confirm_seconds, 10, "fault default")
+    assert_equal(defaulted.service_health.offline_confirm_seconds, 10, "offline default")
     assert_equal(defaulted.service_health.recovery_confirm_seconds, 15, "recovery default")
     configured = LabPulseConfig.model_validate(
         {
             **base,
             "service_health": {
-                "fault_confirm_seconds": 7,
+                "offline_confirm_seconds": 7,
                 "recovery_confirm_seconds": 12,
             },
         }
     )
-    assert_equal(configured.service_health.fault_confirm_seconds, 7, "fault override")
+    assert_equal(configured.service_health.offline_confirm_seconds, 7, "offline override")
     try:
         LabPulseConfig.model_validate(
-            {**base, "service_health": {"fault_confirm_seconds": 0}}
+            {**base, "service_health": {"offline_confirm_seconds": 0}}
         )
     except ValidationError:
         pass

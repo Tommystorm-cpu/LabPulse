@@ -1,197 +1,130 @@
-{# Service health means the LabPulse process can provide trustworthy readings.
-   Measurement alarms are suppressed while a service is down so one hardware
-   failure produces one useful notification rather than a cascade. #}
+{# A service incident means the process, hub, or driver is offline. Missing
+   individual values make the service Degraded but remain reading incidents. #}
 [% for service in model.services %]
-  - alias: LabPulse [[ service.label ]] Service Fault
-    mode: single
+  - alias: LabPulse [[ service.label ]] Service Offline
+    mode: restart
     trigger:
     - platform: state
-      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       to: 'on'
-      for:
-        seconds: [[ service.health_fault_confirm_seconds | yaml_scalar ]]
     - platform: homeassistant
       event: start
+    - platform: mqtt
+      topic: [[ model.update_maintenance_topic | yaml_scalar ]]
     action:
-    - choose:
-      - conditions: >-
-          {{ trigger.platform == 'homeassistant' }}
-        sequence:
-        - delay:
-            seconds: [[ service.health_fault_confirm_seconds | yaml_scalar ]]
+    - condition: template
+      value_template: >-
+        {{ trigger.platform != 'mqtt' or trigger.payload_json.state == 'OFF' }}
     - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       state: 'on'
-[% if service.alarm_state_entities %]
-    - service: input_select.select_option
-      target:
-        entity_id: [[ service.alarm_state_entities | yaml_scalar ]]
+{# Suppress existing child incidents as soon as the root outage enters its
+   pending period, not only after the service incident is confirmed. #}
+[% if service.subordinate_incident_entities %]
+    - service: persistent_notification.dismiss
       data:
-        option: Normal
+        notification_id: [[ service.subordinate_notification_ids[0] | yaml_scalar ]]
+[% for notification_id in service.subordinate_notification_ids[1:] %]
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: [[ notification_id | yaml_scalar ]]
+[% endfor %]
+    - service: input_boolean.turn_off
+      target:
+        entity_id: [[ (service.subordinate_incident_entities + service.subordinate_notification_sent_entities + service.subordinate_sms_requested_entities) | yaml_scalar ]]
 [% endif %]
-    - repeat:
-        for_each: [[ service.subordinate_notification_ids | yaml_scalar ]]
-        sequence:
-        - service: persistent_notification.dismiss
-          data:
-            notification_id: >-
-              {{ repeat.item }}
+    - delay:
+        seconds: [[ service.health_offline_confirm_seconds | yaml_scalar ]]
     - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'service_fault_active') | yaml_scalar ]]
+      entity_id: input_boolean.labpulse_update_maintenance
+      state: 'off'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
+      state: 'on'
+    - condition: state
+      entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
       state: 'off'
     - service: input_datetime.set_datetime
       target:
-        entity_id: [[ entity_id('input_datetime', service.name, 'service_fault_started') | yaml_scalar ]]
+        entity_id: [[ entity_id('input_datetime', service.name, 'service_offline_started') | yaml_scalar ]]
       data:
-        timestamp: >-
-          {{ as_timestamp(now()) - [[ service.health_fault_confirm_seconds ]] }}
+        timestamp: "{{ as_timestamp(now()) }}"
     - service: input_boolean.turn_on
       target:
-        entity_id: [[ entity_id('input_boolean', service.name, 'service_fault_active') | yaml_scalar ]]
-    - choose:
-      - conditions:
-        - condition: state
-          entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
-          state: 'off'
-        - condition: state
-          entity_id: input_boolean.labpulse_update_maintenance
-          state: 'off'
-        sequence:
-        - service: persistent_notification.create
-          data:
-            title: >
-              {{ (
-                '[TEST] '
-                if is_state(
-                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
-                  'on'
-                )
-                else ''
-              ) ~ 'LabPulse [[ service.label ]] disconnected' }}
-            message: >
-              LabPulse cannot communicate with [[ service.label ]].
-              All measurements from this service are temporarily unavailable.
-              Service status:
-              {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
-            notification_id: labpulse_[[ service.service_id ]]_service_health
-        - service: mqtt.publish
-          data:
-            topic: [[ model.sms_send_topic | yaml_scalar ]]
-            qos: 1
-            retain: false
-            payload: >
-              {{ {
-                "request_id": "labpulse_[[ service.service_id ]]_service_fault_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
-                "event": "sensor_fault",
-                "service": "[[ service.name ]]",
-                "service_label": "[[ service.label ]]",
-                "measurement": "service_health",
-                "measurement_label": "Sensor hub",
-                "state": "Sensor Fault",
-                "title": [[
-                  sms.alerts.service_fault.title
-                  | render_fragment(service=service)
-                ]],
-                "message": [[
-                  sms.alerts.service_fault.message
-                  | render_fragment(service=service)
-                ]],
-                "test_mode": is_state(
-                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
-                  'on'
-                ),
-                "current_measurement": states(
-                  '[[ entity_id('sensor', service.name, 'status') ]]'
-                )
-              } | to_json }}
-{# Clear the service fault before checking its measurements. The measurement
-   recovery rules only run once the service is healthy again. #}
-  - alias: LabPulse [[ service.label ]] Service Restored
-    mode: single
+        entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
+    - service: script.labpulse_open_incident
+      data:
+        notification_id: labpulse_[[ service.service_id ]]_service_offline
+        title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse [[ service.label ]] offline' }}
+        message: >-
+          LabPulse cannot communicate with [[ service.label ]]. Its readings are temporarily unavailable.
+          Raw service status: {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, 'service_offline_sms_requested') | yaml_scalar ]]
+        delivery_allowed: true
+        sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ service.service_id ]]_service_offline_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "offline",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "service_health",
+            "measurement_label": "Service",
+            "state": "Offline",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Service Offline: [[ service.label ]]',
+            "message": 'LabPulse cannot communicate with [[ service.label ]]. All readings from this service are temporarily unavailable.',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')
+          } | to_json }}
+
+  - alias: LabPulse [[ service.label ]] Service Online
+    mode: restart
     trigger:
     - platform: state
-      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       to: 'off'
-      for:
-        seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
-    - platform: homeassistant
-      event: start
     action:
-    - choose:
-      - conditions: >-
-          {{ trigger.platform == 'homeassistant' }}
-        sequence:
-        - delay:
-            seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
+    - delay:
+        seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
     - condition: state
-      entity_id: [[ entity_id('binary_sensor', service.name, 'service_unhealthy') | yaml_scalar ]]
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       state: 'off'
     - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'service_fault_active') | yaml_scalar ]]
+      entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
       state: 'on'
     - variables:
-        fault_started: >-
-          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'service_fault_started') ]]'), 0) }}
+        offline_started: >-
+          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'service_offline_started') ]]'), as_timestamp(now())) }}
         downtime_seconds: >-
-          {{ ([0, as_timestamp(now()) - fault_started] | max) | round(0) }}
+          {{ [0, as_timestamp(now()) - offline_started] | max | round(0) }}
+    - service: script.labpulse_close_incident
+      data:
+        notification_id: labpulse_[[ service.service_id ]]_service_offline
+        recovery_title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse [[ service.label ]] online' }}
+        recovery_message: >-
+          Communication with [[ service.label ]] has recovered after {{ downtime_seconds }} seconds.
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, 'service_offline_sms_requested') | yaml_scalar ]]
+        delivery_allowed: true
+        recovery_sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ service.service_id ]]_service_online_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "recovery",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "service_health",
+            "measurement_label": "Service",
+            "state": "Online",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Service Online: [[ service.label ]]',
+            "message": 'Communication with [[ service.label ]] has recovered after ' ~ downtime_seconds ~ ' seconds.',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')
+          } | to_json }}
     - service: input_boolean.turn_off
       target:
-        entity_id: [[ entity_id('input_boolean', service.name, 'service_fault_active') | yaml_scalar ]]
-    - choose:
-      - conditions:
-        - condition: state
-          entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
-          state: 'off'
-        - condition: state
-          entity_id: input_boolean.labpulse_update_maintenance
-          state: 'off'
-        sequence:
-        - service: persistent_notification.create
-          data:
-            title: >
-              {{ (
-                '[TEST] '
-                if is_state(
-                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
-                  'on'
-                )
-                else ''
-              ) ~ 'LabPulse [[ service.label ]] restored' }}
-            message: >
-              Communication with [[ service.label ]] has been restored.
-              Fresh telemetry is available again.
-              Downtime: {{ downtime_seconds }} seconds.
-            notification_id: labpulse_[[ service.service_id ]]_service_health
-        - service: mqtt.publish
-          data:
-            topic: [[ model.sms_send_topic | yaml_scalar ]]
-            qos: 1
-            retain: false
-            payload: >
-              {{ {
-                "request_id":
-                  "labpulse_[[ service.service_id ]]_service_recovery_"
-                  ~ now().strftime('%Y%m%dT%H%M%S%f'),
-                "event": "recovery",
-                "service": "[[ service.name ]]",
-                "service_label": "[[ service.label ]]",
-                "measurement": "service_health",
-                "measurement_label": "Sensor hub",
-                "state": "Normal",
-                "title": [[
-                  sms.alerts.service_recovery.title
-                  | render_fragment(service=service)
-                ]],
-                "message": [[
-                  sms.alerts.service_recovery.message
-                  | render_fragment(service=service)
-                ]],
-                "test_mode": is_state(
-                  '[[ 'input_boolean.labpulse_notification_test_mode' ]]',
-                  'on'
-                ),
-                "current_measurement": states(
-                  '[[ entity_id('sensor', service.name, 'status') ]]'
-                )
-              } | to_json }}
+        entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
 [% endfor %]

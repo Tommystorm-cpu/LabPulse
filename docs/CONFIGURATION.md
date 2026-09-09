@@ -44,11 +44,12 @@ mqtt:
 
 sms:
   dry_run: true
+  send_recovery_sms: false
   recipients: []
   test_recipients: []
 
 service_health:
-  fault_confirm_seconds: 10
+  offline_confirm_seconds: 10
   recovery_confirm_seconds: 15
 
 dashboards: {}
@@ -119,6 +120,9 @@ sms:
 
 - `dry_run` defaults to `true`. Requests are validated and logged without using
   a modem.
+- `send_recovery_sms` defaults to `false`. Home Assistant always clears a
+  recovered problem, but sends a recovery SMS only when this is enabled and
+  the original incident actually requested an SMS.
 - `recipients` receive normal live alerts.
 - `test_recipients` receive requests created while Home Assistant Test mode is
   enabled.
@@ -133,12 +137,12 @@ Use example numbers in committed configuration. See
 
 ```yaml
 service_health:
-  fault_confirm_seconds: 10
+  offline_confirm_seconds: 10
   recovery_confirm_seconds: 15
 ```
 
-These values confirm a complete hardware-service fault and recovery before
-Home Assistant changes its hub-level state.
+These values confirm a complete hardware-service outage and recovery before
+Home Assistant opens or closes a service-level incident.
 
 Both values accept 1 to 3600 seconds. They are separate from:
 
@@ -354,6 +358,9 @@ measurements:
     unit: "°C"
     device_class: temperature
     icon: mdi:snowflake-thermometer
+    availability: required
+    unavailable_confirm_seconds: 60
+    availability_recovery_confirm_seconds: 15
 ```
 
 | Field | Default | Meaning |
@@ -364,6 +371,9 @@ measurements:
 | `group` | none | Presentation grouping within a setup |
 | `setups` | required for ordinary values | One or more logical setup IDs |
 | `alarmed` | `true` | Whether to generate measurement alarm state, controls, and notifications |
+| `availability` | `required` | `required` opens an incident when telemetry is unavailable; `optional` remains visible but never alerts or affects service health/update readiness |
+| `unavailable_confirm_seconds` | `60` | Continuous unavailability required before a required-reading incident opens; 1 to 86400 seconds |
+| `availability_recovery_confirm_seconds` | `15` | Continuous availability required before its incident closes; 0 to 3600 seconds |
 | `unit` | none | Exact published unit |
 | `device_class` | none | LabPulse semantic category and default-icon source |
 | `icon` | derived | Explicit `mdi:` override |
@@ -388,6 +398,14 @@ helpers, threshold controls, active-problem rows, or notifications. Whole-
 service health monitoring remains separate. Dedicated power readings form one
 composite outage alarm, so every measurement in a `power_detection` service
 must use the same `alarmed` value.
+
+`availability` is deliberately an enum rather than a second enabled flag.
+`enabled: false` on a service still means that LabPulse does not run or
+generate that service. An `optional` measurement is still generated and shown
+when present; while absent it reads **Unavailable — optional**, produces no
+incident, Home Assistant notification, or SMS, does not degrade its service,
+and does not block `labpulse update`. Invalid values are rejected with the
+configuration filename and field location.
 
 ## Custom measurements
 
@@ -436,6 +454,9 @@ numbers and must be used when declared.
 | `formula` | required | Restricted arithmetic expression |
 | `precision` | `2` | Result rounding from 0 to 10 decimal places |
 | `alarmed` | `true` | Whether to create the normal threshold alarm controls |
+| `availability` | `required` | Whether an unavailable calculated result opens an incident (`required`) or is informational (`optional`) |
+| `unavailable_confirm_seconds` | `60` | Required continuous calculated-result unavailability before an incident opens |
+| `availability_recovery_confirm_seconds` | `15` | Required continuous availability before its incident closes |
 | `unit` | none | Result unit shown by Home Assistant |
 | `device_class` | none | Result semantic category and bulk-deadband grouping |
 | `icon` | none | Optional explicit `mdi:` icon |
@@ -443,9 +464,9 @@ numbers and must be used when declared.
 
 The resulting entity is `sensor.labpulse_custom_<custom-id>`. It is unavailable
 when any physical input is unavailable or non-numeric, or when a divisor
-evaluates to zero. Physical readings retain ownership of sensor-fault alerts;
-an unavailable dependency pauses and clears the custom threshold state without
-sending a duplicate custom sensor-fault notification. Once inputs recover,
+evaluates to zero. Its own availability policy applies to that result. A
+required calculated reading waits while a source service is offline so the
+service-level incident remains the single root problem. Once inputs recover,
 normal observation-window alarm evaluation resumes.
 
 The service ID `custom` is reserved whenever custom measurements are present;

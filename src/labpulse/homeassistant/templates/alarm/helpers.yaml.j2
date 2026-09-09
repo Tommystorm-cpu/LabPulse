@@ -107,7 +107,6 @@ input_select:
     options:
     - Normal
     - Danger
-    - Sensor Fault
   labpulse_[[ measurement.measurement_id ]]_alarm_mode:
     name: '[[ measurement.label ]] Alarm Mode'
     options:
@@ -123,7 +122,6 @@ input_select:
     options:
     - Normal
     - On Battery
-    - Sensor Fault
 [% endfor %]
 [% endif %]
 
@@ -139,8 +137,8 @@ input_button:
 [% endif %]
 
 input_boolean:
-{# These on/off helpers remember global mute, local mute, and whether a fault or
-   alarm is currently active. #}
+{# These helpers remember notification policy and confirmed incident delivery.
+   Availability never shares state with a threshold or power condition. #}
   labpulse_global_notifications_muted:
     name: LabPulse Global Notifications Muted
   labpulse_first_install_initialized:
@@ -170,21 +168,34 @@ input_boolean:
     name: '[[ setup.label ]] Notifications Muted'
 [% endfor %]
 [% for service in model.services %]
-  labpulse_[[ service.service_id ]]_service_fault_active:
-    name: '[[ service.label ]] Service Fault Active'
+  labpulse_[[ service.service_id ]]_service_offline_incident_active:
+    name: '[[ service.label ]] Offline Incident Active'
+  labpulse_[[ service.service_id ]]_service_offline_notification_sent:
+    name: '[[ service.label ]] Offline Notification Sent'
+  labpulse_[[ service.service_id ]]_service_offline_sms_requested:
+    name: '[[ service.label ]] Offline SMS Requested'
 [% endfor %]
-[% for service in model.custom_alarm_services %]
-  labpulse_[[ service.service_id ]]_service_fault_active:
-    name: '[[ service.measurement.label ]] Calculation Dependency Fault Active'
-    initial: false
+[% for service, measurement in model.measurements %]
+  labpulse_[[ measurement.measurement_id ]]_reading_notifications_muted:
+    name: '[[ measurement.label ]] Reading Notifications Muted'
+[% if measurement.availability_required %]
+  labpulse_[[ measurement.measurement_id ]]_availability_incident_active:
+    name: '[[ measurement.label ]] Unavailable Incident Active'
+  labpulse_[[ measurement.measurement_id ]]_availability_notification_sent:
+    name: '[[ measurement.label ]] Unavailable Notification Sent'
+  labpulse_[[ measurement.measurement_id ]]_availability_sms_requested:
+    name: '[[ measurement.label ]] Unavailable SMS Requested'
+[% endif %]
 [% endfor %]
 [% for service, measurement in model.alarm_measurements %]
   labpulse_[[ measurement.measurement_id ]]_alarm_timing_initialized:
     name: '[[ measurement.label ]] Alarm Timing Initialized'
   labpulse_[[ measurement.measurement_id ]]_alarm_controls_expanded:
     name: '[[ measurement.label ]] Show Alarm Controls'
-  labpulse_[[ measurement.measurement_id ]]_alarm_muted:
-    name: '[[ measurement.label ]] Alarm Muted'
+  labpulse_[[ measurement.measurement_id ]]_alarm_notification_sent:
+    name: '[[ measurement.label ]] Danger Notification Sent'
+  labpulse_[[ measurement.measurement_id ]]_alarm_sms_requested:
+    name: '[[ measurement.label ]] Danger SMS Requested'
 [% endfor %]
 [% for service in model.power_alarm_services %]
 [% set power = service.power %]
@@ -192,17 +203,33 @@ input_boolean:
     name: '[[ service.label ]] Power Alerts Muted'
   labpulse_[[ service.service_id ]]_power_outage_active:
     name: '[[ service.label ]] Outage Active'
-  labpulse_[[ service.service_id ]]_power_sensor_fault_confirmed:
-    name: '[[ service.label ]] Confirmed GPIO Fault'
+  labpulse_[[ service.service_id ]]_power_notification_sent:
+    name: '[[ service.label ]] Power Notification Sent'
+  labpulse_[[ service.service_id ]]_power_sms_requested:
+    name: '[[ service.label ]] Power SMS Requested'
 [% endfor %]
 
 input_datetime:
-{# Store when a fault started so later messages can report how long it lasted. #}
-[% for service in model.services %]
-  labpulse_[[ service.service_id ]]_service_fault_started:
-    name: '[[ service.label ]] Service Fault Started'
+{# Maintenance-clear time prevents pre-maintenance threshold history from
+   satisfying a new alarm immediately after an update. #}
+  labpulse_update_maintenance_cleared:
+    name: LabPulse Update Maintenance Cleared
     has_date: true
     has_time: true
+{# Store when an incident started so later messages can report its duration. #}
+[% for service in model.services %]
+  labpulse_[[ service.service_id ]]_service_offline_started:
+    name: '[[ service.label ]] Service Offline Started'
+    has_date: true
+    has_time: true
+[% endfor %]
+[% for service, measurement in model.measurements %]
+[% if measurement.availability_required %]
+  labpulse_[[ measurement.measurement_id ]]_availability_incident_started:
+    name: '[[ measurement.label ]] Unavailable Incident Started'
+    has_date: true
+    has_time: true
+[% endif %]
 [% endfor %]
 [% for service in model.power_alarm_services %]
 [% set power = service.power %]

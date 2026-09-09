@@ -1,6 +1,98 @@
 {# These scripts contain work used in more than one place, such as sending a
    message or applying a group of alarm settings. #}
 script:
+  labpulse_open_incident:
+    alias: Open Confirmed LabPulse Incident
+    mode: queued
+    max: 50
+    fields:
+      notification_id: {required: true}
+      title: {required: true}
+      message: {required: true}
+      sms_payload: {required: true}
+      notification_sent_entity: {required: true}
+      sms_requested_entity: {required: true}
+      delivery_allowed: {required: true}
+    sequence:
+    - condition: state
+      entity_id: input_boolean.labpulse_update_maintenance
+      state: 'off'
+    - condition: state
+      entity_id: input_boolean.labpulse_global_notifications_muted
+      state: 'off'
+    - condition: template
+      value_template: "{{ delivery_allowed | bool }}"
+    - service: persistent_notification.create
+      data:
+        title: "{{ title }}"
+        message: "{{ message }}"
+        notification_id: "{{ notification_id }}"
+    - service: input_boolean.turn_on
+      target:
+        entity_id: "{{ notification_sent_entity }}"
+    - service: mqtt.publish
+      data:
+        topic: [[ model.sms_send_topic | yaml_scalar ]]
+        qos: 1
+        retain: false
+        payload: "{{ sms_payload }}"
+    - service: input_boolean.turn_on
+      target:
+        entity_id: "{{ sms_requested_entity }}"
+
+  labpulse_close_incident:
+    alias: Close Confirmed LabPulse Incident
+    mode: queued
+    max: 50
+    fields:
+      notification_id: {required: true}
+      recovery_title: {required: true}
+      recovery_message: {required: true}
+      recovery_sms_payload: {required: true}
+      notification_sent_entity: {required: true}
+      sms_requested_entity: {required: true}
+      delivery_allowed: {required: true}
+    sequence:
+    - variables:
+        original_notification_sent: "{{ is_state(notification_sent_entity, 'on') }}"
+        original_sms_requested: "{{ is_state(sms_requested_entity, 'on') }}"
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: "{{ notification_id }}"
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: "{{ original_notification_sent and delivery_allowed | bool }}"
+        - condition: state
+          entity_id: input_boolean.labpulse_update_maintenance
+          state: 'off'
+        - condition: state
+          entity_id: input_boolean.labpulse_global_notifications_muted
+          state: 'off'
+        sequence:
+        - service: persistent_notification.create
+          data:
+            title: "{{ recovery_title }}"
+            message: "{{ recovery_message }}"
+            notification_id: "{{ notification_id }}_recovery"
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: >-
+                {{ [[ model.send_recovery_sms | tojson ]] and original_sms_requested }}
+            sequence:
+            - service: mqtt.publish
+              data:
+                topic: [[ model.sms_send_topic | yaml_scalar ]]
+                qos: 1
+                retain: false
+                payload: "{{ recovery_sms_payload }}"
+    - service: input_boolean.turn_off
+      target:
+        entity_id:
+        - "{{ notification_sent_entity }}"
+        - "{{ sms_requested_entity }}"
+
   labpulse_send_phone_book_notification:
     alias: Send LabPulse Phone Book Notification
     icon: mdi:account-multiple-check
@@ -10,6 +102,9 @@ script:
     # effect without regenerating the LabPulse package.
     - condition: state
       entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
+      state: 'off'
+    - condition: state
+      entity_id: input_boolean.labpulse_update_maintenance
       state: 'off'
     - service: mqtt.publish
       data:

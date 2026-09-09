@@ -245,12 +245,11 @@ Function calls, powers, attribute access and chains of calculated measurements
 are rejected.
 
 The calculated entity becomes unavailable when an input is unavailable or not
-numeric, or when a divisor is zero. Its threshold alarm pauses and clears
-rather than duplicating the physical input's sensor-fault message. Calculated
-measurements run in Home Assistant; they do not create another container or
-MQTT measurement.
+numeric, or when a divisor is zero. Its threshold alarm pauses while the value
+cannot be evaluated. Calculated measurements run in Home Assistant; they do
+not create another container or MQTT measurement.
 
-## Freshness, partial faults and service health
+## Service health and reading availability
 
 The hardware runner schedules reads with a monotonic clock. A valid sample is
 published before the online status so recovery does not act on an old value.
@@ -262,19 +261,25 @@ reaches the configured maximum, the runner closes and reconnects the driver.
 Individual entities also expire in Home Assistant. A service may therefore be
 running as a container while its device or one measurement is unhealthy.
 
-Service health represents loss of the complete hub. It has independent fault
-and recovery confirmation periods and suppresses subordinate measurement-fault
-notifications while the hub is down. Partial hardware issues leave valid
-measurements available and expose the issue through service status.
+LabPulse reports three separate ideas. **Service health** is Online, Degraded,
+or Offline and describes communication with the hub or driver. **Reading
+availability** says whether one reading is fresh and numeric. **Alarm
+condition** is Normal or Danger and evaluates thresholds only for an available
+reading.
+
+A confirmed service outage is one root incident. While it is pending or active,
+LabPulse suppresses subordinate unavailable-reading incidents. If the service
+remains healthy but one required reading disappears, that reading gets its own
+incident after its configured confirmation delay. Optional readings remain
+visible and show **Unavailable — optional**, but their absence is informational
+only and does not make the service unhealthy.
 
 ## Measurement alarm behaviour
 
-Each alarmed ordinary or calculated measurement has a state:
+Each alarmed ordinary or calculated measurement has a threshold state:
 
 ```text
 Normal -> Danger -> Normal
-   \        |
-    \-> Sensor Fault
 ```
 
 Minimum and maximum thresholds define dangerous values. A measurement enters
@@ -287,13 +292,14 @@ must also move beyond the deadband: a high alarm recovers below
 `maximum - deadband`, while a low alarm recovers above `minimum + deadband`.
 Deadband prevents repeated transitions near a boundary.
 
-Missing/unavailable telemetry follows the Sensor Fault path after its
-confirmation period. When healthy data returns, normal observation begins
-again. Alarm state and notification delivery are separate: muting a
+Missing or non-numeric telemetry is represented separately as Reading
+availability. Threshold evaluation pauses until valid data returns, then
+reconciles against the current thresholds. Alarm state and notification
+delivery are separate: muting a
 notification never makes a dangerous state Normal. Alarm state is read-only
 on the dashboard and changes only when these measurement rules run.
 
-When an active Danger or Sensor Fault alert needs to be delivered again, open
+When an active Danger or Reading unavailable alert needs to be delivered again, open
 that measurement's alarm controls and press **Resend active alert**. The action
 keeps the alarm state unchanged and repeats the matching warning using the
 current Test mode, measurement mute, setup mute, and global mute settings. For
@@ -318,15 +324,16 @@ alarm. Loss and restoration have separate confirmation times. A confirmed
 outage and confirmed restoration are separate events; restoration reports the
 duration rather than delaying the initial warning until power returns.
 
-Battery/I2C failure, mains-GPIO failure and complete service loss remain
-distinguishable. Reconciliation after Home Assistant restarts avoids treating
-a restored helper state as a new physical transition. Raw power readings can
+Unavailable voltage, charge, or mains readings and complete service loss remain
+distinguishable from an actual On Battery condition. Restored incident helpers
+and stable notification IDs avoid duplicate alerts after Home Assistant
+restarts. Raw power readings can
 remain visible without power notifications by setting all three measurements
 to `alarmed: false`.
 
 ## Mutes and Test mode
 
-Global mute blocks all generated notifications. Setup mutes block messages for
+Global mute blocks all generated notifications. Per-reading and setup mutes block messages for
 measurements assigned to that setup. Mutes are manual controls and do not
 expire; the dashboard continues to show that delivery is muted.
 
@@ -334,6 +341,9 @@ Test mode starts enabled after every Home Assistant startup. Messages created
 in Test mode are prefixed `[TEST]` and route only to `sms.test_recipients`.
 Normal recipients are used only after an operator deliberately disables Test
 mode. Test mode changes routing, not the underlying alarm calculations.
+Muting suppresses delivery rather than hiding the confirmed problem. A recovery
+message is never generated when the matching opening notification was not
+delivered. Recovery SMS is separately configurable and off by default.
 
 ## SMS behaviour
 

@@ -157,16 +157,17 @@ def aliases(package: dict) -> dict[str, dict]:
 
 
 def test_direct_lifecycle_and_confirmation_semantics() -> None:
-    """Use cancellable state timers and one persistent outage latch."""
+    """Keep power condition separate from component availability."""
 
     package, _, text = render_power()
     state_options = package["input_select"]["labpulse_ups_monitor_power_state"]["options"]
-    if state_options != ["Normal", "On Battery", "Sensor Fault"]:
+    if state_options != ["Normal", "On Battery"]:
         raise AssertionError(f"unexpected direct power states: {state_options!r}")
     helper_ids = set(package["input_boolean"])
     required = {
         "labpulse_ups_monitor_power_outage_active",
-        "labpulse_ups_monitor_power_sensor_fault_confirmed",
+        "labpulse_ups_monitor_power_notification_sent",
+        "labpulse_ups_monitor_power_sms_requested",
         "labpulse_ups_monitor_power_muted",
     }
     if not required.issubset(helper_ids):
@@ -195,9 +196,9 @@ def test_direct_lifecycle_and_confirmation_semantics() -> None:
     automation = aliases(package)
     outage = automation["LabPulse UPS Monitor Outage Confirm"]
     recovery = automation["LabPulse UPS Monitor Recovery Confirm"]
-    if int(outage["trigger"][0].get("for", {}).get("seconds", 0)) != 3:
+    if int(outage["action"][1]["delay"].get("seconds", 0)) != 3:
         raise AssertionError("outage does not require three continuous seconds")
-    if int(recovery["trigger"][0].get("for", {}).get("seconds", 0)) != 5:
+    if int(recovery["action"][0]["delay"].get("seconds", 0)) != 5:
         raise AssertionError("recovery does not require five continuous seconds")
     outage_yaml = yaml.safe_dump(outage, sort_keys=False)
     recovery_yaml = yaml.safe_dump(recovery, sort_keys=False)
@@ -205,23 +206,24 @@ def test_direct_lifecycle_and_confirmation_semantics() -> None:
         raise AssertionError("outage warning can repeat while already active")
     if "power_outage_active\n  state: 'on'" not in recovery_yaml:
         raise AssertionError("recovery can fire without a confirmed outage")
-    if "trigger.to_state.last_changed" not in outage_yaml:
-        raise AssertionError("outage does not record the GPIO transition time")
-    if "recovery_start - outage_start" not in recovery_yaml:
+    if "outage_start" not in outage_yaml:
+        raise AssertionError("outage does not record its confirmed start")
+    if "as_timestamp(now()) - outage_start" not in recovery_yaml:
         raise AssertionError("recovery does not calculate outage duration")
+    if "Sensor Fault" in text or "sensor_fault" in text:
+        raise AssertionError("power condition still contains availability fault state")
 
 
-def test_fault_reconciliation_and_sms_contract() -> None:
-    """Keep unavailable GPIO separate from outages and preserve safe SMS routing."""
+def test_power_reading_availability_and_sms_contract() -> None:
+    """Use common reading incidents and central delivery for power inputs."""
 
     package, _, text = render_power()
     automation = aliases(package)
     required_aliases = {
-        "LabPulse UPS Monitor Power Sensor Fault",
-        "LabPulse UPS Monitor Power Sensor Recovery",
-        "LabPulse UPS Monitor Power Reconcile",
-        "LabPulse UPS Monitor Reconcile Missed Outage",
-        "LabPulse UPS Monitor Reconcile Missed Recovery",
+        "LabPulse External Power Present Reading Unavailable",
+        "LabPulse External Power Present Reading Available",
+        "LabPulse UPS Monitor Outage Confirm",
+        "LabPulse UPS Monitor Recovery Confirm",
     }
     if not required_aliases.issubset(automation):
         raise AssertionError(f"missing restart/fault rules: {required_aliases-set(automation)}")
@@ -231,38 +233,24 @@ def test_fault_reconciliation_and_sms_contract() -> None:
         for sensor in block.get("binary_sensor", [])
     ]
     by_name = {sensor["name"]: sensor for sensor in template_binary}
-    service_health = by_name["labpulse_ups_monitor_service_unhealthy"]
+    service_offline = by_name["labpulse_ups_monitor_service_offline"]
     mains = by_name["labpulse_ups_monitor_power_mains_present"]
-    fault = by_name["labpulse_ups_monitor_power_sensor_fault"]
-    if "gpio_fault" in service_health["state"]:
-        raise AssertionError("X1200 component GPIO fault became a whole-service fault")
+    reading_available = by_name["labpulse_ups_monitor_mains_present_reading_available"]
+    if "gpio_fault" in service_offline["state"]:
+        raise AssertionError("X1200 component GPIO fault became a whole-service outage")
     if mains["state"] != "{{ states('sensor.labpulse_ups_monitor_mains_present') | float(0) >= 0.5 }}":
         raise AssertionError("mains-present template does not normalize raw GPIO")
-    if "not is_number(raw)" not in fault["state"] or "gpio_fault" not in fault["state"]:
-        raise AssertionError("unavailable GPIO is not a distinct sensor fault")
-    if "service_fault_active" not in fault["state"]:
-        raise AssertionError("power component faults are not suppressed by whole-service faults")
-    if "power_outage_active\n  state: 'off'" not in yaml.safe_dump(
-        automation["LabPulse UPS Monitor Reconcile Missed Outage"], sort_keys=False
-    ):
-        raise AssertionError("restart reconciliation can duplicate outage warnings")
-    if "power_outage_active\n  state: 'on'" not in yaml.safe_dump(
-        automation["LabPulse UPS Monitor Reconcile Missed Recovery"], sort_keys=False
-    ):
-        raise AssertionError("restart recovery is not gated by a prior outage")
+    if "is_number" not in reading_available["state"]:
+        raise AssertionError("raw GPIO availability is not classified independently")
 
     notification_rules = [
         automation["LabPulse UPS Monitor Outage Confirm"],
         automation["LabPulse UPS Monitor Recovery Confirm"],
-        automation["LabPulse UPS Monitor Power Sensor Fault"],
-        automation["LabPulse UPS Monitor Power Sensor Recovery"],
-        automation["LabPulse UPS Monitor Reconcile Missed Outage"],
-        automation["LabPulse UPS Monitor Reconcile Missed Recovery"],
+        automation["LabPulse External Power Present Reading Unavailable"],
+        automation["LabPulse External Power Present Reading Available"],
     ]
     for rule in notification_rules:
         rendered = yaml.safe_dump(rule, sort_keys=False)
-        if "input_boolean.labpulse_global_notifications_muted" not in rendered:
-            raise AssertionError(f"{rule['alias']} bypasses global mute")
         if "input_boolean.labpulse_notification_test_mode" not in rendered:
             raise AssertionError(f"{rule['alias']} bypasses test-mode routing")
         if '"test_mode"' not in str(rule):
@@ -270,19 +258,8 @@ def test_fault_reconciliation_and_sms_contract() -> None:
         if "Monitoring context: Dedicated power monitoring." not in str(rule):
             raise AssertionError(f"{rule['alias']} omits setup notification context")
 
-    sensor_recovery = str(
-        automation["LabPulse UPS Monitor Power Sensor Recovery"]
-    )
-    for fragment in (
-        "persistent_notification.create",
-        "labpulse_ups_monitor_power_sensor_recovery_",
-        "power_sensor_recovery",
-        "External-power GPIO",
-    ):
-        if fragment not in sensor_recovery:
-            raise AssertionError(
-                f"power sensor recovery notification missing: {fragment}"
-            )
+        if "script.labpulse_" not in rendered:
+            raise AssertionError(f"{rule['alias']} bypasses central delivery")
     notification_text = "\n".join(str(rule) for rule in notification_rules)
     for field in (
         "request_id",
@@ -310,7 +287,7 @@ def test_power_dashboard_rendering() -> None:
         "sensor.labpulse_ups_monitor_mains_present",
         "input_select.labpulse_ups_monitor_power_state",
         "binary_sensor.labpulse_ups_monitor_power_mains_present",
-        "binary_sensor.labpulse_ups_monitor_power_sensor_fault",
+        "sensor.labpulse_ups_monitor_mains_present_availability",
         "input_boolean.labpulse_ups_monitor_power_outage_active",
         "sensor.labpulse_ups_monitor_power_last_outage_started",
         "sensor.labpulse_ups_monitor_power_last_outage_duration",
