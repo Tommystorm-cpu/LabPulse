@@ -429,10 +429,10 @@ prevent duplicates after a Home Assistant restart. Service outages suppress
 their subordinate reading incidents. A recovery always dismisses the matching
 problem, but creates a recovery message only if the opening notification was
 actually created; recovery SMS additionally requires `send_recovery_sms`.
-On startup Home Assistant republishes its restored maintenance helper as a
-retained request. This gives a fresh broker an explicit OFF state while
-preserving ON after an interrupted update; the SMS subscriber remains
-fail-closed until it receives that retained state.
+The SMS subscriber listens for retained maintenance before attaching its
+persistent alert subscription. This prevents queued QoS 1 messages from racing
+ahead of an ON request. A fresh broker with no retained request is treated as
+normal operation after a short, fail-closed handshake.
 
 ## SMS process
 

@@ -233,6 +233,9 @@ services:
         label: Temperature 3
         group: Water Temperatures
         setups: [turbo_pump_experiment]
+        # This installed spare channel is retained for visibility but is not
+        # expected to provide telemetry on the reference installation.
+        availability: optional
         unit: "°C"
         device_class: temperature
 

@@ -133,16 +133,6 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     )
     assert acknowledgement["data"]["topic"] == UPDATE_MAINTENANCE_ACK_TOPIC
     assert acknowledgement["data"]["retain"] is True
-    startup_sync = automation(
-        package, "LabPulse Publish Restored Update Maintenance State"
-    )
-    startup_publish = next(
-        item for item in walk(startup_sync)
-        if isinstance(item, dict) and item.get("service") == "mqtt.publish"
-    )
-    assert startup_publish["data"]["topic"] == UPDATE_MAINTENANCE_TOPIC
-    assert "homeassistant-startup-" in startup_publish["data"]["payload"]
-
     danger = automation(package, "LabPulse Pressure Danger")
     unavailable = automation(package, "LabPulse Pressure Reading Unavailable")
     resend = f"input_button.{helper}_resend_active_alert"

@@ -14,7 +14,5 @@
 [% for measurement in measurements %]
       - entity: [[ measurement.entity_id ]]
         name: [[ measurement.short_label | yaml_scalar ]]
-      - entity: [[ entity_id('sensor', measurement.service_name, measurement.name, 'availability') ]]
-        name: [[ (measurement.short_label ~ ' availability') | yaml_scalar ]]
 [% endfor %]
 [% endfor %]

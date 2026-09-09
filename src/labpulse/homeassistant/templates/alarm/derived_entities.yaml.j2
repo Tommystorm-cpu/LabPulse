@@ -80,7 +80,11 @@ template:
           {% endif %}
         condition_age_seconds: >-
           {% set entity = states['[[ entity_id('binary_sensor', service.name, 'service_offline') ]]'] %}
-          {{ [0, as_timestamp(now()) - as_timestamp(entity.last_changed, as_timestamp(now()))] | max | round(0) }}
+          {% if states('[[ entity_id('sensor', service.name, 'service_health') ]]') == 'Online' %}
+            0
+          {% else %}
+            {{ [0, as_timestamp(now()) - as_timestamp(entity.last_changed, as_timestamp(now()))] | max | round(0) }}
+          {% endif %}
         offline_confirm_seconds: [[ service.health_offline_confirm_seconds | yaml_scalar ]]
         recovery_confirm_seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
         incident_phase: >-
@@ -135,7 +139,8 @@ template:
              else 'source state is ' ~ states('[[ measurement.entity_id ]]') }}
         condition_age_seconds: >-
           {% set entity = states['[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]'] %}
-          {{ [0, as_timestamp(now()) - as_timestamp(entity.last_changed, as_timestamp(now()))] | max | round(0) }}
+          {{ 0 if is_number(states('[[ measurement.entity_id ]]')) else
+             [0, as_timestamp(now()) - as_timestamp(entity.last_changed, as_timestamp(now()))] | max | round(0) }}
         unavailable_confirm_seconds: [[ measurement.unavailable_confirm_seconds | yaml_scalar ]]
 [% if measurement.availability_required %]
         incident_phase: >-

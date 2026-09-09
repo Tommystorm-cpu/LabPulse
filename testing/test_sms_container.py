@@ -456,8 +456,18 @@ def test_subscriber_uses_persistent_qos_one_session() -> None:
     subscriber.on_connect(client, None, None, 0, None)
     assert_equal(
         client.subscriptions,
-        [([(SMS_SUBSCRIPTION_TOPIC, 1), (UPDATE_MAINTENANCE_TOPIC, 1)], 0)],
-        "QoS 1 alert and maintenance subscriptions",
+        [(UPDATE_MAINTENANCE_TOPIC, 1)],
+        "maintenance is subscribed before queued alerts",
+    )
+    maintenance_off = type(
+        "Message", (),
+        {"topic": UPDATE_MAINTENANCE_TOPIC, "payload": b'{"request_id":"ready","state":"OFF"}'},
+    )()
+    subscriber.on_message(client, None, maintenance_off)
+    assert_equal(
+        client.subscriptions,
+        [(UPDATE_MAINTENANCE_TOPIC, 1), (SMS_SUBSCRIPTION_TOPIC, 1)],
+        "SMS subscribes after retained maintenance",
     )
     assert_equal(client.published[-2][0], SMS_STATUS_DISCOVERY_TOPIC, "status discovery topic")
     assert_equal(client.published[-1][0], SMS_STATUS_TOPIC, "online status topic")

@@ -52,28 +52,6 @@
         qos: 1
         retain: true
         payload: "{{ trigger.payload }}"
-{# A fresh broker has no retained request for the defensive SMS subscriber to
-   consume. Publish the restored helper state after startup: normally OFF, but
-   still ON after a failed update. The synchronizer above then acknowledges the
-   new request like any other state transition. #}
-  - alias: LabPulse Publish Restored Update Maintenance State
-    mode: single
-    trigger:
-    - platform: homeassistant
-      event: start
-    action:
-    - delay:
-        seconds: 5
-    - service: mqtt.publish
-      data:
-        topic: [[ model.update_maintenance_topic | yaml_scalar ]]
-        qos: 1
-        retain: true
-        payload: >-
-          {{ {
-            "request_id": "homeassistant-startup-" ~ now().strftime('%Y%m%dT%H%M%S%f'),
-            "state": "ON" if is_state('input_boolean.labpulse_update_maintenance', 'on') else "OFF"
-          } | to_json }}
 [% if model.bulk_alarm_targets %]
 {# A new target has different valid deadbands, so discard field selections
    before the user reviews and applies values to it. #}

@@ -43,8 +43,6 @@
         entity: [[ entity_id('sensor', service.name, 'service_health') ]]
         attribute: condition_age_seconds
         name: Condition age (seconds)
-      - entity: [[ entity_id('input_datetime', service.name, 'service_offline_started') ]]
-        name: Confirmed incident started
     - type: entities
       title: Latest measurements
       show_header_toggle: false
@@ -62,10 +60,6 @@
         entity: [[ entity_id('sensor', service.name, measurement.name, 'availability') ]]
         attribute: condition_age_seconds
         name: [[ (measurement.label ~ ' condition age (seconds)') | yaml_scalar ]]
-[% if measurement.availability_required %]
-      - entity: [[ entity_id('input_datetime', service.name, measurement.name, 'availability_incident_started') ]]
-        name: [[ (measurement.label ~ ' confirmed incident started') | yaml_scalar ]]
-[% endif %]
 [% endfor %]
 [% if service.power is not none and service.power.alarmed %]
 {# These power details are useful for fault finding, but too technical for the
