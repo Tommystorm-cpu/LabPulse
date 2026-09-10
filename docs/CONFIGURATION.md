@@ -43,7 +43,9 @@ mqtt:
   port: 1883
   external_listener:
     enabled: false
-    bind_address: 0.0.0.0
+    bind_addresses:
+      - 10.50.1.1
+      - 10.50.2.1
     port: 8883
 
 sms:
@@ -103,7 +105,9 @@ mqtt:
   port: 1883
   external_listener:
     enabled: false
-    bind_address: 0.0.0.0
+    bind_addresses:
+      - 10.50.1.1
+      - 10.50.2.1
     port: 8883
 ```
 
@@ -119,9 +123,10 @@ integration connects to `127.0.0.1:1883`.
 `external_listener` is for off-Pi data publishers such as a Triton control PC:
 
 - `enabled` defaults to `false`; the generated broker remains loopback-only.
-- `bind_address` is the Pi IPv4 interface to publish. Prefer the Pi's stable LAN
-  address. `0.0.0.0` publishes on every interface and requires careful firewall
-  verification.
+- `bind_addresses` is a non-empty list of Pi IPv4 interfaces on which to
+  publish. LabPulse creates one host-port mapping per address. The configured
+  addresses must be unique. `0.0.0.0` publishes on every interface and cannot
+  be combined with specific addresses.
 - `port` is the host-facing TLS port and defaults to 8883.
 
 When enabled, generation requires

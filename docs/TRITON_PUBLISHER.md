@@ -148,14 +148,18 @@ mqtt:
   port: 1883
   external_listener:
     enabled: true
-    bind_address: 192.168.10.20
+    bind_addresses:
+      - 10.50.1.1
+      - 10.50.2.1
     port: 8883
 ```
 
-Use the Pi's LAN address for `bind_address`. `0.0.0.0` is supported, but listens
-on every Pi interface and should be used only with a verified firewall. LabPulse
-refuses to generate an enabled listener unless the certificate, key, password
-database and ACL all exist.
+These are the Pi addresses on the isolated Triton 1 and Triton 2 `/30` links.
+LabPulse publishes MQTT on both addresses but not on the Pi's other interfaces.
+`0.0.0.0` is supported for other installations, but listens everywhere and
+cannot be combined with specific addresses. LabPulse refuses to generate an
+enabled listener unless the certificate, key, password database and ACL all
+exist.
 
 Apply and inspect the deployment:
 

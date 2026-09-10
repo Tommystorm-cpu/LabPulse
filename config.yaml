@@ -16,8 +16,10 @@ mqtt:
   # and ACL described in docs/TRITON_PUBLISHER.md.
   external_listener:
     enabled: false
-    # Prefer the Pi's LAN address. 0.0.0.0 listens on every interface.
-    bind_address: 0.0.0.0
+    # Publish only on the two isolated fridge-facing Pi addresses.
+    bind_addresses:
+      - 10.50.1.1
+      - 10.50.2.1
     port: 8883
 
 sms:

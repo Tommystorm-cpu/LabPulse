@@ -25,21 +25,30 @@ class ExternalMqttListenerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(default=False, strict=True)
-    bind_address: str = "0.0.0.0"
+    bind_addresses: list[str] = Field(
+        default_factory=lambda: ["0.0.0.0"],
+        min_length=1,
+    )
     port: int = Field(default=8883, ge=1, le=65535)
 
-    @field_validator("bind_address")
+    @field_validator("bind_addresses")
     @classmethod
-    def validate_bind_address(cls, value: str) -> str:
-        """Require an explicit IPv4 interface address understood by Compose."""
+    def validate_bind_addresses(cls, values: list[str]) -> list[str]:
+        """Require unique IPv4 interface addresses understood by Compose."""
 
-        try:
-            return str(IPv4Address(value))
-        except AddressValueError as error:
-            raise ValueError(
-                "must be an IPv4 address, for example 192.168.1.20; "
-                "use 0.0.0.0 only when the firewall restricts access"
-            ) from error
+        normalized: list[str] = []
+        for value in values:
+            try:
+                normalized.append(str(IPv4Address(value)))
+            except AddressValueError as error:
+                raise ValueError(
+                    "entries must be IPv4 addresses, for example 10.50.1.1"
+                ) from error
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("entries must be unique")
+        if "0.0.0.0" in normalized and len(normalized) > 1:
+            raise ValueError("0.0.0.0 cannot be combined with specific addresses")
+        return normalized
 
 
 class MqttConfig(BaseModel):

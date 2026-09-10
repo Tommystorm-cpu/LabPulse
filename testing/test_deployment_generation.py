@@ -73,7 +73,7 @@ def test_external_mqtt_listener_is_secure_and_explicitly_published() -> None:
   broker: mosquitto
   external_listener:
     enabled: true
-    bind_address: 192.168.10.20
+    bind_addresses: [10.50.1.1, 10.50.2.1]
     port: 9443
 sms: {dry_run: true}
 setups: {monitor: {}}
@@ -104,7 +104,8 @@ services:
         compose = compose_document(config_path, project_dir, force_simulated=False)
         assert compose["services"]["mosquitto"]["ports"] == [
             "127.0.0.1:1883:1883",
-            "192.168.10.20:9443:8883",
+            "10.50.1.1:9443:8883",
+            "10.50.2.1:9443:8883",
         ]
         broker = build_mosquitto_config(document)
         assert "listener 1883\nallow_anonymous true" in broker

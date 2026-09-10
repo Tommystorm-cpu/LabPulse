@@ -148,7 +148,11 @@ def test_service_health_config_contract() -> None:
     assert_equal(defaulted.service_health.offline_confirm_seconds, 10, "offline default")
     assert_equal(defaulted.service_health.recovery_confirm_seconds, 15, "recovery default")
     assert_equal(defaulted.mqtt.external_listener.enabled, False, "external MQTT default")
-    assert_equal(defaulted.mqtt.external_listener.bind_address, "0.0.0.0", "MQTT bind default")
+    assert_equal(
+        defaulted.mqtt.external_listener.bind_addresses,
+        ["0.0.0.0"],
+        "MQTT bind defaults",
+    )
     assert_equal(defaulted.mqtt.external_listener.port, 8883, "external MQTT port default")
     configured = LabPulseConfig.model_validate(
         {
@@ -178,7 +182,7 @@ def test_external_mqtt_listener_config_contract() -> None:
             "broker": "mosquitto",
             "external_listener": {
                 "enabled": True,
-                "bind_address": "192.168.10.20",
+                "bind_addresses": ["10.50.1.1", "10.50.2.1"],
                 "port": 9443,
             },
         },
@@ -187,7 +191,11 @@ def test_external_mqtt_listener_config_contract() -> None:
     }
     configured = LabPulseConfig.model_validate(base)
     assert_equal(configured.mqtt.external_listener.enabled, True, "external MQTT enabled")
-    assert_equal(configured.mqtt.external_listener.bind_address, "192.168.10.20", "MQTT bind")
+    assert_equal(
+        configured.mqtt.external_listener.bind_addresses,
+        ["10.50.1.1", "10.50.2.1"],
+        "MQTT binds",
+    )
     assert_equal(configured.mqtt.external_listener.port, 9443, "external MQTT port")
 
     for invalid_address in ("localhost", "999.1.1.1", "::1"):
@@ -199,7 +207,7 @@ def test_external_mqtt_listener_config_contract() -> None:
                         **base["mqtt"],
                         "external_listener": {
                             **base["mqtt"]["external_listener"],
-                            "bind_address": invalid_address,
+                            "bind_addresses": [invalid_address],
                         },
                     },
                 }
@@ -208,3 +216,28 @@ def test_external_mqtt_listener_config_contract() -> None:
             pass
         else:
             raise AssertionError(f"invalid MQTT bind address was accepted: {invalid_address}")
+
+    for invalid_addresses in (
+        [],
+        ["10.50.1.1", "10.50.1.1"],
+        ["0.0.0.0", "10.50.1.1"],
+    ):
+        try:
+            LabPulseConfig.model_validate(
+                {
+                    **base,
+                    "mqtt": {
+                        **base["mqtt"],
+                        "external_listener": {
+                            **base["mqtt"]["external_listener"],
+                            "bind_addresses": invalid_addresses,
+                        },
+                    },
+                }
+            )
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError(
+                f"invalid MQTT bind address list was accepted: {invalid_addresses}"
+            )

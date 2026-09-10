@@ -239,12 +239,27 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
         assert {
             "condition": "state", "entity": mute_entity, "state": "off"
         } in row["conditions"]
+        assert {"condition": "state", "state": "Danger"} in row["conditions"]
+        setup_gate = next(
+            condition for condition in row["conditions"]
+            if condition.get("condition") == "or"
+        )
+        assert setup_gate["conditions"]
+        assert all(
+            condition.get("entity", "").endswith("_notifications_muted")
+            and condition.get("state") == "off"
+            for condition in setup_gate["conditions"]
+        )
 
     service_rows = [
         row for row in problems["entities"]
         if str(row.get("entity", "")).endswith("_service_offline_incident_active")
     ]
     assert service_rows
+    assert all(
+        {"condition": "state", "state": "on"} in row.get("conditions", [])
+        for row in service_rows
+    )
     assert all(row.get("tap_action") == {
         "action": "navigate",
         "navigation_path": "/labpulse-monitor/diagnostics",
@@ -254,11 +269,31 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
         if str(row.get("entity", "")).endswith("_availability_incident_active")
     ]
     assert availability_rows
+    assert all(
+        {"condition": "state", "state": "on"} in row.get("conditions", [])
+        for row in availability_rows
+    )
     assert all(any(
         condition.get("entity", "").endswith("_reading_notifications_muted")
         and condition.get("state") == "off"
         for condition in row.get("conditions", [])
     ) for row in availability_rows)
+    setup_availability_rows = [
+        row for row in availability_rows
+        if row.get("tap_action", {}).get("navigation_path", "").startswith(
+            "/labpulse-monitor/alarm-setup-"
+        )
+    ]
+    assert setup_availability_rows
+    assert all(any(
+        condition.get("condition") == "or"
+        and any(
+            setup_condition.get("entity", "").endswith("_notifications_muted")
+            and setup_condition.get("state") == "off"
+            for setup_condition in condition.get("conditions", [])
+        )
+        for condition in row.get("conditions", [])
+    ) for row in setup_availability_rows)
 
 
 def test_power_problem_links_to_its_alarm_setup_page() -> None:
@@ -279,6 +314,7 @@ def test_power_problem_links_to_its_alarm_setup_page() -> None:
         "action": "navigate",
         "navigation_path": "/labpulse-monitor/alarm-power-ups_monitor",
     }
+    assert {"condition": "state", "state": "On Battery"} in power_row["conditions"]
 
 
 def test_alarm_setup_measurements_open_history_and_status_is_read_only() -> None:
