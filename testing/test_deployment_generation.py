@@ -8,6 +8,7 @@ import sys
 from typing import Callable
 from uuid import uuid4
 
+import pytest
 import yaml
 
 
@@ -18,6 +19,10 @@ TEST_TMP_DIR = REFACTOR_DIR / "testing" / "tmp"
 from labpulse import __version__
 from labpulse.common.config import load_config
 from labpulse.deployment.compose import build_compose
+from labpulse.deployment.mosquitto import (
+    build_mosquitto_config,
+    validate_external_mqtt_files,
+)
 from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
@@ -55,6 +60,95 @@ def compose_document(
     if not isinstance(payload, dict):
         raise AssertionError("Compose generator did not return a mapping")
     return payload
+
+
+def test_external_mqtt_listener_is_secure_and_explicitly_published() -> None:
+    """Generate a TLS/authenticated broker endpoint only when configured."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    with temporary_test_directory("external-mqtt") as project_dir:
+        config_path = project_dir / "config.yaml"
+        config_path.write_text(
+            """mqtt:
+  broker: mosquitto
+  external_listener:
+    enabled: true
+    bind_address: 192.168.10.20
+    port: 9443
+sms: {dry_run: true}
+setups: {monitor: {}}
+services:
+  hub:
+    label: Hub
+    driver:
+      type: labpulse.serial_pipe
+      options: {port: /tmp/hub}
+    measurements:
+      pressure: {setups: [monitor]}
+""",
+            encoding="utf-8",
+        )
+        document = load_config(config_path)
+        config_dir = project_dir / "mosquitto" / "config"
+        for relative_path in (
+            "certs/server.crt",
+            "certs/server.key",
+            "external-passwords",
+            "external-acl",
+        ):
+            path = config_dir / relative_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("fixture", encoding="utf-8")
+
+        validate_external_mqtt_files(document, project_dir)
+        compose = compose_document(config_path, project_dir, force_simulated=False)
+        assert compose["services"]["mosquitto"]["ports"] == [
+            "127.0.0.1:1883:1883",
+            "192.168.10.20:9443:8883",
+        ]
+        broker = build_mosquitto_config(document)
+        assert "listener 1883\nallow_anonymous true" in broker
+        assert "listener 8883\nallow_anonymous false" in broker
+        assert "password_file /mosquitto/config/external-passwords" in broker
+        assert "acl_file /mosquitto/config/external-acl" in broker
+        assert "certfile /mosquitto/config/certs/server.crt" in broker
+
+
+def test_external_mqtt_listener_refuses_missing_secrets() -> None:
+    """Fail generation before exposing a listener with missing TLS/auth files."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    with temporary_test_directory("external-mqtt-missing") as project_dir:
+        config_path = project_dir / "config.yaml"
+        config_path.write_text(
+            """mqtt:
+  broker: mosquitto
+  external_listener: {enabled: true}
+sms: {dry_run: true}
+setups: {}
+services: {}
+""",
+            encoding="utf-8",
+        )
+        document = load_config(config_path)
+
+        with pytest.raises(ValueError, match="required TLS/authentication files are missing"):
+            validate_external_mqtt_files(document, project_dir)
+
+
+def test_default_mqtt_listener_remains_loopback_only() -> None:
+    """Existing installations must not gain an external broker endpoint."""
+
+    document = load_config(REFACTOR_DIR / "config.yaml")
+    compose = build_compose(
+        document,
+        config_mount_source="./config.yaml",
+        runtime_image="labpulse:test",
+        force_simulated=False,
+    )
+    payload = yaml.safe_load(compose)
+    assert payload["services"]["mosquitto"]["ports"] == ["127.0.0.1:1883:1883"]
+    assert "listener 8883" not in build_mosquitto_config(document)
 
 
 def test_fake_usb_compose_contract() -> None:

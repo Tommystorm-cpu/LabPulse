@@ -202,6 +202,11 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
     assert occurrences(monitor, "sensor.labpulse_hub_a_shared") == 2
     assert occurrences(monitor, "sensor.labpulse_hub_a_alpha_only") == 1
     assert occurrences(monitor, "sensor.labpulse_hub_b_alpha_other_hub") == 1
+    assert not any(
+        isinstance(item, dict)
+        and str(item.get("name", "")).lower().endswith(" availability")
+        for item in walk(monitor)
+    )
     problems = next(
         item for item in walk(monitor)
         if isinstance(item, dict) and item.get("type") == "entity-filter"
@@ -228,6 +233,12 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
         }
         assert row.get("hold_action") == {"action": "none"}
         assert row.get("double_tap_action") == {"action": "none"}
+        mute_entity = row["entity"].replace("input_select.", "input_boolean.").replace(
+            "_alarm_state", "_reading_notifications_muted"
+        )
+        assert {
+            "condition": "state", "entity": mute_entity, "state": "off"
+        } in row["conditions"]
 
     service_rows = [
         row for row in problems["entities"]
@@ -243,6 +254,11 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
         if str(row.get("entity", "")).endswith("_availability_incident_active")
     ]
     assert availability_rows
+    assert all(any(
+        condition.get("entity", "").endswith("_reading_notifications_muted")
+        and condition.get("state") == "off"
+        for condition in row.get("conditions", [])
+    ) for row in availability_rows)
 
 
 def test_power_problem_links_to_its_alarm_setup_page() -> None:

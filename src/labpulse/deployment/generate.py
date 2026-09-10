@@ -18,6 +18,10 @@ from labpulse.deployment.compose import (
     build_compose,
     service_slug,
 )
+from labpulse.deployment.mosquitto import (
+    build_mosquitto_config,
+    validate_external_mqtt_files,
+)
 from labpulse.common.generated_files import replace_text
 from labpulse.homeassistant.generator import (
     MANAGED_FILES,
@@ -50,6 +54,7 @@ def generate_deployment(
     compose_output = compose_output.expanduser().resolve()
     ha_config_dir = ha_config_dir.expanduser().resolve()
     document = load_config(config_path)
+    validate_external_mqtt_files(document, project_dir)
     compose_text = build_compose(
         document,
         config_mount_source=_mount_source(config_path, project_dir),
@@ -67,6 +72,10 @@ def generate_deployment(
         # No live generated file is touched until both Compose and every owned
         # Home Assistant artifact have been built successfully.
         replace_text(compose_output, compose_text)
+        replace_text(
+            project_dir / "mosquitto" / "config" / "mosquitto.conf",
+            build_mosquitto_config(document),
+        )
         for relative_path in MANAGED_FILES:
             staged_path = staged_ha_dir / relative_path
             replace_text(ha_config_dir / relative_path, staged_path.read_text(encoding="utf-8"))
@@ -113,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             config_path = args.config.expanduser().resolve()
             document = load_config(config_path)
+            validate_external_mqtt_files(document, project_dir)
             compose_text = build_compose(
                 document,
                 config_mount_source=_mount_source(config_path, project_dir),
@@ -122,6 +132,10 @@ def main(argv: list[str] | None = None) -> int:
             project_dir.mkdir(parents=True, exist_ok=True)
             (project_dir / "logs").mkdir(parents=True, exist_ok=True)
             replace_text(compose_output, compose_text)
+            replace_text(
+                project_dir / "mosquitto" / "config" / "mosquitto.conf",
+                build_mosquitto_config(document),
+            )
     except ConfigError as error:
         print(format_config_error(error), file=sys.stderr)
         return 1

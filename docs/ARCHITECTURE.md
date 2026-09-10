@@ -507,16 +507,22 @@ for contracts and utilities genuinely shared by multiple packages, including
 
 ## Security boundary
 
-The generated deployment assumes a trusted local network. Mosquitto allows
-anonymous access but binds its host port to `127.0.0.1`. Home Assistant is the
-user-facing network service.
+By default Mosquitto's anonymous listener is reachable only by containers and
+the Pi's `127.0.0.1`; Home Assistant is the user-facing network service. An
+optional external listener exists for control-PC measurement publishers. It is
+generated only when explicitly enabled and uses a separate host port, TLS
+server certificate, password database and topic ACL. The internal listener
+remains separate so existing LabPulse containers do not need site credentials.
 
 Real SMS mode receives `/dev` and D-Bus access. DHT11 currently requires a
 privileged hardware container. Other drivers declare narrower device access
 where possible. Driver code and runtime images must therefore be trusted.
 
-Do not expose Mosquitto outside the host without authentication,
-authorization, and transport security.
+External publisher deployment still owns the site-specific network boundary:
+bind to the intended Pi LAN address, restrict the port to known control-PC
+addresses, and verify those rules from another host. Do not expose Mosquitto to
+the public internet. Certificate and Windows setup are documented in
+[Triton control-PC publisher](TRITON_PUBLISHER.md).
 
 Controlled outputs inherit this trusted-local-broker boundary. Topic
 allow-listing, non-retained commands, and clean subscriber sessions prevent

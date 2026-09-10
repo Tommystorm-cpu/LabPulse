@@ -41,6 +41,10 @@ entity and alarm identities.
 mqtt:
   broker: mosquitto
   port: 1883
+  external_listener:
+    enabled: false
+    bind_address: 0.0.0.0
+    port: 8883
 
 sms:
   dry_run: true
@@ -67,7 +71,8 @@ are **fragments** to place under the shown key, not complete files. Use the
 `mqtt`, `setups`, and `services` are required mappings. `sms` defaults to dry-run
 with empty recipient lists; `service_health` defaults to 10/15-second confirmation;
 `dashboards`, `outputs`, and `custom_measurements` default to empty mappings.
-`mqtt.broker` has no default; `mqtt.port` defaults to 1883.
+`mqtt.broker` has no default; `mqtt.port` defaults to 1883. The external MQTT
+listener defaults to disabled.
 
 Configuration is validated with Pydantic before generation and service startup.
 Unknown driver IDs, invalid driver options, missing setup references, unstable
@@ -96,6 +101,10 @@ The same validated document is consumed differently:
 mqtt:
   broker: mosquitto
   port: 1883
+  external_listener:
+    enabled: false
+    bind_address: 0.0.0.0
+    port: 8883
 ```
 
 `broker` is the address used by LabPulse Python containers. In the generated
@@ -106,6 +115,24 @@ Compose deployment it must be `mosquitto`, not `localhost`.
 
 Home Assistant is different because it uses host networking. Its MQTT
 integration connects to `127.0.0.1:1883`.
+
+`external_listener` is for off-Pi data publishers such as a Triton control PC:
+
+- `enabled` defaults to `false`; the generated broker remains loopback-only.
+- `bind_address` is the Pi IPv4 interface to publish. Prefer the Pi's stable LAN
+  address. `0.0.0.0` publishes on every interface and requires careful firewall
+  verification.
+- `port` is the host-facing TLS port and defaults to 8883.
+
+When enabled, generation requires
+`mosquitto/config/certs/server.crt`,
+`mosquitto/config/certs/server.key`,
+`mosquitto/config/external-passwords`, and
+`mosquitto/config/external-acl` under `~/labpulse-live`. The listener always
+requires TLS, password authentication and an ACL; there is no configuration
+switch for anonymous external access. Follow the
+[Triton publisher setup](TRITON_PUBLISHER.md) for certificates, per-computer
+topics, firewalling and Windows installation.
 
 ## SMS
 

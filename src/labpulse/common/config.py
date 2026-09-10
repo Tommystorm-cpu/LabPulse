@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from ipaddress import AddressValueError, IPv4Address
 from pathlib import Path
 import re
 
@@ -18,6 +19,29 @@ from labpulse.common.service_config import ServiceConfig
 # configuration boundary. Pydantic calls @field_validator for individual values
 # and @model_validator after the fields have been assembled into one model.
 
+class ExternalMqttListenerConfig(BaseModel):
+    """Optional authenticated TLS listener for off-Pi measurement publishers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, strict=True)
+    bind_address: str = "0.0.0.0"
+    port: int = Field(default=8883, ge=1, le=65535)
+
+    @field_validator("bind_address")
+    @classmethod
+    def validate_bind_address(cls, value: str) -> str:
+        """Require an explicit IPv4 interface address understood by Compose."""
+
+        try:
+            return str(IPv4Address(value))
+        except AddressValueError as error:
+            raise ValueError(
+                "must be an IPv4 address, for example 192.168.1.20; "
+                "use 0.0.0.0 only when the firewall restricts access"
+            ) from error
+
+
 class MqttConfig(BaseModel):
     """MQTT broker connection settings used by LabPulse publishers."""
 
@@ -25,6 +49,9 @@ class MqttConfig(BaseModel):
 
     broker: str
     port: int = Field(default=1883, ge=1, le=65535)
+    external_listener: ExternalMqttListenerConfig = Field(
+        default_factory=ExternalMqttListenerConfig
+    )
 
 
 class SmsConfig(BaseModel):

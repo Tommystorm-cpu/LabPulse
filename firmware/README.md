@@ -8,7 +8,9 @@ unit-free pipe-delimited serial protocol.
 
 ```text
 firmware/
-  triton_logfile_decoder.py
+  triton_logfile_publisher_setup.py
+  triton_logfile_publisher_production.py
+  run_triton_publisher.example.ps1
   library.properties
   src/
     Reading.h
@@ -27,8 +29,20 @@ firmware/
 
 ## Triton logfile publisher
 
-`triton_logfile_decoder.py` retains the existing binary `.vcl` decoder and
-publishes every field from each new complete record as one named JSON message.
+Two publisher entry points are provided:
+
+- `triton_logfile_publisher_setup.py` is the small foreground commissioning
+  version. It connects once, prints each successful publish, and stops visibly
+  on an unexpected error.
+- `triton_logfile_publisher_production.py` is the production version for Task
+  Scheduler. It adds validation, reconnect handling, configurable polling,
+  acknowledged retries, stable identity, operational logging and log rotation.
+
+Each file contains its own copy of the binary `.vcl` decoder and emits the exact
+same JSON payload. Copy only the version you want to run. Switching versions
+changes only the script file; the Pi topic and measurement mapping remain
+unchanged. Both publishers send every field from each new complete record as
+one named message.
 LabPulse's `labpulse.mqtt_json` driver selects the useful fields by their exact
 Triton header names, so different logfiles may contain different headers.
 
@@ -38,12 +52,28 @@ Install its MQTT dependency on the Windows Triton computer:
 py -m pip install "paho-mqtt>=2,<3"
 ```
 
-For a TLS listener on the LabPulse Pi, run:
+During commissioning, run the smaller version directly in a visible terminal:
 
 ```powershell
-py .\triton_logfile_decoder.py `
+py .\triton_logfile_publisher_setup.py `
+  --directory "D:\Oxford Instruments\Triton\LogFiles" `
+  --broker labpulse-pi.local `
+  --port 8883 `
+  --topic labpulse/triton/triton-01/measurements `
+  --username triton-01 `
+  --password-file C:\LabPulse\mqtt-password.txt `
+  --ca-certificate C:\LabPulse\labpulse-ca.crt
+```
+
+It intentionally has no unattended recovery or file logging. Once the data is
+correct in LabPulse, run the production version or supplied PowerShell wrapper:
+
+```powershell
+py .\triton_logfile_publisher_production.py `
+  --directory "D:\Oxford Instruments\Triton\LogFiles" `
   --broker 192.0.2.10 `
   --port 8883 `
+  --topic labpulse/triton/triton-01/measurements `
   --username triton-publisher `
   --password-file C:\LabPulse\mqtt-password.txt `
   --ca-certificate C:\LabPulse\labpulse-ca.crt
@@ -52,8 +82,9 @@ py .\triton_logfile_decoder.py `
 The script keeps decoding while the broker is temporarily unavailable and
 publishes the current record once the connection recovers. The password file's
 first line is used, which keeps the secret out of command history and process
-arguments. Without `--ca-certificate`, the MQTT connection is unencrypted and
-should only be used for isolated development.
+arguments. Plaintext operation requires an explicit `--insecure` flag and is
+only for isolated development. See the complete Pi, certificate, Windows and
+Task Scheduler procedure in [Triton control-PC publisher](../docs/TRITON_PUBLISHER.md).
 
 The complete `firmware` folder is the `LabPulseFirmware` Arduino library. Do not
 copy or open only an example `.ino`; the example depends on headers under

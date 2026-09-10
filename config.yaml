@@ -12,6 +12,13 @@
 mqtt:
   broker: mosquitto
   port: 1883
+  # Enable only after installing the server certificate, password database,
+  # and ACL described in docs/TRITON_PUBLISHER.md.
+  external_listener:
+    enabled: false
+    # Prefer the Pi's LAN address. 0.0.0.0 listens on every interface.
+    bind_address: 0.0.0.0
+    port: 8883
 
 sms:
   # Keep true for safe testing; set false on the real Pi to send through mmcli.
@@ -259,7 +266,7 @@ services:
         device_class: humidity
     read_interval_seconds: 2
 
-  # A Windows-side Triton decoder can publish every changing logfile header as
+  # A Windows-side Triton publisher can send every changing logfile header as
   # one JSON message. The mapping selects only the fields useful to LabPulse.
   # triton_fridge:
   #   label: Triton Fridge
@@ -268,7 +275,7 @@ services:
   #     options:
   #       broker: mosquitto
   #       port: 1883
-  #       topic: labpulse/triton/measurements
+  #       topic: labpulse/triton/triton-01/measurements
   #       parameters:
   #         condense_pressure: "P2 Condense (Bar)"
   #         cold_plate_temperature: "Cold Plate T(K)"

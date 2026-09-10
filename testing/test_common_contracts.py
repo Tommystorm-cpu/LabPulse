@@ -147,6 +147,9 @@ def test_service_health_config_contract() -> None:
     defaulted = LabPulseConfig.model_validate(base)
     assert_equal(defaulted.service_health.offline_confirm_seconds, 10, "offline default")
     assert_equal(defaulted.service_health.recovery_confirm_seconds, 15, "recovery default")
+    assert_equal(defaulted.mqtt.external_listener.enabled, False, "external MQTT default")
+    assert_equal(defaulted.mqtt.external_listener.bind_address, "0.0.0.0", "MQTT bind default")
+    assert_equal(defaulted.mqtt.external_listener.port, 8883, "external MQTT port default")
     configured = LabPulseConfig.model_validate(
         {
             **base,
@@ -165,3 +168,43 @@ def test_service_health_config_contract() -> None:
         pass
     else:
         raise AssertionError("zero service-health confirmation was accepted")
+
+
+def test_external_mqtt_listener_config_contract() -> None:
+    """Validate the optional control-PC listener and its network binding."""
+
+    base = {
+        "mqtt": {
+            "broker": "mosquitto",
+            "external_listener": {
+                "enabled": True,
+                "bind_address": "192.168.10.20",
+                "port": 9443,
+            },
+        },
+        "setups": {},
+        "services": {},
+    }
+    configured = LabPulseConfig.model_validate(base)
+    assert_equal(configured.mqtt.external_listener.enabled, True, "external MQTT enabled")
+    assert_equal(configured.mqtt.external_listener.bind_address, "192.168.10.20", "MQTT bind")
+    assert_equal(configured.mqtt.external_listener.port, 9443, "external MQTT port")
+
+    for invalid_address in ("localhost", "999.1.1.1", "::1"):
+        try:
+            LabPulseConfig.model_validate(
+                {
+                    **base,
+                    "mqtt": {
+                        **base["mqtt"],
+                        "external_listener": {
+                            **base["mqtt"]["external_listener"],
+                            "bind_address": invalid_address,
+                        },
+                    },
+                }
+            )
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError(f"invalid MQTT bind address was accepted: {invalid_address}")

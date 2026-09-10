@@ -341,9 +341,11 @@ Test mode starts enabled after every Home Assistant startup. Messages created
 in Test mode are prefixed `[TEST]` and route only to `sms.test_recipients`.
 Normal recipients are used only after an operator deliberately disables Test
 mode. Test mode changes routing, not the underlying alarm calculations.
-Muting suppresses delivery rather than hiding the confirmed problem. A recovery
-message is never generated when the matching opening notification was not
-delivered. Recovery SMS is separately configurable and off by default.
+Muting suppresses delivery and removes that measurement or power condition
+from **Current Problems**, without changing its underlying state. Diagnostics
+still exposes the state. A recovery message is never generated when the
+matching opening notification was not delivered. Recovery SMS is separately
+configurable and off by default.
 
 ## SMS behaviour
 

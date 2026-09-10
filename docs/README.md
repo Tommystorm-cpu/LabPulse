@@ -29,6 +29,8 @@ README.
   maintenance problems.
 - [Hardware](HARDWARE.md): current interface boundary and placeholders for the
   future photographed build record.
+- [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended
+  Windows control-PC installation.
 
 The installed source of truth is always `~/labpulse-live/config.yaml`. The
 repository `config.yaml` is a starter template. Generated Compose, fake-runtime
@@ -57,6 +59,7 @@ and Home Assistant files are not independent settings.
 | Cross-process design, ownership and failure boundaries | [Architecture](ARCHITECTURE.md) |
 | Development, tests, packaging and release process | [Development](DEVELOPMENT.md) |
 | Physical interface status and future build evidence | [Hardware](HARDWARE.md) |
+| Triton logfile publication from Windows control PCs | [Triton publisher](TRITON_PUBLISHER.md) |
 | One Python package or template tree | Its folder `README.md` |
 | Arduino library, examples and serial wire format | [Firmware README](../firmware/README.md) |
 | Future work and historical acceptance | [Roadmap](../ROADMAP.md) |

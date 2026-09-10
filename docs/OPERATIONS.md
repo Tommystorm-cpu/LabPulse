@@ -22,7 +22,8 @@ Clicking a measurement problem opens its alarm setup page.
 ## Notification controls
 
 Global, setup, per-reading, and power mutes suppress delivery without changing
-the underlying incident. Test mode selects the test recipient list. **Resend
+the underlying incident. Per-reading and power mutes also hide their condition
+from Current Problems; Diagnostics remains available. Test mode selects the test recipient list. **Resend
 active alert** retries the currently confirmed Danger or unavailable-reading
 alert through the same central dispatcher and therefore respects maintenance
 and every mute.

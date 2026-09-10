@@ -55,6 +55,10 @@
 [% endif %]
         hold_action: {action: none}
         double_tap_action: {action: none}
+        conditions:
+        - condition: state
+          entity: [[ measurement.reading_notification_mute_entity ]]
+          state: 'off'
 [% endif %]
 [% endfor %]
 [% for service, measurement in model.alarm_measurements %]
@@ -70,6 +74,12 @@
         conditions:
         - condition: state
           state: Danger
+        - condition: state
+          entity: [[ measurement.reading_notification_mute_entity ]]
+          state: 'off'
+        - condition: state
+          entity: [[ entity_id('sensor', service.name, measurement.name, 'availability') ]]
+          state: Available
 [% endfor %]
 [% for service in model.power_alarm_services %]
       - type: simple-entity
@@ -84,6 +94,9 @@
         conditions:
         - condition: state
           state: On Battery
+        - condition: state
+          entity: [[ entity_id('input_boolean', service.name, 'power', 'muted') ]]
+          state: 'off'
 [% endfor %]
       conditions:
       - condition: or

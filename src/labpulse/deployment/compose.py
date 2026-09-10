@@ -87,6 +87,15 @@ def build_compose(
         "  labpulse-sms:",
     ]
 
+    if config.mqtt.external_listener.enabled:
+        external_port = config.mqtt.external_listener.port
+        bind_address = config.mqtt.external_listener.bind_address
+        internal_port_line = lines.index('      - "127.0.0.1:1883:1883"')
+        lines.insert(
+            internal_port_line + 1,
+            f'      - "{bind_address}:{external_port}:8883"',
+        )
+
     lines.extend([
         "    <<: *labpulse-runtime-base",
         "    volumes:",

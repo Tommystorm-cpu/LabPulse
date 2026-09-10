@@ -188,16 +188,6 @@ else
   USB_MODE_DESCRIPTION="real Arduino USB serial devices"
 fi
 
-# Mosquitto stores subscriptions and retained MQTT state in the mounted data
-# directory, while logs remain visible through Docker.
-write_file "$PROJECT_DIR/mosquitto/config/mosquitto.conf" <<'EOF'
-listener 1883
-allow_anonymous true
-persistence true
-persistence_location /mosquitto/data/
-log_dest stdout
-EOF
-
 # These are copied into ~/labpulse-live because operators run them after the
 # package installation step has finished.
 copy_file "$ASSET_DIR/deployment/generate_compose.sh" "$PROJECT_DIR/generate_compose.sh"
