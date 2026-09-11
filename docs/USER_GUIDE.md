@@ -194,9 +194,10 @@ subcommand. Service names can be supplied to `up`, `down`, `restart` and
 `logs`. `labpulse open` opens localhost on the machine running it; an SSH user
 normally browses to `http://<pi-address>:8123` instead.
 
-Python workers log to container stdout and `~/labpulse-live/logs/`. File logs
-do not rotate automatically. `labpulse ps --all`, `labpulse logs --tail 100`
-and `labpulse doctor` are the normal first checks.
+Python workers log to container stdout and `~/labpulse-live/logs/`. Persistent
+logs rotate at local midnight and retain the previous seven daily files per
+worker, in addition to the current file. `labpulse ps --all`,
+`labpulse logs --tail 100` and `labpulse doctor` are the normal first checks.
 
 ## Setups and dashboards
 

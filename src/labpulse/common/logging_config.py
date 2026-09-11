@@ -1,6 +1,7 @@
 """Configure Docker-friendly logging for LabPulse services."""
 
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 import sys
 from pathlib import Path
@@ -9,6 +10,7 @@ from labpulse.common.config import DEFAULT_CONFIG_PATH
 
 
 DEFAULT_LOG_DIR = DEFAULT_CONFIG_PATH.parent / "logs"
+LOG_RETENTION_DAYS = 7
 
 
 def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> Path | None:
@@ -31,7 +33,18 @@ def configure_logging(app_name: str = "labpulse", level: int = logging.INFO) -> 
 
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        # Keep the current file plus one dated file for each completed day in
+        # the retention window. Rollover and old-file deletion happen inside
+        # the worker, so the Pi does not need a separate cron or logrotate job.
+        handlers.append(
+            TimedRotatingFileHandler(
+                log_file,
+                when="midnight",
+                interval=1,
+                backupCount=LOG_RETENTION_DAYS,
+                encoding="utf-8",
+            )
+        )
 
     logging.basicConfig(
         level=level,

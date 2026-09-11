@@ -73,6 +73,10 @@ artifacts are published.
   production update command.
 - Power-loss and restoration notifications are explicitly separate: loss is
   reported promptly, while recovery closes the lifecycle with outage duration.
+- Persistent Python worker logs now rotate daily and retain seven previous
+  daily files instead of growing without a bound.
+- The deployed USB assignment helper now reliably switches from the system
+  Python to LabPulse's managed environment before importing the package.
 
 ### Removed
 

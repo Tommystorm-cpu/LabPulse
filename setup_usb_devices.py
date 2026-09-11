@@ -29,7 +29,13 @@ def _use_managed_python_when_deployed() -> None:
             f"ERROR: LabPulse's managed Python environment is missing: {python_path}\n"
             "Run 'labpulse setup' to restore the managed environment."
         )
-    if Path(sys.executable).resolve() != python_path.resolve():
+    managed_environment = python_path.parent.parent
+    # A virtual environment's python executable is commonly a symlink to the
+    # system interpreter. Comparing resolved executable paths therefore makes
+    # the system Python look identical to the managed one and skips this
+    # re-exec, after which importing labpulse fails. sys.prefix identifies the
+    # environment that actually supplied the running interpreter.
+    if Path(sys.prefix).resolve() != managed_environment.resolve():
         # Replace this process rather than starting a child, so signals and the
         # final exit code still belong to the command the operator launched.
         os.execv(str(python_path), [str(python_path), *sys.argv])

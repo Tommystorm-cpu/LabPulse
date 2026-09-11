@@ -1,5 +1,7 @@
 """Behavior tests for interactive real/fake USB serial assignment."""
 
+import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -11,6 +13,7 @@ TEST_TMP.mkdir(parents=True, exist_ok=True)
 
 from setup_usb_devices import (
     SerialService,
+    _use_managed_python_when_deployed,
     build_parser,
     identify_devices,
     load_serial_services,
@@ -46,6 +49,36 @@ services:
         pin: D4
     measurements: {}
 """
+
+
+def test_deployed_helper_reexecutes_from_system_python() -> None:
+    """Use the managed environment even when both executables resolve alike."""
+
+    directory = TEST_TMP / f"usb-python-{uuid4().hex}"
+    python_path = directory / ".venv" / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.write_text("fixture", encoding="utf-8")
+    script_path = directory / "setup_usb_devices.py"
+    try:
+        with (
+            patch("setup_usb_devices.__file__", str(script_path)),
+            patch.object(sys, "prefix", str(directory / "system-python")),
+            patch.object(sys, "executable", str(python_path)),
+            patch.object(sys, "argv", [str(script_path), "--help"]),
+            patch.dict(os.environ, {}, clear=True),
+            patch("setup_usb_devices.os.execv") as execute,
+        ):
+            _use_managed_python_when_deployed()
+
+        execute.assert_called_once_with(
+            str(python_path),
+            [str(python_path), str(script_path), "--help"],
+        )
+    finally:
+        python_path.unlink(missing_ok=True)
+        python_path.parent.rmdir()
+        (directory / ".venv").rmdir()
+        directory.rmdir()
 
 
 def test_loads_only_enabled_serial_services() -> None:
