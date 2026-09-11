@@ -1,5 +1,5 @@
 {# MQTT publishes facts. These derived entities classify service health,
-   reading availability, and threshold condition without mixing their state. #}
+   reading presence, and threshold condition without mixing their state. #}
 sensor:
 [% if not model.alarm_measurements %]
   []
@@ -44,7 +44,7 @@ template:
         labpulse_custom_measurement: true
         formula: [[ measurement.config.formula | yaml_scalar ]]
         physical_inputs: [[ measurement.config.inputs | yaml_scalar ]]
-        availability_policy: [[ measurement.availability_policy | yaml_scalar ]]
+        required: [[ measurement.required | yaml_scalar ]]
 [% endfor %]
 [% endif %]
 [% if model.services %]
@@ -58,50 +58,28 @@ template:
         {% if raw in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] %}
           Offline
         {% elif raw != 'online' or [[ service.any_required_measurement_invalid_template ]] %}
-          Degraded
+          Needs attention
         {% else %}
-          Online
+          Working
         {% endif %}
       attributes:
-        raw_service_status: >-
-          {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}
-        required_reading_unavailable: >-
-          {{ [[ service.any_required_measurement_invalid_template ]] }}
         reason: >-
           {% set raw = states('[[ entity_id('sensor', service.name, 'status') ]]') %}
-          {% if raw in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] %}
-            service status is {{ raw }}
+          {% if raw == 'reconnecting' %}
+            Trying to reconnect to this sensor service.
+          {% elif raw in ['disconnected', 'offline'] %}
+            No connection to this sensor service.
+          {% elif raw == 'error' %}
+            The sensor service reported an error and is trying to recover.
+          {% elif raw in ['unknown', 'unavailable'] %}
+            No current status has been received from this sensor service.
           {% elif raw != 'online' %}
-            service reported {{ raw }}
+            The sensor service reported: {{ raw | replace('_', ' ') }}.
           {% elif [[ service.any_required_measurement_invalid_template ]] %}
-            one or more required readings are unavailable
+            One or more required readings have no recent usable data.
           {% else %}
-            service is online and required readings are available
+            The service and all required readings are working normally.
           {% endif %}
-        condition_age_seconds: >-
-          {% set entity = states['[[ entity_id('binary_sensor', service.name, 'service_offline') ]]'] %}
-          {% if states('[[ entity_id('sensor', service.name, 'service_health') ]]') == 'Online' %}
-            0
-          {% else %}
-            {{ [0, as_timestamp(now()) - as_timestamp(entity.last_changed, as_timestamp(now()))] | max | round(0) }}
-          {% endif %}
-        offline_confirm_seconds: [[ service.health_offline_confirm_seconds | yaml_scalar ]]
-        recovery_confirm_seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
-        incident_phase: >-
-          {% if is_state('[[ entity_id('input_boolean', service.name, 'service_offline_incident_active') ]]', 'on')
-                and is_state('[[ entity_id('binary_sensor', service.name, 'service_offline') ]]', 'off') %}
-            recovering
-          {% elif is_state('[[ entity_id('input_boolean', service.name, 'service_offline_incident_active') ]]', 'on') %}
-            active
-          {% elif is_state('[[ entity_id('binary_sensor', service.name, 'service_offline') ]]', 'on') %}
-            {{ 'suppressed-maintenance' if is_state('input_boolean.labpulse_update_maintenance', 'on') else 'pending' }}
-          {% else %}
-            inactive
-          {% endif %}
-        home_assistant_notification_created: >-
-          {{ is_state('[[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') ]]', 'on') }}
-        sms_requested: >-
-          {{ is_state('[[ entity_id('input_boolean', service.name, 'service_offline_sms_requested') ]]', 'on') }}
 [% endfor %]
     binary_sensor:
 [% for service in model.services %]
@@ -117,61 +95,7 @@ template:
 [% endfor %]
 [% endif %]
 [% if model.measurements %]
-  - sensor:
-[% for service, measurement in model.measurements %]
-    - name: [[ stable_id(service.name, measurement.name, 'availability') | yaml_scalar ]]
-      unique_id: [[ stable_id(service.name, measurement.name, 'availability') | yaml_scalar ]]
-      icon: [[ ('mdi:check-network-outline' if measurement.availability_required else 'mdi:information-outline') | yaml_scalar ]]
-      state: >-
-        {% if is_number(states('[[ measurement.entity_id ]]')) %}
-          Available
-        {% elif [[ 'true' if measurement.availability_required else 'false' ]] %}
-          Unavailable
-        {% else %}
-          Unavailable — optional
-        {% endif %}
-      attributes:
-        policy: [[ measurement.availability_policy | yaml_scalar ]]
-        raw_state: >-
-          {{ states('[[ measurement.entity_id ]]') }}
-        reason: >-
-          {{ 'fresh numeric reading' if is_number(states('[[ measurement.entity_id ]]'))
-             else 'source state is ' ~ states('[[ measurement.entity_id ]]') }}
-        condition_age_seconds: >-
-          {% set entity = states['[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]'] %}
-          {{ 0 if is_number(states('[[ measurement.entity_id ]]')) else
-             [0, as_timestamp(now()) - as_timestamp(entity.last_changed, as_timestamp(now()))] | max | round(0) }}
-        unavailable_confirm_seconds: [[ measurement.unavailable_confirm_seconds | yaml_scalar ]]
-[% if measurement.availability_required %]
-        incident_phase: >-
-          {% if is_state('[[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') ]]', 'on')
-                and is_number(states('[[ measurement.entity_id ]]')) %}
-            recovering
-          {% elif is_state('[[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') ]]', 'on') %}
-            active
-          {% elif is_number(states('[[ measurement.entity_id ]]')) %}
-            inactive
-          {% elif is_state('input_boolean.labpulse_update_maintenance', 'on') %}
-            suppressed-maintenance
-          {% elif is_state('input_boolean.labpulse_global_notifications_muted', 'on')
-                    or is_state('[[ measurement.reading_notification_mute_entity ]]', 'on')
-                    or not ([[ measurement.setup_notifications_unmuted_template[3:-3] ]]) %}
-            suppressed-muted
-          {% else %}
-            pending
-          {% endif %}
-        home_assistant_notification_created: >-
-          {{ is_state('[[ entity_id('input_boolean', service.name, measurement.name, 'availability_notification_sent') ]]', 'on') }}
-        sms_requested: >-
-          {{ is_state('[[ entity_id('input_boolean', service.name, measurement.name, 'availability_sms_requested') ]]', 'on') }}
-[% else %]
-        incident_phase: >-
-          {{ 'inactive' if is_number(states('[[ measurement.entity_id ]]')) else 'optional' }}
-        home_assistant_notification_created: false
-        sms_requested: false
-[% endif %]
-[% endfor %]
-    binary_sensor:
+  - binary_sensor:
 [% for service, measurement in model.measurements %]
     - name: [[ stable_id(service.name, measurement.name, 'reading_available') | yaml_scalar ]]
       unique_id: [[ stable_id(service.name, measurement.name, 'reading_available') | yaml_scalar ]]
@@ -179,8 +103,10 @@ template:
       state: >-
         {{ is_number(states('[[ measurement.entity_id ]]')) }}
       attributes:
-        policy: [[ measurement.availability_policy | yaml_scalar ]]
-        actionable: [[ measurement.availability_required | yaml_scalar ]]
+        required: [[ measurement.required | yaml_scalar ]]
+        reason: >-
+          {{ 'Current reading received' if is_number(states('[[ measurement.entity_id ]]'))
+             else 'No recent usable data' }}
 [% endfor %]
 [% endif %]
 [% if model.alarm_measurements %]

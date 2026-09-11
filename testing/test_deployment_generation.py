@@ -314,7 +314,7 @@ def test_offline_dashboard_generation_is_deterministic() -> None:
         if [view["title"] for view in visible_views] != [
             "Monitor",
             "Alarm Setup",
-            "Diagnostics",
+            "System Status",
         ]:
             raise AssertionError("offline visible dashboard view contract changed")
         subviews = [view for view in dashboard["views"] if view.get("subview")]

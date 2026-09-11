@@ -12,6 +12,6 @@ LabPulse containers on a Raspberry Pi:
 
 `labpulse setup` copies the runnable scripts into `~/labpulse-live`. Run the
 installed copies there so they use the live generated `compose.yaml` and
-`config.yaml`. See the [user guide](../../docs/USER_GUIDE.md#diagnostics)
+`config.yaml`. See the [user guide](../../docs/USER_GUIDE.md#system-status-and-command-line-diagnostics)
 for operating boundaries and the [installation troubleshooting section](../../docs/INSTALLATION.md#troubleshooting)
 for recovery steps.

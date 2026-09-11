@@ -134,10 +134,9 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "group": measurement_config.group,
                 "device_class": measurement_config.device_class,
                 "alarmed": measurement_config.alarmed,
-                "availability_policy": measurement_config.availability.value,
-                "availability_required": measurement_config.availability.value == "required",
-                "unavailable_confirm_seconds": measurement_config.unavailable_confirm_seconds,
-                "availability_recovery_confirm_seconds": measurement_config.availability_recovery_confirm_seconds,
+                "required": measurement_config.required,
+                "missing_confirm_seconds": measurement_config.missing_confirm_seconds,
+                "recovery_confirm_seconds": measurement_config.recovery_confirm_seconds,
                 "config": measurement_config,
                 "setup_ids": selected_setups,
                 "notification_context": notification_context,
@@ -171,7 +170,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         # degraded. They never turn a connected service into an outage.
         required_checks = [
             f"not is_number(states('{entity_id('sensor', service_name, item['name'])}'))"
-            for item in service_measurements if item["availability_required"]
+            for item in service_measurements if item["required"]
         ]
         service["any_required_measurement_invalid_template"] = (
             "(" + " or ".join(required_checks or ["false"]) + ")"
@@ -189,22 +188,22 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "alarmed": all(item["alarmed"] for item in service_measurements),
             }
         required_measurements = [
-            item for item in service_measurements if item["availability_required"]
+            item for item in service_measurements if item["required"]
         ]
         service["subordinate_notification_ids"] = [
-            f"labpulse_{item['measurement_id']}_availability"
+            f"labpulse_{item['measurement_id']}_missing_reading"
             for item in required_measurements
         ]
         service["subordinate_incident_entities"] = [
-            entity_id("input_boolean", item["service_name"], item["name"], "availability_incident_active")
+            entity_id("input_boolean", item["service_name"], item["name"], "missing_reading_incident_active")
             for item in required_measurements
         ]
         service["subordinate_notification_sent_entities"] = [
-            entity_id("input_boolean", item["service_name"], item["name"], "availability_notification_sent")
+            entity_id("input_boolean", item["service_name"], item["name"], "missing_reading_notification_sent")
             for item in required_measurements
         ]
         service["subordinate_sms_requested_entities"] = [
-            entity_id("input_boolean", item["service_name"], item["name"], "availability_sms_requested")
+            entity_id("input_boolean", item["service_name"], item["name"], "missing_reading_sms_requested")
             for item in required_measurements
         ]
         physical_services.append(service)
@@ -258,10 +257,9 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "group": custom_config.group,
             "device_class": custom_config.device_class,
             "alarmed": custom_config.alarmed,
-            "availability_policy": custom_config.availability.value,
-            "availability_required": custom_config.availability.value == "required",
-            "unavailable_confirm_seconds": custom_config.unavailable_confirm_seconds,
-            "availability_recovery_confirm_seconds": custom_config.availability_recovery_confirm_seconds,
+            "required": custom_config.required,
+            "missing_confirm_seconds": custom_config.missing_confirm_seconds,
+            "recovery_confirm_seconds": custom_config.recovery_confirm_seconds,
             "config": custom_config,
             "setup_ids": selected_setups,
             "notification_context": f"{prefix}: {', '.join(labels)}. Calculated from physical LabPulse measurements.",

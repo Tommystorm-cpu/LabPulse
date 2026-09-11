@@ -20,6 +20,7 @@ services:
     measurements:
       temp0:
         label: Supply Temperature
+        # required defaults to true, so normal readings omit it.
         setups: [water_loop]
         unit: "°C"
         device_class: temperature
@@ -31,6 +32,7 @@ services:
 custom_measurements:
   temperature_difference:
     label: Temperature Difference
+    # Use required: false only if a missing calculated result is acceptable.
     setups: [water_loop]
     inputs:
       supply: pump_room.temp0

@@ -22,7 +22,7 @@ class SmsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
-    event: Literal["offline", "unavailable", "warning", "recovery", "notification", "test"]
+    event: Literal["offline", "missing_reading", "warning", "recovery", "notification", "test"]
     service: str = Field(min_length=1, max_length=80)
     measurement: str = Field(min_length=1, max_length=80)
     state: str = Field(min_length=1, max_length=40)

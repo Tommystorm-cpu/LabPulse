@@ -10,13 +10,13 @@ alerts:
     title: >-
       ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Service Offline: [[ service.label ]]")
     message: >-
-      "LabPulse cannot communicate with [[ service.label ]]. All measurements from this service are temporarily unavailable.\nService status: {current_measurement}."
+      "LabPulse cannot communicate with [[ service.label ]], so its readings may be missing. Check the service connection if this continues.\nLatest status: {current_measurement}."
 
   service_recovery:
     title: >-
       ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Service Restored: [[ service.label ]]")
     message: >-
-      "Communication with [[ service.label ]] has been restored. Telemetry is available again.\nDowntime: " ~ (downtime_seconds | string) ~ " seconds.\nService status: {current_measurement}."
+      "Communication with [[ service.label ]] is working again after " ~ (downtime_seconds | string) ~ " seconds.\nLatest status: {current_measurement}."
 
   measurement_warning:
     title: >-
@@ -30,29 +30,29 @@ alerts:
     message: >-
       "Current Measurement: {current_measurement}. \nRecovered after " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') ~ " to " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') ~ "; deadband " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'recovery_deadband') ]]') ~ "."
 
-  reading_unavailable:
+  missing_reading:
     title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Reading Unavailable: [[ service.label ]] - [[ measurement.label ]]")
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse No Recent Data: [[ service.label ]] - [[ measurement.label ]]")
     message: >-
-      "No fresh numeric reading is available. The cause may be the sensor, wiring, firmware, parsing, or MQTT.\nCurrent Measurement: {current_measurement}"
+      "No recent usable reading has been received. Check the sensor connection and service if this continues.\nLatest reading: {current_measurement}"
 
-  reading_available:
+  reading_restored:
     title: >-
-      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Reading Available: [[ service.label ]] - [[ measurement.label ]]")
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Data Restored: [[ service.label ]] - [[ measurement.label ]]")
     message: >-
-      "Valid numeric telemetry resumed. \nService status: " ~ states('[[ entity_id('sensor', service.name, 'status') ]]') ~ ". \nAlarm state: " ~ states('[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]') ~ "." ~ "\nCurrent Measurement: {current_measurement}"
+      "Recent data is being received again.\nLatest reading: {current_measurement}"
 
   power_warning:
     title: >-
       ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Power Outage Alert")
     message: >-
-      "External power has been lost and [[ service.label ]] is running on UPS battery. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unavailable") ~ ".\nBattery voltage: {current_measurement} V.\nThe GPIO6 signal remained absent for [[ power.config.outage_confirm_seconds ]] seconds."
+      "External power has been lost and [[ service.label ]] is running on its backup battery. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unknown") ~ ".\nBattery voltage: {current_measurement} V."
 
   power_recovery:
     title: >-
       ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Power Recovery Alert")
     message: >-
-      "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unavailable") ~ ".\nBattery voltage: {current_measurement} V.\nThe GPIO6 signal remained present for [[ power.config.restore_confirm_seconds ]] seconds."
+      "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unknown") ~ ".\nBattery voltage: {current_measurement} V."
 
 formatting:
   test_prefix: "[TEST]"

@@ -258,7 +258,7 @@ outputs:
 
 Each enabled output becomes one `labpulse-output-...` container and one MQTT
 switch such as `switch.labpulse_output_cooling_valve_enable`. The switch is
-shown under Controlled Outputs on the Monitor and Diagnostics views.
+shown under Controlled Outputs on the Monitor and System Status views.
 
 | Field | Default | Meaning |
 |---|---:|---|
@@ -390,22 +390,21 @@ measurements:
     unit: "°C"
     device_class: temperature
     icon: mdi:snowflake-thermometer
-    availability: required
-    unavailable_confirm_seconds: 60
-    availability_recovery_confirm_seconds: 15
+    missing_confirm_seconds: 60
+    recovery_confirm_seconds: 15
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
 | mapping key | required | Stable driver, MQTT, and entity ID; lowercase letters, numbers, and underscores |
-| `label` | readable form of ID | Full label used for MQTT discovery, Diagnostics, active problems, helpers, and notifications |
+| `label` | readable form of ID | Full label used for MQTT discovery, System Status, active problems, helpers, and notifications |
 | `short_label` | `label` | Shorter label used where the dashboard's setup heading supplies context |
 | `group` | none | Presentation grouping within a setup |
 | `setups` | required for ordinary values | One or more logical setup IDs |
 | `alarmed` | `true` | Whether to generate measurement alarm state, controls, and notifications |
-| `availability` | `required` | `required` opens an incident when telemetry is unavailable; `optional` remains visible but never alerts or affects service health/update readiness |
-| `unavailable_confirm_seconds` | `60` | Continuous unavailability required before a required-reading incident opens; 1 to 86400 seconds |
-| `availability_recovery_confirm_seconds` | `15` | Continuous availability required before its incident closes; 0 to 3600 seconds |
+| `required` | `true` | Whether missing data needs attention, can notify, affects service status, and blocks update readiness; strict boolean |
+| `missing_confirm_seconds` | `60` | Continuous missing data required before a required-reading incident opens; 1 to 86400 seconds |
+| `recovery_confirm_seconds` | `15` | Continuous usable data required before its missing-reading incident closes; 0 to 3600 seconds |
 | `unit` | none | Exact published unit |
 | `device_class` | none | LabPulse semantic category and default-icon source |
 | `icon` | derived | Explicit `mdi:` override |
@@ -425,19 +424,18 @@ shorter name clearer. For example, `Triton 1 Temperature In` can appear as
 `Temperature In` within the `Triton 1` dashboard group.
 
 Set `alarmed: false` for informational telemetry that should remain published
-and visible on operator dashboards and Diagnostics without measurement alarm
+and visible on operator dashboards and System Status without measurement alarm
 helpers, threshold controls, active-problem rows, or notifications. Whole-
 service health monitoring remains separate. Dedicated power readings form one
 composite outage alarm, so every measurement in a `power_detection` service
 must use the same `alarmed` value.
 
-`availability` is deliberately an enum rather than a second enabled flag.
-`enabled: false` on a service still means that LabPulse does not run or
-generate that service. An `optional` measurement is still generated and shown
-when present; while absent it reads **Unavailable — optional**, produces no
-incident, Home Assistant notification, or SMS, does not degrade its service,
-and does not block `labpulse update`. Invalid values are rejected with the
-configuration filename and field location.
+Every configured measurement is required by default. Set `required: false`
+only when a value should be shown when present but its absence is acceptable.
+It then shows **No recent data — optional**, produces no incident, Home
+Assistant notification, or SMS, does not change its service from **Working**,
+and does not block `labpulse update`. `required` accepts only YAML booleans;
+invalid values are rejected with the configuration filename and field location.
 
 ## Custom measurements
 
@@ -486,9 +484,9 @@ numbers and must be used when declared.
 | `formula` | required | Restricted arithmetic expression |
 | `precision` | `2` | Result rounding from 0 to 10 decimal places |
 | `alarmed` | `true` | Whether to create the normal threshold alarm controls |
-| `availability` | `required` | Whether an unavailable calculated result opens an incident (`required`) or is informational (`optional`) |
-| `unavailable_confirm_seconds` | `60` | Required continuous calculated-result unavailability before an incident opens |
-| `availability_recovery_confirm_seconds` | `15` | Required continuous availability before its incident closes |
+| `required` | `true` | Whether a missing calculated result needs attention and can open an incident |
+| `missing_confirm_seconds` | `60` | Required continuous missing calculated data before an incident opens |
+| `recovery_confirm_seconds` | `15` | Required continuous usable calculated data before its incident closes |
 | `unit` | none | Result unit shown by Home Assistant |
 | `device_class` | none | Result semantic category and bulk-deadband grouping |
 | `icon` | none | Optional explicit `mdi:` icon |
@@ -496,7 +494,7 @@ numbers and must be used when declared.
 
 The resulting entity is `sensor.labpulse_custom_<custom-id>`. It is unavailable
 when any physical input is unavailable or non-numeric, or when a divisor
-evaluates to zero. Its own availability policy applies to that result. A
+evaluates to zero. Its own `required` setting applies to that result. A
 required calculated reading waits while a source service is offline so the
 service-level incident remains the single root problem. Once inputs recover,
 normal observation-window alarm evaluation resumes.

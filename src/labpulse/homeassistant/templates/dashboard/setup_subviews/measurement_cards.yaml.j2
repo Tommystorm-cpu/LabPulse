@@ -32,8 +32,8 @@
         entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
         [[ state_condition ]]: Danger
       - condition: state
-        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
-        state: Available
+        entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'reading_available') ]]
+        state: 'on'
       grid_options: {columns: [[ ('full' if mobile else 6) ]]}
       card:
         type: tile
@@ -48,36 +48,23 @@
         double_tap_action: {action: none}
         icon_tap_action: {action: none}
 [% endfor %]
-{# When the reading is absent, reuse the alarm-state slot instead of adding a
-   seventh card and breaking the established six-column layout. #}
+{# When the reading is absent, use the alarm-state slot for one clear message. #}
     - type: conditional
       conditions:
       - condition: state
-        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
-        state: Unavailable
+        entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'reading_available') ]]
+        state: 'off'
       grid_options: {columns: [[ ('full' if mobile else 6) ]]}
       card:
         type: tile
-        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
-        name: Alarm state
-        icon: mdi:alert-outline
+        entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'reading_available') ]]
+        name: [[ ('No recent data' if measurement.required else 'No recent data — optional') | yaml_scalar ]]
+        icon: [[ ('mdi:alert-outline' if measurement.required else 'mdi:information-outline') | yaml_scalar ]]
+[% if measurement.required %]
         color: amber
-        tap_action: {action: none}
-        hold_action: {action: none}
-        double_tap_action: {action: none}
-        icon_tap_action: {action: none}
-    - type: conditional
-      conditions:
-      - condition: state
-        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
-        state: Unavailable — optional
-      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
-      card:
-        type: tile
-        entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
-        name: Alarm state
-        icon: mdi:information-outline
+[% else %]
         color: disabled
+[% endif %]
         tap_action: {action: none}
         hold_action: {action: none}
         double_tap_action: {action: none}
@@ -299,28 +286,16 @@
             tap_action: {action: none}
             hold_action: {action: none}
             double_tap_action: {action: none}
-          - entity: [[ entity_id('sensor', service_name, measurement.name, 'observed_danger_percent') ]]
-            name: Observed danger
-          - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'danger_zone') ]]
-            name: Danger zone
-          - entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'recovery_zone') ]]
-            name: Recovery zone
-          - entity: [[ entity_id('sensor', service_name, measurement.name, 'availability') ]]
-            name: Reading availability
-[% if measurement.availability_required %]
-          - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'availability_incident_active') ]]
-            name: Confirmed unavailable incident
-[% endif %]
           - type: conditional
             conditions:
-[% if measurement.availability_required %]
+[% if measurement.required %]
             - condition: or
               conditions:
               - condition: state
                 entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
                 state: Danger
               - condition: state
-                entity: [[ entity_id('input_boolean', service_name, measurement.name, 'availability_incident_active') ]]
+                entity: [[ entity_id('input_boolean', service_name, measurement.name, 'missing_reading_incident_active') ]]
                 state: 'on'
 [% else %]
             - condition: state

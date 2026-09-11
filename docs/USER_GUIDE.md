@@ -155,7 +155,7 @@ labpulse doctor
 For real hardware, omit the simulator command. Open Home Assistant with
 `labpulse open`, or browse to `http://<pi-address>:8123` from another
 computer. Confirm that every expected service is running, MQTT is connected,
-the Diagnostics view reports the expected services, and measurements continue
+the System Status view reports the expected services, and measurements continue
 to update before relying on alarms or notifications.
 
 Generated Compose contains Home Assistant, Mosquitto, one SMS worker, one
@@ -212,7 +212,7 @@ The generated dashboard provides:
   outputs;
 - configured custom tabs for selected setups;
 - **Alarm Setup** for thresholds, timing, mutes, Test mode and bulk editing;
-- **Diagnostics** for physical services, calculated readings and outputs;
+- **System Status** for a plain-language summary of services, readings and outputs;
 - setup and power subviews with detailed controls.
 
 It uses native Home Assistant YAML cards and requires no HACS frontend
@@ -250,7 +250,7 @@ numeric, or when a divisor is zero. Its threshold alarm pauses while the value
 cannot be evaluated. Calculated measurements run in Home Assistant; they do
 not create another container or MQTT measurement.
 
-## Service health and reading availability
+## Service status and missing readings
 
 The hardware runner schedules reads with a monotonic clock. A valid sample is
 published before the online status so recovery does not act on an old value.
@@ -262,18 +262,19 @@ reaches the configured maximum, the runner closes and reconnects the driver.
 Individual entities also expire in Home Assistant. A service may therefore be
 running as a container while its device or one measurement is unhealthy.
 
-LabPulse reports three separate ideas. **Service health** is Online, Degraded,
-or Offline and describes communication with the hub or driver. **Reading
-availability** says whether one reading is fresh and numeric. **Alarm
-condition** is Normal or Danger and evaluates thresholds only for an available
-reading.
+System Status combines the technical signals into one operator-facing service
+state. **Working** means the service and every required reading are current.
+**Needs attention** means the service is communicating but has reported a
+component problem or lacks required data. **Offline** means LabPulse cannot
+currently communicate with the service. Threshold alarm state remains a
+separate Normal or Danger decision and is evaluated only when data is present.
 
 A confirmed service outage is one root incident. While it is pending or active,
 LabPulse suppresses subordinate unavailable-reading incidents. If the service
 remains healthy but one required reading disappears, that reading gets its own
-incident after its configured confirmation delay. Optional readings remain
-visible and show **Unavailable — optional**, but their absence is informational
-only and does not make the service unhealthy.
+incident after its configured confirmation delay. Measurements with
+`required: false` remain visible and show **No recent data — optional**, but
+their absence is informational and leaves the service **Working**.
 
 ## Measurement alarm behaviour
 
@@ -293,14 +294,14 @@ must also move beyond the deadband: a high alarm recovers below
 `maximum - deadband`, while a low alarm recovers above `minimum + deadband`.
 Deadband prevents repeated transitions near a boundary.
 
-Missing or non-numeric telemetry is represented separately as Reading
-availability. Threshold evaluation pauses until valid data returns, then
+Missing or non-numeric telemetry is represented separately from a dangerous
+value. Threshold evaluation pauses until valid data returns, then
 reconciles against the current thresholds. Alarm state and notification
 delivery are separate: muting a
 notification never makes a dangerous state Normal. Alarm state is read-only
 on the dashboard and changes only when these measurement rules run.
 
-When an active Danger or Reading unavailable alert needs to be delivered again, open
+When an active Danger or missing-reading alert needs to be delivered again, open
 that measurement's alarm controls and press **Resend active alert**. The action
 keeps the alarm state unchanged and repeats the matching warning using the
 current Test mode, measurement mute, setup mute, and global mute settings. For
@@ -325,10 +326,9 @@ alarm. Loss and restoration have separate confirmation times. A confirmed
 outage and confirmed restoration are separate events; restoration reports the
 duration rather than delaying the initial warning until power returns.
 
-Unavailable voltage, charge, or mains readings and complete service loss remain
-distinguishable from an actual On Battery condition. Restored incident helpers
-and stable notification IDs avoid duplicate alerts after Home Assistant
-restarts. Raw power readings can
+Missing voltage, charge, or mains readings and complete service loss remain
+distinguishable from an actual **Running on battery** condition. LabPulse avoids
+duplicate alerts after Home Assistant restarts. Raw power readings can
 remain visible without power notifications by setting all three measurements
 to `alarmed: false`.
 
@@ -343,8 +343,8 @@ in Test mode are prefixed `[TEST]` and route only to `sms.test_recipients`.
 Normal recipients are used only after an operator deliberately disables Test
 mode. Test mode changes routing, not the underlying alarm calculations.
 Muting suppresses delivery and removes that measurement or power condition
-from **Current Problems**, without changing its underlying state. Diagnostics
-still exposes the state. A recovery message is never generated when the
+from **Current Problems**, without changing its underlying state. System Status
+still shows the underlying service and reading condition. A recovery message is never generated when the
 matching opening notification was not delivered. Recovery SMS is separately
 configurable and off by default.
 
@@ -472,7 +472,12 @@ health. Change firmware and the serial parser/tests together when names or the
 wire contract change. There is no automatic firmware flashing command;
 `labpulse firmware` points to the repository source.
 
-## Diagnostics
+## System Status and command-line diagnostics
+
+The Home Assistant **System Status** view shows each service as Working, Needs
+attention, or Offline. It lists the latest readings and gives a plain-language
+explanation when action may be needed. The time beneath a status or reading is
+Home Assistant's natural last-changed time rather than an internal timer.
 
 `labpulse doctor` does not change the installation. It checks the live and
 runtime configuration, mode, clock/NTP, watchdog, generated files, declared

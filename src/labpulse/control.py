@@ -565,7 +565,7 @@ def required_telemetry_topics(config_path: Path) -> set[str] | None:
         for service_name, service in config.services.items()
         if service.enabled
         for measurement_name, measurement in service.measurements.items()
-        if measurement.availability.value == "required"
+        if measurement.required
     }
 
 

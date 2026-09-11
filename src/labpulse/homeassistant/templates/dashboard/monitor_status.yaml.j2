@@ -34,7 +34,7 @@
         icon: mdi:lan-disconnect
         tap_action:
           action: navigate
-          navigation_path: /labpulse-monitor/diagnostics
+          navigation_path: /labpulse-monitor/system-status
         hold_action: {action: none}
         double_tap_action: {action: none}
         conditions:
@@ -42,10 +42,10 @@
           state: 'on'
 [% endfor %]
 [% for service, measurement in model.measurements %]
-[% if measurement.availability_required %]
+[% if measurement.required %]
       - type: simple-entity
-        entity: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') ]]
-        name: [[ (measurement.label ~ ': reading unavailable') | yaml_scalar ]]
+        entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') ]]
+        name: [[ (measurement.label ~ ': no recent data') | yaml_scalar ]]
         icon: mdi:alert-outline
         tap_action:
           action: navigate
@@ -54,7 +54,7 @@
 [% elif service.power is defined and service.power is not none %]
           navigation_path: /labpulse-monitor/alarm-power-[[ service.service_id ]]
 [% else %]
-          navigation_path: /labpulse-monitor/diagnostics
+          navigation_path: /labpulse-monitor/system-status
 [% endif %]
         hold_action: {action: none}
         double_tap_action: {action: none}
@@ -92,8 +92,8 @@
           entity: [[ measurement.reading_notification_mute_entity ]]
           state: 'off'
         - condition: state
-          entity: [[ entity_id('sensor', service.name, measurement.name, 'availability') ]]
-          state: Available
+          entity: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]
+          state: 'on'
         - condition: or
           conditions:
 [% for setup_id in measurement.setup_ids %]
@@ -105,7 +105,7 @@
 [% for service in model.power_alarm_services %]
       - type: simple-entity
         entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
-        name: 'Power monitoring: lifecycle state'
+        name: 'Power supply needs attention'
         icon: mdi:power-plug-off-outline
         tap_action:
           action: navigate
@@ -114,7 +114,7 @@
         double_tap_action: {action: none}
         conditions:
         - condition: state
-          state: On Battery
+          state: Running on battery
         - condition: state
           entity: [[ entity_id('input_boolean', service.name, 'power', 'muted') ]]
           state: 'off'
@@ -127,7 +127,7 @@
         - condition: state
           state: Danger
         - condition: state
-          state: On Battery
+          state: Running on battery
       show_empty: false
       card:
         type: entities

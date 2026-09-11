@@ -48,13 +48,14 @@ def config_data() -> dict[str, object]:
     }
 
 
-def test_sms_catalogue_uses_availability_language() -> None:
-    """Keep old fault terminology out of the shared message catalogue."""
+def test_sms_catalogue_uses_plain_missing_data_language() -> None:
+    """Keep technical availability terminology out of operator messages."""
 
     model = build_template_context(LabPulseConfig.model_validate(config_data()))
     templates = deepcopy(alarm.load_sms_templates())
     rendered = render_alarm(model)
-    assert "reading_unavailable" in templates["alerts"]
+    assert "missing_reading" in templates["alerts"]
+    assert "reading_restored" in templates["alerts"]
     assert "sensor_fault" not in str(templates).lower()
     assert "Sensor Fault" not in rendered
 
@@ -113,8 +114,8 @@ def test_context_for_every_scope_without_duplicate_events() -> None:
     transition_suffixes = (
         " Danger",
         " Recovery",
-        " Reading Unavailable",
-        " Reading Available",
+        " Reading Missing",
+        " Reading Restored",
     )
     for label, context in expected.items():
         measurement_automations = [
@@ -182,7 +183,7 @@ def test_service_faults_remain_hub_level() -> None:
         item
         for item in generated
         if "Service Offline" in str(item.get("alias", ""))
-        or "Service Online" in str(item.get("alias", ""))
+        or "Service Working" in str(item.get("alias", ""))
     ]
     if len(service_health) != 2:
         raise AssertionError("expected one hub fault and one hub recovery automation")
@@ -231,7 +232,7 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
             for automation in generated
             if str(automation.get("alias", "")).startswith(f"LabPulse {label} ")
             and str(automation.get("alias", "")).endswith(
-                    (" Danger", " Recovery", " Reading Unavailable", " Reading Available")
+                    (" Danger", " Recovery", " Reading Missing", " Reading Restored")
             )
         ]
         if len(transitions) != 4:
@@ -259,7 +260,7 @@ def test_setup_mutes_are_independent_delivery_gates() -> None:
         automation
         for automation in generated
         if "Service Offline" in str(automation.get("alias", ""))
-        or "Service Online" in str(automation.get("alias", ""))
+        or "Service Working" in str(automation.get("alias", ""))
     ]
     if any(helper in yaml.safe_dump(service_health) for helper in setup_helpers):
         raise AssertionError("setup mute leaked into physical service-health alarms")

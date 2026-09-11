@@ -3,7 +3,6 @@
 import ast
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 import keyword
 import math
 import re
@@ -20,13 +19,6 @@ _BINARY_OPERATORS: dict[type[ast.operator], str] = {
     ast.Div: "/",
 }
 _UNARY_OPERATORS: dict[type[ast.unaryop], str] = {ast.UAdd: "+", ast.USub: "-"}
-
-
-class AvailabilityPolicy(StrEnum):
-    """Describe whether an absent reading is an actionable problem."""
-
-    REQUIRED = "required"
-    OPTIONAL = "optional"
 
 
 @dataclass(frozen=True)
@@ -140,9 +132,9 @@ class MeasurementConfig(BaseModel):
     group: str | None = None
     setups: tuple[str, ...] | None = None
     alarmed: bool = Field(default=True, strict=True)
-    availability: AvailabilityPolicy = AvailabilityPolicy.REQUIRED
-    unavailable_confirm_seconds: int = Field(default=60, ge=1, le=86400)
-    availability_recovery_confirm_seconds: int = Field(default=15, ge=0, le=3600)
+    required: bool = Field(default=True, strict=True)
+    missing_confirm_seconds: int = Field(default=60, ge=1, le=86400)
+    recovery_confirm_seconds: int = Field(default=15, ge=0, le=3600)
     unit: str | None = None
     device_class: str | None = None
     icon: str | None = None
@@ -187,9 +179,9 @@ class CustomMeasurementConfig(BaseModel):
     formula: str
     precision: int = Field(default=2, ge=0, le=10)
     alarmed: bool = Field(default=True, strict=True)
-    availability: AvailabilityPolicy = AvailabilityPolicy.REQUIRED
-    unavailable_confirm_seconds: int = Field(default=60, ge=1, le=86400)
-    availability_recovery_confirm_seconds: int = Field(default=15, ge=0, le=3600)
+    required: bool = Field(default=True, strict=True)
+    missing_confirm_seconds: int = Field(default=60, ge=1, le=86400)
+    recovery_confirm_seconds: int = Field(default=15, ge=0, le=3600)
     unit: str | None = None
     device_class: str | None = None
     icon: str | None = None

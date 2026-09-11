@@ -1,5 +1,5 @@
 {# A service incident means the process, hub, or driver is offline. Missing
-   individual values make the service Degraded but remain reading incidents. #}
+   required values need attention but remain reading incidents. #}
 [% for service in model.services %]
   - alias: LabPulse [[ service.label ]] Service Offline
     mode: restart
@@ -60,7 +60,6 @@
              ~ 'LabPulse [[ service.label ]] offline' }}
         message: >-
           LabPulse cannot communicate with [[ service.label ]]. Its readings are temporarily unavailable.
-          Raw service status: {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}.
         notification_sent_entity: [[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') | yaml_scalar ]]
         sms_requested_entity: [[ entity_id('input_boolean', service.name, 'service_offline_sms_requested') | yaml_scalar ]]
         delivery_allowed: true
@@ -79,7 +78,7 @@
             "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')
           } | to_json }}
 
-  - alias: LabPulse [[ service.label ]] Service Online
+  - alias: LabPulse [[ service.label ]] Service Working
     mode: restart
     trigger:
     - platform: state
@@ -104,7 +103,7 @@
         notification_id: labpulse_[[ service.service_id ]]_service_offline
         recovery_title: >-
           {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
-             ~ 'LabPulse [[ service.label ]] online' }}
+             ~ 'LabPulse [[ service.label ]] working' }}
         recovery_message: >-
           Communication with [[ service.label ]] has recovered after {{ downtime_seconds }} seconds.
         notification_sent_entity: [[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') | yaml_scalar ]]
@@ -112,14 +111,14 @@
         delivery_allowed: true
         recovery_sms_payload: >-
           {{ {
-            "request_id": "labpulse_[[ service.service_id ]]_service_online_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "request_id": "labpulse_[[ service.service_id ]]_service_working_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
             "event": "recovery",
             "service": "[[ service.name ]]",
             "service_label": "[[ service.label ]]",
             "measurement": "service_health",
             "measurement_label": "Service",
-            "state": "Online",
-            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Service Online: [[ service.label ]]',
+            "state": "Working",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Service Working: [[ service.label ]]',
             "message": 'Communication with [[ service.label ]] has recovered after ' ~ downtime_seconds ~ ' seconds.',
             "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
             "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')

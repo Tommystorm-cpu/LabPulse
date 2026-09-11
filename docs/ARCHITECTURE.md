@@ -401,8 +401,8 @@ Home Assistant owns:
 - danger observation percentage and window;
 - recovery duration and deadband;
 - `Normal` and `Danger` threshold states for available readings;
-- Online, Degraded, and Offline service-health classification;
-- required/optional reading-availability classification and confirmation;
+- Working, Needs attention, and Offline service-status classification;
+- required/non-required missing-reading classification and confirmation;
 - direct power loss and restoration;
 - global, setup, measurement, and power mutes;
 - Test mode;

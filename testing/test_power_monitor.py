@@ -161,7 +161,7 @@ def test_direct_lifecycle_and_confirmation_semantics() -> None:
 
     package, _, text = render_power()
     state_options = package["input_select"]["labpulse_ups_monitor_power_state"]["options"]
-    if state_options != ["Normal", "On Battery"]:
+    if state_options != ["Mains power", "Running on battery"]:
         raise AssertionError(f"unexpected direct power states: {state_options!r}")
     helper_ids = set(package["input_boolean"])
     required = {
@@ -214,14 +214,14 @@ def test_direct_lifecycle_and_confirmation_semantics() -> None:
         raise AssertionError("power condition still contains availability fault state")
 
 
-def test_power_reading_availability_and_sms_contract() -> None:
+def test_power_missing_reading_and_sms_contract() -> None:
     """Use common reading incidents and central delivery for power inputs."""
 
     package, _, text = render_power()
     automation = aliases(package)
     required_aliases = {
-        "LabPulse External Power Present Reading Unavailable",
-        "LabPulse External Power Present Reading Available",
+        "LabPulse External Power Present Reading Missing",
+        "LabPulse External Power Present Reading Restored",
         "LabPulse UPS Monitor Outage Confirm",
         "LabPulse UPS Monitor Recovery Confirm",
     }
@@ -246,8 +246,8 @@ def test_power_reading_availability_and_sms_contract() -> None:
     notification_rules = [
         automation["LabPulse UPS Monitor Outage Confirm"],
         automation["LabPulse UPS Monitor Recovery Confirm"],
-        automation["LabPulse External Power Present Reading Unavailable"],
-        automation["LabPulse External Power Present Reading Available"],
+        automation["LabPulse External Power Present Reading Missing"],
+        automation["LabPulse External Power Present Reading Restored"],
     ]
     for rule in notification_rules:
         rendered = yaml.safe_dump(rule, sort_keys=False)
@@ -287,10 +287,12 @@ def test_power_dashboard_rendering() -> None:
         "sensor.labpulse_ups_monitor_mains_present",
         "input_select.labpulse_ups_monitor_power_state",
         "binary_sensor.labpulse_ups_monitor_power_mains_present",
-        "sensor.labpulse_ups_monitor_mains_present_availability",
-        "input_boolean.labpulse_ups_monitor_power_outage_active",
-        "sensor.labpulse_ups_monitor_power_last_outage_started",
-        "sensor.labpulse_ups_monitor_power_last_outage_duration",
     ):
         if required not in rendered:
             raise AssertionError(f"direct power dashboard entity missing: {required}")
+    for internal in (
+        "sensor.labpulse_ups_monitor_mains_present_availability",
+        "input_boolean.labpulse_ups_monitor_power_outage_active",
+    ):
+        if internal in rendered:
+            raise AssertionError(f"internal power state leaked onto dashboard: {internal}")

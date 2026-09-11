@@ -6,25 +6,25 @@ repository `config.yaml` is only the starter copied during setup.
 
 ## Reading the system state
 
-Treat the three displayed states independently:
+System Status gives each service one operator-facing state:
 
-- **Service health**: Online, Degraded, or Offline describes communication
-  with a service, hub, or driver.
-- **Reading availability**: Available, Unavailable, or Unavailable — optional
-  describes one fresh numeric reading.
-- **Alarm condition**: Normal or Danger evaluates thresholds only while the
-  reading is available.
+- **Working**: the service and its required readings are current.
+- **Needs attention**: the service is communicating but a component or required
+  reading needs attention.
+- **Offline**: LabPulse cannot communicate with the service.
 
-Current Problems contains confirmed incidents only. Diagnostics shows the raw
-service state, availability policy, confirmation state, and delivery flags.
-Clicking a measurement problem opens its alarm setup page.
+Each card shows the latest values and explains a problem in plain language.
+Measurements configured with `required: false` show **No recent data —
+optional** when absent without changing the service from Working. Current
+Problems contains confirmed, unmuted conditions and links to the relevant
+alarm setup page.
 
 ## Notification controls
 
 Global, setup, per-reading, and power mutes suppress delivery without changing
 the underlying incident. Per-reading and power mutes also hide their condition
-from Current Problems; Diagnostics remains available. Test mode selects the test recipient list. **Resend
-active alert** retries the currently confirmed Danger or unavailable-reading
+from Current Problems; System Status remains available. Test mode selects the test recipient list. **Resend
+active alert** retries the currently confirmed Danger or missing-reading
 alert through the same central dispatcher and therefore respects maintenance
 and every mute.
 

@@ -104,13 +104,11 @@ services:
       pressure:
         label: Pressure
         setups: [compressed_air]
-        # Required readings create an availability incident if they stop
-        # publishing. Use availability: optional for installed spare or known-
-        # broken channels that should remain visible without alerting or
-        # blocking an update.
-        availability: required
-        unavailable_confirm_seconds: 60
-        availability_recovery_confirm_seconds: 15
+        # All readings are required by default. Use required: false for an
+        # installed spare or known-broken channel that should remain visible
+        # without alerting or blocking an update.
+        missing_confirm_seconds: 60
+        recovery_confirm_seconds: 15
         # Set alarmed: false to display this reading without creating alarm
         # helpers, controls, or notifications. The default is true.
         # device_class selects LabPulse semantics and the default icon without
@@ -244,7 +242,7 @@ services:
         setups: [turbo_pump_experiment]
         # This installed spare channel is retained for visibility but is not
         # expected to provide telemetry on the reference installation.
-        availability: optional
+        required: false
         unit: "°C"
         device_class: temperature
 

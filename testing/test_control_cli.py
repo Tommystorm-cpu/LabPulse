@@ -398,7 +398,7 @@ def test_update_readiness_excludes_optional_measurements(
 
     data = yaml.safe_load((repository_root / "config.yaml").read_text(encoding="utf-8"))
     pressure = data["services"]["pressure_monitor"]["measurements"]["pressure"]
-    pressure["availability"] = "optional"
+    pressure["required"] = False
     path = workspace_tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     topics = control.required_telemetry_topics(path)

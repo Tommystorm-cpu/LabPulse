@@ -1,4 +1,4 @@
-{# Alarm condition is independent from reading availability. #}
+{# An out-of-range value is independent from a missing reading. #}
 [% for service, measurement in model.alarm_measurements %]
 [% include "automations/measurement_state.yaml.j2" %]
 [% endfor %]

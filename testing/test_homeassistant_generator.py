@@ -97,8 +97,8 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
         "input_number": {f"{helper}_minimum_threshold", f"{helper}_maximum_threshold"},
         "input_boolean": {
             f"{helper}_reading_notifications_muted",
-            f"{helper}_availability_incident_active",
-            f"{helper}_availability_notification_sent",
+            f"{helper}_missing_reading_incident_active",
+            f"{helper}_missing_reading_notification_sent",
             f"{helper}_alarm_notification_sent",
             "labpulse_global_notifications_muted",
             "labpulse_update_maintenance",
@@ -117,8 +117,8 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     expected = {
         "LabPulse Pressure Danger",
         "LabPulse Pressure Recovery",
-        "LabPulse Pressure Reading Unavailable",
-        "LabPulse Pressure Reading Available",
+        "LabPulse Pressure Reading Missing",
+        "LabPulse Pressure Reading Restored",
     }
     assert all(aliases.count(alias) == 1 for alias in expected)
 
@@ -134,7 +134,7 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     assert acknowledgement["data"]["topic"] == UPDATE_MAINTENANCE_ACK_TOPIC
     assert acknowledgement["data"]["retain"] is True
     danger = automation(package, "LabPulse Pressure Danger")
-    unavailable = automation(package, "LabPulse Pressure Reading Unavailable")
+    unavailable = automation(package, "LabPulse Pressure Reading Missing")
     resend = f"input_button.{helper}_resend_active_alert"
     for item in (danger, unavailable):
         trigger = next(value for value in item["trigger"] if value.get("id") == "resend")
@@ -179,8 +179,8 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     assert "input_boolean.labpulse_update_maintenance" in close_incident
 
     incident_alias_suffixes = (
-        " Danger", " Recovery", " Reading Unavailable", " Reading Available",
-        " Service Offline", " Service Online", " Power Lost", " Power Restored",
+        " Danger", " Recovery", " Reading Missing", " Reading Restored",
+        " Service Offline", " Service Working", " Power Lost", " Power Restored",
     )
     for generated_automation in package["automation"]:
         if str(generated_automation.get("alias", "")).endswith(incident_alias_suffixes):
@@ -194,7 +194,7 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     assert "Sensor Fault" not in paths.package.read_text(encoding="utf-8")
 
     for alias in (
-        "LabPulse Pressure Reading Unavailable",
+        "LabPulse Pressure Reading Missing",
         "LabPulse Air Pressure Sensor Hub Service Offline",
     ):
         conditions = {
@@ -218,12 +218,12 @@ def test_threshold_helpers_restore_state_without_seed_files() -> None:
     assert package["input_select"]["labpulse_pressure_monitor_pressure_alarm_state"]["options"][0] == "Normal"
 
 
-def test_optional_reading_is_visible_without_availability_incident() -> None:
-    """Keep optional telemetry and alarms while treating absence as non-actionable."""
+def test_non_required_reading_is_visible_without_missing_reading_incident() -> None:
+    """Keep non-required telemetry while treating its absence as acceptable."""
 
     root = REPOSITORY / "testing" / "tmp" / f"generator-optional-{uuid4().hex}"
     data = sample_config()
-    data["services"]["pressure_monitor"]["measurements"]["pressure"]["availability"] = "optional"  # type: ignore[index]
+    data["services"]["pressure_monitor"]["measurements"]["pressure"]["required"] = False  # type: ignore[index]
     config_path = root / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -233,22 +233,31 @@ def test_optional_reading_is_visible_without_availability_incident() -> None:
     package = yaml.safe_load(text)
     helper = "labpulse_pressure_monitor_pressure"
     assert f"{helper}_reading_notifications_muted" in package["input_boolean"]
-    assert f"{helper}_availability_incident_active" not in package["input_boolean"]
+    assert f"{helper}_missing_reading_incident_active" not in package["input_boolean"]
     assert automation(package, "LabPulse Pressure Danger")
     assert not any(
-        item["alias"] == "LabPulse Pressure Reading Unavailable"
+        item["alias"] == "LabPulse Pressure Reading Missing"
         for item in package["automation"]
     )
-    availability_sensors = [
+    generated_sensors = [
         sensor
         for block in package["template"]
         for sensor in block.get("sensor", [])
     ]
-    status = next(
-        sensor for sensor in availability_sensors
-        if sensor["unique_id"] == f"{helper}_availability"
+    assert not any(
+        sensor["unique_id"] == f"{helper}_availability"
+        for sensor in generated_sensors
     )
-    assert "Unavailable — optional" in status["state"]
+    reading_statuses = [
+        sensor
+        for block in package["template"]
+        for sensor in block.get("binary_sensor", [])
+    ]
+    status = next(
+        sensor for sensor in reading_statuses
+        if sensor["unique_id"] == f"{helper}_reading_available"
+    )
+    assert status["attributes"]["required"] is False
 
 
 def test_first_install_mutes_once_without_overriding_restored_state() -> None:

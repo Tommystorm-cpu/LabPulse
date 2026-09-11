@@ -98,6 +98,36 @@ def test_unalarmed_custom_measurement_stays_visible_without_alarm_helpers() -> N
         raise AssertionError("unalarmed calculation disappeared from dashboards")
 
 
+def test_custom_measurement_required_defaults_and_old_fields_are_rejected() -> None:
+    """Apply the strict required-reading schema to calculated measurements too."""
+
+    default_config = LabPulseConfig.model_validate(custom_config())
+    default_measurement = default_config.custom_measurements["temperature_difference"]
+    if default_measurement.required is not True:
+        raise AssertionError("calculated measurements should be required by default")
+
+    optional = custom_config()
+    optional["custom_measurements"]["temperature_difference"]["required"] = False  # type: ignore[index]
+    optional_measurement = LabPulseConfig.model_validate(optional).custom_measurements["temperature_difference"]
+    if optional_measurement.required is not False:
+        raise AssertionError("required: false was not preserved")
+
+    for old_field, value in (
+        ("availability", "optional"),
+        ("unavailable_confirm_seconds", 60),
+        ("availability_recovery_confirm_seconds", 15),
+    ):
+        old_config = custom_config()
+        old_config["custom_measurements"]["temperature_difference"][old_field] = value  # type: ignore[index]
+        try:
+            LabPulseConfig.model_validate(old_config)
+        except ValidationError as error:
+            if "Extra inputs are not permitted" not in str(error):
+                raise AssertionError(str(error)) from error
+        else:
+            raise AssertionError(f"old calculated-measurement field was accepted: {old_field}")
+
+
 def test_custom_measurement_rejects_unknown_or_custom_inputs() -> None:
     """Resolve inputs exclusively against configured physical service readings."""
 

@@ -77,8 +77,14 @@ artifacts are published.
   daily files instead of growing without a bound.
 - The deployed USB assignment helper now reliably switches from the system
   Python to LabPulse's managed environment before importing the package.
+- Measurement configuration now uses the optional strict boolean `required`
+  field, defaulting to `true`, with plainly named missing/recovery timers.
+- The generated Diagnostics view is now a human-readable System Status view
+  with Working, Needs attention, and Offline service states.
 
 ### Removed
 
 - Prototype package layouts and earlier Pi implementations from the active
   runtime. They remain under `legacy/` for reference only.
+- The redundant per-reading availability sensor and the old
+  `availability: required|optional` measurement configuration.

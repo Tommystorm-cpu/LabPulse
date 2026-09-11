@@ -8,18 +8,18 @@ later `{% ... %}` and `{{ ... }}` expressions survive generation.
 |---|---|
 | `configuration.yaml.j2` | Enable packages, UI files and generated dashboard |
 | `dashboard.yaml.j2` | Assemble dashboard views |
-| `dashboard/` | Monitor, diagnostics, alarm setup and setup/power/custom views |
+| `dashboard/` | Monitor, System Status, alarm setup and setup/power/custom views |
 | `dashboard/alarm_setup/` | Bulk editor, targets and notification controls |
 | `dashboard/setup_subviews/` | Setup headings and measurement cards |
 | `alarm/alarm_package.yaml.j2` | Assemble the alarm package |
 | `alarm/helpers.yaml.j2` | Persistent settings and state helpers |
-| `alarm/derived_entities.yaml.j2` | Availability, dangerous-value and history entities |
+| `alarm/derived_entities.yaml.j2` | Reading-presence, dangerous-value and history entities |
 | `alarm/scripts.yaml.j2` | Bulk editing and central incident notification scripts |
 | `alarm/automations/` | Installation, measurement, service, custom and power state machines |
 
 Measurement alarms require enough dangerous history to enter Danger and
 continuous safe recovery beyond deadband to return to Normal. Reading
-availability and service health are separate. Power has an outage/restoration
+missing readings and service health are separate. Power has an outage/restoration
 lifecycle. Mutes suppress delivery, not state calculation; Test mode selects
 test recipients.
 

@@ -118,10 +118,10 @@ input_select:
 [% for service in model.power_alarm_services %]
 [% set power = service.power %]
   labpulse_[[ service.service_id ]]_power_state:
-    name: '[[ service.label ]] Power State'
+    name: '[[ service.label ]] Power Supply'
     options:
-    - Normal
-    - On Battery
+    - Mains power
+    - Running on battery
 [% endfor %]
 [% endif %]
 
@@ -138,7 +138,7 @@ input_button:
 
 input_boolean:
 {# These helpers remember notification policy and confirmed incident delivery.
-   Availability never shares state with a threshold or power condition. #}
+   Missing readings never share state with a threshold or power condition. #}
   labpulse_global_notifications_muted:
     name: LabPulse Global Notifications Muted
   labpulse_first_install_initialized:
@@ -178,13 +178,13 @@ input_boolean:
 [% for service, measurement in model.measurements %]
   labpulse_[[ measurement.measurement_id ]]_reading_notifications_muted:
     name: '[[ measurement.label ]] Reading Notifications Muted'
-[% if measurement.availability_required %]
-  labpulse_[[ measurement.measurement_id ]]_availability_incident_active:
-    name: '[[ measurement.label ]] Unavailable Incident Active'
-  labpulse_[[ measurement.measurement_id ]]_availability_notification_sent:
-    name: '[[ measurement.label ]] Unavailable Notification Sent'
-  labpulse_[[ measurement.measurement_id ]]_availability_sms_requested:
-    name: '[[ measurement.label ]] Unavailable SMS Requested'
+[% if measurement.required %]
+  labpulse_[[ measurement.measurement_id ]]_missing_reading_incident_active:
+    name: '[[ measurement.label ]] Missing Reading Incident Active'
+  labpulse_[[ measurement.measurement_id ]]_missing_reading_notification_sent:
+    name: '[[ measurement.label ]] Missing Reading Notification Sent'
+  labpulse_[[ measurement.measurement_id ]]_missing_reading_sms_requested:
+    name: '[[ measurement.label ]] Missing Reading SMS Requested'
 [% endif %]
 [% endfor %]
 [% for service, measurement in model.alarm_measurements %]
@@ -224,9 +224,9 @@ input_datetime:
     has_time: true
 [% endfor %]
 [% for service, measurement in model.measurements %]
-[% if measurement.availability_required %]
-  labpulse_[[ measurement.measurement_id ]]_availability_incident_started:
-    name: '[[ measurement.label ]] Unavailable Incident Started'
+[% if measurement.required %]
+  labpulse_[[ measurement.measurement_id ]]_missing_reading_incident_started:
+    name: '[[ measurement.label ]] Missing Reading Incident Started'
     has_date: true
     has_time: true
 [% endif %]

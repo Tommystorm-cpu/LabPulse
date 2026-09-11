@@ -228,7 +228,7 @@ Confirm:
    warnings that apply to this deployment.
 2. Every expected Compose service is running.
 3. Home Assistant reports the MQTT integration as connected.
-4. The Diagnostics view shows each physical service online and measurements
+4. The System Status view shows each physical service working and measurements
    continue updating.
 5. On first installation, Alarm Setup shows Global Mute enabled and Test mode
    enabled. Later restarts restore the global mute choice but reset Test mode on.
@@ -596,9 +596,9 @@ value, enough observations satisfy the danger proportion/window, and Test mode
 or mutes have not been confused with alarm state. Recovery requires continuous
 safe data beyond the deadband for the complete recovery time.
 
-Reading unavailable has its own confirmation delay. A complete service outage
-suppresses subordinate reading incidents while leaving service health and raw
-availability visible. Optional unavailable readings are deliberately silent.
+Missing required data has its own confirmation delay. A complete service outage
+suppresses subordinate reading incidents. Measurements configured with
+`required: false` are deliberately silent when their data is absent.
 Inspect Alarm Setup and the User Guide's
 [alarm behaviour](USER_GUIDE.md#measurement-alarm-behaviour).
 

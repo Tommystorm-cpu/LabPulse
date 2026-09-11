@@ -1,12 +1,12 @@
-{# Required readings own availability incidents. Optional readings retain their
-   availability entity but deliberately generate no helpers or automations. #}
+{# Required readings own missing-data incidents. Non-required readings remain
+   visible when present but deliberately generate no helpers or automations. #}
 [% for service, measurement in model.measurements %]
-[% if measurement.availability_required %]
-  - alias: LabPulse [[ measurement.label ]] Reading Unavailable
+[% if measurement.required %]
+  - alias: LabPulse [[ measurement.label ]] Reading Missing
     mode: restart
     trigger:
     - platform: state
-      id: unavailable
+      id: missing_reading
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
       to: 'off'
 [% for blocking_service_name in measurement.blocking_service_names %]
@@ -38,7 +38,7 @@
       - conditions: "{{ trigger.id != 'resend' }}"
         sequence:
         - delay:
-            seconds: [[ measurement.unavailable_confirm_seconds | yaml_scalar ]]
+            seconds: [[ measurement.missing_confirm_seconds | yaml_scalar ]]
         - condition: state
           entity_id: input_boolean.labpulse_update_maintenance
           state: 'off'
@@ -54,51 +54,50 @@
           state: 'off'
 [% endfor %]
         - condition: state
-          entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') | yaml_scalar ]]
+          entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
           state: 'off'
         - service: input_datetime.set_datetime
           target:
-            entity_id: [[ entity_id('input_datetime', service.name, measurement.name, 'availability_incident_started') | yaml_scalar ]]
+            entity_id: [[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') | yaml_scalar ]]
           data:
             timestamp: "{{ as_timestamp(now()) }}"
         - service: input_boolean.turn_on
           target:
-            entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') | yaml_scalar ]]
+            entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
     - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') | yaml_scalar ]]
+      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
       state: 'on'
     - service: script.labpulse_open_incident
       data:
-        notification_id: labpulse_[[ measurement.measurement_id ]]_availability
+        notification_id: labpulse_[[ measurement.measurement_id ]]_missing_reading
         title: >-
           {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
-             ~ 'LabPulse [[ measurement.label ]] reading unavailable' }}
+             ~ 'LabPulse [[ measurement.label ]] has no recent data' }}
         message: >-
-          [[ service.label ]] / [[ measurement.label ]] has not supplied a fresh numeric reading.
-          This indicates unavailable telemetry; it does not identify a particular physical fault.
-          Raw state: {{ states('[[ measurement.entity_id ]]') }}.
-          Availability policy: required. [[ measurement.notification_context ]]
-        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_notification_sent') | yaml_scalar ]]
-        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_sms_requested') | yaml_scalar ]]
+          [[ service.label ]] / [[ measurement.label ]] has not supplied recent usable data.
+          Check the sensor connection and service if the problem continues.
+          [[ measurement.notification_context ]]
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_sms_requested') | yaml_scalar ]]
         delivery_allowed: >-
           {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
              and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
         sms_payload: >-
           {{ {
-            "request_id": "labpulse_[[ measurement.measurement_id ]]_unavailable_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
-            "event": "unavailable",
+            "request_id": "labpulse_[[ measurement.measurement_id ]]_missing_reading_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "missing_reading",
             "service": "[[ service.name ]]",
             "service_label": "[[ service.label ]]",
             "measurement": "[[ measurement.name ]]",
             "measurement_label": "[[ measurement.label ]]",
-            "state": "Unavailable",
-            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Reading Unavailable: [[ service.label ]] - [[ measurement.label ]]',
-            "message": 'No fresh numeric reading is available. The cause may be the sensor, wiring, firmware, parsing, or MQTT. [[ measurement.notification_context ]]',
+            "state": "No recent data",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse No Recent Data: [[ service.label ]] - [[ measurement.label ]]',
+            "message": 'No recent usable data has been received. Check the sensor connection and service if the problem continues. [[ measurement.notification_context ]]',
             "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
             "current_measurement": states('[[ measurement.entity_id ]]')
           } | to_json }}
 
-  - alias: LabPulse [[ measurement.label ]] Reading Available
+  - alias: LabPulse [[ measurement.label ]] Reading Restored
     mode: restart
     trigger:
     - platform: state
@@ -106,47 +105,47 @@
       to: 'on'
     action:
     - delay:
-        seconds: [[ measurement.availability_recovery_confirm_seconds | yaml_scalar ]]
+        seconds: [[ measurement.recovery_confirm_seconds | yaml_scalar ]]
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
       state: 'on'
     - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') | yaml_scalar ]]
+      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
       state: 'on'
     - variables:
-        unavailable_started: >-
-          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, measurement.name, 'availability_incident_started') ]]'), as_timestamp(now())) }}
-        unavailable_seconds: >-
-          {{ [0, as_timestamp(now()) - unavailable_started] | max | round(0) }}
+        missing_started: >-
+          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') ]]'), as_timestamp(now())) }}
+        missing_seconds: >-
+          {{ [0, as_timestamp(now()) - missing_started] | max | round(0) }}
     - service: script.labpulse_close_incident
       data:
-        notification_id: labpulse_[[ measurement.measurement_id ]]_availability
+        notification_id: labpulse_[[ measurement.measurement_id ]]_missing_reading
         recovery_title: >-
           {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
-             ~ 'LabPulse [[ measurement.label ]] reading available' }}
+             ~ 'LabPulse [[ measurement.label ]] data restored' }}
         recovery_message: >-
-          Fresh numeric telemetry for [[ service.label ]] / [[ measurement.label ]] resumed after {{ unavailable_seconds }} seconds.
-        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_notification_sent') | yaml_scalar ]]
-        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_sms_requested') | yaml_scalar ]]
+          Fresh numeric telemetry for [[ service.label ]] / [[ measurement.label ]] resumed after {{ missing_seconds }} seconds.
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_sms_requested') | yaml_scalar ]]
         delivery_allowed: >-
           {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
              and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
         recovery_sms_payload: >-
           {{ {
-            "request_id": "labpulse_[[ measurement.measurement_id ]]_available_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "request_id": "labpulse_[[ measurement.measurement_id ]]_restored_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
             "event": "recovery",
             "service": "[[ service.name ]]",
             "service_label": "[[ service.label ]]",
             "measurement": "[[ measurement.name ]]",
             "measurement_label": "[[ measurement.label ]]",
-            "state": "Available",
-            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Reading Available: [[ service.label ]] - [[ measurement.label ]]',
-            "message": 'Fresh numeric telemetry resumed after ' ~ unavailable_seconds ~ ' seconds. [[ measurement.notification_context ]]',
+            "state": "Data restored",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Data Restored: [[ service.label ]] - [[ measurement.label ]]',
+            "message": 'Fresh numeric telemetry resumed after ' ~ missing_seconds ~ ' seconds. [[ measurement.notification_context ]]',
             "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
             "current_measurement": states('[[ measurement.entity_id ]]')
           } | to_json }}
     - service: input_boolean.turn_off
       target:
-        entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'availability_incident_active') | yaml_scalar ]]
+        entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
 [% endif %]
 [% endfor %]
