@@ -65,6 +65,10 @@ def measurement_discovery_payload(
         "name": measurement.display_label(measurement_name),
         "state_topic": sensor_state_topic(service_name, measurement_name),
         "expire_after": expire_after,
+        # Operators need to know when a sample was received, even when its
+        # numeric value did not change. Home Assistant only advances the MQTT
+        # entity's update timestamp for identical values when this is enabled.
+        "force_update": True,
         "unique_id": measurement_id,
         "object_id": measurement_id,
         "default_entity_id": entity_id("sensor", service_name, measurement_name),

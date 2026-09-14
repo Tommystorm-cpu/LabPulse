@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 import socket
 import struct
+import threading
 import time
 from typing import BinaryIO
 
@@ -143,14 +144,39 @@ def main() -> None:
         mqtt.CallbackAPIVersion.VERSION2,
         client_id=f"Triton-setup-{socket.gethostname()}",
     )
+    connection_finished = threading.Event()
+    connection_error: str | None = None
+
+    def on_connect(
+        _client: mqtt.Client,
+        _userdata: object,
+        _flags: mqtt.ConnectFlags,
+        reason_code: mqtt.ReasonCode,
+        _properties: mqtt.Properties | None,
+    ) -> None:
+        """Release the foreground publisher after MQTT accepts or rejects it."""
+
+        nonlocal connection_error
+        if reason_code.is_failure:
+            connection_error = f"MQTT broker rejected the connection: {reason_code}"
+        connection_finished.set()
+
+    client.on_connect = on_connect
     client.username_pw_set(args.username, password)
     client.tls_set(ca_certs=str(args.ca_certificate))
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
 
-    print(f"Connected to {args.broker}:{args.port}; press Ctrl+C to stop.")
-    last_record = None
     try:
+        if not connection_finished.wait(timeout=10):
+            raise TimeoutError(
+                f"Timed out waiting for MQTT connection to {args.broker}:{args.port}"
+            )
+        if connection_error is not None:
+            raise ConnectionError(connection_error)
+
+        print(f"Connected to {args.broker}:{args.port}; press Ctrl+C to stop.")
+        last_record = None
         while True:
             logfile = get_recent_logfile(args.directory)
             record_number, record = decode_last_record(logfile)

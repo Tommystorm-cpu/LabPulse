@@ -321,9 +321,10 @@ def test_publish_discovery_for_new_measurements() -> None:
                 json.dumps(
                     {
                         "name": "Flow 1",
-                        "state_topic": "home/sensor/pump_room/flow1/state",
-                        "expire_after": 300,
-                        "unique_id": "labpulse_pump_room_flow1",
+                            "state_topic": "home/sensor/pump_room/flow1/state",
+                            "expire_after": 300,
+                            "force_update": True,
+                            "unique_id": "labpulse_pump_room_flow1",
                         "object_id": "labpulse_pump_room_flow1",
                         "default_entity_id": "sensor.labpulse_pump_room_flow1",
                         "device": {
@@ -341,9 +342,10 @@ def test_publish_discovery_for_new_measurements() -> None:
                 json.dumps(
                     {
                         "name": "Temperature 0",
-                        "state_topic": "home/sensor/pump_room/temp0/state",
-                        "expire_after": 300,
-                        "unique_id": "labpulse_pump_room_temp0",
+                            "state_topic": "home/sensor/pump_room/temp0/state",
+                            "expire_after": 300,
+                            "force_update": True,
+                            "unique_id": "labpulse_pump_room_temp0",
                         "object_id": "labpulse_pump_room_temp0",
                         "default_entity_id": "sensor.labpulse_pump_room_temp0",
                         "device": {
@@ -386,13 +388,13 @@ def test_ignore_unconfigured_measurements() -> None:
 
 
 def test_discovery_uses_configured_message_expiry() -> None:
-    """Ensure unchanged values stay healthy without forced recorder writes."""
+    """Ensure identical samples refresh the visible time until expiry."""
 
     publisher = make_publisher(maximum_measurement_age_seconds=420)
     publisher.publish({"pressure": 1.23})
     payload = json.loads(str(publisher.client.published[0]["payload"]))
     assert_equal(payload["expire_after"], 420, "ordinary measurement expiry")
-    assert_equal("force_update" in payload, False, "ordinary force update omitted")
+    assert_equal(payload["force_update"], True, "ordinary sample receipt update")
 
 
 def test_power_discovery_uses_power_message_expiry() -> None:
@@ -412,4 +414,4 @@ def test_power_discovery_uses_power_message_expiry() -> None:
     publisher.publish({"voltage": 4.13})
     payload = json.loads(str(publisher.client.published[0]["payload"]))
     assert_equal(payload["expire_after"], 15, "power measurement expiry")
-    assert_equal("force_update" in payload, False, "power force update omitted")
+    assert_equal(payload["force_update"], True, "power sample receipt update")

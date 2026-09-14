@@ -179,8 +179,8 @@ cd ~/labpulse-live
 
 The helper asks for one device to be unplugged and reconnected at a time. It
 updates only `driver.options.port` and keeps one
-`config.yaml.usb-setup-backup`. Do not use `/dev/ttyUSB0` or `/dev/ttyACM0` as
-permanent identities; use `/dev/serial/by-id/...`.
+`backups/config.yaml.usb-setup-backup`. Do not use `/dev/ttyUSB0` or
+`/dev/ttyACM0` as permanent identities; use `/dev/serial/by-id/...`.
 
 Apply any USB mapping and start:
 
@@ -353,9 +353,12 @@ reported service or required reading, confirm telemetry is current, then run
 `labpulse up labpulse-sms`; that command clears maintenance with the same
 acknowledged handshake before resuming delivery.
 
-`--backup` creates timestamped copies of package-managed files before setup
-replaces them. The live `config.yaml` and existing Home Assistant configuration
-directory are preserved by the update workflow.
+`--backup` keeps one rolling copy of each replaced package-managed file in
+`~/labpulse-live/backups/`. A later setup or update replaces the corresponding
+backup instead of accumulating timestamped files. The live `config.yaml` and
+existing Home Assistant configuration directory are preserved by the update
+workflow. The first backed-up setup after upgrading also consolidates backup
+files left in the live-directory root by earlier releases.
 
 Create a state backup and review the release notes before updating an installed
 Pi.
@@ -443,8 +446,8 @@ labpulse --live-dir /path/to/live setup
 
 If generated files are damaged but the source config is valid, rerun setup or
 `labpulse config`. Do not reconstruct them by hand. Setup preserves the live
-source and Home Assistant directory; `--backup` also retains timestamped copies
-of package-managed files.
+source and Home Assistant directory; `--backup` also keeps one rolling copy of
+each package-managed file in `backups/`.
 
 ### Docker cannot run
 

@@ -1,6 +1,7 @@
 """Behavior tests for interactive real/fake USB serial assignment."""
 
 import os
+import shutil
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -178,10 +179,16 @@ def test_surgical_config_update_and_backup() -> None:
             raise AssertionError("atomic write did not install updated config")
         if backup.read_text(encoding="utf-8") != CONFIG:
             raise AssertionError("USB setup backup did not preserve the previous config")
+        if backup != directory / "backups" / "config.yaml.usb-setup-backup":
+            raise AssertionError(f"USB setup backup was not isolated: {backup}")
+        second_update = updated.replace("usb-pressure", "usb-pressure-reassigned")
+        second_backup = write_config(path, second_update)
+        if second_backup != backup or backup.read_text(encoding="utf-8") != updated:
+            raise AssertionError("USB setup did not replace its single rolling backup")
+        if len(list((directory / "backups").iterdir())) != 1:
+            raise AssertionError("USB setup accumulated more than one backup")
     finally:
-        for child in directory.iterdir():
-            child.unlink()
-        directory.rmdir()
+        shutil.rmtree(directory)
 
 
 def test_cli_modes() -> None:

@@ -3,10 +3,12 @@
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
+from firmware import triton_logfile_publisher_setup as setup_publisher
 from firmware.triton_logfile_publisher_production import (
     create_mqtt_client,
     default_client_id,
@@ -103,6 +105,71 @@ def test_setup_publisher_uses_the_same_connection_contract() -> None:
 
     assert args.port == 8883
     assert args.topic == "labpulse/triton/triton-01/measurements"
+
+
+def test_setup_publisher_waits_for_mqtt_acceptance_before_publishing(
+    workspace_tmp_path: Path,
+) -> None:
+    """Do not race the first logfile record against MQTT's connection reply."""
+
+    password_file = workspace_tmp_path / "password.txt"
+    password_file.write_text("secret-value\n", encoding="utf-8")
+    ca_file = workspace_tmp_path / "ca.crt"
+    ca_file.write_text("test certificate", encoding="utf-8")
+    args = parse_setup_args(
+        [
+            "--directory", str(workspace_tmp_path),
+            "--broker", "labpulse-pi.local",
+            "--topic", "labpulse/triton/triton-01/measurements",
+            "--username", "triton-01",
+            "--password-file", str(password_file),
+            "--ca-certificate", str(ca_file),
+        ]
+    )
+    client = Mock()
+    client.on_connect = None
+    publication = Mock()
+    publication.is_published.return_value = True
+    client.publish.return_value = publication
+    connection_event = Mock()
+
+    def accept_connection(timeout: float) -> bool:
+        assert timeout == 10
+        assert client.on_connect is not None
+        client.on_connect(
+            client,
+            None,
+            None,
+            SimpleNamespace(is_failure=False),
+            None,
+        )
+        return True
+
+    connection_event.wait.side_effect = accept_connection
+
+    with (
+        patch.object(setup_publisher, "parse_args", return_value=args),
+        patch.object(setup_publisher.mqtt, "Client", return_value=client),
+        patch.object(setup_publisher.threading, "Event", return_value=connection_event),
+        patch.object(
+            setup_publisher,
+            "get_recent_logfile",
+            return_value=workspace_tmp_path / "current.vcl",
+        ),
+        patch.object(
+            setup_publisher,
+            "decode_last_record",
+            return_value=(7, {"Time(secs)": 1_700_000_000.0, "T(K)": 0.1}),
+        ),
+        patch.object(setup_publisher.time, "sleep", side_effect=KeyboardInterrupt),
+    ):
+        setup_publisher.main()
+
+    connection_event.wait.assert_called_once_with(timeout=10)
+    client.publish.assert_called_once()
+    publication.wait_for_publish.assert_called_once_with(timeout=5)
+    client.disconnect.assert_called_once_with()
+    client.loop_stop.assert_called_once_with()
 
 
 @pytest.mark.parametrize(

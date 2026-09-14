@@ -14,6 +14,7 @@ HOST_REQUIREMENTS_SOURCE="$ASSET_DIR/requirements-host.txt"
 HOST_REQUIREMENTS="$PROJECT_DIR/requirements-host.txt"
 HOST_VENV="$PROJECT_DIR/.venv"
 HOST_PYTHON="$HOST_VENV/bin/python"
+BACKUP_DIR="$PROJECT_DIR/backups"
 
 BACKUP=0
 FAKE_USB=0
@@ -34,7 +35,7 @@ Override target:
 Options:
   -fake_usb  Derive config.fake.yaml and mount pseudo-serial sensors,
              including the UPS power monitor, for simulator testing.
-  --backup  Create .bak timestamp copies before replacing generated files.
+  --backup  Keep one rolling copy of each replaced file in backups/.
 
 After this script has run once, work from ~/labpulse-live:
   ./generate_compose.sh
@@ -136,7 +137,46 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# Older releases left timestamped and tool-specific backups beside the active
+# files. An explicitly backed-up setup consolidates those copies so upgrading
+# also clears the old live-directory clutter without losing rollback coverage.
+consolidate_legacy_backups() {
+  if [ "$BACKUP" -ne 1 ]; then
+    return
+  fi
+
+  mkdir -p "$BACKUP_DIR"
+  local old_backup
+  local old_name
+  local active_name
+  local active_path
+  for old_backup in "$PROJECT_DIR"/*.bak.*; do
+    if [ ! -f "$old_backup" ]; then
+      continue
+    fi
+
+    old_name="$(basename "$old_backup")"
+    active_name="${old_name%%.bak.*}"
+    active_path="$PROJECT_DIR/$active_name"
+    if [ -f "$active_path" ]; then
+      cp -a "$active_path" "$BACKUP_DIR/$active_name.bak"
+    fi
+    rm -f -- "$old_backup"
+  done
+
+  for old_name in \
+    config.yaml.edit-backup \
+    config.fake.yaml.edit-backup \
+    config.yaml.usb-setup-backup; do
+    old_backup="$PROJECT_DIR/$old_name"
+    if [ -f "$old_backup" ]; then
+      mv -f -- "$old_backup" "$BACKUP_DIR/$old_name"
+    fi
+  done
+}
+
 # Backups are opt-in because this script may be run repeatedly during setup.
+# Each destination has one predictable rolling copy outside the live root.
 backup_if_needed() {
   local path="$1"
 
@@ -144,9 +184,19 @@ backup_if_needed() {
     return
   fi
 
-  local backup="${path}.bak.$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$BACKUP_DIR"
+  local backup="$BACKUP_DIR/$(basename "$path").bak"
   cp -a "$path" "$backup"
   echo "Backed up existing file: $backup"
+
+  # Once the current file is safely copied, remove the timestamped copies made
+  # by older LabPulse releases for this exact destination.
+  local old_backup
+  for old_backup in "${path}.bak."*; do
+    if [ -e "$old_backup" ]; then
+      rm -f -- "$old_backup"
+    fi
+  done
 }
 
 # These two helpers apply the optional backup rule before writing generated
@@ -173,6 +223,8 @@ mkdir -p "$PROJECT_DIR/mosquitto/config"
 mkdir -p "$PROJECT_DIR/mosquitto/data"
 mkdir -p "$PROJECT_DIR/mosquitto/log"
 mkdir -p "$PROJECT_DIR/logs"
+
+consolidate_legacy_backups
 
 install_host_python_environment
 

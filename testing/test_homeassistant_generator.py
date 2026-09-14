@@ -323,3 +323,11 @@ def test_templates_are_strict_and_dashboard_shape_is_validated() -> None:
                 pass
             else:
                 raise AssertionError("malformed dashboard passed validation")
+
+
+def test_latest_readings_show_when_samples_were_received() -> None:
+    """Show receipt age for available readings instead of value-change age."""
+
+    paths = render_into(REPOSITORY / "testing" / "tmp" / f"generator-{uuid4().hex}")
+    dashboard = paths.dashboard.read_text(encoding="utf-8")
+    assert dashboard.count("- last-updated") == 2

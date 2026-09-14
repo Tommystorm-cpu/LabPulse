@@ -10,34 +10,55 @@ Follow the sections in order. Complete the whole process for Triton 2 first,
 then repeat the control-PC and router steps for Triton 1. Keeping one known-good
 fridge working makes the second installation much easier to diagnose.
 
+> [!CAUTION]
+> Do not change the LAN address, subnet mask, default gateway, DNS, DHCP, or
+> cabling already used by a Triton control PC, workstation, magnet supply, or
+> other laboratory device. This installation reuses each refrigerator's
+> existing isolated LAN and changes only the Archer WAN settings plus one
+> Windows host route. Perform the first router and route changes locally, not
+> through Remote Desktop, and verify remote access afterwards.
+
 ## What this installation does
 
 ```text
-Triton controller
-    |
-    | existing dedicated control connection -- do not change
-    v
-Triton Windows control PC
-    |
-    | second Ethernet adapter, monitoring data only
-    v
-Archer D2 LAN -> Archer firewall/NAT -> Archer WAN
-                                         |
-                                         v
-                              isolated Ethernet switch
-                                         |
-                                         v
-                            LabPulse Pi MQTT TLS port 8883
-                                         |
-                                         v
-                         LabPulse measurements and Home Assistant
+Existing Triton LAN -- unchanged
+  |-- Triton Windows control PC
+  |-- Triton workstation and laboratory devices
+  `-- Archer D2 LAN -> Archer firewall/NAT -> Archer WAN
+                                               |
+                                               v
+                                    isolated Ethernet switch
+                                               |
+                                               v
+                                  LabPulse Pi MQTT TLS port 8883
+                                               |
+                                               v
+                               LabPulse measurements and Home Assistant
 ```
 
 The Windows publisher only reads Triton logfiles and publishes MQTT messages.
 It does not subscribe to commands and does not write to the Triton software.
-The router treats the Pi as an untrusted WAN device: the control PC can start a
-connection to the Pi, but the Pi cannot normally start a connection into the
-control-PC LAN.
+The router treats the Pi as an untrusted WAN device: it permits return traffic
+for a connection started by the control PC but must block every new connection
+started from the Pi side towards the control-PC LAN.
+
+### Security boundary and threat model
+
+Assume that the Pi, its operating system, every container, and every device on
+the Pi-side switch are hostile. No Pi setting is a security control. In
+particular, Pi firewall rules, Docker rules, routes, and
+`net.ipv4.ip_forward` must not be used to protect a Triton LAN.
+
+Each Archer and the physical WAN/LAN separation are the security boundary. A
+compromised Pi may send arbitrary packets, ignore its configured routes, proxy
+traffic in user space, or report false test results. It must still be unable to
+initiate a connection through either Archer into a Triton LAN. If laboratory IT
+does not accept the Archer model and firmware as that boundary, replace it with
+an approved externally managed firewall before connecting the Pi.
+
+MQTT TLS, passwords, ACLs, and topic restrictions remain useful for normal
+operation, but they are implemented by or terminate on the Pi. They cannot
+constrain a compromised Pi and are not part of the Triton network boundary.
 
 This is monitoring, not a safety interlock. Existing refrigerator protections
 and operating procedures remain essential.
@@ -49,24 +70,34 @@ topic or username.
 
 | Setting | Triton 1 | Triton 2 |
 |---|---|---|
-| Archer LAN address | `192.168.1.1/24` | `192.168.1.1/24` |
-| Control-PC monitoring address | `192.168.1.101/24` | `192.168.1.101/24` |
+| Existing Archer LAN address | `192.168.1.1/24` | `192.168.1.1/24` |
+| Existing workstation address | `192.168.1.100/24` | `192.168.1.100/24` |
+| Existing Triton control-PC address | `192.168.1.102/24` | `192.168.1.101/24` |
+| Existing vector-magnet supply | `192.168.1.103/24` | not listed |
 | Archer WAN address | `10.50.1.2/30` | `10.50.2.2/30` |
 | Pi address | `10.50.1.1/30` | `10.50.2.1/30` |
 | MQTT username | `triton-01` | `triton-02` |
 | MQTT topic | `labpulse/triton/triton-01/measurements` | `labpulse/triton/triton-02/measurements` |
 | MQTT TLS port | `8883` | `8883` |
 
-Both routers may use `192.168.1.1` because their LAN sides are separate. Never
-connect the two routers' LAN ports together. Their WAN sides can share the
-unmanaged switch because they use different `10.50.x.x/30` subnets.
+Treat the live `ipconfig /all`, route table, and laboratory network register as
+the authority if they differ from this inventory. Do not “correct” an existing
+adapter to match this table without checking locally.
+
+Both Archers can keep `192.168.1.1/24` because their LAN sides are physically
+separate. Never connect the two routers' LAN ports together. Their WAN sides
+can share the unmanaged switch because they use different `10.50.x.x/30`
+subnets.
+
+This layout preserves the working laboratory LANs. An earlier version of this
+guide incorrectly instructed the operator to change a Windows adapter address.
+If that change was started, restore the control PC's original settings locally
+before continuing with this version.
 
 ## Equipment and files required
 
 - One TP-Link Archer D2 router per refrigerator. The tested unit is Archer D2
   V1 EU with firmware `1.4.0 ... Build 160216`.
-- One spare Ethernet adapter on each Triton control PC. Do not repurpose the
-  adapter connected to the refrigerator controller.
 - An Ethernet switch connecting the routers' WAN ports to the Pi's dedicated
   fridge-facing Ethernet interface.
 - A current LabPulse installation that supports
@@ -93,52 +124,55 @@ installation.
 
 For the refrigerator currently being commissioned:
 
-1. Leave the Triton controller-to-control-PC cable exactly as it is.
-2. Connect the control PC's spare monitoring Ethernet adapter to an Archer LAN
-   port, for example LAN 1.
-3. If the nearby lab PC needs to reach the router UI, connect it to another
-   Archer LAN port. Its university Ethernet remains its normal Internet path.
-4. Configure LAN 4/WAN as the Archer's WAN port and connect it to the isolated
+1. Leave all existing Archer LAN, Triton control-PC, workstation, controller,
+   magnet-supply, and remote-access cables exactly as they are.
+2. Confirm that the Archer WAN port is currently unused and that no Internet,
+   university-network, VPN, or remote-access path depends on it. Stop if it is
+   already connected or configured for another purpose; do not repurpose it.
+3. Configure LAN 4/WAN as the Archer's WAN port and connect it to the isolated
    switch.
-5. Connect the Pi's fridge-facing Ethernet interface to the same switch.
-6. Do not connect a router LAN port directly to the Pi-side switch.
+4. Connect the Pi's fridge-facing Ethernet interface to the same switch.
+5. Do not connect a router LAN port directly to the Pi-side switch.
 
 The Archer may display **No Internet connection**. That is expected: its WAN
 is an isolated route to LabPulse, not an Internet service.
 
 ## 2. Configure each Archer D2
 
-Log in to `http://192.168.1.1` from a computer on that router's LAN. The tested
-firmware has **Basic** and **Advanced** tabs across the top.
+Log in to the existing Archer at `http://192.168.1.1` from its Triton
+workstation. The tested firmware has **Basic** and **Advanced** tabs across the
+top. Export or photograph the existing router settings before making changes.
 
 ### 2.1 Select router mode
 
 1. Open **Advanced**.
 2. Select **Operation Mode**.
-3. Choose **Wireless Router Mode**.
-4. Save and allow the router to reboot.
+3. Verify that **Wireless Router Mode** is already selected.
 
-Do not use Access Point mode. Router mode provides the WAN-to-LAN firewall/NAT
-boundary that protects the control PC from the Pi-side network.
+Do not change the mode during commissioning. If the router is not already in
+Wireless Router Mode, stop and assess the existing laboratory network before
+continuing. Router mode provides the WAN-to-LAN firewall/NAT boundary that
+protects the control PC from the Pi-side network.
 
-### 2.2 Configure the LAN
+### 2.2 Verify the LAN without changing it
 
 1. Open **Advanced > Network > LAN Settings**.
-2. Set the router address to `192.168.1.1`.
-3. Set the subnet mask to `255.255.255.0`.
-4. Leave DHCP enabled for commissioning computers.
-5. If using address reservation, reserve `192.168.1.101` for the control PC's
-   monitoring-adapter MAC address. The later Windows static address makes the
-   reservation optional, but keeping it prevents accidental duplication.
-6. Save.
+2. Confirm the existing router address is `192.168.1.1`.
+3. Confirm the existing subnet mask is `255.255.255.0`.
+4. Record the DHCP and address-reservation settings without altering them.
 
-It is safe for the other refrigerator's separate Archer to use the same LAN
-address. It is not safe to join the two LANs physically.
+Do not save changes on this page. Both Archers may use the same LAN settings
+because the two LANs are physically isolated; it is not safe to join them
+together.
 
 ### 2.3 Configure the WAN
 
 Open **Advanced > Network > Internet**, select **Static IP**, and enter the
 values for this refrigerator.
+
+Only continue if the preflight check confirmed that this WAN configuration is
+unused. Photograph or export its current settings first so the change can be
+reversed locally if an unexpected dependency appears.
 
 | Field | Triton 1 | Triton 2 |
 |---|---|---|
@@ -172,87 +206,120 @@ between firmware builds.
 Do not create a port-forward for MQTT. The publisher makes an outbound
 LAN-to-WAN connection, so no inbound rule is needed.
 
-### 2.5 Optional lab-PC connection
+Do not rely on this configuration review alone. Prove the boundary from an
+independent device using the test below before reconnecting the Pi.
 
-The lab PC used during commissioning may have two network adapters:
+### 2.5 Test the boundary without trusting the Pi
 
-- its university/laboratory adapter, which retains its normal address, DNS,
-  default gateway, and Internet connection; and
-- its Archer adapter, which can remain on DHCP and will normally receive an
-  address such as `192.168.1.100`.
+Perform this test separately for each Archer. Use a dedicated, approved test
+laptop with no other active network connection:
 
-The Archer reporting no Internet does not mean the lab PC has no Internet. Run
-`route print -4`: Windows normally prefers the university default route because
-it has the lower metric. Do not remove or change that university route. Do not
-enable Network Bridge or Internet Connection Sharing between the two adapters.
-The lab PC is not part of the Triton publishing path once commissioning is
-complete and may be disconnected from the Archer if it is no longer needed.
+1. Disconnect the Pi's fridge-facing Ethernet cable from the Pi-side switch.
+   Leave the Archer WAN cable connected.
+2. Connect the test laptop to that switch and temporarily give it the Pi
+   address for the Archer under test: `10.50.1.1/30` or `10.50.2.1/30`. Do not
+   configure a default gateway or DNS server.
+3. Add a temporary route for `192.168.1.0/24` through that Archer's WAN address:
+   `10.50.1.2` or `10.50.2.2`. This deliberately gives the test device the route
+   a hostile Pi would use to attack the Triton LAN.
+4. Confirm at layer 2, for example from the laptop's ARP or neighbour table,
+   that the Archer WAN address resolves. This distinguishes a working cable
+   from a firewall test that only appears to pass because nothing is connected.
+5. With an approved network scanner, test all TCP ports on the Archer WAN
+   address and on the known Triton LAN addresses, including `192.168.1.1`, the
+   control PC, workstation, and any listed laboratory devices. Test known UDP
+   services as required by laboratory IT. A failed ping alone is not evidence
+   of isolation.
+6. Treat any reachable WAN administration service or any response establishing
+   connectivity to a Triton LAN device as a failed boundary test. Stop, remove
+   the test connection, and have laboratory IT correct or replace the Archer.
+7. Remove the temporary route and address from the test laptop. Repeat for the
+   other Archer, then disconnect the laptop and reconnect the Pi.
+
+Record the test device, date, targets, scanner settings, and results. The test
+must be performed again after an Archer reset, firmware change, replacement, or
+security-related configuration change.
+
+### 2.6 Preserve the workstation connection
+
+Leave the Triton workstation's existing `192.168.1.100` address, gateway, DNS,
+and cabling unchanged. If it also has a university or laboratory-network
+adapter, do not remove or change that adapter's route. Do not enable Network
+Bridge or Internet Connection Sharing between adapters.
 
 ## 3. Configure the Windows control PC
 
-The control PC normally has at least two adapters: the existing
-refrigerator-control adapter, which must not be changed, and the new Archer
-monitoring adapter.
+The publisher uses the control PC's existing connection to its Archer LAN. No
+new adapter or Windows IP address is required. Before adding the host route,
+work locally at the control PC and save the existing configuration:
 
-Run `ipconfig /all` and identify them by description, MAC address, and cable
-connection. On the commissioned Triton 2 PC, the Archer adapter was the Intel
-I210 named `Ethernet 2`, with MAC address `00-01-29-9C-22-57`.
+```powershell
+ipconfig /all | Out-File "$env:USERPROFILE\Desktop\network-before-labpulse.txt"
+route print -4 | Out-File -Append "$env:USERPROFILE\Desktop\network-before-labpulse.txt"
+Get-NetAdapter | Format-Table -Auto Name,InterfaceDescription,Status,MacAddress,ifIndex
+```
 
-### 3.1 Give the monitoring adapter a static address
+Identify the adapter carrying the existing Triton LAN address and record its
+`ifIndex`:
 
-1. Press `Windows+R`, enter `ncpa.cpl`, and press Enter.
-2. Right-click the Archer-facing adapter and select **Properties**.
-3. Select **Internet Protocol Version 4 (TCP/IPv4)** and click **Properties**.
-4. Select **Use the following IP address**.
-5. Enter IP address `192.168.1.101` and subnet mask `255.255.255.0`.
-6. Leave the default gateway blank.
-7. Select **Use the following DNS server addresses** and leave both IPv4 DNS
-   boxes blank.
-8. Save the settings.
+- Triton 1 is expected to use `192.168.1.102`.
+- Triton 2 is expected to use `192.168.1.101`.
 
-Windows may show `fec0:0:0:ffff::1`, `::2`, and `::3` in `ipconfig /all` as
-IPv6 site-local DNS placeholders. They do not create an IPv4 default route and
-are not the Archer/Pi DNS settings used by this installation.
+Do not open that adapter's IPv4 properties and do not change its address,
+subnet mask, gateway, DNS, metric, or DHCP setting. If an earlier guide changed
+Triton 1 to `192.168.1.101`, restore `192.168.1.102` and all original gateway
+and DNS settings locally from the network register or saved configuration
+before continuing. Confirm Triton operation and remote access after restoring
+it.
 
-If administering remotely, make absolutely sure the selected adapter is the
-Archer adapter before changing it. Do not disable or reconfigure the adapter
-carrying the remote session.
-
-### 3.2 Add the one route the publisher needs
+### 3.1 Add the one route the publisher needs
 
 Open **Command Prompt as Administrator**. A normal prompt reports
 `The requested operation requires elevation`.
 
+If the interim `192.168.101.0/24` version of this guide was used, remove its Pi
+route before adding the correct route through the existing Archer:
+
+```cmd
+route delete 10.50.1.1
+route delete 10.50.2.1
+```
+
+It is normal for the command belonging to the other refrigerator, or a route
+that was never added, to report that it cannot find the specified route.
+
 For Triton 1:
 
 ```cmd
-route -p add 10.50.1.1 mask 255.255.255.255 192.168.1.1 metric 5
+route -p add 10.50.1.1 mask 255.255.255.255 192.168.1.1 metric 5 if 12
 ```
 
 For Triton 2:
 
 ```cmd
-route -p add 10.50.2.1 mask 255.255.255.255 192.168.1.1 metric 5
+route -p add 10.50.2.1 mask 255.255.255.255 192.168.1.1 metric 5 if 12
 ```
 
-The `/32` route permits only the Pi MQTT address. It does not install a default
-route through the Pi. Verify it:
+These examples use interface index `12`. Replace `12` with the actual `ifIndex`
+of the existing Triton LAN adapter shown by `Get-NetAdapter`. Specifying it
+prevents Windows from attaching the route to another adapter.
+
+The `/32` route sends only the Pi MQTT address through the existing Archer. It
+does not change the PC's address, gateway, DNS, or default route. Verify it:
 
 ```cmd
 route print -4
 ipconfig /all
 ```
 
-The monitoring adapter must have no IPv4 `0.0.0.0` route through
-`192.168.1.1`, no default gateway, and no IPv4 DNS. The expected Triton 2 route
-is:
+The expected Triton 2 route is:
 
 ```text
 Network Destination  Netmask          Gateway      Interface
 10.50.2.1             255.255.255.255  192.168.1.1  192.168.1.101
 ```
 
-### 3.3 Check that Windows is not bridging the refrigerator
+### 3.2 Check that Windows is not bridging the refrigerator
 
 In `ncpa.cpl`:
 
@@ -295,23 +362,78 @@ Verify:
 ```bash
 ip -4 address show eth0
 ip route
-sysctl net.ipv4.ip_forward
 ```
 
 Both Pi addresses must be present, neither link may supply the Pi default
-route, and `net.ipv4.ip_forward` should be `0`. If NetworkManager does not own
-the interface, stop and identify its network manager first. A temporary
-`ip addr add` test does not survive reboot.
+route. If NetworkManager does not own the interface, stop and identify its
+network manager first. A temporary `ip addr add` test does not survive reboot.
 
-A ping initiated by the Pi towards `192.168.1.101` may fail because the Archer
-blocks unsolicited WAN-to-LAN traffic. That is expected. Do not add a
-port-forward to make reverse ping work.
+Docker may enable `net.ipv4.ip_forward=1` for container networking. Do not
+change it as an isolation measure: a hostile Pi can forward or proxy traffic
+regardless of that value, and disabling it may break Docker port publishing.
+The independent Archer boundary test in section 2.5 is the security check.
+
+### 4.1 Check connectivity in both directions
+
+These quick checks give useful confirmation that the addresses, Windows host
+routes, cables, and Archer directionality are working as intended. They do not
+replace the independent boundary test in section 2.5 because the Pi is not a
+trusted test device.
+
+Run only the matching checks for the refrigerator currently being
+commissioned, then repeat this section when commissioning the other one.
+
+On the Triton 1 control PC, run in PowerShell:
+
+```powershell
+Test-NetConnection 10.50.1.1 -InformationLevel Detailed
+```
+
+On the Triton 2 control PC, use its Pi address instead:
+
+```powershell
+Test-NetConnection 10.50.2.1 -InformationLevel Detailed
+```
+
+`PingSucceeded` must be `True`. This confirms that the control PC's `/32` route
+passes through its Archer to the correct Pi address. It does not test MQTT yet;
+the TLS listener is enabled later in this guide.
+
+For the reverse check, first add the matching explicit temporary route on the
+Pi. It is required because both Triton LANs use `192.168.1.0/24`; without it, a
+failed ping could have left through the wrong interface and would prove
+nothing.
+
+For Triton 1:
+
+```bash
+sudo ip route add 192.168.1.102/32 via 10.50.1.2 dev eth0
+ip route get 192.168.1.102
+ping -c 4 -W 2 192.168.1.102
+sudo ip route del 192.168.1.102/32 via 10.50.1.2 dev eth0
+```
+
+For Triton 2:
+
+```bash
+sudo ip route add 192.168.1.101/32 via 10.50.2.2 dev eth0
+ip route get 192.168.1.101
+ping -c 4 -W 2 192.168.1.101
+sudo ip route del 192.168.1.101/32 via 10.50.2.2 dev eth0
+```
+
+The `ip route get` result must show the intended Archer gateway and
+fridge-facing interface. The ping must receive no replies; its summary should
+report `0 received` and `100% packet loss`. A reply from the control PC is a
+failed Archer boundary check: disconnect the Pi-side link and follow the fault
+guidance at the end of this document. The final command removes the temporary
+route; run it manually if the sequence is interrupted.
 
 ## 5. Create the MQTT TLS certificates
 
 The control PCs connect by IP address, so the server certificate must contain
 both Pi IPs as Subject Alternative Names. Generate it on a trusted computer
-with OpenSSL; the Pi can be used temporarily if necessary.
+with OpenSSL. Do not create or store the CA private key on the Pi.
 
 ```bash
 mkdir -p ~/labpulse-mqtt-ca
@@ -342,7 +464,9 @@ openssl x509 -req -in server.csr \
 openssl x509 -in server.crt -noout -subject -dates -ext subjectAltName
 ```
 
-The output must contain both Pi addresses. Install the server files:
+The output must contain both Pi addresses. Transfer only `server.crt` and
+`server.key` from the trusted computer to a temporary directory on the Pi. From
+that directory on the Pi, install the server files:
 
 ```bash
 mkdir -p ~/labpulse-live/mosquitto/config/certs
@@ -350,9 +474,10 @@ cp server.crt ~/labpulse-live/mosquitto/config/certs/server.crt
 cp server.key ~/labpulse-live/mosquitto/config/certs/server.key
 ```
 
-Copy only `labpulse-ca.crt` to the control PCs. Never copy `labpulse-ca.key` or
-`server.key` to them. Store `labpulse-ca.key` offline because it can issue
-certificates trusted by every Triton publisher.
+Copy only `labpulse-ca.crt` to the control PCs. Never copy `labpulse-ca.key` to
+the Pi or a control PC. Store it offline because it can issue certificates
+trusted by every Triton publisher. The server key is necessarily present on the
+Pi and therefore cannot remain secret if the Pi is compromised.
 
 ## 6. Create MQTT accounts and access rules
 
@@ -395,10 +520,15 @@ sudo chown 1883:1883 \
 sudo chmod 600 \
   ~/labpulse-live/mosquitto/config/certs/server.key \
   ~/labpulse-live/mosquitto/config/external-passwords
-chmod 644 \
+sudo chmod 644 \
   ~/labpulse-live/mosquitto/config/certs/server.crt \
   ~/labpulse-live/mosquitto/config/external-acl
 ```
+
+Use unique MQTT passwords created only for this deployment; never reuse a
+Windows, laboratory, or other service credential. The broker receives these
+credentials, so a hostile Pi may capture them. TLS protects them from other
+devices observing the link, but it does not make the Pi trustworthy.
 
 To reset a password later, use `mosquitto_passwd` without `-c`, update that
 PC's password file, and run `labpulse restart mosquitto`.
@@ -747,26 +877,42 @@ not one notification for every reading.
 
 ## Final acceptance checklist
 
-1. The original controller Ethernet configuration is unchanged.
-2. The monitoring adapter has `192.168.1.101/24`, no gateway, and no IPv4 DNS.
-3. Windows has only the persistent `/32` Pi route through the Archer.
+1. The original Archer LAN, control PC, workstation, controller, magnet-supply,
+   gateway, DNS, DHCP, and remote-access settings are unchanged.
+2. The Archer WAN is `10.50.1.2/30` for Triton 1 or `10.50.2.2/30` for
+   Triton 2.
+3. The only new Windows network setting is the persistent `/32` Pi route
+   through the existing Archer and the correct existing LAN interface.
 4. Windows has no Network Bridge, Internet Connection Sharing, or IP routing.
 5. The Archer has no forwarding, DMZ, UPnP, or WAN management rules.
 6. The Archer's **No Internet** indication is accepted as normal.
-7. Both Pi `/30` addresses survive reboot and the Pi does not forward IPv4.
-8. `Test-NetConnection <Pi-address> -Port 8883` succeeds from the control PC.
-9. Wrong MQTT credentials and untrusted certificates are rejected.
-10. Each user can publish only to its own exact topic.
-11. JSON timestamps are current and mapped headers match exactly.
-12. Home Assistant displays plausible values, units, and availability policy.
-13. Stopping the task produces one eventual input-service incident, not a
+7. With the Pi disconnected, an independent WAN-side test device has a working
+   layer-2 connection to each Archer but cannot reach WAN administration or any
+   device on either Triton LAN; the test method and results are recorded.
+8. Both Pi `/30` addresses survive reboot. Their forwarding or firewall state
+   is not treated as a security control.
+9. The stage 4 directional checks pass: control-PC `Test-NetConnection` reports
+   `PingSucceeded: True`, while both correctly routed Pi-to-control-PC pings
+   receive no replies.
+10. `Test-NetConnection <Pi-address> -Port 8883` succeeds from the control PC.
+11. Wrong MQTT credentials and untrusted certificates are rejected.
+12. Each user can publish only to its own exact topic.
+13. JSON timestamps are current and mapped headers match exactly.
+14. Home Assistant displays plausible values, units, and availability policy.
+15. Stopping the task produces one eventual input-service incident, not a
     per-reading notification flood.
-14. Restarting the task restores the service and readings once.
-15. Control PC, Pi, and router reboots need no manual publisher restart.
+16. Restarting the task restores the service and readings once.
+17. Control PC, Pi, and router reboots need no manual publisher restart.
 
 ## Quick fault guide
 
-### `Test-NetConnection` is false
+### Stage 4 `Test-NetConnection` reports `PingSucceeded: False`
+
+Do not continue to MQTT setup. Check the control PC's persistent `/32` route,
+the Archer WAN address, the Pi `/30` address, and the WAN-side cabling. Repeat
+the test until the control PC can ping its corresponding Pi address.
+
+### `Test-NetConnection -Port 8883` is false
 
 Check the Windows `/32` route, Archer WAN address and cable, Pi address,
 external-listener config, container state, and Mosquitto log. Run this command
@@ -776,6 +922,13 @@ in PowerShell, not Command Prompt.
 
 The route works. Check the certificate IP SAN, CA file, username, password, ACL
 topic, and Mosquitto log.
+
+### The setup publisher prints `Connected` and then says the client is not connected
+
+Replace the control PC's `triton_logfile_publisher_setup.py` with the current
+repository version and run the step again. An older version could try to
+publish before MQTT had acknowledged the connection. The current script waits
+for broker acceptance and reports a rejection or timeout directly.
 
 ### MQTT connects but LabPulse receives nothing
 
@@ -793,8 +946,11 @@ Check that the task runs as the Python-owning user, the wrapper uses the full
 `python.exe` path, **Start in** is correct, that account can read the Triton
 logs and password, and Task Scheduler stored the account password.
 
-### The Pi cannot ping the control PC
+### A reverse ping succeeds or the independent test reaches a protected device
 
-That is normally the Archer WAN firewall working correctly. The required path
-is control PC to Pi TCP 8883. Do not add DMZ or forwarding rules for reverse
-ping.
+The Archer boundary has failed. Disconnect the Pi-side switch from that Archer
+and do not reconnect the Pi. Recheck that the cable uses the Archer WAN port,
+the Archer is in router mode, and port forwarding, DMZ, UPnP, WAN management,
+CWMP, and SNMP are disabled. If any protected LAN address remains reachable,
+have laboratory IT replace or reconfigure the boundary device. Do not use a Pi
+firewall rule or `net.ipv4.ip_forward` change as the fix.

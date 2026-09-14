@@ -5,9 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
 CONFIG_PATH="$PROJECT_DIR/config.yaml"
-CONFIG_BACKUP="$PROJECT_DIR/config.yaml.edit-backup"
+BACKUP_DIR="$PROJECT_DIR/backups"
+CONFIG_BACKUP="$BACKUP_DIR/config.yaml.edit-backup"
 FAKE_CONFIG_PATH="$PROJECT_DIR/config.fake.yaml"
-FAKE_CONFIG_BACKUP="$PROJECT_DIR/config.fake.yaml.edit-backup"
+FAKE_CONFIG_BACKUP="$BACKUP_DIR/config.fake.yaml.edit-backup"
 COMPOSE_PATH="$PROJECT_DIR/compose.yaml"
 HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 
@@ -115,6 +116,7 @@ echo "Validating and checking generated Compose and Home Assistant configuration
   "${COMPOSE_MODE_ARGS[@]}"
 
 # Keep one predictable rollback copy instead of accumulating timestamped backups.
+mkdir -p "$BACKUP_DIR"
 cp -p "$CONFIG_PATH" "$CONFIG_BACKUP"
 if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
   if [ ! -f "$FAKE_CONFIG_PATH" ]; then

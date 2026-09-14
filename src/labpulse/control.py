@@ -865,7 +865,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="configure simulated USB serial hardware",
     )
     setup_parser.add_argument(
-        "--backup", action="store_true", help="back up generated and package-managed files before replacement"
+        "--backup",
+        action="store_true",
+        help="keep one rolling backup of each replaced package-managed file in backups/",
     )
 
     update_parser = commands.add_parser(

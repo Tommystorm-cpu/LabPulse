@@ -75,6 +75,7 @@ assets. `labpulse setup` creates or refreshes:
   simulate_serial.py                  package-managed simulator
   test_dht11_fault.sh                 package-managed acceptance helper
   test_x1200_faults.sh                package-managed acceptance helper
+  backups/                            one rolling copy per backed-up live file
   homeassistant/config/               Home Assistant live state and generated YAML
   mosquitto/                           broker configuration and retained data
   logs/                                Python logs and SMS worker state
@@ -114,6 +115,11 @@ Generated or package-managed state includes:
 
 Generated files are replaceable projections of the live configuration and
 package code. They are not independent configuration sources.
+
+Setup updates and guarded configuration tools keep their single rolling
+rollback copies in `backups/`, rather than placing timestamped files beside the
+active live files. These local rollback copies are separate from the checksummed
+state archives created by `labpulse backup`.
 
 ## Command surfaces
 

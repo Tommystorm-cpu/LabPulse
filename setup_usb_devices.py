@@ -227,7 +227,9 @@ def replace_serial_ports(
 def write_config(config_path: Path, updated_text: str) -> Path:
     """Atomically write config after keeping one non-proliferating backup."""
 
-    backup_path = config_path.with_name(config_path.name + ".usb-setup-backup")
+    backup_directory = config_path.parent / "backups"
+    backup_directory.mkdir(exist_ok=True)
+    backup_path = backup_directory / (config_path.name + ".usb-setup-backup")
     shutil.copy2(config_path, backup_path)
     temporary_name: str | None = None
     try:

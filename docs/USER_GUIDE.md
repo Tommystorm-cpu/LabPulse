@@ -128,6 +128,7 @@ The command validates the schema, preserves fake mode where active, renders
 Compose and Home Assistant output, checks both output families, installs the
 source and generated files, and displays status. It keeps rolling backups and
 attempts to restore the earlier source and output if a downstream check fails.
+The rolling copies are kept together in `~/labpulse-live/backups/`.
 
 For real serial services, assign stable `/dev/serial/by-id/...` paths with the
 installed USB helper after the devices are connected, then run
@@ -411,7 +412,8 @@ rejected.
 Real installations should identify boards using `/dev/serial/by-id/...`
 rather than changeable `/dev/ttyUSB0` or `/dev/ttyACM0` names. The USB helper
 guides the operator through unplugging and reconnecting each board, updates
-only its configured port and keeps one rolling backup.
+only its configured port and keeps one rolling backup in
+`~/labpulse-live/backups/`.
 
 The maintained firmware examples provide pressure/environment, pump-room and
 turbo-pump hubs. Firmware owns sampling and calibration; Python owns parsing,
@@ -476,8 +478,9 @@ wire contract change. There is no automatic firmware flashing command;
 
 The Home Assistant **System Status** view shows each service as Working, Needs
 attention, or Offline. It lists the latest readings and gives a plain-language
-explanation when action may be needed. The time beneath a status or reading is
-Home Assistant's natural last-changed time rather than an internal timer.
+explanation when action may be needed. A reading's time shows when its latest
+sample was received, even if the numeric value stayed the same. A status time
+shows when that status last changed.
 
 `labpulse doctor` does not change the installation. It checks the live and
 runtime configuration, mode, clock/NTP, watchdog, generated files, declared
