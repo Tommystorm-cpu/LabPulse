@@ -10,11 +10,14 @@ import pytest
 
 from firmware import triton_logfile_publisher_setup as setup_publisher
 from firmware.triton_logfile_publisher_production import (
+    availability_topic,
     create_mqtt_client,
     default_client_id,
     parse_args,
+    publish_heartbeat,
     record_to_json,
 )
+from firmware import triton_logfile_publisher_production as production_publisher
 from firmware.triton_logfile_publisher_setup import (
     parse_args as parse_setup_args,
     record_to_json as setup_record_to_json,
@@ -78,6 +81,7 @@ def test_secure_publisher_arguments_are_the_default() -> None:
         [
             "--directory", "D:/Triton/logs",
             "--broker", "labpulse-pi.local",
+            "--heartbeat-topic", "labpulse/triton/triton-01/heartbeat",
             "--username", "triton-01",
             "--password-file", "C:/LabPulse/password.txt",
             "--ca-certificate", "C:/LabPulse/ca.crt",
@@ -86,6 +90,8 @@ def test_secure_publisher_arguments_are_the_default() -> None:
 
     assert args.port == 8883
     assert args.topic == "labpulse/triton/measurements"
+    assert args.heartbeat_interval == 15
+    assert availability_topic(args.heartbeat_topic) == "labpulse/triton/triton-01/availability"
     assert args.insecure is False
 
 
@@ -209,6 +215,7 @@ def test_mqtt_client_applies_tls_authentication_and_identity(
             "--directory", str(workspace_tmp_path),
             "--broker", "labpulse-pi.local",
             "--client-id", "Triton-fridge-01",
+            "--heartbeat-topic", "labpulse/triton/triton-01/heartbeat",
             "--username", "triton-01",
             "--password-file", str(password_file),
             "--ca-certificate", str(ca_file),
@@ -227,3 +234,97 @@ def test_mqtt_client_applies_tls_authentication_and_identity(
     client.tls_set.assert_called_once_with(ca_certs=str(ca_file))
     client.connect_async.assert_called_once_with("labpulse-pi.local", 8883, keepalive=60)
     client.loop_start.assert_called_once_with()
+    client.will_set.assert_called_once_with(
+        "labpulse/triton/triton-01/availability", "offline", qos=1, retain=True
+    )
+    client.on_connect(client, None, None, 0, None)
+    client.publish.assert_called_with(
+        "labpulse/triton/triton-01/availability", "online", qos=1, retain=True
+    )
+
+
+def test_heartbeat_publication_is_non_retained_and_acknowledged() -> None:
+    """Health messages come from the script loop rather than old logfile data."""
+
+    client = Mock()
+    client.is_connected.return_value = True
+    publication = client.publish.return_value
+    publication.is_published.return_value = True
+    publish_heartbeat(client, "labpulse/triton/triton-01/heartbeat")
+    client.publish.assert_called_once_with(
+        "labpulse/triton/triton-01/heartbeat", "alive", qos=1, retain=False
+    )
+    publication.wait_for_publish.assert_called_once_with(timeout=5)
+
+
+def test_unreadable_logfile_still_sends_heartbeat_and_clean_exit(
+    workspace_tmp_path: Path,
+) -> None:
+    """Logfile failures do not suppress the main-loop heartbeat."""
+
+    args = parse_args([
+        "--directory", str(workspace_tmp_path),
+        "--broker", "labpulse-pi.local",
+        "--heartbeat-topic", "labpulse/triton/triton-01/heartbeat",
+        "--username", "triton-01",
+        "--password-file", str(workspace_tmp_path / "password.txt"),
+        "--ca-certificate", str(workspace_tmp_path / "ca.crt"),
+    ])
+    client = Mock()
+    client.is_connected.return_value = True
+    client.publish.return_value.is_published.return_value = True
+    with (
+        patch.object(production_publisher, "parse_args", return_value=args),
+        patch.object(production_publisher, "create_mqtt_client", return_value=client),
+        patch.object(production_publisher, "get_recent_logfile", side_effect=FileNotFoundError("quiet")),
+        patch.object(production_publisher.time, "sleep", side_effect=KeyboardInterrupt),
+    ):
+        production_publisher.main()
+    assert client.publish.call_args_list[0].args == (
+        "labpulse/triton/triton-01/heartbeat", "alive"
+    )
+    assert client.publish.call_args_list[-1].args == (
+        "labpulse/triton/triton-01/availability", "offline"
+    )
+    client.disconnect.assert_called_once_with()
+
+
+def test_unchanged_logfile_sends_heartbeats_without_replaying_measurements(
+    workspace_tmp_path: Path,
+) -> None:
+    """Four scheduled passes can heartbeat twice while decoding one record."""
+
+    args = parse_args([
+        "--directory", str(workspace_tmp_path),
+        "--broker", "labpulse-pi.local",
+        "--heartbeat-topic", "labpulse/triton/triton-01/heartbeat",
+        "--username", "triton-01",
+        "--password-file", str(workspace_tmp_path / "password.txt"),
+        "--ca-certificate", str(workspace_tmp_path / "ca.crt"),
+    ])
+    client = Mock()
+    client.is_connected.return_value = True
+    simulated_time = [0.0]
+    sleeps = [0]
+
+    def advance_time(seconds: float) -> None:
+        """Advance to the next scheduled check, then stop after two heartbeats."""
+
+        simulated_time[0] += seconds
+        sleeps[0] += 1
+        if sleeps[0] == 4:
+            raise KeyboardInterrupt
+
+    with (
+        patch.object(production_publisher, "parse_args", return_value=args),
+        patch.object(production_publisher, "create_mqtt_client", return_value=client),
+        patch.object(production_publisher, "get_recent_logfile", return_value=workspace_tmp_path / "same.vcl"),
+        patch.object(production_publisher, "decode_last_record", return_value=(1, {"Time(secs)": 1.0})),
+        patch.object(production_publisher, "publish_record") as record,
+        patch.object(production_publisher, "publish_heartbeat") as heartbeat,
+        patch.object(production_publisher.time, "monotonic", side_effect=lambda: simulated_time[0]),
+        patch.object(production_publisher.time, "sleep", side_effect=advance_time),
+    ):
+        production_publisher.main()
+    record.assert_called_once()
+    assert heartbeat.call_count == 2

@@ -326,6 +326,7 @@ Each key under `services` describes one independently running hardware service:
 services:
   pressure_monitor:
     label: Compressed Air and Environment Sensor Hub
+    notify_on_service_failure: true
     driver:
       type: labpulse.serial_pipe
       options:
@@ -333,7 +334,6 @@ services:
         baud_rate: 9600
     measurements:
       pressure:
-        label: Pressure
         setups: [compressed_air]
         unit: bar
         device_class: pressure
@@ -360,6 +360,7 @@ after collecting history unless a new identity is intended.
 | Field | Default | Meaning |
 |---|---:|---|
 | `enabled` | `true` | Whether generation creates the service |
+| `notify_on_service_failure` | `true` | Strict boolean controlling service-offline and service-recovery Home Assistant/SMS delivery. `false` leaves status and confirmed outages visible; reading and power alarms stay independent |
 | `label` | required | Home Assistant device and operator-facing service label |
 | `driver` | required | Driver ID and driver-owned options |
 | `measurements` | required | Ordered mapping of stable measurement IDs to their settings |
@@ -381,12 +382,14 @@ directly to the Raspberry Pi over I2C.
 ## Measurements
 
 ```yaml
+measurement_defaults:
+  setups: [cryogenics_room]
+  alarmed: false
 measurements:
   temperature:
     label: Cryogenics Room Temperature
     short_label: Room Temperature
     group: Environment
-    setups: [cryogenics_room]
     unit: "°C"
     device_class: temperature
     icon: mdi:snowflake-thermometer
@@ -397,6 +400,7 @@ measurements:
 | Field | Default | Meaning |
 |---|---|---|
 | mapping key | required | Stable driver, MQTT, and entity ID; lowercase letters, numbers, and underscores |
+| `source` | driver-specific | Exact external field name; required by `labpulse.mqtt_json` and rejected by drivers that already produce stable IDs |
 | `label` | readable form of ID | Full label used for MQTT discovery, System Status, active problems, helpers, and notifications |
 | `short_label` | `label` | Shorter label used where the dashboard's setup heading supplies context |
 | `group` | none | Presentation grouping within a setup |
@@ -413,6 +417,14 @@ measurements:
 Measurement IDs are mapping keys and preserve their YAML order. Use each key
 once: the current YAML loader does not reject duplicate keys and a later
 entry can replace an earlier one before validation. Hardware readings not listed in `measurements` are ignored.
+
+`measurement_defaults` is optional and accepts the same presentation,
+availability, alarm, timing, unit, device-class, icon, and state-class fields as
+an individual measurement. It cannot set `source`, because external source
+names identify individual readings. Explicit fields on a measurement override
+the service defaults; all other fields retain the ordinary measurement
+defaults. LabPulse resolves this inheritance once while loading the file, so
+runtime services receive complete validated measurement settings.
 
 Changing `label`, `short_label`, or `group` preserves identity. Changing a
 measurement mapping key creates a new MQTT topic, Home Assistant entity, alarm helpers, and
@@ -559,21 +571,32 @@ See the [Arduino serial behavior](USER_GUIDE.md#sensor-services-and-drivers) and
 
 Use `labpulse.mqtt_json` when another computer publishes a changing set of
 named measurements as one JSON snapshot. The publisher sends every available
-field, while `parameters` maps only the useful source names to stable LabPulse
-measurement IDs:
+field. Each selected LabPulse measurement declares its exact external `source`
+beside its display and alarm settings:
 
 ```yaml
 driver:
   type: labpulse.mqtt_json
   options:
-    broker: mosquitto
-    port: 1883
-    topic: labpulse/triton/measurements
-    parameters:
-      condense_pressure: "P2 Condense (Bar)"
-      cold_plate_temperature: "Cold Plate T(K)"
-      turbo_speed: "turbo speed(Hz)"
+    topic: labpulse/triton/triton-01/measurements
+    heartbeat_topic: labpulse/triton/triton-01/heartbeat
+    heartbeat_timeout_seconds: 60
     maximum_record_age_seconds: 30
+measurement_defaults:
+  setups: [cryogenics_room]
+  alarmed: false
+measurements:
+  condense_pressure:
+    source: "P2 Condense (Bar)"
+    unit: bar
+    device_class: pressure
+  cold_plate_temperature:
+    source: "Cold Plate T(K)"
+    unit: K
+    device_class: temperature
+  turbo_speed:
+    source: "turbo speed(Hz)"
+    unit: Hz
 ```
 
 | Option | Default | Meaning |
@@ -581,14 +604,23 @@ driver:
 | `broker` | `mosquitto` | Broker hostname visible inside the service container |
 | `port` | `1883` | Internal broker TCP port |
 | `topic` | required | Exact MQTT topic; wildcards are rejected |
-| `parameters` | required | LabPulse measurement ID to source-field mapping |
+| `heartbeat_topic` | absent | Optional exact publisher heartbeat topic ending in `/heartbeat`; its sibling `/availability` topic is derived automatically |
+| `heartbeat_timeout_seconds` | `60` | Seconds, 2–3600; requires `heartbeat_topic`. The Pi requires a new non-retained heartbeat within this interval and retained publisher availability `online` |
 | `maximum_record_age_seconds` | `300` | Seconds, 2–86400; reject older source timestamps |
 
-The corresponding keys under the service's `measurements` section must match
-the left side of the `parameters` mapping. Source names on the right are exact
-and case-sensitive. Extra fields in a message are ignored. If one configured
-field is absent or null, available fields continue updating and the service
-reports a partial hardware fault.
+Without `heartbeat_topic`, an MQTT JSON service still derives health from
+measurement freshness. With it, the service waits for a new heartbeat after
+each connection and uses the heartbeat plus retained availability for publisher
+health. Old numeric readings continue to expire according to
+`maximum_measurement_age_seconds` and can open their separate required-reading
+incidents. A quiet logfile therefore does not by itself open a publisher outage.
+
+Every measurement in an MQTT JSON service requires a nonblank `source`.
+Source names are exact, case-sensitive, and unique within that service. Extra
+fields in a message are ignored. If one configured field is absent or null,
+available fields continue updating and the service reports a partial hardware
+fault. Drivers such as `labpulse.serial_pipe` already return stable measurement
+IDs and therefore reject `source`.
 
 Messages use this versioned contract:
 
@@ -604,8 +636,8 @@ Messages use this versioned contract:
 }
 ```
 
-`parameters` must be non-empty; mapping keys use lowercase alphanumeric words
-separated by single underscores, and source headers must be non-blank.
+`measurements` must be non-empty; mapping keys use lowercase alphanumeric words
+separated by single underscores, and source names must be non-blank.
 Messages are limited to 1,000,000 bytes, must use protocol version 1, and need
 a finite Unix timestamp no more than 60 seconds ahead of receipt. Boolean,
 non-numeric, null, absent, and non-finite fields are unavailable. A message

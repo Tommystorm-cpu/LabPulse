@@ -180,7 +180,8 @@ The loader returns a `ConfigDocument` containing:
 
 - the resolved source path;
 - a fully validated `LabPulseConfig`;
-- driver options already converted to the selected driver's Pydantic model.
+- driver options already converted to the selected driver's Pydantic model;
+- service measurement defaults already resolved into each measurement.
 
 ```text
 config.yaml
@@ -340,11 +341,16 @@ A `DriverDefinition` contains:
 - strict configuration model;
 - clearly named driver class;
 - container-requirements function;
-- default read interval.
+- default read interval;
+- an optional measurement-source binder for transports whose external field
+  names differ from LabPulse's stable IDs.
 
 The definition validates configuration once and constructs the driver with the
 standard `(service_name, config)` constructor. This makes the driver itself
 the hardware-to-runner translation layer; there is no separate adapter type.
+The MQTT JSON definition uses its source binder during service validation, so
+its driver receives one complete stable-ID-to-source mapping without parsing
+service YAML or duplicating measurement IDs in driver options.
 
 Every driver supplies a function returning `ContainerRequirements`, containing
 devices, mounts, and a privileged flag. Drivers cannot return arbitrary Compose
@@ -519,6 +525,20 @@ optional external listener exists for control-PC measurement publishers. It is
 generated only when explicitly enabled and uses a separate host port, TLS
 server certificate, password database and topic ACL. The internal listener
 remains separate so existing LabPulse containers do not need site credentials.
+
+For each Triton control PC, the production publisher sends non-retained
+measurement snapshots only when a new record exists and non-retained
+heartbeats from its main loop on a separate topic. Its retained availability
+topic has an MQTT Last Will of `offline`. The Pi's MQTT JSON driver requires
+both current availability and a newly received heartbeat after each broker
+connection. The runner uses that health signal for service status, while Home
+Assistant expires old numeric readings independently. A stopped or stalled
+publisher becomes one service incident; a quiet logfile leaves the publisher
+online without making old measurements current. While awaiting the first
+heartbeat, the service shows Needs attention and does not open an outage until
+the timeout; an explicit retained `offline` availability reports an outage
+promptly. Each service can silence only
+its own offline/recovery delivery with `notify_on_service_failure: false`.
 
 Real SMS mode receives `/dev` and D-Bus access. DHT11 currently requires a
 privileged hardware container. Other drivers declare narrower device access

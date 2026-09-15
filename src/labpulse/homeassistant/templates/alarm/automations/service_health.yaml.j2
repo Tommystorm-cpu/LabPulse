@@ -57,12 +57,16 @@
         notification_id: labpulse_[[ service.service_id ]]_service_offline
         title: >-
           {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
-             ~ 'LabPulse [[ service.label ]] offline' }}
+             ~ 'LabPulse [[ service.label ]][[ ' control-PC publisher offline' if service.external_publisher_health else ' offline' ]]' }}
         message: >-
+[% if service.external_publisher_health %]
+          The [[ service.label ]] control-PC publisher is not reporting. Its readings may be unavailable.
+[% else %]
           LabPulse cannot communicate with [[ service.label ]]. Its readings are temporarily unavailable.
+[% endif %]
         notification_sent_entity: [[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') | yaml_scalar ]]
         sms_requested_entity: [[ entity_id('input_boolean', service.name, 'service_offline_sms_requested') | yaml_scalar ]]
-        delivery_allowed: true
+        delivery_allowed: [[ service.notify_on_service_failure | yaml_scalar ]]
         sms_payload: >-
           {{ {
             "request_id": "labpulse_[[ service.service_id ]]_service_offline_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
@@ -72,8 +76,8 @@
             "measurement": "service_health",
             "measurement_label": "Service",
             "state": "Offline",
-            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Service Offline: [[ service.label ]]',
-            "message": 'LabPulse cannot communicate with [[ service.label ]]. All readings from this service are temporarily unavailable.',
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ '[% if service.external_publisher_health %]LabPulse Publisher Offline: [[ service.label ]][% else %]LabPulse Service Offline: [[ service.label ]][% endif %]',
+            "message": '[% if service.external_publisher_health %]The [[ service.label ]] control-PC publisher is not reporting. Its readings may be unavailable.[% else %]LabPulse cannot communicate with [[ service.label ]]. All readings from this service are temporarily unavailable.[% endif %]',
             "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
             "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')
           } | to_json }}
@@ -103,12 +107,16 @@
         notification_id: labpulse_[[ service.service_id ]]_service_offline
         recovery_title: >-
           {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
-             ~ 'LabPulse [[ service.label ]] working' }}
+             ~ 'LabPulse [[ service.label ]][[ ' control-PC publisher reporting' if service.external_publisher_health else ' working' ]]' }}
         recovery_message: >-
+[% if service.external_publisher_health %]
+          The [[ service.label ]] control-PC publisher resumed reporting after {{ downtime_seconds }} seconds.
+[% else %]
           Communication with [[ service.label ]] has recovered after {{ downtime_seconds }} seconds.
+[% endif %]
         notification_sent_entity: [[ entity_id('input_boolean', service.name, 'service_offline_notification_sent') | yaml_scalar ]]
         sms_requested_entity: [[ entity_id('input_boolean', service.name, 'service_offline_sms_requested') | yaml_scalar ]]
-        delivery_allowed: true
+        delivery_allowed: [[ service.notify_on_service_failure | yaml_scalar ]]
         recovery_sms_payload: >-
           {{ {
             "request_id": "labpulse_[[ service.service_id ]]_service_working_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
@@ -118,8 +126,8 @@
             "measurement": "service_health",
             "measurement_label": "Service",
             "state": "Working",
-            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Service Working: [[ service.label ]]',
-            "message": 'Communication with [[ service.label ]] has recovered after ' ~ downtime_seconds ~ ' seconds.',
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ '[% if service.external_publisher_health %]LabPulse Publisher Reporting: [[ service.label ]][% else %]LabPulse Service Working: [[ service.label ]][% endif %]',
+            "message": '[% if service.external_publisher_health %]The [[ service.label ]] control-PC publisher resumed reporting after [% else %]Communication with [[ service.label ]] has recovered after [% endif %]' ~ downtime_seconds ~ ' seconds.',
             "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
             "current_measurement": states('[[ entity_id('sensor', service.name, 'status') ]]')
           } | to_json }}

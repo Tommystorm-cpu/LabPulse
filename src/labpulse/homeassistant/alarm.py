@@ -161,6 +161,9 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "label": service_config.label,
             "service_id": service_id,
             "config": service_config,
+            "notify_on_service_failure": service_config.notify_on_service_failure,
+            "external_publisher_health": service_config.driver.type == "labpulse.mqtt_json"
+            and getattr(service_config.driver.options, "heartbeat_topic", None) is not None,
             "health_offline_confirm_seconds": config.service_health.offline_confirm_seconds,
             "health_recovery_confirm_seconds": config.service_health.recovery_confirm_seconds,
             "measurements": service_measurements,

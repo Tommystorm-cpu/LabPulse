@@ -257,7 +257,101 @@ def test_non_required_reading_is_visible_without_missing_reading_incident() -> N
         sensor for sensor in reading_statuses
         if sensor["unique_id"] == f"{helper}_reading_available"
     )
-    assert status["attributes"]["required"] is False
+    assert status["attributes"]["required"] == "{{ false }}"
+
+
+def test_calculated_measurement_attributes_are_homeassistant_templates() -> None:
+    """Render source metadata and flags as template strings accepted by Home Assistant."""
+
+    data = sample_config()
+    data["custom_measurements"] = {
+        "temperature_difference": {
+            "setups": ["air_pressure"],
+            "inputs": {
+                "first": "pressure_monitor.pressure",
+                "second": "pressure_monitor.temperature",
+            },
+            "formula": "second - first",
+            "required": False,
+            "alarmed": False,
+        }
+    }
+    root = REPOSITORY / "testing" / "tmp" / f"generator-calculated-{uuid4().hex}"
+    config_path = root / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    ha_dir = root / "homeassistant" / "config"
+    assert generate_homeassistant([str(config_path), str(ha_dir)]) == 0
+    package = yaml.safe_load((ha_dir / "packages" / "labpulse_generated.yaml").read_text(encoding="utf-8"))
+    sensor = next(
+        sensor
+        for block in package["template"]
+        for sensor in block.get("sensor", [])
+        if sensor["unique_id"] == "labpulse_custom_temperature_difference"
+    )
+    attributes = sensor["attributes"]
+    assert attributes["labpulse_custom_measurement"] == "{{ true }}"
+    assert attributes["formula"] == "second - first"
+    assert attributes["required"] == "{{ false }}"
+    assert attributes["physical_inputs"] == (
+        '{{ {"first": "pressure_monitor.pressure", '
+        '"second": "pressure_monitor.temperature"} }}'
+    )
+    assert all(isinstance(value, str) for value in attributes.values())
+
+
+def test_service_failure_notification_switch_and_fridge_wording() -> None:
+    """Keep outages visible while controlling only service notification delivery."""
+
+    root = REPOSITORY / "testing" / "tmp" / f"generator-health-{uuid4().hex}"
+    data = sample_config()
+    data["services"]["pressure_monitor"]["notify_on_service_failure"] = False  # type: ignore[index]
+    data["setups"]["cryogenics_room"] = {"label": "Cryogenics Room"}  # type: ignore[index]
+    data["services"]["triton_01"] = {  # type: ignore[index]
+        "label": "Triton 1 Fridge",
+        "driver": {
+            "type": "labpulse.mqtt_json",
+            "options": {
+                "topic": "labpulse/triton/triton-01/measurements",
+                "heartbeat_topic": "labpulse/triton/triton-01/heartbeat",
+            },
+        },
+        "measurements": {
+            "cold_plate_temperature": {
+                "source": "Cold Plate T(K)", "setups": ["cryogenics_room"],
+            },
+        },
+    }
+    config_path = root / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    ha_dir = root / "homeassistant" / "config"
+    assert generate_homeassistant([str(config_path), str(ha_dir)]) == 0
+    package = yaml.safe_load((ha_dir / "packages" / "labpulse_generated.yaml").read_text(encoding="utf-8"))
+
+    for suffix, expected in (("Service Offline", False), ("Service Working", False)):
+        hub = automation(package, f"LabPulse Air Pressure Sensor Hub {suffix}")
+        dispatch = next(item for item in walk(hub) if isinstance(item, dict)
+                        and item.get("service") in {
+                            "script.labpulse_open_incident", "script.labpulse_close_incident",
+                        })
+        assert dispatch["data"]["delivery_allowed"] is expected
+        fridge = automation(package, f"LabPulse Triton 1 Fridge {suffix}")
+        fridge_dispatch = next(item for item in walk(fridge) if isinstance(item, dict)
+                               and item.get("service") in {
+                                   "script.labpulse_open_incident", "script.labpulse_close_incident",
+                               })
+        assert fridge_dispatch["data"]["delivery_allowed"] is True
+        assert "control-PC publisher" in str(fridge_dispatch["data"])
+
+    assert "labpulse_pressure_monitor_service_offline_incident_active" in package["input_boolean"]
+    assert automation(package, "LabPulse Pressure Reading Missing")
+    service_offline = next(
+        sensor for block in package["template"]
+        for sensor in block.get("binary_sensor", [])
+        if sensor["unique_id"] == "labpulse_triton_01_service_offline"
+    )
+    assert "awaiting_heartbeat" not in service_offline["state"]
 
 
 def test_first_install_mutes_once_without_overriding_restored_state() -> None:

@@ -6,6 +6,7 @@ $publisherDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tritonLogDirectory = "C:\CHANGE_ME\Triton\LogFiles"
 $brokerName = "labpulse-pi.local"
 $mqttTopic = "labpulse/triton/CHANGE_ME_FRIDGE_ID/measurements"
+$heartbeatTopic = "labpulse/triton/CHANGE_ME_FRIDGE_ID/heartbeat"
 $mqttUsername = "CHANGE_ME_TRITON_USERNAME"
 $passwordFile = Join-Path $publisherDirectory "mqtt-password.txt"
 $caCertificate = Join-Path $publisherDirectory "labpulse-ca.crt"
@@ -16,6 +17,7 @@ $operationalLog = Join-Path $publisherDirectory "triton-publisher.log"
     --broker $brokerName `
     --port 8883 `
     --topic $mqttTopic `
+    --heartbeat-topic $heartbeatTopic `
     --username $mqttUsername `
     --password-file $passwordFile `
     --ca-certificate $caCertificate `

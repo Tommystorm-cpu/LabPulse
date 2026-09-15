@@ -17,21 +17,20 @@ services:
       type: labpulse.serial_pipe
       options:
         port: /tmp/labpulse-fake-serial/pump_room
+    measurement_defaults:
+      setups: [water_loop]
     measurements:
       temp0:
         label: Supply Temperature
         # required defaults to true, so normal readings omit it.
-        setups: [water_loop]
         unit: "°C"
         device_class: temperature
       temp1:
         label: Return Temperature
-        setups: [water_loop]
         unit: "°C"
         device_class: temperature
 custom_measurements:
   temperature_difference:
-    label: Temperature Difference
     # Use required: false only if a missing calculated result is acceptable.
     setups: [water_loop]
     inputs:

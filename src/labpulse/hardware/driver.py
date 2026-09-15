@@ -8,6 +8,7 @@ MQTT publication, and service status belong to the hardware runner.
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 import logging
 from typing import Any
 
@@ -50,6 +51,14 @@ class TransientReadError(DriverError):
 
 
 # Required driver lifecycle
+class SourceHealth(StrEnum):
+    """Health of a source whose process can report independently of readings."""
+
+    WAITING = "waiting"
+    ONLINE = "online"
+    OFFLINE = "offline"
+
+
 class HardwareDriver(ABC):
     """Required interface for one LabPulse hardware driver."""
 
@@ -70,6 +79,11 @@ class HardwareDriver(ABC):
     @abstractmethod
     def close(self) -> None:
         """Release hardware resources safely and idempotently."""
+
+    def health_status(self) -> SourceHealth | None:
+        """Return independent source health, or None when readings establish health."""
+
+        return None
 
 
 class HardwareOutputDriver(HardwareDriver):
@@ -118,6 +132,7 @@ class DriverDefinition:
     driver_class: type[HardwareDriver]
     container_requirements: Callable[[BaseModel, bool], ContainerRequirements]
     default_read_interval_seconds: float
+    bind_measurement_sources: Callable[[BaseModel, Mapping[str, str]], None] | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed specs as soon as their module is discovered."""
@@ -130,6 +145,10 @@ class DriverDefinition:
             raise TypeError("driver_class must extend HardwareDriver")
         if not callable(self.container_requirements):
             raise TypeError("container_requirements must be a function")
+        if self.bind_measurement_sources is not None and not callable(
+            self.bind_measurement_sources
+        ):
+            raise TypeError("bind_measurement_sources must be a function")
         if self.default_read_interval_seconds < 0:
             raise ValueError("default_read_interval_seconds must not be negative")
 

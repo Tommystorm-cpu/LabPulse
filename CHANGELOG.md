@@ -12,6 +12,12 @@ artifacts are published.
 
 ### Added
 
+- Independent Triton control-PC publisher heartbeats and availability, with
+  fridge service alerts driven by script health instead of logfile activity.
+- A per-service `notify_on_service_failure` setting, enabled by default, to
+  silence known unreliable or intentionally disconnected hubs without hiding
+  their status.
+
 - Repository-wide MIT licensing for software, firmware, documentation, and
   hardware design files.
 - A reference Raspberry Pi deployment matrix and explicit pre-1.0 support,
@@ -43,6 +49,9 @@ artifacts are published.
 
 ### Changed
 
+- Service measurement configuration now supports typed shared defaults,
+  infers labels from stable IDs when omitted, and keeps MQTT JSON source names
+  beside their measurements instead of duplicating IDs under driver options.
 - Optional hardware dependencies are grouped by the `serial`, `i2c`, and
   `gpio` connection types instead of individual driver names.
 - The installed deployment directory is `~/labpulse-live`.

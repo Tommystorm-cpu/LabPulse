@@ -91,6 +91,9 @@ outputs: {}
 #     maximum_active_seconds: 300
 
 services:
+  # Service-offline and recovery notifications default to on. Set
+  # notify_on_service_failure: false on a hub left disconnected or known to
+  # fail often; its status and confirmed outage remain visible.
   # Measurements normally expire in Home Assistant after 300 seconds without
   # an MQTT sample. Override maximum_measurement_age_seconds per service.
   pressure_monitor:
@@ -100,10 +103,10 @@ services:
       options:
         port: FAKE_PRESSURE_PORT
         baud_rate: 9600
+    measurement_defaults:
+      setups: [compressed_air]
     measurements:
       pressure:
-        label: Pressure
-        setups: [compressed_air]
         # All readings are required by default. Use required: false for an
         # installed spare or known-broken channel that should remain visible
         # without alerting or blocking an update.
@@ -119,13 +122,11 @@ services:
       temperature:
         label: Main Lab Temperature
         group: Environment
-        setups: [compressed_air]
         unit: "°C"
         device_class: temperature
       humidity:
         label: Main Lab Humidity
         group: Environment
-        setups: [compressed_air]
         unit: "%"
         device_class: humidity
 
@@ -136,65 +137,57 @@ services:
       options:
         port: FAKE_PUMP_ROOM_PORT
         baud_rate: 9600
+    measurement_defaults:
+      setups: [pump_room_system]
     measurements:
       flow1:
         label: Flow 1
         group: Flow
-        setups: [pump_room_system]
         unit: L/min
         device_class: volume_flow_rate
       flow2:
         label: Flow 2
         group: Flow
-        setups: [pump_room_system]
         unit: L/min
         device_class: volume_flow_rate
       temp0:
         label: Triton 1 Temperature 1
         group: Water Temperatures
-        setups: [pump_room_system]
         unit: "°C"
         device_class: temperature
       temp1:
         label: Triton 1 Temperature 2
         group: Water Temperatures
-        setups: [pump_room_system]
         unit: "°C"
         device_class: temperature
       temp2:
         label: Triton 2 Temperature 1
         group: Water Temperatures
-        setups: [pump_room_system]
         unit: "°C"
         device_class: temperature
       temp3:
         label: Triton 2 Temperature 2
         group: Water Temperatures
-        setups: [pump_room_system]
         unit: "°C"
         device_class: temperature
       press1:
         label: Pressure 1
         group: Pressure
-        setups: [pump_room_system]
         unit: bar
         device_class: pressure
       press2:
         label: Pressure 2
         group: Pressure
-        setups: [pump_room_system]
         unit: bar
         device_class: pressure
       roomtemp:
         label: Room Temperature
         group: Pump Room Environment Sensor
-        setups: [pump_room_system]
         unit: "°C"
         device_class: temperature
       roomhum:
         label: Room Humidity
         group: Pump Room Environment Sensor
-        setups: [pump_room_system]
         unit: "%"
         device_class: humidity
 
@@ -205,41 +198,37 @@ services:
       options:
         port: FAKE_TURBO_PUMP_PORT
         baud_rate: 9600
+    measurement_defaults:
+      setups: [turbo_pump_experiment]
     measurements:
       flow1:
         label: Flow 1
         group: Flow
-        setups: [turbo_pump_experiment]
         unit: L/min
         device_class: volume_flow_rate
       flow2:
         label: Flow 2
         group: Flow
-        setups: [turbo_pump_experiment]
         unit: L/min
         device_class: volume_flow_rate
       temp0:
         label: Temperature 0
         group: Water Temperatures
-        setups: [turbo_pump_experiment]
         unit: "°C"
         device_class: temperature
       temp1:
         label: Temperature 1
         group: Water Temperatures
-        setups: [turbo_pump_experiment]
         unit: "°C"
         device_class: temperature
       temp2:
         label: Temperature 2
         group: Water Temperatures
-        setups: [turbo_pump_experiment]
         unit: "°C"
         device_class: temperature
       temp3:
         label: Temperature 3
         group: Water Temperatures
-        setups: [turbo_pump_experiment]
         # This installed spare channel is retained for visibility but is not
         # expected to provide telemetry on the reference installation.
         required: false
@@ -253,48 +242,44 @@ services:
       options:
         bus: 1
         address: 0x44
+    measurement_defaults:
+      setups: [cryogenics_room]
     measurements:
       temperature:
         label: Room Temperature
-        setups: [cryogenics_room]
         unit: "°C"
         device_class: temperature
       humidity:
         label: Room Humidity
-        setups: [cryogenics_room]
         unit: "%"
         device_class: humidity
     read_interval_seconds: 2
 
   # A Windows-side Triton publisher can send every changing logfile header as
-  # one JSON message. The mapping selects only the fields useful to LabPulse.
+  # one JSON message. Each source selects one exact field for LabPulse.
   # triton_fridge:
   #   label: Triton Fridge
+  #   notify_on_service_failure: true
   #   driver:
   #     type: labpulse.mqtt_json
   #     options:
-  #       broker: mosquitto
-  #       port: 1883
   #       topic: labpulse/triton/triton-01/measurements
-  #       parameters:
-  #         condense_pressure: "P2 Condense (Bar)"
-  #         cold_plate_temperature: "Cold Plate T(K)"
-  #         turbo_speed: "turbo speed(Hz)"
+  #       heartbeat_topic: labpulse/triton/triton-01/heartbeat
+  #       heartbeat_timeout_seconds: 60
   #       maximum_record_age_seconds: 30
+  #   measurement_defaults:
+  #     setups: [cryogenics_room]
   #   measurements:
   #     condense_pressure:
-  #       label: Condense Pressure
-  #       setups: [cryogenics_room]
+  #       source: "P2 Condense (Bar)"
   #       unit: bar
   #       device_class: pressure
   #     cold_plate_temperature:
-  #       label: Cold Plate Temperature
-  #       setups: [cryogenics_room]
+  #       source: "Cold Plate T(K)"
   #       unit: K
   #       device_class: temperature
   #     turbo_speed:
-  #       label: Turbo Speed
-  #       setups: [cryogenics_room]
+  #       source: "turbo speed(Hz)"
   #       unit: Hz
   #   maximum_measurement_age_seconds: 30
 

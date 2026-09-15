@@ -2,10 +2,13 @@
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, StrictBool, model_validator
 
 from labpulse.common.identity import slug
-from labpulse.common.measurement_config import MeasurementConfig
+from labpulse.common.measurement_config import (
+    MeasurementConfig,
+    MeasurementDefaultsConfig,
+)
 
 
 class DriverConfig(BaseModel):
@@ -59,8 +62,10 @@ class ServiceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
+    notify_on_service_failure: StrictBool = True
     label: str
     driver: DriverConfig
+    measurement_defaults: MeasurementDefaultsConfig | None = None
     measurements: dict[str, MeasurementConfig]
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
@@ -75,6 +80,15 @@ class ServiceConfig(BaseModel):
         from labpulse.hardware.registry import get_driver_definition
 
         definition = get_driver_definition(self.driver.type)
+        if self.measurement_defaults is not None:
+            inherited = self.measurement_defaults.model_dump(exclude_unset=True)
+            self.measurements = {
+                measurement_id: MeasurementConfig.model_validate({
+                    **inherited,
+                    **measurement.model_dump(include=measurement.model_fields_set),
+                })
+                for measurement_id, measurement in self.measurements.items()
+            }
         if issubclass(definition.driver_class, HardwareOutputDriver):
             raise ValueError("output drivers must be configured under the top-level outputs section")
 
@@ -82,6 +96,30 @@ class ServiceConfig(BaseModel):
         for measurement_id in measurement_names:
             if not measurement_id or slug(measurement_id) != measurement_id:
                 raise ValueError("measurement IDs must use lowercase letters, numbers, and underscores")
+
+        source_mapping: dict[str, str] = {}
+        for measurement_id, measurement in self.measurements.items():
+            if measurement.source is not None:
+                source_mapping[measurement_id] = measurement.source
+        if definition.bind_measurement_sources is None:
+            configured_sources = [
+                measurement_id
+                for measurement_id, measurement in self.measurements.items()
+                if "source" in measurement.model_fields_set
+            ]
+            if configured_sources:
+                raise ValueError(
+                    f"driver {self.driver.type} does not support measurement source names: "
+                    + ", ".join(configured_sources)
+                )
+        else:
+            missing_sources = sorted(set(measurement_names).difference(source_mapping))
+            if missing_sources:
+                raise ValueError(
+                    f"driver {self.driver.type} requires source for measurements: "
+                    + ", ".join(missing_sources)
+                )
+            definition.bind_measurement_sources(self.driver.options, source_mapping)
 
         serial_pipe_driver_id = "labpulse.serial_pipe"
         gpio_input_driver_id = "labpulse.gpio_input"

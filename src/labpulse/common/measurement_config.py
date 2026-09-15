@@ -127,6 +127,7 @@ class MeasurementConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    source: str | None = None
     label: str | None = None
     short_label: str | None = None
     group: str | None = None
@@ -139,6 +140,18 @@ class MeasurementConfig(BaseModel):
     device_class: str | None = None
     icon: str | None = None
     state_class: str | None = "measurement"
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, source: str | None) -> str | None:
+        """Normalize an optional driver-owned source measurement name."""
+
+        if source is None:
+            return None
+        normalized = source.strip()
+        if not normalized:
+            raise ValueError("source must not be blank")
+        return normalized
 
     @field_validator("setups", mode="before")
     @classmethod
@@ -163,6 +176,39 @@ class MeasurementConfig(BaseModel):
         """Return the shorter label used where surrounding context is sufficient."""
 
         return self.short_label or self.display_label(measurement_id)
+
+
+class MeasurementDefaultsConfig(BaseModel):
+    """Optional settings inherited by every measurement in one service."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = None
+    short_label: str | None = None
+    group: str | None = None
+    setups: tuple[str, ...] | None = None
+    alarmed: bool | None = Field(default=None, strict=True)
+    required: bool | None = Field(default=None, strict=True)
+    missing_confirm_seconds: int | None = Field(default=None, ge=1, le=86400)
+    recovery_confirm_seconds: int | None = Field(default=None, ge=0, le=3600)
+    unit: str | None = None
+    device_class: str | None = None
+    icon: str | None = None
+    state_class: str | None = None
+
+    @field_validator("setups", mode="before")
+    @classmethod
+    def validate_setups(cls, value: object) -> tuple[str, ...] | None:
+        """Normalize a shared non-empty setup-ID list when supplied."""
+
+        return normalize_setups(value)
+
+    @field_validator("icon")
+    @classmethod
+    def validate_icon(cls, icon: str | None) -> str | None:
+        """Normalize an optional shared Material Design icon."""
+
+        return validate_measurement_icon(icon)
 
 
 class CustomMeasurementConfig(BaseModel):

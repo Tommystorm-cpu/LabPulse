@@ -28,6 +28,11 @@ active alert** retries the currently confirmed Danger or missing-reading
 alert through the same central dispatcher and therefore respects maintenance
 and every mute.
 
+Set `notify_on_service_failure: false` on an individual service in the live
+config to suppress its offline and recovery Home Assistant/SMS notifications.
+Its service status and confirmed outage remain visible. Reading and power
+alarms retain their own policies.
+
 A recovery always dismisses the matching persistent Home Assistant problem.
 LabPulse creates a recovery notification only when the corresponding opening
 notification was created. SMS recovery additionally requires

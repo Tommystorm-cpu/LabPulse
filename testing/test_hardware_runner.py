@@ -9,6 +9,7 @@ from labpulse.hardware.driver import (
     HardwareDriver,
     HardwareIssue,
     HardwareReadings,
+    SourceHealth,
     TransientReadError,
 )
 from labpulse.hardware.runner import HardwareServiceRunner, RunnerTimings
@@ -82,6 +83,21 @@ class FakeDriver(HardwareDriver):
         self.close_calls += 1
         if self.close_error is not None:
             raise self.close_error
+
+
+class HeartbeatDriver(FakeDriver):
+    """Expose source health independently of available measurements."""
+
+    def __init__(self, read_results: list[HardwareReadings | Exception | None]) -> None:
+        """Begin without a publisher heartbeat."""
+
+        super().__init__(read_results=read_results)
+        self.source_health = SourceHealth.WAITING
+
+    def health_status(self) -> SourceHealth | None:
+        """Report the heartbeat state controlled by the test."""
+
+        return self.source_health
 
 
 class FakePublisher:
@@ -172,6 +188,40 @@ def test_connect_and_publish_batch() -> None:
         ],
         "fresh data precedes online status",
     )
+
+
+def test_heartbeat_health_does_not_refresh_or_reconnect_stale_measurements() -> None:
+    """Quiet or unreadable telemetry cannot make an alive publisher offline."""
+
+    driver = HeartbeatDriver([
+        HardwareReadings({"temperature": 0.1}),
+        TransientReadError("logfile unreadable"),
+        None,
+    ])
+    runner, publisher, clock = make_runner(driver, maximum_age=5)
+    runner.step()
+    runner.step()
+    assert publisher.statuses[-1] == "awaiting_heartbeat"
+    assert publisher.measurements == [{"temperature": 0.1}]
+
+    driver.source_health = SourceHealth.ONLINE
+    clock.advance(6)
+    runner.step()
+    assert publisher.statuses[-1] == "online"
+    assert publisher.measurements == [{"temperature": 0.1}]
+    assert driver.close_calls == 0
+    clock.advance(20)
+    runner.step()
+    assert publisher.statuses[-1] == "online"
+    assert driver.close_calls == 0
+
+    driver.source_health = SourceHealth.OFFLINE
+    runner.step()
+    assert publisher.statuses[-1] == "disconnected"
+    driver.source_health = SourceHealth.ONLINE
+    runner.step()
+    assert publisher.statuses[-1] == "online"
+    assert publisher.measurements == [{"temperature": 0.1}]
 
 
 def test_connection_retry_is_throttled_and_recovers() -> None:

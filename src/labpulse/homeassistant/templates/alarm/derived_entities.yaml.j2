@@ -41,10 +41,10 @@ template:
       availability: [[ measurement.availability_template | yaml_scalar ]]
       state: [[ measurement.state_template | yaml_scalar ]]
       attributes:
-        labpulse_custom_measurement: true
+        labpulse_custom_measurement: "{{ true }}"
         formula: [[ measurement.config.formula | yaml_scalar ]]
-        physical_inputs: [[ measurement.config.inputs | yaml_scalar ]]
-        required: [[ measurement.required | yaml_scalar ]]
+        physical_inputs: [[ ('{{ ' ~ (measurement.config.inputs | json) ~ ' }}') | yaml_scalar ]]
+        required: "{{ [[ 'true' if measurement.required else 'false' ]] }}"
 [% endfor %]
 [% endif %]
 [% if model.services %]
@@ -67,6 +67,8 @@ template:
           {% set raw = states('[[ entity_id('sensor', service.name, 'status') ]]') %}
           {% if raw == 'reconnecting' %}
             Trying to reconnect to this sensor service.
+          {% elif raw == 'awaiting_heartbeat' %}
+            Waiting for the control-PC publisher's first current heartbeat.
           {% elif raw in ['disconnected', 'offline'] %}
             No connection to this sensor service.
           {% elif raw == 'error' %}
@@ -103,7 +105,7 @@ template:
       state: >-
         {{ is_number(states('[[ measurement.entity_id ]]')) }}
       attributes:
-        required: [[ measurement.required | yaml_scalar ]]
+        required: "{{ [[ 'true' if measurement.required else 'false' ]] }}"
         reason: >-
           {{ 'Current reading received' if is_number(states('[[ measurement.entity_id ]]'))
              else 'No recent usable data' }}

@@ -13,11 +13,13 @@ import time
 from typing import BinaryIO
 
 import paho.mqtt.client as mqtt
+from paho.mqtt import MQTTException
 
 
 DEFAULT_MQTT_PORT = 8883
 DEFAULT_MQTT_TOPIC = "labpulse/triton/measurements"
 DEFAULT_POLL_INTERVAL_SECONDS = 5.0
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 15.0
 
 
 def record_to_json(record: dict[str, float]) -> str:
@@ -150,6 +152,14 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
         help="MQTT topic for Triton snapshots (default: %(default)s)",
     )
     parser.add_argument(
+        "--heartbeat-topic", required=True,
+        help="per-fridge MQTT topic ending in /heartbeat",
+    )
+    parser.add_argument(
+        "--heartbeat-interval", type=float, default=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+        help="seconds between script heartbeats (default: %(default)s)",
+    )
+    parser.add_argument(
         "--client-id", default=default_client_id(),
         help="stable unique MQTT client ID (default includes this computer name)",
     )
@@ -178,10 +188,18 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(arguments)
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    if args.poll_interval <= 0:
+    if not math.isfinite(args.poll_interval) or args.poll_interval <= 0:
         parser.error("--poll-interval must be greater than zero")
+    if not math.isfinite(args.heartbeat_interval) or args.heartbeat_interval <= 0:
+        parser.error("--heartbeat-interval must be greater than zero")
     if "+" in args.topic or "#" in args.topic or not args.topic.strip():
         parser.error("--topic must be one exact non-empty MQTT topic")
+    if (
+        "+" in args.heartbeat_topic or "#" in args.heartbeat_topic
+        or not args.heartbeat_topic.endswith("/heartbeat")
+        or args.topic in {args.heartbeat_topic, availability_topic(args.heartbeat_topic)}
+    ):
+        parser.error("--heartbeat-topic must be an exact /heartbeat topic distinct from measurements")
     if not args.client_id.strip():
         parser.error("--client-id must not be blank")
     if args.insecure:
@@ -199,14 +217,21 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def availability_topic(heartbeat_topic: str) -> str:
+    """Return the retained availability topic beside one fridge heartbeat."""
+
+    return heartbeat_topic.removesuffix("heartbeat") + "availability"
+
+
 def create_mqtt_client(args: argparse.Namespace) -> mqtt.Client:
     """Connect a reconnecting MQTT client using validated security settings."""
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.client_id)
     client.reconnect_delay_set(min_delay=1, max_delay=30)
+    client.will_set(availability_topic(args.heartbeat_topic), "offline", qos=1, retain=True)
 
     def on_connect(
-        _client: mqtt.Client,
+        connected_client: mqtt.Client,
         _userdata: object,
         _flags: mqtt.ConnectFlags,
         reason_code: mqtt.ReasonCode,
@@ -214,6 +239,11 @@ def create_mqtt_client(args: argparse.Namespace) -> mqtt.Client:
     ) -> None:
         if reason_code == 0:
             logging.info("Connected to LabPulse MQTT broker %s:%s", args.broker, args.port)
+            availability = connected_client.publish(
+                availability_topic(args.heartbeat_topic), "online", qos=1, retain=True
+            )
+            if availability.rc != mqtt.MQTT_ERR_SUCCESS:
+                logging.error("Could not publish online availability: MQTT result %s", availability.rc)
         else:
             logging.error("MQTT connection rejected: %s", reason_code)
 
@@ -261,6 +291,17 @@ def publish_record(client: mqtt.Client, topic: str, record: dict[str, float]) ->
         raise ConnectionError("MQTT publication was not acknowledged")
 
 
+def publish_heartbeat(client: mqtt.Client, topic: str) -> None:
+    """Report one completed pass through the publisher's main loop."""
+
+    if not client.is_connected():
+        raise ConnectionError("MQTT broker is not connected")
+    publication = client.publish(topic, "alive", qos=1, retain=False)
+    publication.wait_for_publish(timeout=5)
+    if not publication.is_published():
+        raise ConnectionError("MQTT heartbeat was not acknowledged")
+
+
 def main() -> None:
     """Publish each newest complete Triton record once until interrupted."""
 
@@ -286,30 +327,54 @@ def main() -> None:
     except (OSError, ValueError) as error:
         raise SystemExit(f"ERROR: Could not configure MQTT: {error}") from error
     last_seen = None
+    next_logfile_check_at = time.monotonic()
+    next_heartbeat_at = time.monotonic()
 
     try:
         while True:
-            try:
-                latest_file = get_recent_logfile(args.directory)
-                record_count, record = decode_last_record(latest_file)
-                marker = (latest_file, record_count, record["Time(secs)"])
-                if marker != last_seen:
-                    publish_record(client, args.topic, record)
-                    logging.info(
-                        "Published record %s from %s (%s measurements)",
-                        record_count, latest_file.name, len(record),
-                    )
-                    last_seen = marker
-            except (
-                OSError, ValueError, ConnectionError, RuntimeError, mqtt.MQTTException
-            ) as error:
-                logging.warning("Logfile or MQTT temporarily unavailable: %s", error)
-            time.sleep(args.poll_interval)
+            current_time = time.monotonic()
+            # Logfile checks and heartbeats have separate clocks, so either
+            # interval can run without waiting for the other one.
+            if current_time >= next_logfile_check_at:
+                try:
+                    latest_file = get_recent_logfile(args.directory)
+                    record_count, record = decode_last_record(latest_file)
+                    marker = (latest_file, record_count, record["Time(secs)"])
+                    if marker != last_seen:
+                        publish_record(client, args.topic, record)
+                        logging.info(
+                            "Published record %s from %s (%s measurements)",
+                            record_count, latest_file.name, len(record),
+                        )
+                        last_seen = marker
+                except (
+                    OSError, ValueError, ConnectionError, RuntimeError, MQTTException
+                ) as error:
+                    logging.warning("Logfile or MQTT temporarily unavailable: %s", error)
+                next_logfile_check_at = time.monotonic() + args.poll_interval
+
+            if time.monotonic() >= next_heartbeat_at:
+                try:
+                    publish_heartbeat(client, args.heartbeat_topic)
+                except (OSError, ConnectionError, RuntimeError, MQTTException) as error:
+                    logging.warning("MQTT heartbeat temporarily unavailable: %s", error)
+                next_heartbeat_at = time.monotonic() + args.heartbeat_interval
+
+            time.sleep(max(0.0, min(next_logfile_check_at, next_heartbeat_at) - time.monotonic()))
     except KeyboardInterrupt:
         logging.info("Triton logfile publisher stopped")
     finally:
-        client.disconnect()
-        client.loop_stop()
+        try:
+            if client.is_connected():
+                offline = client.publish(
+                    availability_topic(args.heartbeat_topic), "offline", qos=1, retain=True
+                )
+                offline.wait_for_publish(timeout=2)
+        except (OSError, RuntimeError, MQTTException) as error:
+            logging.warning("Could not publish clean offline availability: %s", error)
+        finally:
+            client.disconnect()
+            client.loop_stop()
 
 
 if __name__ == "__main__":

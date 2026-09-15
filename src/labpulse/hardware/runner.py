@@ -21,6 +21,7 @@ from labpulse.hardware.driver import (
     ConnectionLost,
     DriverUnavailable,
     HardwareDriver,
+    SourceHealth,
     TransientReadError,
 )
 
@@ -33,6 +34,7 @@ class ServiceStatus(StrEnum):
 
     DISCONNECTED = "disconnected"
     RECONNECTING = "reconnecting"
+    AWAITING_HEARTBEAT = "awaiting_heartbeat"
     ONLINE = "online"
     ERROR = "error"
 
@@ -218,11 +220,39 @@ class HardwareServiceRunner:
         # rules are gated by status and could otherwise use an old retained value.
         self.publisher.publish(values)
 
-        reading_status = hardware_readings.issues[0].code if hardware_readings.issues else ServiceStatus.ONLINE
+        source_health = self.driver.health_status()
+        if source_health == SourceHealth.OFFLINE:
+            reading_status = ServiceStatus.DISCONNECTED
+        elif source_health == SourceHealth.WAITING:
+            reading_status = ServiceStatus.AWAITING_HEARTBEAT
+        else:
+            reading_status = hardware_readings.issues[0].code if hardware_readings.issues else ServiceStatus.ONLINE
         self._publish_status(reading_status)
 
     def _handle_missing_readings(self, current_time: float) -> None:
         """Reconnect stale hardware and avoid a busy loop after an empty read."""
+
+        source_health = self.driver.health_status()
+        if source_health is not None:
+            # A running external publisher may have no new logfile record.
+            # Keep old numeric values expired in Home Assistant without
+            # repeatedly reconnecting the healthy MQTT input service.
+            if source_health == SourceHealth.ONLINE:
+                if self._current_status in {
+                    None,
+                    ServiceStatus.DISCONNECTED.value,
+                    ServiceStatus.RECONNECTING.value,
+                    ServiceStatus.AWAITING_HEARTBEAT.value,
+                    ServiceStatus.ERROR.value,
+                }:
+                    self._publish_status(ServiceStatus.ONLINE)
+            elif source_health == SourceHealth.WAITING:
+                self._publish_status(ServiceStatus.AWAITING_HEARTBEAT)
+            else:
+                self._publish_status(ServiceStatus.DISCONNECTED)
+            if self.timings.read_interval_seconds == 0:
+                self._sleep(EMPTY_READ_RETRY_DELAY_SECONDS)
+            return
 
         freshness_started_at = (
             self._last_successful_read_at
