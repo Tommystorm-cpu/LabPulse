@@ -120,6 +120,8 @@ services:
         unit: bar
         # Optional display-only rounding; MQTT readings and history keep full precision.
         precision: 2
+        # Optional 24-hour inline graph on the setup dashboard.
+        show_graph: true
         device_class: pressure
       temperature:
         label: Main Lab Temperature
@@ -270,21 +272,25 @@ services:
   #   measurements_file: config.d/triton-02-measurements.yaml
   #   maximum_measurement_age_seconds: 30
 
-  # Generic digital GPIO input example. It publishes state as 0.0 or 1.0 and
-  # can use the same threshold alarms as other numeric measurements.
-  # equipment_running:
-  #   label: Equipment Running
+  # Generic digital GPIO inputs. One service owns and reads all selected lines.
+  # gpio_inputs:
+  #   label: GPIO Inputs
   #   driver:
   #     type: labpulse.gpio_input
   #     options:
   #       gpio_chip: /dev/gpiochip0
+  #   measurement_defaults:
+  #     setups: [io_testing]
+  #     state_class: null
+  #   measurements:
+  #     pin_17:
+  #       label: GPIO Pin 17
   #       gpio_line: 17
   #       active_high: true
-  #   measurements:
-  #     state:
-  #       label: Equipment Running
-  #       setups: [cryogenics_room]
-  #       state_class: null
+  #     pin_27:
+  #       label: GPIO Pin 27
+  #       gpio_line: 27
+  #       active_high: false
   #   read_interval_seconds: 1
 
   # Verified X1200 UPS hardware. Fake-USB setup changes only this service's

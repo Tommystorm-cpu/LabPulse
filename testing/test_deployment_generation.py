@@ -420,12 +420,11 @@ services:
       type: labpulse.gpio_input
       options:
         gpio_chip: /dev/gpiochip2
-        gpio_line: 17
-        active_high: true
     measurements:
-      state:
+      pin_17:
         setups: [equipment]
         state_class: null
+        gpio_line: 17
 """,
             encoding="utf-8",
         )

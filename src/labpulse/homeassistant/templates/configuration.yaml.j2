@@ -24,6 +24,26 @@ frontend:
 
 history:
 
+# Keep LabPulse alarm machinery active without filling the History target
+# picker or Recorder database. Danger-zone history remains recorded because
+# the observation-window history_stats sensors depend on it.
+recorder:
+  exclude:
+    entity_globs:
+      - binary_sensor.labpulse_*_reading_available
+      - binary_sensor.labpulse_*_recovery_zone
+      - binary_sensor.labpulse_*_service_offline
+      - binary_sensor.labpulse_bulk_*
+      - sensor.labpulse_*_observed_danger_percent
+      - sensor.labpulse_bulk_*
+      - input_boolean.labpulse_*
+      - input_button.labpulse_*
+      - input_datetime.labpulse_*
+      - input_number.labpulse_*
+      - input_select.labpulse_*
+      - automation.labpulse_*
+      - script.labpulse_*
+
 logbook:
 
 my:

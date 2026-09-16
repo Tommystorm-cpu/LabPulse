@@ -2,9 +2,10 @@
 
 The installed source bundle is `~/labpulse-live/config.yaml` plus referenced
 measurement files beneath `~/labpulse-live/config.d/`. Edit it with
-`labpulse config`, optionally naming one or more source files, so the complete
-bundle is validated and `config.resolved.yaml` plus all deployment files are
-regenerated. The repository files are only new-install starters.
+`labpulse config`; its menu selects an existing source or creates a measurement
+file. You may name one or more source files directly to skip the menu. The
+complete bundle is validated and `config.resolved.yaml` plus all deployment
+files are regenerated. The repository files are only new-install starters.
 
 ## Reading the system state
 
@@ -41,6 +42,15 @@ SMS request when the condition resolves and the current global, service, setup,
 reading, or power mute allows it.
 Changing Test mode before recovery routes the SMS to the current test recipient
 list.
+
+## Removing an installation
+
+`labpulse uninstall` removes the selected Compose stack and its complete live
+directory after an exact `UNINSTALL` confirmation. This permanently removes
+configuration, Home Assistant and MQTT state, logs and local backups. Create a
+separate `labpulse backup` archive first when that state may be needed. The
+pipx-installed command remains available until `pipx uninstall labpulse` is
+run separately.
 
 ## Safe updates
 

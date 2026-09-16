@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 import yaml
+from pydantic import ValidationError
 
+from labpulse.common.config import LabPulseConfig
 from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
@@ -317,6 +321,65 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
         )
         for condition in row.get("conditions", [])
     ) for row in setup_missing_reading_rows)
+
+
+def test_optional_measurement_graphs_support_defaults_overrides_and_calculations() -> None:
+    """Replace only opted-in compact rows with native 24-hour sensor cards."""
+
+    config = dashboard_config()
+    hub_a = config["services"]["hub_a"]  # type: ignore[index]
+    hub_a["measurement_defaults"] = {"show_graph": True}
+    hub_a["measurements"]["alpha_general"]["show_graph"] = False
+    config["custom_measurements"] = {
+        "difference": {
+            "setups": ["alpha_setup"],
+            "inputs": {"left": "hub_a.alpha_only", "right": "hub_a.alpha_general"},
+            "formula": "left - right",
+            "show_graph": True,
+        }
+    }
+
+    validated = LabPulseConfig.model_validate(config)
+    assert validated.services["hub_a"].measurements["alpha_only"].show_graph is True
+    assert validated.services["hub_a"].measurements["alpha_general"].show_graph is False
+    assert validated.custom_measurements["difference"].show_graph is True
+
+    _, dashboard, _ = generate(config)
+    monitor = view(dashboard, "monitor")
+    graph_cards = [
+        item for item in walk(monitor)
+        if isinstance(item, dict) and item.get("type") == "sensor" and item.get("graph") == "line"
+    ]
+    assert graph_cards
+    assert all(card["hours_to_show"] == 24 and card["detail"] == 2 for card in graph_cards)
+    graph_entities = [card["entity"] for card in graph_cards]
+    assert "sensor.labpulse_hub_a_alpha_only" in graph_entities
+    assert "sensor.labpulse_custom_difference" in graph_entities
+    assert "sensor.labpulse_hub_a_alpha_general" not in graph_entities
+    assert occurrences(monitor, "sensor.labpulse_hub_a_alpha_general") == 1
+    assert occurrences(monitor, "sensor.labpulse_hub_b_alpha_other_hub") == 1
+
+
+@pytest.mark.parametrize("location", ["physical", "defaults", "custom"])
+def test_show_graph_requires_a_boolean(location: str) -> None:
+    """Reject string-like graph flags at every supported config location."""
+
+    config = dashboard_config()
+    if location == "physical":
+        config["services"]["hub_a"]["measurements"]["alpha_general"]["show_graph"] = "true"  # type: ignore[index]
+    elif location == "defaults":
+        config["services"]["hub_a"]["measurement_defaults"] = {"show_graph": 1}  # type: ignore[index]
+    else:
+        config["custom_measurements"] = {
+            "difference": {
+                "setups": ["alpha_setup"],
+                "inputs": {"left": "hub_a.alpha_only"},
+                "formula": "left",
+                "show_graph": "yes",
+            }
+        }
+    with pytest.raises(ValidationError):
+        LabPulseConfig.model_validate(deepcopy(config))
 
 
 def test_power_problem_links_to_its_alarm_setup_page() -> None:

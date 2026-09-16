@@ -256,7 +256,11 @@ Verify the installed result:
 labpulse doctor
 labpulse ps
 grep -n "config.resolved.yaml:/app/config.yaml:ro" ~/labpulse-live/compose.yaml
-grep -n "measurements_file" ~/labpulse-live/config.resolved.yaml
+if grep -n "measurements_file" ~/labpulse-live/config.resolved.yaml; then
+  echo "ERROR: resolved configuration still contains a source reference"
+else
+  echo "OK: resolved configuration is standalone"
+fi
 labpulse logs --tail 50 labpulse-triton-01
 labpulse logs --tail 50 labpulse-triton-02
 ```
@@ -380,6 +384,28 @@ labpulse up
 ```
 
 See [Development](DEVELOPMENT.md).
+
+## Uninstalling the deployment
+
+Create a backup first if any configuration or Home Assistant history may be
+needed later. Then remove the complete live deployment:
+
+```bash
+labpulse uninstall
+```
+
+The command shows the selected live directory and requires typing `UNINSTALL`.
+It stops and removes the Compose containers, project network and volumes before
+permanently deleting the live directory, including configuration, Home
+Assistant data, Mosquitto data, logs and local backups. It also removes the
+LabPulse update-check cache. Use `--yes` only for unattended removal.
+
+The pipx command remains installed so LabPulse can be set up again. Remove that
+separately when the command itself is no longer wanted:
+
+```bash
+pipx uninstall labpulse
+```
 
 ## Updating
 

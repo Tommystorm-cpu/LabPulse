@@ -105,6 +105,8 @@ def test_config_command_routes_through_the_guarded_editor(
         control.shutil, "which", return_value="/bin/bash"
     ), patch.object(
         control, "find_install_assets", return_value=repository_root
+    ), patch(
+        "builtins.input", return_value="1"
     ), patch.object(control.subprocess, "run") as run:
         run.return_value = completed(["bash"])
 
@@ -113,9 +115,33 @@ def test_config_command_routes_through_the_guarded_editor(
     assert result == 0
     call = run.call_args
     expected_script = repository_root / "deployment" / "edit_config.sh"
-    assert call.args[0] == ["/bin/bash", str(expected_script)]
+    assert call.args[0] == ["/bin/bash", str(expected_script), "config.yaml"]
     assert call.kwargs["env"]["LABPULSE_LIVE_DIR"] == str(live_dir.resolve())
     assert call.kwargs["env"]["LABPULSE_DOCKER_COMMAND"] == "docker"
+
+
+def test_config_selector_lists_fragments_and_opens_selected_file(live_dir: Path) -> None:
+    """List every editable source file and return the chosen fragment."""
+
+    fragment = live_dir / "config.d" / "triton.yaml"
+    fragment.parent.mkdir()
+    fragment.write_text("{}\n", encoding="utf-8")
+    with patch("builtins.input", return_value="2"), patch(
+        "sys.stdout", new_callable=StringIO
+    ) as output:
+        selected = control.select_config_sources(live_dir)
+    assert selected == ("config.d/triton.yaml",)
+    assert "config.yaml" in output.getvalue()
+    assert "config.d/triton.yaml" in output.getvalue()
+    assert "Create a new measurement config" in output.getvalue()
+
+
+def test_config_selector_creates_yaml_with_master(live_dir: Path) -> None:
+    """Open a new measurement file with the master so it can be referenced."""
+
+    with patch("builtins.input", side_effect=["2", "new-fridge"]):
+        selected = control.select_config_sources(live_dir)
+    assert selected == ("config.yaml", "config.d/new-fridge.yaml")
 
 
 def test_config_command_passes_selected_source_files(
@@ -469,6 +495,62 @@ def test_restore_command_delegates_confirmation_choice(live_dir: Path) -> None:
 
     assert result == 0
     restore.assert_called_once_with(live_dir.resolve(), archive, assume_yes=True)
+
+
+def test_uninstall_command_delegates_confirmation_choice(
+    live_dir: Path, update_notice: object
+) -> None:
+    """Route uninstall through its destructive-operation guard."""
+
+    with patch.object(control, "run_uninstall_command", return_value=0) as uninstall:
+        result = control.main(["--live-dir", str(live_dir), "uninstall", "--yes"])
+
+    assert result == 0
+    uninstall.assert_called_once_with(live_dir.resolve(), assume_yes=True)
+    update_notice.assert_not_called()
+
+
+def test_uninstall_cancellation_preserves_installation(live_dir: Path) -> None:
+    """Require the exact confirmation word before stopping or deleting anything."""
+
+    with patch("builtins.input", return_value="no"), patch.object(control, "run_compose") as compose:
+        result = control.run_uninstall_command(live_dir, assume_yes=False)
+
+    assert result == 2
+    assert live_dir.is_dir()
+    compose.assert_not_called()
+
+
+def test_uninstall_removes_compose_resources_directory_and_cache(
+    workspace_tmp_path: Path,
+) -> None:
+    """Remove Docker resources before deleting all local deployment state."""
+
+    live_dir = workspace_tmp_path / "live"
+    live_dir.mkdir()
+    (live_dir / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    cache = workspace_tmp_path / "cache" / "labpulse" / "update-check.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text("{}", encoding="utf-8")
+    with patch.object(control, "run_compose", return_value=0) as compose, patch.object(
+        control, "update_check_cache_path", return_value=cache
+    ):
+        result = control.run_uninstall_command(live_dir, assume_yes=True)
+
+    assert result == 0
+    compose.assert_called_once_with(live_dir, ("down", "--remove-orphans", "--volumes"))
+    assert not live_dir.exists()
+    assert not cache.exists()
+
+
+def test_uninstall_keeps_files_when_docker_cleanup_fails(live_dir: Path) -> None:
+    """Do not orphan a running stack by deleting its Compose project first."""
+
+    with patch.object(control, "run_compose", return_value=1):
+        result = control.run_uninstall_command(live_dir, assume_yes=True)
+
+    assert result == 1
+    assert live_dir.is_dir()
 
 
 def test_restore_rebuilds_and_validates_the_installation(live_dir: Path) -> None:

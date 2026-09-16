@@ -125,10 +125,41 @@ class ServiceConfig(BaseModel):
         gpio_input_driver_id = "labpulse.gpio_input"
         x1200_driver_id = "labpulse.x1200"
 
-        if self.driver.type == gpio_input_driver_id and measurement_names != ["state"]:
-            raise ValueError(
-                "labpulse.gpio_input services require exactly one measurement named: state"
-            )
+        gpio_fields = {"gpio_line", "active_high"}
+        if self.driver.type == gpio_input_driver_id:
+            if not measurement_names:
+                raise ValueError("labpulse.gpio_input requires at least one measurement")
+            line_owners: dict[int, str] = {}
+            for measurement_id, measurement in self.measurements.items():
+                if measurement.gpio_line is None:
+                    raise ValueError(
+                        f"labpulse.gpio_input measurement {measurement_id} requires gpio_line"
+                    )
+                previous = line_owners.get(measurement.gpio_line)
+                if previous is not None:
+                    raise ValueError(
+                        f"GPIO measurements {measurement_id} and {previous} both use line "
+                        f"{measurement.gpio_line}"
+                    )
+                line_owners[measurement.gpio_line] = measurement_id
+                if measurement.active_high is None:
+                    self.measurements[measurement_id] = measurement.model_copy(
+                        update={"active_high": True}
+                    )
+            if definition.bind_measurements is None:
+                raise RuntimeError("labpulse.gpio_input driver does not bind measurements")
+            definition.bind_measurements(self.driver.options, self.measurements)
+        else:
+            invalid_gpio_fields = [
+                f"{measurement_id}.{field_name}"
+                for measurement_id, measurement in self.measurements.items()
+                for field_name in gpio_fields.intersection(measurement.model_fields_set)
+            ]
+            if invalid_gpio_fields:
+                raise ValueError(
+                    f"driver {self.driver.type} does not support GPIO measurement fields: "
+                    + ", ".join(invalid_gpio_fields)
+                )
 
         if self.driver.type == x1200_driver_id and self.power_detection is None:
             raise ValueError("labpulse.x1200 services require power_detection")

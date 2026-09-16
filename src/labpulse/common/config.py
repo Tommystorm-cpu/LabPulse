@@ -299,16 +299,20 @@ class LabPulseConfig(BaseModel):
         )
         for owner, worker in configured_workers:
             chip = getattr(worker.driver.options, "gpio_chip", None)
-            line = getattr(worker.driver.options, "gpio_line", None)
-            if not isinstance(chip, str) or not isinstance(line, int):
+            if not isinstance(chip, str):
                 continue
-            key = (chip, line)
-            previous = gpio_owners.get(key)
-            if previous is not None:
-                raise ValueError(
-                    f"{owner} and {previous} both use {chip} line {line}"
-                )
-            gpio_owners[key] = owner
+            if worker.driver.type == "labpulse.gpio_input":
+                lines = [measurement.gpio_line for measurement in worker.measurements.values()]
+            else:
+                lines = [getattr(worker.driver.options, "gpio_line", None)]
+            for line in lines:
+                if not isinstance(line, int):
+                    continue
+                key = (chip, line)
+                previous = gpio_owners.get(key)
+                if previous is not None:
+                    raise ValueError(f"{owner} and {previous} both use {chip} line {line}")
+                gpio_owners[key] = owner
         return self
 
 

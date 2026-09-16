@@ -132,6 +132,14 @@ def run_config_editor(live_dir: Path, source_files: Sequence[str] = ()) -> int:
         )
         return 2
 
+    selected_files = tuple(source_files)
+    if not selected_files:
+        selection = select_config_sources(live_dir)
+        if selection is None:
+            print("Configuration edit cancelled.")
+            return 0
+        selected_files = selection
+
     bash = shutil.which("bash")
     if bash is None:
         print(
@@ -156,7 +164,7 @@ def run_config_editor(live_dir: Path, source_files: Sequence[str] = ()) -> int:
         return 2
     try:
         return subprocess.run(
-            [bash, str(edit_script), *source_files],
+            [bash, str(edit_script), *selected_files],
             cwd=live_dir,
             env=environment,
             check=False,
@@ -164,6 +172,68 @@ def run_config_editor(live_dir: Path, source_files: Sequence[str] = ()) -> int:
     except FileNotFoundError as error:
         print(f"ERROR: Cannot run {error.filename!r}.", file=sys.stderr)
         return 127
+
+
+def select_config_sources(live_dir: Path) -> tuple[str, ...] | None:
+    """Ask which source config to edit or create beneath ``config.d``."""
+
+    config_dir = live_dir / "config.d"
+    fragments = (
+        sorted(
+            path.relative_to(live_dir).as_posix()
+            for path in config_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".yaml", ".yml"}
+        )
+        if config_dir.is_dir()
+        else []
+    )
+    choices = ["config.yaml", *fragments]
+
+    while True:
+        print("Which configuration file do you want to edit?")
+        for number, path in enumerate(choices, start=1):
+            print(f"  {number}. {path}")
+        print(f"  {len(choices) + 1}. Create a new measurement config")
+        print("  q. Cancel")
+        try:
+            answer = input("Selection: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if answer.lower() == "q":
+            return None
+        try:
+            selected = int(answer)
+        except ValueError:
+            print("Enter a listed number or q.")
+            continue
+        if 1 <= selected <= len(choices):
+            return (choices[selected - 1],)
+        if selected != len(choices) + 1:
+            print("Enter a listed number or q.")
+            continue
+
+        try:
+            name = input("New measurement config name: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if name.startswith("config.d/"):
+            name = name[len("config.d/"):]
+        relative = Path(name)
+        if not name or relative.is_absolute() or "\\" in name or ".." in relative.parts:
+            print("Use a relative filename beneath config.d.")
+            continue
+        if relative.suffix == "":
+            relative = relative.with_suffix(".yaml")
+        if relative.suffix.lower() not in {".yaml", ".yml"}:
+            print("The filename must end in .yaml or .yml.")
+            continue
+        target = config_dir / relative
+        if target.exists():
+            print(f"{target.relative_to(live_dir).as_posix()} already exists; select it from the list.")
+            continue
+        return ("config.yaml", f"config.d/{relative.as_posix()}")
 
 
 def open_homeassistant() -> int:
@@ -198,6 +268,55 @@ def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
     print(f"Backup created: {archive_path}")
     print("This archive contains credentials, tokens, and phone-number state.")
     print("Store it with the same care as a password.")
+    return 0
+
+
+def run_uninstall_command(live_dir: Path, *, assume_yes: bool) -> int:
+    """Remove one LabPulse deployment and its Docker resources."""
+
+    if not live_dir.is_dir():
+        print(f"ERROR: LabPulse is not installed at {live_dir}.", file=sys.stderr)
+        return 2
+    filesystem_root = Path(live_dir.anchor).resolve()
+    home = Path.home().resolve()
+    if live_dir in {filesystem_root, home}:
+        print(f"ERROR: Refusing to remove unsafe installation path: {live_dir}", file=sys.stderr)
+        return 2
+
+    if not assume_yes:
+        print(f"LabPulse installation: {live_dir}")
+        print("This permanently removes its configuration, Home Assistant data, logs, backups, and Docker resources.")
+        if input("Type UNINSTALL to continue: ").strip() != "UNINSTALL":
+            print("Uninstall cancelled; no changes were made.")
+            return 2
+
+    if (live_dir / "compose.yaml").is_file():
+        result = run_compose(live_dir, ("down", "--remove-orphans", "--volumes"))
+        if result != 0:
+            print(
+                "ERROR: Docker cleanup failed; the installation directory was not removed.",
+                file=sys.stderr,
+            )
+            return result
+
+    try:
+        shutil.rmtree(live_dir)
+    except OSError as error:
+        print(f"ERROR: Could not remove LabPulse installation: {error}", file=sys.stderr)
+        return 1
+
+    try:
+        cache_path = update_check_cache_path()
+        cache_path.unlink(missing_ok=True)
+        try:
+            cache_path.parent.rmdir()
+        except OSError:
+            pass
+    except OSError as error:
+        print(f"WARNING: Deployment was removed, but its update cache could not be removed: {error}", file=sys.stderr)
+
+    print(f"Removed LabPulse deployment: {live_dir}")
+    print("The pipx-installed labpulse command remains available. Remove it with 'pipx uninstall labpulse' if required.")
     return 0
 
 
@@ -626,6 +745,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="confirm replacement without the interactive RESTORE prompt",
     )
 
+    uninstall_parser = commands.add_parser(
+        "uninstall",
+        help="remove the live deployment and its Docker resources",
+    )
+    uninstall_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="confirm permanent removal without the interactive UNINSTALL prompt",
+    )
+
     ps_parser = commands.add_parser("ps", help="show LabPulse container status")
     ps_parser.add_argument(
         "-a", "--all", action="store_true", help="include stopped containers"
@@ -653,7 +782,7 @@ def build_parser() -> argparse.ArgumentParser:
         "source_files",
         nargs="*",
         metavar="FILE",
-        help="config.yaml or YAML files beneath config.d (default: config.yaml)",
+        help="config.yaml or YAML files beneath config.d (default: interactive selection)",
     )
     commands.add_parser("open", help="open Home Assistant at http://localhost:8123")
     doctor_parser = commands.add_parser(
@@ -727,6 +856,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_restore_command(
                 live_dir, Path(arguments.archive), assume_yes=arguments.yes
             )
+        if arguments.action == "uninstall":
+            return run_uninstall_command(live_dir, assume_yes=arguments.yes)
         if arguments.action == "config":
             return run_config_editor(live_dir, arguments.source_files)
         if arguments.action == "doctor":
@@ -768,7 +899,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         # Read distribution metadata in the notifier so a successful update
         # checks the newly installed package rather than this process's import.
-        notify_if_update_available(force_refresh=arguments.action == "update")
+        if arguments.action != "uninstall":
+            notify_if_update_available(force_refresh=arguments.action == "update")
 
 
 def alias_arguments(action: str, arguments: Sequence[str]) -> list[str]:

@@ -142,6 +142,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "label": measurement_config.display_label(measurement_name),
                 "short_label": measurement_config.display_short_label(measurement_name),
                 "device_class": measurement_config.device_class,
+                "show_graph": measurement_config.show_graph,
                 "alarmed": measurement_config.alarmed,
                 "required": measurement_config.required,
                 "missing_confirm_seconds": measurement_config.missing_confirm_seconds,
@@ -267,6 +268,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "label": custom_config.display_label(custom_id),
             "short_label": custom_config.display_short_label(custom_id),
             "device_class": custom_config.device_class,
+            "show_graph": custom_config.show_graph,
             "alarmed": custom_config.alarmed,
             "required": custom_config.required,
             "missing_confirm_seconds": custom_config.missing_confirm_seconds,
@@ -385,6 +387,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "label": setup_config.display_label(setup_id),
             "icon": setup_config.icon,
             "measurements": tuple(items),
+            "compact_measurements": tuple(item for item in items if not item["show_graph"]),
+            "graph_measurements": tuple(item for item in items if item["show_graph"]),
             "outputs": tuple(outputs_by_setup[setup_id]),
         }
     monitor_setups = tuple(

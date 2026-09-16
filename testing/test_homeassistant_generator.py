@@ -86,6 +86,31 @@ def automation(package: dict[str, object], alias: str) -> dict[str, object]:
     return next(item for item in package["automation"] if item["alias"] == alias)
 
 
+def test_recorder_excludes_internal_entities_but_keeps_alarm_history() -> None:
+    """Keep useful readings and danger history in the History target picker."""
+
+    paths = render_into(REPOSITORY / "testing" / "tmp" / f"recorder-{uuid4().hex}")
+    text = paths.configuration.read_text(encoding="utf-8")
+    expected = {
+        "binary_sensor.labpulse_*_reading_available",
+        "binary_sensor.labpulse_*_recovery_zone",
+        "binary_sensor.labpulse_*_service_offline",
+        "binary_sensor.labpulse_bulk_*",
+        "sensor.labpulse_*_observed_danger_percent",
+        "sensor.labpulse_bulk_*",
+        "input_boolean.labpulse_*",
+        "input_button.labpulse_*",
+        "input_datetime.labpulse_*",
+        "input_number.labpulse_*",
+        "input_select.labpulse_*",
+        "automation.labpulse_*",
+        "script.labpulse_*",
+    }
+    assert all(f"- {pattern}" in text for pattern in expected)
+    assert "\n      - sensor.labpulse_*\n" not in text
+    assert "\n      - binary_sensor.labpulse_*_danger_zone\n" not in text
+
+
 def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     """Generate helpers and one canonical automation per lifecycle transition."""
 

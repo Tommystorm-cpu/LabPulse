@@ -10,7 +10,7 @@ hardware.
 |---|---|---|
 | `serial_pipe.py` / `labpulse.serial_pipe` | Input | Parse unit-free pipe-delimited serial samples |
 | `mqtt_json.py` / `labpulse.mqtt_json` | Input | Validate timestamped JSON snapshots and map external names |
-| `gpio_input.py` / `labpulse.gpio_input` | Input | Read one GPIO line as logical `0.0` or `1.0` |
+| `gpio_input.py` / `labpulse.gpio_input` | Input | Read multiple GPIO lines as named logical `0.0` or `1.0` measurements |
 | `gpio_output.py` / `labpulse.gpio_output` | Output | Hold a GPIO line, apply safe state and verify latch readback |
 | `dht11.py` / `labpulse.dht11` | Input | Read temperature and humidity with partial-channel faults |
 | `sht40.py` / `labpulse.sht40` | Input | Read I2C temperature/humidity and verify both CRCs |

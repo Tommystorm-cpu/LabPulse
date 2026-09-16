@@ -396,6 +396,7 @@ measurements:
     short_label: Room Temperature
     unit: "°C"
     precision: 1
+    show_graph: true
     device_class: temperature
     icon: mdi:snowflake-thermometer
     missing_confirm_seconds: 60
@@ -448,6 +449,7 @@ are not supported.
 | `recovery_confirm_seconds` | `15` | Continuous usable data required before its missing-reading incident closes; 0 to 3600 seconds |
 | `unit` | none | Exact published unit |
 | `precision` | none | Optional Home Assistant display decimal places, strict integer from 0 to 10; MQTT state and graph history retain the full reading |
+| `show_graph` | `false` | Strict boolean; replace the compact setup row with a native 24-hour line graph |
 | `device_class` | none | LabPulse semantic category and default-icon source |
 | `icon` | derived | Explicit `mdi:` override |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
@@ -455,12 +457,12 @@ are not supported.
 Measurement IDs are mapping keys and preserve their YAML order. Duplicate keys
 are rejected rather than allowing a later value to replace an earlier one.
 Hardware readings not listed in the resolved `measurements` mapping are ignored.
-Each setup renders its measurements in one card in this order. The former
+Each setup preserves measurement order within its compact rows and graph cards. The former
 `group` field is unsupported; remove it from measurements, measurement defaults,
 and custom measurements when upgrading an existing configuration.
 
 `measurement_defaults` is optional and accepts the same presentation,
-availability, alarm, timing, unit, precision, device-class, icon, and state-class fields as
+availability, alarm, timing, unit, precision, graph, device-class, icon, and state-class fields as
 an individual measurement. It cannot set `source`, because external source
 names identify individual readings. Explicit fields on a measurement override
 the service defaults; all other fields retain the ordinary measurement
@@ -482,8 +484,11 @@ history.
 Use `label` to keep a measurement unambiguous when it appears without its
 logical setup heading. Add `short_label` only when that heading makes a
 shorter name clearer. For example, `Triton 1 Temperature In` can appear as
-`Temperature In` within the `Triton 1` setup. Measurements appear in one card
-per setup, preserving their configuration order.
+`Temperature In` within the `Triton 1` setup. Set `show_graph: true` to replace
+a measurement's compact row with a native Home Assistant sensor card showing
+its current value and a 24-hour line graph. Other measurements retain the
+compact entities card. Available graph history follows Home Assistant Recorder
+retention.
 
 Set `alarmed: false` for informational telemetry that should remain published
 and visible on operator dashboards and System Status without measurement alarm
@@ -517,6 +522,7 @@ custom_measurements:
     constants:
       scale: 1.0
     formula: (return_temp - supply) * scale
+    show_graph: true
     unit: "°C"
     device_class: temperature
     icon: mdi:delta
@@ -702,34 +708,40 @@ host devices or privileged container permissions.
 
 ### Generic GPIO input
 
-Use one service for each digital input:
+Use one service for all digital inputs on a GPIO chip:
 
 ```yaml
 services:
-  equipment_running:
-    label: Equipment Running
+  gpio_inputs:
+    label: GPIO Inputs
     driver:
       type: labpulse.gpio_input
       options:
         gpio_chip: /dev/gpiochip0
+    measurement_defaults:
+      setups: [io_testing]
+      state_class: null
+    measurements:
+      pin_17:
+        label: GPIO Pin 17
         gpio_line: 17
         active_high: true
-    measurements:
-      state:
-        label: Equipment Running
-        setups: [cryogenics_room]
-        state_class: null
+      pin_27:
+        label: GPIO Pin 27
+        gpio_line: 27
+        active_high: false
     read_interval_seconds: 1
 ```
 
 | Option | Default | Constraint |
 |---|---:|---|
 | `gpio_chip` | `/dev/gpiochip0` | `/dev/gpiochipN` |
-| `gpio_line` | none | Required, 0 to 53 |
-| `active_high` | `true` | `true` means electrical high publishes `1.0` |
+Each measurement requires a unique `gpio_line` from 0 to 53. Its strict boolean
+`active_high` defaults to `true`; set it to `false` for an active-low signal.
+These two fields are valid only on measurements belonging to this driver.
 
-The sole measurement must be named `state`. LabPulse publishes it as an
-ordinary numeric sensor: logically inactive is `0.0` and active is `1.0`.
+LabPulse requests all configured lines together and publishes each value under
+its measurement ID. Logically inactive is `0.0` and active is `1.0`.
 Normal numeric alarm thresholds therefore apply; for example, a minimum of
 `0.7` treats the inactive state as low. A dedicated Home Assistant binary
 sensor is not generated yet.
@@ -737,7 +749,7 @@ sensor is not generated yet.
 The default read interval is 1 second. This is intended for stable equipment
 states, switches, and relay contacts, not for counting short pulses. The
 generated container receives only the selected GPIO chip device and uses the
-packaged `gpioget` tool. `gpio_line` is the Linux GPIO line offset, not the
+packaged Python `gpiod` library. `gpio_line` is the Linux GPIO line offset, not the
 physical header-pin number.
 
 Raspberry Pi GPIO uses 3.3 V logic. The official
@@ -881,8 +893,11 @@ labpulse config config.d/triton-01-measurements.yaml
 labpulse config config.yaml config.d/triton-01-measurements.yaml
 ```
 
-With no path, the command edits `config.yaml` and lists its referenced
-measurement files. Passing paths opens staged copies of the selected sources.
+With no path, the command lists `config.yaml` and every YAML file beneath
+`config.d`, then asks which one to edit. The menu can also create a new
+measurement file; it opens the new file with `config.yaml` so the master can
+reference it in the same guarded edit. Passing paths directly opens staged
+copies of the selected sources without showing the menu.
 The command compares and backs up the complete source bundle, so changing only
 a fragment still regenerates and refreshes the deployment. A master reference
 and a new fragment can be created in one invocation by passing both paths.

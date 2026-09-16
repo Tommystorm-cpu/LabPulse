@@ -225,31 +225,25 @@ def test_gpio_dht11_requires_pin() -> None:
 
 
 def test_generic_gpio_input_driver_builds() -> None:
-    """Check validated GPIO settings reach the generic input driver."""
+    """Check validated multi-line settings reach the generic input driver."""
 
     service_config = make_service_config(
         driver={
             "type": "labpulse.gpio_input",
-            "options": {
-                "gpio_chip": "/dev/gpiochip2",
-                "gpio_line": 17,
-                "active_high": False,
-            },
+            "options": {"gpio_chip": "/dev/gpiochip2"},
         },
         measurements={
-            "state": {
-                "label": "Equipment Running",
-                "setups": ["test_setup"],
-                "state_class": None,
-            }
+            "running": {"setups": ["test_setup"], "gpio_line": 17},
+            "fault": {"setups": ["test_setup"], "gpio_line": 27, "active_high": False},
         },
     )
 
     driver = create_driver("equipment_running", service_config)
     assert_equal(isinstance(driver, GpioInputDriver), True, "driver type")
     assert_equal(driver.gpio_chip, "/dev/gpiochip2", "GPIO chip")
-    assert_equal(driver.gpio_line, 17, "GPIO line")
-    assert_equal(driver.active_high, False, "GPIO polarity")
+    assert_equal(driver.measurements["running"].gpio_line, 17, "GPIO line")
+    assert_equal(driver.measurements["running"].active_high, True, "default GPIO polarity")
+    assert_equal(driver.measurements["fault"].active_high, False, "GPIO polarity")
 
 
 def test_x1200_i2c_gpio_driver_builds() -> None:

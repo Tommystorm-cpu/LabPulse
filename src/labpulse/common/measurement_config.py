@@ -7,7 +7,7 @@ import keyword
 import math
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, StrictBool, field_validator, model_validator
 
 from labpulse.common.identity import slug, title
 
@@ -137,9 +137,12 @@ class MeasurementConfig(BaseModel):
     recovery_confirm_seconds: int = Field(default=15, ge=0, le=3600)
     unit: str | None = None
     precision: int | None = Field(default=None, ge=0, le=10, strict=True)
+    show_graph: StrictBool = False
     device_class: str | None = None
     icon: str | None = None
     state_class: str | None = "measurement"
+    gpio_line: int | None = Field(default=None, ge=0, le=53, strict=True)
+    active_high: StrictBool | None = None
 
     @field_validator("source")
     @classmethod
@@ -192,6 +195,7 @@ class MeasurementDefaultsConfig(BaseModel):
     recovery_confirm_seconds: int | None = Field(default=None, ge=0, le=3600)
     unit: str | None = None
     precision: int | None = Field(default=None, ge=0, le=10, strict=True)
+    show_graph: StrictBool | None = None
     device_class: str | None = None
     icon: str | None = None
     state_class: str | None = None
@@ -223,6 +227,7 @@ class CustomMeasurementConfig(BaseModel):
     constants: dict[str, float] = Field(default_factory=dict)
     formula: str
     precision: int = Field(default=2, ge=0, le=10)
+    show_graph: StrictBool = False
     alarmed: bool = Field(default=True, strict=True)
     required: bool = Field(default=True, strict=True)
     missing_confirm_seconds: int = Field(default=60, ge=1, le=86400)

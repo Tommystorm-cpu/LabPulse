@@ -119,8 +119,10 @@ labpulse config
 ```
 
 The guarded editor changes a temporary copy of the complete source bundle.
-With no file arguments it opens `config.yaml` and lists referenced fragments.
-It can open specific source files together, including a new fragment:
+With no file arguments it asks whether to edit `config.yaml`, an existing
+measurement file, or create a new measurement file. Creating one opens it with
+the master config so you can add its `measurements_file` reference immediately.
+Specific source files can still be opened directly:
 
 ```bash
 labpulse config config.yaml config.d/triton-01-measurements.yaml
@@ -192,6 +194,7 @@ labpulse config      edit, validate, regenerate and apply configuration
 labpulse doctor      run read-only diagnostics
 labpulse backup      create a checksummed state archive
 labpulse restore     reconstruct from an archive
+labpulse uninstall   remove the live deployment and Docker resources
 labpulse open        open local Home Assistant
 labpulse firmware    show firmware source/download information
 labpulse version     show the installed version
@@ -244,6 +247,17 @@ Measurements normally expire in Home Assistant when no state arrives within
 the configured maximum age. Values are MQTT QoS 0 and not retained; service
 status is QoS 1 and retained. QoS 1 can deliver a duplicate and is not an
 exactly-once guarantee.
+
+LabPulse excludes its internal alarm helpers, availability classifiers,
+automations, and scripts from Home Assistant Recorder. They remain active but
+do not normally appear in the History target picker or consume history storage.
+Physical and calculated measurements remain recorded. Danger-zone binary
+sensors also remain recorded because observation-window calculations depend on
+their history.
+
+Set `show_graph: true` on a physical or calculated measurement to replace its
+compact setup row with a native card containing the current value and a 24-hour
+line graph. Measurements without this option retain the compact list layout.
 
 ## Calculated measurements
 
@@ -471,7 +485,8 @@ one dedicated power monitor rather than grouped into experimental setups.
 
 ### Generic GPIO input
 
-The GPIO input driver reads one Linux GPIO chip/line as logical `0.0` or `1.0`.
+The GPIO input driver uses one service to read multiple lines on one Linux GPIO
+chip. Each configured measurement publishes its logical state as `0.0` or `1.0`.
 It is intended for stable digital equipment states, not short-pulse counting or
 debouncing. `active_high: false` reverses the electrical interpretation.
 

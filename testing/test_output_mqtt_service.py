@@ -475,9 +475,9 @@ def test_output_configuration_separates_actuators_and_detects_line_conflicts() -
                 "label": "Contact",
                 "driver": {
                     "type": "labpulse.gpio_input",
-                    "options": {"gpio_line": 18},
+                    "options": {},
                 },
-                "measurements": {"state": {"setups": ["test_setup"]}},
+                "measurements": {"state": {"setups": ["test_setup"], "gpio_line": 18}},
             }
         },
     }

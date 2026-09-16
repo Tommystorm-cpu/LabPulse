@@ -133,6 +133,7 @@ class DriverDefinition:
     container_requirements: Callable[[BaseModel, bool], ContainerRequirements]
     default_read_interval_seconds: float
     bind_measurement_sources: Callable[[BaseModel, Mapping[str, str]], None] | None = None
+    bind_measurements: Callable[[BaseModel, Mapping[str, BaseModel]], None] | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed specs as soon as their module is discovered."""
@@ -149,6 +150,8 @@ class DriverDefinition:
             self.bind_measurement_sources
         ):
             raise TypeError("bind_measurement_sources must be a function")
+        if self.bind_measurements is not None and not callable(self.bind_measurements):
+            raise TypeError("bind_measurements must be a function")
         if self.default_read_interval_seconds < 0:
             raise ValueError("default_read_interval_seconds must not be negative")
 

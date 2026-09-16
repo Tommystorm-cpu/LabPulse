@@ -1,5 +1,36 @@
 # Troubleshooting incidents and notifications
 
+## Old LabPulse helpers still appear in History
+
+Recorder exclusions stop new history for LabPulse's internal helpers after the
+generated Home Assistant configuration is applied. Existing rows remain until
+normal Recorder purging removes them. To remove them immediately, open Home
+Assistant **Developer Tools → Actions**, select `recorder.purge_entities`, switch
+to YAML mode, and run this optional one-time action:
+
+```yaml
+action: recorder.purge_entities
+data:
+  entity_globs:
+    - binary_sensor.labpulse_*_reading_available
+    - binary_sensor.labpulse_*_recovery_zone
+    - binary_sensor.labpulse_*_service_offline
+    - binary_sensor.labpulse_bulk_*
+    - sensor.labpulse_*_observed_danger_percent
+    - sensor.labpulse_bulk_*
+    - input_boolean.labpulse_*
+    - input_button.labpulse_*
+    - input_datetime.labpulse_*
+    - input_number.labpulse_*
+    - input_select.labpulse_*
+    - automation.labpulse_*
+    - script.labpulse_*
+```
+
+This deliberately does not match physical or calculated measurement sensors,
+or `binary_sensor.labpulse_*_danger_zone`, whose history is required by the
+alarm observation window.
+
 ## Configuration fragment or resolved runtime fails
 
 Run `labpulse doctor` first. A `measurements_file` must be a relative `.yaml`
