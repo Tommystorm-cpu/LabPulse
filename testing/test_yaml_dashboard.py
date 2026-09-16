@@ -324,7 +324,7 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
 
 
 def test_optional_measurement_graphs_support_defaults_overrides_and_calculations() -> None:
-    """Replace only opted-in compact rows with native 24-hour sensor cards."""
+    """Pair opted-in measurement rows with native 24-hour sensor cards."""
 
     config = dashboard_config()
     hub_a = config["services"]["hub_a"]  # type: ignore[index]
@@ -346,12 +346,24 @@ def test_optional_measurement_graphs_support_defaults_overrides_and_calculations
 
     _, dashboard, _ = generate(config)
     monitor = view(dashboard, "monitor")
-    graph_cards = [
+    graph_pairs = [
         item for item in walk(monitor)
-        if isinstance(item, dict) and item.get("type") == "sensor" and item.get("graph") == "line"
+        if isinstance(item, dict)
+        and item.get("type") == "horizontal-stack"
+        and len(item.get("cards", [])) == 2
+        and item["cards"][0].get("type") == "entities"
+        and item["cards"][1].get("type") == "sensor"
+        and item["cards"][1].get("graph") == "line"
+    ]
+    graph_cards = [
+        pair["cards"][1] for pair in graph_pairs
     ]
     assert graph_cards
     assert all(card["hours_to_show"] == 24 and card["detail"] == 2 for card in graph_cards)
+    assert all(
+        pair["cards"][0]["entities"][0]["entity"] == pair["cards"][1]["entity"]
+        for pair in graph_pairs
+    )
     graph_entities = [card["entity"] for card in graph_cards]
     assert "sensor.labpulse_hub_a_alpha_only" in graph_entities
     assert "sensor.labpulse_custom_difference" in graph_entities

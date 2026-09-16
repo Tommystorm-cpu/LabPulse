@@ -1,6 +1,6 @@
 # Troubleshooting incidents and notifications
 
-## Old LabPulse helpers still appear in History
+## Old LabPulse helper history remains stored
 
 Recorder exclusions stop new history for LabPulse's internal helpers after the
 generated Home Assistant configuration is applied. Existing rows remain until
@@ -26,6 +26,10 @@ data:
     - automation.labpulse_*
     - script.labpulse_*
 ```
+
+Purging removes stored history only. Home Assistant's History **Add target**
+picker lists all registered entities, including entities excluded from
+Recorder, so this procedure does not remove helpers from that menu.
 
 This deliberately does not match physical or calculated measurement sensors,
 or `binary_sensor.labpulse_*_danger_zone`, whose history is required by the

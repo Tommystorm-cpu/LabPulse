@@ -481,6 +481,8 @@ def latest_published_version(*, timeout: float = 15.0) -> str:
         TEST_PYPI_PROJECT_URL,
         headers={
             "Accept": "application/json",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
             "User-Agent": f"LabPulse/{__version__}",
         },
     )
@@ -589,6 +591,10 @@ def run_update_command(live_dir: Path, requested_version: str | None) -> int:
 
     try:
         target_version = requested_version or latest_published_version()
+        if requested_version is None and target_version == __version__:
+            # TestPyPI metadata can briefly differ between cache edges just
+            # after a release. Recheck before declaring the installation current.
+            target_version = latest_published_version()
         compose_text = compose_path.read_text(encoding="utf-8")
     except (OSError, RuntimeError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
@@ -899,7 +905,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         # Read distribution metadata in the notifier so a successful update
         # checks the newly installed package rather than this process's import.
-        if arguments.action != "uninstall":
+        if arguments.action not in {"update", "uninstall"}:
             notify_if_update_available(force_refresh=arguments.action == "update")
 
 

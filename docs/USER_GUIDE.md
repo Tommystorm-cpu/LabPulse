@@ -250,14 +250,15 @@ exactly-once guarantee.
 
 LabPulse excludes its internal alarm helpers, availability classifiers,
 automations, and scripts from Home Assistant Recorder. They remain active but
-do not normally appear in the History target picker or consume history storage.
-Physical and calculated measurements remain recorded. Danger-zone binary
-sensors also remain recorded because observation-window calculations depend on
-their history.
+do not consume new history storage. Home Assistant's History target picker
+lists registered entities independently, so Recorder exclusions do not remove
+them from its **Add target** menu. Physical and calculated measurements remain
+recorded. Danger-zone binary sensors also remain recorded because
+observation-window calculations depend on their history.
 
-Set `show_graph: true` on a physical or calculated measurement to replace its
-compact setup row with a native card containing the current value and a 24-hour
-line graph. Measurements without this option retain the compact list layout.
+Set `show_graph: true` on a physical or calculated measurement to show its row
+beside a native card containing the current value and a 24-hour line graph.
+Measurements without this option retain the compact list layout.
 
 ## Calculated measurements
 

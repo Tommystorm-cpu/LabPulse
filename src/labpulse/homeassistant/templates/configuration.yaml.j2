@@ -24,9 +24,10 @@ frontend:
 
 history:
 
-# Keep LabPulse alarm machinery active without filling the History target
-# picker or Recorder database. Danger-zone history remains recorded because
-# the observation-window history_stats sensors depend on it.
+# Keep LabPulse alarm machinery active without filling the Recorder database.
+# Home Assistant's History target picker independently lists all registered
+# entities. Danger-zone history remains recorded because the observation-window
+# history_stats sensors depend on it.
 recorder:
   exclude:
     entity_globs:

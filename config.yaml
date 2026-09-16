@@ -120,7 +120,7 @@ services:
         unit: bar
         # Optional display-only rounding; MQTT readings and history keep full precision.
         precision: 2
-        # Optional 24-hour inline graph on the setup dashboard.
+        # Optional measurement row with a 24-hour graph beside it.
         show_graph: true
         device_class: pressure
       temperature:

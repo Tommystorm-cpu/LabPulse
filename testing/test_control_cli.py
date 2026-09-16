@@ -225,6 +225,8 @@ def test_latest_version_comes_from_test_pypi_metadata() -> None:
     assert version == "0.2.0"
     request = open_url.call_args.args[0]
     assert request.full_url == control.TEST_PYPI_PROJECT_URL
+    assert request.get_header("Cache-control") == "no-cache"
+    assert request.get_header("Pragma") == "no-cache"
     assert open_url.call_args.kwargs == {"timeout": 3.0}
 
 
@@ -301,15 +303,15 @@ def test_commands_run_the_post_command_update_check(update_notice: object) -> No
     update_notice.assert_called_once_with(force_refresh=False)
 
 
-def test_update_runs_a_distribution_aware_post_command_check(
+def test_update_does_not_run_a_second_post_command_version_check(
     live_dir: Path, update_notice: object
 ) -> None:
-    """The shared check reads fresh metadata after an update command."""
+    """Keep update resolution inside one workflow so results cannot conflict."""
 
     with patch.object(control, "run_update_command", return_value=0):
         assert control.main(["--live-dir", str(live_dir), "update"]) == 0
 
-    update_notice.assert_called_once_with(force_refresh=True)
+    update_notice.assert_not_called()
 
 
 @pytest.mark.parametrize("fake_usb", [False, True])
@@ -404,7 +406,7 @@ def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
 
     with patch.object(control, "__version__", "0.2.0"), patch.object(
         control, "latest_published_version", return_value="0.2.0"
-    ), patch.object(
+    ) as latest, patch.object(
         control.shutil,
         "which",
         side_effect=lambda command: f"/usr/bin/{command}",
@@ -414,9 +416,47 @@ def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
         result = control.run_update_command(live_dir.resolve(), None)
 
     assert result == 0
+    assert latest.call_count == 2
     find_command.assert_not_called()
     run.assert_not_called()
     compose.assert_not_called()
+
+
+def test_update_rechecks_equal_metadata_and_uses_newly_visible_release(live_dir: Path) -> None:
+    """Handle TestPyPI propagation without reporting contradictory results."""
+
+    commands = {"pipx": "/usr/bin/pipx", "labpulse": "/home/lab/.local/bin/labpulse"}
+    with patch.object(control, "__version__", "0.3.0"), patch.object(
+        control, "latest_published_version", side_effect=("0.3.0", "0.3.1")
+    ) as latest, patch.object(
+        control.shutil, "which", side_effect=lambda command: commands.get(command)
+    ), patch.object(
+        control.subprocess,
+        "run",
+        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"]), completed(["labpulse", "doctor"])),
+    ) as run, patch.object(
+        control, "run_compose", return_value=0
+    ), patch.object(
+        control, "_wait_for_homeassistant", return_value=True
+    ):
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 0
+    assert latest.call_count == 2
+    assert run.call_args_list[0].args[0][-1] == "labpulse==0.3.1"
+
+
+def test_explicit_current_version_does_not_recheck(live_dir: Path) -> None:
+    """Treat an explicit version as authoritative without querying metadata."""
+
+    with patch.object(control, "__version__", "0.2.0"), patch.object(
+        control, "latest_published_version"
+    ) as latest, patch.object(control.shutil, "which") as find_command:
+        result = control.run_update_command(live_dir.resolve(), "0.2.0")
+
+    assert result == 0
+    latest.assert_not_called()
+    find_command.assert_not_called()
 
 
 def test_update_reports_compose_failure_without_suppressing_notifications(

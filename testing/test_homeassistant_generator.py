@@ -87,7 +87,7 @@ def automation(package: dict[str, object], alias: str) -> dict[str, object]:
 
 
 def test_recorder_excludes_internal_entities_but_keeps_alarm_history() -> None:
-    """Keep useful readings and danger history in the History target picker."""
+    """Record useful readings and danger history without internal helper history."""
 
     paths = render_into(REPOSITORY / "testing" / "tmp" / f"recorder-{uuid4().hex}")
     text = paths.configuration.read_text(encoding="utf-8")
