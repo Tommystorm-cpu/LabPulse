@@ -121,7 +121,7 @@ def run_compose(live_dir: Path, arguments: Sequence[str]) -> int:
         return 127
 
 
-def run_config_editor(live_dir: Path) -> int:
+def run_config_editor(live_dir: Path, source_files: Sequence[str] = ()) -> int:
     """Run the packaged guarded config editor against the live deployment."""
 
     if not (live_dir / "config.yaml").is_file():
@@ -155,7 +155,12 @@ def run_config_editor(live_dir: Path) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
     try:
-        return subprocess.run([bash, str(edit_script)], cwd=live_dir, env=environment, check=False).returncode
+        return subprocess.run(
+            [bash, str(edit_script), *source_files],
+            cwd=live_dir,
+            env=environment,
+            check=False,
+        ).returncode
     except FileNotFoundError as error:
         print(f"ERROR: Cannot run {error.filename!r}.", file=sys.stderr)
         return 127
@@ -640,7 +645,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     logs_parser.add_argument("services", nargs="*", help="optional service names")
 
-    commands.add_parser("config", help="edit, validate, regenerate, and safely apply config.yaml")
+    config_parser = commands.add_parser(
+        "config",
+        help="edit, validate, regenerate, and safely apply the configuration source bundle",
+    )
+    config_parser.add_argument(
+        "source_files",
+        nargs="*",
+        metavar="FILE",
+        help="config.yaml or YAML files beneath config.d (default: config.yaml)",
+    )
     commands.add_parser("open", help="open Home Assistant at http://localhost:8123")
     doctor_parser = commands.add_parser(
         "doctor",
@@ -714,7 +728,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 live_dir, Path(arguments.archive), assume_yes=arguments.yes
             )
         if arguments.action == "config":
-            return run_config_editor(live_dir)
+            return run_config_editor(live_dir, arguments.source_files)
         if arguments.action == "doctor":
             if arguments.timeout <= 0:
                 parser.error("doctor --timeout must be greater than zero")

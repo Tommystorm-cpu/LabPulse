@@ -40,7 +40,8 @@ Arduino serial / Pi sensors / named MQTT input
 
 An installed Pi is managed with `labpulse setup`, `labpulse update`,
 `labpulse config`, `labpulse up`, and `labpulse doctor`. Its operator-owned
-source of truth is `~/labpulse-live/config.yaml`; the repository
+source bundle is `~/labpulse-live/config.yaml` plus any measurement files it
+references beneath `~/labpulse-live/config.d/`; the repository
 [config.yaml](config.yaml) is only the new-install starter. Generated Compose
 and Home Assistant files must be regenerated rather than maintained
 independently.

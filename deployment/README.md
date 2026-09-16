@@ -29,9 +29,12 @@ src/labpulse/homeassistant/generator.py  HA command and core/dashboard generatio
 src/labpulse/homeassistant/alarm.py      alarm context/package generation
 ```
 
-Setup and guarded editing use the unified deployment generator so Compose and
-Home Assistant output are built from one validated document before managed
-live files are replaced.
+Setup and guarded editing use the unified deployment generator. It resolves the
+operator-owned `config.yaml` and referenced `config.d` measurement fragments
+into a standalone `config.resolved.yaml`, validates it independently, and then
+builds Compose and Home Assistant output from that document before managed live
+files are replaced. Fake mode derives `config.fake.yaml` from the resolved
+document.
 
 The scripts accept live paths and version/image selections from the operator
 command; they do not own the configuration schema. A failed validation or

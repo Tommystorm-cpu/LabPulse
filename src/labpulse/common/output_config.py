@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from labpulse.common.measurement_config import validate_measurement_icon
+from labpulse.common.measurement_config import normalize_setups, validate_measurement_icon
 from labpulse.common.service_config import DriverConfig
 
 
@@ -14,9 +14,17 @@ class OutputConfig(BaseModel):
     enabled: bool = True
     label: str
     icon: str = "mdi:toggle-switch"
+    setups: tuple[str, ...] = ()
     driver: DriverConfig
     reconnect_interval_seconds: float = Field(default=5.0, gt=0, le=3600)
     maximum_active_seconds: float | None = Field(default=None, gt=0, le=86400)
+
+    @field_validator("setups", mode="before")
+    @classmethod
+    def validate_setups(cls, value: object) -> tuple[str, ...]:
+        """Normalize optional setup membership for dashboard placement."""
+
+        return normalize_setups(value) or ()
 
     @field_validator("icon")
     @classmethod

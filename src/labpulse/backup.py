@@ -23,6 +23,7 @@ MANIFEST_NAME = "manifest.json"
 PAYLOAD_DIRECTORY = "payload"
 SNAPSHOT_PATHS = (
     "config.yaml",
+    "config.d",
     "homeassistant/config",
     "mosquitto/data",
     "logs/sms_subscriptions.json",

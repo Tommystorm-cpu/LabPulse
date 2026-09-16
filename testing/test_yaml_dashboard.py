@@ -36,16 +36,16 @@ def dashboard_config() -> dict[str, object]:
                     },
                     "alpha_only": {
                         "label": "Alpha Setup Temperature", "short_label": "Temperature",
-                        "group": "Cooling Water", "setups": ["alpha_setup"],
+                        "setups": ["alpha_setup"],
                         "unit": "°C", "device_class": "temperature",
                     },
                     "shared": {
                         "label": "Shared Supply Sensor", "short_label": "Shared Supply",
-                        "group": "Cooling Water", "setups": ["beta_setup", "alpha_setup"],
+                        "setups": ["beta_setup", "alpha_setup"],
                         "unit": "°C", "device_class": "temperature",
                     },
                     "beta_only": {
-                        "label": "Beta Only", "group": "Vacuum",
+                        "label": "Beta Only",
                         "setups": ["beta_setup"], "unit": "%", "device_class": "humidity",
                     },
                     "global_room": {
@@ -202,6 +202,29 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
     assert occurrences(monitor, "sensor.labpulse_hub_a_shared") == 2
     assert occurrences(monitor, "sensor.labpulse_hub_a_alpha_only") == 1
     assert occurrences(monitor, "sensor.labpulse_hub_b_alpha_other_hub") == 1
+    measurement_cards = [
+        item for item in walk(monitor)
+        if isinstance(item, dict)
+        and item.get("type") == "entities"
+        and item.get("entities")
+        and all(
+            str(row.get("entity", "")).startswith("sensor.labpulse_")
+            for row in item["entities"]
+        )
+    ]
+    assert [
+        [row["entity"] for row in card["entities"]]
+        for card in measurement_cards
+    ] == [
+        ["sensor.labpulse_hub_a_global_room"],
+        [
+            "sensor.labpulse_hub_a_alpha_general",
+            "sensor.labpulse_hub_a_alpha_only",
+            "sensor.labpulse_hub_a_shared",
+            "sensor.labpulse_hub_b_alpha_other_hub",
+        ],
+        ["sensor.labpulse_hub_a_shared", "sensor.labpulse_hub_a_beta_only"],
+    ]
     assert not any(
         isinstance(item, dict)
         and str(item.get("name", "")).lower().endswith(" availability")
@@ -443,13 +466,14 @@ def test_non_alarmed_measurements_keep_telemetry_without_alarm_helpers() -> None
     assert "labpulse_hub_a_alpha_general_alarm_state" not in paths.package.read_text(encoding="utf-8")
 
 
-def test_controlled_outputs_are_operator_visible() -> None:
-    """Show enabled outputs on Monitor and System Status only."""
+def test_controlled_outputs_can_be_assigned_to_setups() -> None:
+    """Place assigned outputs with their setup and retain global status."""
 
     config = dashboard_config()
     config["outputs"] = {
         "cooling_valve": {
             "label": "Cooling Valve",
+            "setups": ["empty_setup"],
             "driver": {"type": "labpulse.gpio_output", "options": {"gpio_line": 18}},
         },
         "disabled": {
@@ -461,6 +485,22 @@ def test_controlled_outputs_are_operator_visible() -> None:
     _, dashboard, _ = generate(config)
     assert occurrences(dashboard, "switch.labpulse_output_cooling_valve") == 2
     assert occurrences(dashboard, "switch.labpulse_output_disabled") == 0
+    monitor = view(dashboard, "monitor")
+    system_status = view(dashboard, "system-status")
+    assert occurrences(monitor, "switch.labpulse_output_cooling_valve") == 1
+    assert occurrences(system_status, "switch.labpulse_output_cooling_valve") == 1
+    controls = [
+        item for item in walk(monitor)
+        if isinstance(item, dict) and item.get("type") == "entities"
+        and item.get("title") == "Controls"
+    ]
+    assert len(controls) == 1
+    assert controls[0]["entities"][0]["name"] == "Cooling Valve"
+    assert not any(
+        isinstance(item, dict)
+        and item.get("content") == "No measurements or controls are currently assigned to this setup."
+        for item in walk(monitor)
+    )
 
 
 def test_alarm_bulk_targets_are_logical_setups() -> None:

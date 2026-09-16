@@ -43,6 +43,11 @@ def state_tree() -> Iterator[tuple[Path, Path]]:
         encoding="utf-8",
     )
     (live / "config.yaml").write_text("site: accepted\n", encoding="utf-8")
+    (live / "config.d").mkdir()
+    (live / "config.d" / "triton-01-measurements.yaml").write_text(
+        "temperature: {}\n",
+        encoding="utf-8",
+    )
     (live / "homeassistant" / "config" / "configuration.yaml").write_text(
         "homeassistant:\n",
         encoding="utf-8",
@@ -145,6 +150,7 @@ def test_complete_round_trip() -> None:
         assert_equal(manifest["runtime_mode"], "real_hardware", "runtime mode")
         for required in (
             "config.yaml",
+            "config.d",
             "homeassistant/config",
             "mosquitto/data",
             "logs/sms_subscriptions.json",
@@ -189,6 +195,11 @@ def test_complete_round_trip() -> None:
         )
 
         (live / "config.yaml").write_text("site: mutated\n", encoding="utf-8")
+        (live / "config.d" / "triton-01-measurements.yaml").write_text(
+            "temperature: {precision: 9}\n",
+            encoding="utf-8",
+        )
+        (live / "config.d" / "stale.yaml").write_text("stale: true\n", encoding="utf-8")
         shutil.rmtree(live / "homeassistant" / "config")
         (live / "homeassistant" / "config").mkdir(parents=True)
         (live / "homeassistant" / "config" / "stale.yaml").write_text(
@@ -209,6 +220,15 @@ def test_complete_round_trip() -> None:
             "source config",
         )
         assert_equal(
+            (live / "config.d" / "triton-01-measurements.yaml").read_text(
+                encoding="utf-8"
+            ),
+            "temperature: {}\n",
+            "measurement source",
+        )
+        if (live / "config.d" / "stale.yaml").exists():
+            raise AssertionError("restore retained a measurement fragment absent from the archive")
+        assert_equal(
             (live / "homeassistant" / "config" / ".storage" / "core.config").read_text(
                 encoding="utf-8"
             ),
@@ -227,6 +247,25 @@ def test_complete_round_trip() -> None:
             '{"+447700900000": false}\n',
             "SMS subscriptions",
         )
+
+
+def test_restore_older_single_file_source_removes_current_fragments() -> None:
+    """Treat absent optional config.d state as intentional during restoration."""
+
+    with state_tree() as (live, archive):
+        shutil.rmtree(live / "config.d")
+        runner = ComposeRunner()
+        with patch("labpulse.backup.subprocess.run", side_effect=runner):
+            create_backup(live, archive, ["docker"])
+        assert "config.d" not in inspect_backup(archive)["included_paths"]
+
+        (live / "config.d").mkdir()
+        (live / "config.d" / "stale.yaml").write_text(
+            "stale: true\n",
+            encoding="utf-8",
+        )
+        restore_backup(live, archive)
+        assert not (live / "config.d").exists()
 
 
 def test_refuses_overwrite_and_live_directory_output() -> None:

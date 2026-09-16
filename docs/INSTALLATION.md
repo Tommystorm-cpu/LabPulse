@@ -151,6 +151,7 @@ Setup:
 
 - creates `~/labpulse-live`;
 - preserves an existing live `config.yaml`;
+- creates `config.d/` and installs starter fragments only for a new live directory;
 - creates the private host `.venv`;
 - installs bounded generator dependencies into that environment;
 - links that environment to the exact pipx-installed LabPulse package;
@@ -212,6 +213,74 @@ MQTT integration must be connected before LabPulse discovery, service health
 and alarm entities are considered ready. Retained discovery messages should
 then populate the dashboard without restarting sensor containers.
 
+## Move measurements into external files
+
+This is an optional configuration migration. Services with inline
+`measurements:` remain supported. Before changing an existing Pi, create a full
+archive so the source bundle, generated files, and Home Assistant state can be
+restored together:
+
+```bash
+mkdir -p ~/labpulse-backups
+labpulse backup ~/labpulse-backups/before-measurement-files.tar.gz
+labpulse update VERSION_WITH_MEASUREMENT_FILES
+```
+
+Replace the version placeholder with the published release containing this
+feature. Open the master and every fragment that will be created in one guarded
+edit. For the two Triton services:
+
+```bash
+labpulse config config.yaml \
+  config.d/triton-01-measurements.yaml \
+  config.d/triton-02-measurements.yaml
+```
+
+In `config.yaml`, replace each service's inline `measurements:` mapping with
+one field at the same indentation:
+
+```yaml
+measurements_file: config.d/triton-01-measurements.yaml
+```
+
+Put the removed mapping in the selected fragment without a surrounding
+`measurements:` key. Keep the driver, defaults, service timeouts, setups,
+outputs, calculated measurements, MQTT, and SMS configuration in
+`config.yaml`. Saving validates the complete staged bundle before replacing
+live files. A failure after installation restores the previous source bundle
+and generated deployment automatically.
+
+Verify the installed result:
+
+```bash
+labpulse doctor
+labpulse ps
+grep -n "config.resolved.yaml:/app/config.yaml:ro" ~/labpulse-live/compose.yaml
+grep -n "measurements_file" ~/labpulse-live/config.resolved.yaml
+labpulse logs --tail 50 labpulse-triton-01
+labpulse logs --tail 50 labpulse-triton-02
+```
+
+Doctor should pass, Compose should show the resolved runtime mount, and the
+second `grep` should print nothing because the runtime is standalone. Confirm
+both fridge services and their existing Home Assistant entities continue to
+update. Their service and measurement IDs do not change during this migration.
+
+To roll back the whole migration, restore the archive and approve the prompted
+replacement:
+
+```bash
+labpulse restore ~/labpulse-backups/before-measurement-files.tar.gz
+labpulse doctor
+labpulse ps
+```
+
+Restore validates checksums, recreates the recorded real or fake runtime, and
+regenerates deployment files. If later legitimate state must be retained,
+instead run `labpulse config` with the master and affected fragments, copy each
+fragment mapping back beneath its service's `measurements:` key, remove its
+`measurements_file`, save, and delete only unreferenced fragment files afterward.
+
 ## First-install acceptance
 
 Complete this check before disabling notification safeguards:
@@ -244,8 +313,9 @@ Create a complete state archive after acceptance. See
 
 ## Create a simulated installation
 
-Fake mode derives `~/labpulse-live/config.fake.yaml` without changing the
-real-hardware settings in `config.yaml`:
+Fake mode resolves `config.yaml` and referenced `config.d` fragments into
+`config.resolved.yaml`, then derives `~/labpulse-live/config.fake.yaml` without
+changing the operator-owned source bundle:
 
 ```bash
 labpulse setup --fake-usb
@@ -262,9 +332,10 @@ It does not convert arbitrary hardware configurations. Inspect the
 This walkthrough requires a supported Linux host, but no physical sensors,
 modem, or outputs. It is not a Windows-native simulator.
 
-Always edit `config.yaml`, never `config.fake.yaml`. The guarded
-`labpulse config` command detects the active fake-USB Compose mount,
-regenerates `config.fake.yaml`, and keeps the deployment simulated.
+Always edit `config.yaml` and referenced `config.d` fragments, never
+`config.resolved.yaml` or `config.fake.yaml`. The guarded `labpulse config`
+command detects the active fake-USB Compose mount, regenerates both runtime
+files, and keeps the deployment simulated.
 
 After starting the simulated stack, complete the same Home Assistant account
 and MQTT onboarding as the real path. Keep SMS dry-run enabled. Confirm the
@@ -517,8 +588,15 @@ Check YAML indentation, required labels and measurements, exact registered
 driver IDs, option spelling, setup references, stable lowercase IDs, timing
 ranges and international-format SMS numbers. Unknown fields are rejected.
 
-Use every mapping key once. The current YAML loader accepts duplicate keys and
-the later value can hide the earlier one before model validation.
+Use every mapping key once. LabPulse rejects duplicate keys in both the master
+file and measurement fragments.
+
+For a `measurements_file` error, confirm the path is relative, ends in `.yaml`
+or `.yml`, stays beneath `config.d`, names a regular non-symlink file, and does
+not contain `..`. The fragment must be a non-empty measurement mapping without
+a surrounding `measurements:` key. Each service must define exactly one of
+inline `measurements` and `measurements_file`. Errors identify the source file
+that owns the invalid measurement.
 
 ### Containers exit or restart repeatedly
 
@@ -531,8 +609,9 @@ labpulse logs --tail 100 labpulse-pressure-monitor
 
 Common causes are a config mounted from the wrong mode, missing host devices,
 incorrect driver options, Docker permissions or an unavailable MQTT broker.
-Compare `compose.yaml` with `config.yaml` (or generated `config.fake.yaml`) and
-run Doctor before editing code.
+Compare the Compose runtime mount with generated `config.resolved.yaml` (real
+hardware) or `config.fake.yaml` (simulation), then run Doctor before editing
+code. Edit only the source bundle.
 
 ### MQTT connection is refused
 

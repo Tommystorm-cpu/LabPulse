@@ -218,6 +218,7 @@ echo "Setting up LabPulse container filesystem at: $PROJECT_DIR"
 
 # Docker bind mounts require these host directories to exist before startup.
 mkdir -p "$PROJECT_DIR"
+mkdir -p "$PROJECT_DIR/config.d"
 mkdir -p "$PROJECT_DIR/homeassistant/config"
 mkdir -p "$PROJECT_DIR/mosquitto/config"
 mkdir -p "$PROJECT_DIR/mosquitto/data"
@@ -263,39 +264,17 @@ chmod +x "$PROJECT_DIR/setup_usb_devices.py"
 # starter template for new installations.
 if [ ! -e "$LIVE_CONFIG" ]; then
   copy_file "$TEMPLATE_CONFIG" "$LIVE_CONFIG"
+  if [ -d "$ASSET_DIR/config.d" ]; then
+    cp -a "$ASSET_DIR/config.d/." "$PROJECT_DIR/config.d/"
+  fi
   echo "Created live config from template: $LIVE_CONFIG"
 else
   echo "Preserving existing live config: $LIVE_CONFIG"
 fi
 
-# Fake mode derives a runtime config so real I2C/serial/GPIO settings remain
-# intact in the user-owned config.yaml and are available when switching back.
+# Deployment resolves operator-owned measurement fragments first, then writes
+# config.resolved.yaml and derives config.fake.yaml from that complete document.
 RUNTIME_CONFIG="$LIVE_CONFIG"
-if [ "$FAKE_USB" -eq 1 ]; then
-  RUNTIME_CONFIG="$PROJECT_DIR/config.fake.yaml"
-fi
-
-# Fake mode derives a separate runtime file. The real hardware settings remain
-# untouched in the user-edited config.yaml for the next real deployment.
-if [ "$FAKE_USB" -eq 1 ]; then
-"$HOST_PYTHON" - "$LIVE_CONFIG" "$RUNTIME_CONFIG" "$FAKE_USB" <<'PY'
-from pathlib import Path
-import sys
-
-source_path = Path(sys.argv[1])
-destination_path = Path(sys.argv[2])
-fake_usb = sys.argv[3] == "1"
-
-text = source_path.read_text()
-
-if fake_usb:
-    from labpulse.common.fake_config import derive_fake_config
-
-    text = derive_fake_config(text)
-
-destination_path.write_text(text)
-PY
-fi
 
 # Pass fake USB mode through to Compose generation so the right device mounts
 # are written into compose.yaml.
@@ -327,6 +306,8 @@ Done.
 Created/updated:
   $PROJECT_DIR/compose.yaml
   $PROJECT_DIR/config.yaml
+  $PROJECT_DIR/config.d/
+  $PROJECT_DIR/config.resolved.yaml
 $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/generate_compose.sh
   $PROJECT_DIR/generate_homeassistant_config.sh
@@ -358,11 +339,13 @@ Next commands:
   labpulse open
 
 Important:
-  EDIT THIS FILE for sensors and enabled flags:
+  EDIT THESE SOURCES for sensors and enabled flags:
     $PROJECT_DIR/config.yaml
+    $PROJECT_DIR/config.d/*.yaml (when referenced by measurements_file)
 
-  Do not edit a package or repository config.yaml for the running Pi system.
+  Do not edit config.resolved.yaml, config.fake.yaml, or a package/repository
+  config.yaml for the running Pi system.
 
-  In fake mode, config.fake.yaml is derived from config.yaml. Edit config.yaml,
-  then rerun $SETUP_COMMAND -fake_usb to refresh the fake configuration.
+  In fake mode, config.fake.yaml is derived from the complete source bundle.
+  Run labpulse config after editing to refresh every generated file.
 EOF

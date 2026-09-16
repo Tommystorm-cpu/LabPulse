@@ -10,8 +10,8 @@ README.
    or simulation path.
 2. Use the [User Guide](USER_GUIDE.md) to understand every feature and its
    normal, failure and recovery behaviour.
-3. Use [Configuration](CONFIGURATION.md) when editing
-   `~/labpulse-live/config.yaml`.
+3. Use [Configuration](CONFIGURATION.md) when editing the live `config.yaml`
+   and referenced measurement files beneath `config.d/`.
 4. Use [Operations](OPERATIONS.md) for normal incident/update handling and
    [Troubleshooting](TROUBLESHOOTING.md) when state or delivery is unexpected.
 
@@ -31,9 +31,10 @@ README.
 - [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended
   Windows control-PC installation.
 
-The installed source of truth is always `~/labpulse-live/config.yaml`. The
-repository `config.yaml` is a starter template. Generated Compose, fake-runtime
-and Home Assistant files are not independent settings.
+The installed source bundle is `~/labpulse-live/config.yaml` plus any
+measurement files it references beneath `config.d/`. The repository
+`config.yaml` and packaged fragments are starter templates. Generated resolved,
+fake-runtime, Compose, and Home Assistant files are not independent settings.
 
 ## Contributor
 

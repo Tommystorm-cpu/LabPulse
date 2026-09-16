@@ -414,6 +414,7 @@ def test_output_configuration_separates_actuators_and_detects_line_conflicts() -
         "outputs": {
             "cooling_valve_enable": {
                 "label": "Cooling Valve Enable",
+                "setups": ["test_setup"],
                 "driver": {
                     "type": "labpulse.gpio_output",
                     "options": {"gpio_line": 18, "safe_state": False},
@@ -425,6 +426,25 @@ def test_output_configuration_separates_actuators_and_detects_line_conflicts() -
     config = LabPulseConfig.model_validate(base)
     if config.outputs["cooling_valve_enable"].maximum_active_seconds != 30:
         raise AssertionError("validated output timing was not retained")
+    if config.outputs["cooling_valve_enable"].setups != ("test_setup",):
+        raise AssertionError("validated output setup membership was not retained")
+
+    unknown_setup = {
+        **base,
+        "outputs": {
+            "cooling_valve_enable": {
+                **base["outputs"]["cooling_valve_enable"],
+                "setups": ["missing_setup"],
+            }
+        },
+    }
+    try:
+        LabPulseConfig.model_validate(unknown_setup)
+    except ValueError as error:
+        if "output cooling_valve_enable references unknown setups: missing_setup" not in str(error):
+            raise
+    else:
+        raise AssertionError("output accepted an unknown setup")
 
     sensor_with_output_driver = {
         **base,

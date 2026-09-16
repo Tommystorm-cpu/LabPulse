@@ -40,6 +40,7 @@ class HomeAssistantRenderModel:
 
     services: tuple[dict[str, Any], ...]
     outputs: tuple[dict[str, Any], ...]
+    unassigned_outputs: tuple[dict[str, Any], ...]
     dashboards: tuple[dict[str, Any], ...]
     setups: tuple[dict[str, Any], ...]
     alarm_setup_groups: tuple[dict[str, Any], ...]
@@ -87,6 +88,22 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
     setup_order = {setup_id: index for index, setup_id in enumerate(setup_ids)}
     measurements_by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
     alarmed_measurements_by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
+    outputs_by_setup: dict[str, list[dict[str, Any]]] = {key: [] for key in setup_ids}
+    outputs: list[dict[str, Any]] = []
+    for output_name, output_config in config.outputs.items():
+        if not output_config.enabled:
+            continue
+        selected_setups = tuple(sorted(output_config.setups, key=setup_order.__getitem__))
+        output = {
+            "name": output_name,
+            "label": output_config.label,
+            "icon": output_config.icon,
+            "entity_id": entity_id("switch", "output", output_name),
+            "setup_ids": selected_setups,
+        }
+        outputs.append(output)
+        for setup_id in selected_setups:
+            outputs_by_setup[setup_id].append(output)
     physical_services: list[dict[str, Any]] = []
 
     # First turn every physical service and measurement into the common shape
@@ -124,7 +141,6 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "name": name,
                 "label": measurement_config.display_label(measurement_name),
                 "short_label": measurement_config.display_short_label(measurement_name),
-                "group": measurement_config.group,
                 "device_class": measurement_config.device_class,
                 "alarmed": measurement_config.alarmed,
                 "required": measurement_config.required,
@@ -250,7 +266,6 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "custom_id": custom_id,
             "label": custom_config.display_label(custom_id),
             "short_label": custom_config.display_short_label(custom_id),
-            "group": custom_config.group,
             "device_class": custom_config.device_class,
             "alarmed": custom_config.alarmed,
             "required": custom_config.required,
@@ -330,7 +345,6 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                 "remains unmuted. Continue?"
             ),
             "measurements": items,
-            "measurement_groups": _measurement_groups(items),
         })
 
     alarm_measurements = []
@@ -371,7 +385,7 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "label": setup_config.display_label(setup_id),
             "icon": setup_config.icon,
             "measurements": tuple(items),
-            "measurement_groups": _measurement_groups(items),
+            "outputs": tuple(outputs_by_setup[setup_id]),
         }
     monitor_setups = tuple(
         monitor_setup_records[setup_id]
@@ -412,19 +426,10 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
         for dashboard_id, dashboard_label, dashboard_icon in alarm_dashboard_metadata
         if any(setup["dashboard_id"] == dashboard_id for setup in setups)
     )
-    outputs = tuple(
-        {
-            "name": output_name,
-            "label": output_config.label,
-            "icon": output_config.icon,
-            "entity_id": entity_id("switch", "output", output_name),
-        }
-        for output_name, output_config in config.outputs.items()
-        if output_config.enabled
-    )
     return HomeAssistantRenderModel(
         services=tuple(physical_services),
-        outputs=outputs,
+        outputs=tuple(outputs),
+        unassigned_outputs=tuple(output for output in outputs if not output["setup_ids"]),
         dashboards=tuple(dashboard_records),
         setups=tuple(setups),
         alarm_setup_groups=alarm_setup_groups,
@@ -448,19 +453,6 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             *(group["apply_entity"] for group in all_measurement_deadband_groups),
         ),
     )
-
-
-def _measurement_groups(
-    measurements: list[dict[str, Any]],
-) -> tuple[tuple[str, tuple[dict[str, Any], ...]], ...]:
-    """Group one setup's measurements by first-seen presentation group."""
-
-    # Keep the order from config.yaml so the dashboard follows the order chosen
-    # by the person who wrote the configuration.
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for measurement in measurements:
-        grouped.setdefault(measurement["group"] or "Other Measurements", []).append(measurement)
-    return tuple((name, tuple(items)) for name, items in grouped.items())
 
 
 def _bulk_targets(
@@ -615,7 +607,7 @@ def render_alarm(render_model: HomeAssistantRenderModel) -> str:
     if not isinstance(package, dict):
         raise ValueError("rendered Home Assistant alarm package must be a mapping")
     return (
-        "# Generated by LabPulse. Edit config.yaml or generator templates.\n"
+        "# Generated by LabPulse. Edit config.yaml/config.d or generator templates.\n"
         + yaml.safe_dump(package, sort_keys=False, allow_unicode=True)
     )
 

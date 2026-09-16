@@ -345,7 +345,13 @@ def test_every_sms_incident_requests_its_recovery_without_a_second_option() -> N
 
     root = REPOSITORY / "testing" / "tmp" / f"generator-paired-{uuid4().hex}"
     ha_dir = root / "homeassistant" / "config"
-    assert generate_homeassistant([str(REPOSITORY / "config.yaml"), str(ha_dir)]) == 0
+    root.mkdir(parents=True)
+    config_path = root / "config.yaml"
+    config_path.write_bytes((REPOSITORY / "config.yaml").read_bytes())
+    import shutil
+
+    shutil.copytree(REPOSITORY / "config.d", root / "config.d")
+    assert generate_homeassistant([str(config_path), str(ha_dir)]) == 0
     package = yaml.safe_load((ha_dir / "packages" / "labpulse_generated.yaml").read_text(encoding="utf-8"))
     recovery_automations = [
         item for item in package["automation"]

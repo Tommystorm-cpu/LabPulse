@@ -55,16 +55,18 @@ Home Assistant output switch
 ## Installation layout and source of truth
 
 The public operator interface is the `labpulse` command. Its default working
-installation is `~/labpulse-live`. The file an operator edits is always:
+installation is `~/labpulse-live`. The operator-owned source bundle is:
 
 ```text
 ~/labpulse-live/config.yaml
+~/labpulse-live/config.d/**/*.yaml   # only when referenced by measurements_file
 ```
 
-The repository-level `config.yaml` is only a starter copied into a new
-installation. `compose.yaml`, `config.fake.yaml` and LabPulse-managed Home
-Assistant YAML are generated. Editing generated files creates changes that the
-next setup or configuration operation will replace.
+The repository-level files are only starters copied into a new installation.
+`config.resolved.yaml` is the complete generated runtime file. `compose.yaml`,
+`config.fake.yaml` and LabPulse-managed Home Assistant YAML are also generated.
+Editing generated files creates changes that the next setup or configuration
+operation will replace.
 
 `labpulse setup` prepares the live directory but does not start the stack.
 `labpulse up` starts it; `labpulse down` removes containers without deleting
@@ -86,15 +88,15 @@ installation begins with `labpulse setup`; a hardware-free installation begins
 with `labpulse setup --fake-usb`. The installation guide gives the complete
 prerequisites and setup procedure for both modes.
 
-Fake mode derives `config.fake.yaml` without changing the real hardware
-settings in `config.yaml`. It replaces the starter's known serial placeholders,
+Fake mode resolves the source bundle into `config.resolved.yaml`, then derives
+`config.fake.yaml` without changing real hardware settings. It replaces the starter's known serial placeholders,
 converts the standard room-environment service, converts or adds one power
 service, and omits physical outputs. It does not simulate arbitrary renamed
 services, GPIO inputs, MQTT sources or every driver.
 
-Always edit the real `config.yaml`, even in fake mode, and complete
-`labpulse config` before starting the stack. The guarded configuration command
-regenerates the fake projection when fake mode is active.
+Always edit `config.yaml` and its referenced `config.d` fragments, even in fake
+mode, and complete `labpulse config` before starting the stack. The guarded
+configuration command regenerates the resolved runtime and fake projection.
 
 The simulator can apply normal, recovery, danger-low, danger-high and stale
 scenarios to fixed measurements. UPS power supports mains, battery and stale.
@@ -116,18 +118,25 @@ and before the first `labpulse up`:
 labpulse config
 ```
 
-The guarded editor changes a temporary copy of
-`~/labpulse-live/config.yaml`. Define the MQTT connection, SMS routing,
-services, drivers, measurements, setups, dashboard tabs, calculated
+The guarded editor changes a temporary copy of the complete source bundle.
+With no file arguments it opens `config.yaml` and lists referenced fragments.
+It can open specific source files together, including a new fragment:
+
+```bash
+labpulse config config.yaml config.d/triton-01-measurements.yaml
+```
+
+Define the MQTT connection, SMS routing, services, drivers, measurements, setups, dashboard tabs, calculated
 measurements and any controlled outputs needed by this installation. The
 complete field-by-field reference and examples are in
 [Configuration](CONFIGURATION.md).
 
-The command validates the schema, preserves fake mode where active, renders
+The command validates all referenced files, preserves fake mode where active, renders
 Compose and Home Assistant output, checks both output families, installs the
-source and generated files, and displays status. It keeps rolling backups and
-attempts to restore the earlier source and output if a downstream check fails.
-The rolling copies are kept together in `~/labpulse-live/backups/`.
+source bundle and generated files, and displays status. It writes the standalone
+`config.resolved.yaml` used by real containers. It keeps rolling backups and
+attempts to restore the earlier source bundle and output if a downstream check
+fails. The rolling copies are kept together in `~/labpulse-live/backups/`.
 
 For real serial services, assign stable `/dev/serial/by-id/...` paths with the
 installed USB helper after the devices are connected, then run
@@ -369,6 +378,24 @@ and recent-request state are persisted in the live logs directory and included
 in backups.
 
 ## Controlled GPIO outputs
+
+An output can be placed with the experiment it controls by adding one or more
+setup IDs to its live configuration:
+
+```yaml
+outputs:
+  cooling_valve_enable:
+    label: Cooling Valve Enable
+    setups: [turbo_pump_experiment]
+    driver:
+      type: labpulse.gpio_output
+      options:
+        gpio_line: 18
+```
+
+Assigned outputs appear in a **Controls** card inside each selected setup.
+Unassigned outputs remain in the Monitor page's general **Controlled Outputs**
+section. All enabled outputs remain visible on System Status.
 
 Each enabled output becomes a Home Assistant switch and an independent worker.
 The worker accepts exact live `ON` and `OFF` commands only; retained or malformed

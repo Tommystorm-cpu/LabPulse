@@ -1,0 +1,14 @@
+# Starter measurement mapping for the optional Triton 1 MQTT service.
+mixing_chamber_temperature:
+  source: "Mixing Chamber T(K)"
+  unit: K
+  device_class: temperature
+cold_plate_temperature:
+  source: "Cold Plate T(K)"
+  unit: K
+  device_class: temperature
+condense_pressure:
+  source: "P2 Condense (Bar)"
+  unit: bar
+  device_class: pressure
+  required: false

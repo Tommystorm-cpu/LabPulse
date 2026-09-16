@@ -1,8 +1,10 @@
 # Operations
 
-The installed configuration is `~/labpulse-live/config.yaml`. Edit that file,
-then run `labpulse config` to validate and regenerate deployment files. The
-repository `config.yaml` is only the starter copied during setup.
+The installed source bundle is `~/labpulse-live/config.yaml` plus referenced
+measurement files beneath `~/labpulse-live/config.d/`. Edit it with
+`labpulse config`, optionally naming one or more source files, so the complete
+bundle is validated and `config.resolved.yaml` plus all deployment files are
+regenerated. The repository files are only new-install starters.
 
 ## Reading the system state
 

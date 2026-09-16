@@ -163,9 +163,17 @@ def test_setup_metadata_validation() -> None:
     obsolete_display["services"]["pump_room"]["display"] = {"order": 20}
     assert_rejected(obsolete_display, "display")
 
-    obsolete_group = config_data()
-    obsolete_group["services"]["pump_room"]["measurements"]["cryostat_only"]["subcategory"] = "General"
-    assert_rejected(obsolete_group, "subcategory")
+    obsolete_subcategory = config_data()
+    obsolete_subcategory["services"]["pump_room"]["measurements"]["cryostat_only"][
+        "subcategory"
+    ] = "General"
+    assert_rejected(obsolete_subcategory, "subcategory")
+
+    removed_group = config_data()
+    removed_group["services"]["pump_room"]["measurements"]["cryostat_only"]["group"] = (
+        "Environment"
+    )
+    assert_rejected(removed_group, "group")
 
     no_setups = config_data()
     no_setups["setups"] = {}

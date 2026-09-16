@@ -118,6 +118,37 @@ def test_config_command_routes_through_the_guarded_editor(
     assert call.kwargs["env"]["LABPULSE_DOCKER_COMMAND"] == "docker"
 
 
+def test_config_command_passes_selected_source_files(
+    live_dir: Path, repository_root: Path
+) -> None:
+    """Allow the guarded editor to open master and measurement fragments together."""
+
+    with patch.dict(
+        os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
+    ), patch.object(
+        control.shutil, "which", return_value="/bin/bash"
+    ), patch.object(
+        control, "find_install_assets", return_value=repository_root
+    ), patch.object(control.subprocess, "run") as run:
+        run.return_value = completed(["bash"])
+        result = control.main([
+            "--live-dir",
+            str(live_dir),
+            "config",
+            "config.yaml",
+            "config.d/triton-01-measurements.yaml",
+        ])
+
+    assert result == 0
+    expected_script = repository_root / "deployment" / "edit_config.sh"
+    assert run.call_args.args[0] == [
+        "/bin/bash",
+        str(expected_script),
+        "config.yaml",
+        "config.d/triton-01-measurements.yaml",
+    ]
+
+
 def test_alias_arguments_preserve_global_options(live_dir: Path) -> None:
     assert control.alias_arguments(
         "logs", ["--live-dir", str(live_dir), "-f", "mosquitto"]

@@ -3,16 +3,27 @@
       heading: [[ setup.label | yaml_scalar ]]
       heading_style: title
       icon: [[ setup.icon ]]
-[% if not setup.measurements %]
+[% if not setup.measurements and not setup.outputs %]
     - type: markdown
-      content: No measurements are currently assigned to this setup.
+      content: No measurements or controls are currently assigned to this setup.
 [% endif %]
-[% for _subcategory, measurements in setup.measurement_groups %]
+[% if setup.measurements %]
     - type: entities
       show_header_toggle: false
       entities:
-[% for measurement in measurements %]
+[% for measurement in setup.measurements %]
       - entity: [[ measurement.entity_id ]]
         name: [[ measurement.short_label | yaml_scalar ]]
 [% endfor %]
+[% endif %]
+[% if setup.outputs %]
+    - type: entities
+      title: Controls
+      show_header_toggle: false
+      entities:
+[% for output in setup.outputs %]
+      - entity: [[ output.entity_id ]]
+        name: [[ output.label | yaml_scalar ]]
+        icon: [[ output.icon ]]
 [% endfor %]
+[% endif %]

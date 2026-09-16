@@ -64,8 +64,10 @@ assets. `labpulse setup` creates or refreshes:
 
 ```text
 ~/labpulse-live/
-  config.yaml                         user-owned source configuration
-  config.fake.yaml                    derived only in fake-USB mode
+  config.yaml                         user-owned master configuration
+  config.d/                           optional user-owned measurement mappings
+  config.resolved.yaml                generated complete real runtime
+  config.fake.yaml                    generated complete fake-USB runtime
   compose.yaml                        generated
   .venv/                              managed host generation environment
   edit_config.sh                      package-managed workflow helper
@@ -97,6 +99,7 @@ ghcr.io/tommystorm-cpu/labpulse:<installed-package-version>
 User-owned state includes:
 
 - `~/labpulse-live/config.yaml`;
+- `~/labpulse-live/config.d/` physical-measurement fragments;
 - Home Assistant accounts, integrations, recorder data, and private storage;
 - Mosquitto retained data;
 - SMS subscription and processed-request state;
@@ -105,6 +108,7 @@ User-owned state includes:
 Generated or package-managed state includes:
 
 - `compose.yaml`;
+- `config.resolved.yaml`;
 - `config.fake.yaml`;
 - `homeassistant/config/configuration.yaml`;
 - `homeassistant/config/packages/labpulse_generated.yaml`;
@@ -179,28 +183,34 @@ live in `common/service_config.py`; controlled-output policy lives in
 The loader returns a `ConfigDocument` containing:
 
 - the resolved source path;
+- the ordered master/measurement-fragment source paths;
+- the complete raw mapping after `measurements_file` resolution;
 - a fully validated `LabPulseConfig`;
 - driver options already converted to the selected driver's Pydantic model;
 - service measurement defaults already resolved into each measurement.
 
 ```text
-config.yaml
+config.yaml + referenced config.d measurement mappings
   |
   v
 common.config.load_config()
   |
-  +-- deployment generation
-  +-- Home Assistant generation
-  +-- one hardware process per service
-  +-- one output process per enabled output
-  +-- SMS worker
-  \-- diagnostics
+  +-- config.resolved.yaml
+  |       |
+  |       +-- deployment generation
+  |       +-- Home Assistant generation
+  |       +-- one hardware process per service
+  |       +-- one output process per enabled output
+  |       +-- SMS worker
+  |       \-- diagnostics
 ```
 
-Each independent process loads once at startup. Consumers receive typed data
-and do not parse YAML or revalidate driver dictionaries. File, YAML, schema,
-driver, option, and service-selection failures use the shared `ConfigError`
-model with source and field locations.
+Only physical service measurement mappings may be external. The loader rejects
+general includes, unsafe fragment paths, symlinks, duplicate keys, and services
+that specify both inline and external measurements. Runtime containers receive
+the standalone generated file and never need access to operator-owned fragments.
+Each independent process loads once at startup. Consumers receive typed data and
+do not parse source fragments or revalidate driver dictionaries.
 
 Cross-component values are centralized:
 
@@ -219,6 +229,8 @@ validated document and driver resource declarations.
 
 ```text
 load one ConfigDocument
+  +-- render and independently validate config.resolved.yaml
+  +-- optionally derive and validate config.fake.yaml
   +-- render Compose in memory
   \-- render Home Assistant into a staging directory
           |
@@ -237,10 +249,10 @@ entry points. They are operational conveniences, not generation logic.
 
 ### Fake-USB mode
 
-The source of truth remains `config.yaml`. Fake mode derives
-`config.fake.yaml` by replacing real transports with supported pseudo-serial
-drivers while preserving service names, measurement names, and Home Assistant
-identity.
+The source of truth remains `config.yaml` plus any referenced `config.d`
+measurement mappings. Generation first creates `config.resolved.yaml`. Fake mode
+derives `config.fake.yaml` from that complete document by replacing real
+transports with supported pseudo-serial drivers while preserving identities.
 
 Compose mounts the derived file as `/app/config.yaml`. `labpulse config`
 detects that runtime mode, regenerates the derived file, validates it, and
@@ -428,6 +440,11 @@ measurement is dangerous.
 Physical measurement `precision` is sent only as MQTT discovery's
 `suggested_display_precision`; the state topic keeps the full numeric value for
 alarms and detailed history.
+
+Controlled outputs remain independent workers and MQTT switches. Optional
+setup membership changes only dashboard placement: assigned switches appear in
+their setup Controls cards, while System Status continues to show every enabled
+output.
 
 The notification path is deliberately one-way:
 

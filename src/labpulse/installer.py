@@ -12,6 +12,8 @@ from typing import Sequence
 
 ASSET_NAMES = (
     "config.yaml",
+    "config.d/triton-01-measurements.yaml",
+    "config.d/triton-02-measurements.yaml",
     "deployment/edit_config.sh",
     "deployment/generate_compose.sh",
     "deployment/generate_homeassistant_config.sh",

@@ -14,7 +14,13 @@ from typing import Any
 import yaml
 
 from labpulse import __version__
-from labpulse.common.config import ConfigError, LabPulseConfig, format_config_error, load_config
+from labpulse.common.config import (
+    ConfigDocument,
+    ConfigError,
+    LabPulseConfig,
+    format_config_error,
+    load_config,
+)
 from labpulse.hardware.registry import get_driver_definition
 
 
@@ -90,10 +96,10 @@ def _runtime_config_path(live_dir: Path, compose_data: Any) -> Path:
     """Find the config mounted into containers, including fake-USB mode."""
 
     if not isinstance(compose_data, dict):
-        return (live_dir / "config.yaml").resolve()
+        return (live_dir / "config.resolved.yaml").resolve()
     services = compose_data.get("services")
     if not isinstance(services, dict):
-        return (live_dir / "config.yaml").resolve()
+        return (live_dir / "config.resolved.yaml").resolve()
 
     for service in services.values():
         if not isinstance(service, dict):
@@ -108,7 +114,7 @@ def _runtime_config_path(live_dir: Path, compose_data: Any) -> Path:
             if len(parts) >= 2 and parts[1] == "/app/config.yaml":
                 source = Path(parts[0]).expanduser()
                 return source if source.is_absolute() else (live_dir / source).resolve()
-    return (live_dir / "config.yaml").resolve()
+    return (live_dir / "config.resolved.yaml").resolve()
 
 
 def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
@@ -140,27 +146,28 @@ def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
     )
 
 
-def _validate_config(report: DoctorReport, path: Path, name: str) -> LabPulseConfig | None:
+def _validate_config(report: DoctorReport, path: Path, name: str) -> ConfigDocument | None:
     """Validate one LabPulse configuration and record its outcome."""
 
     if not path.is_file():
         report.add(CheckStatus.FAIL, name, f"missing {path}; run 'labpulse setup' to restore managed files")
         return None
     try:
-        config = load_config(path).config
+        document = load_config(path)
     except ConfigError as error:
         report.add(CheckStatus.FAIL, name, _validation_detail(error))
         return None
 
-    enabled_services = sum(service.enabled for service in config.services.values())
-    enabled_outputs = sum(output.enabled for output in config.outputs.values())
+    enabled_services = sum(service.enabled for service in document.config.services.values())
+    enabled_outputs = sum(output.enabled for output in document.config.outputs.values())
+    fragments = len(document.measurement_sources)
     report.add(
         CheckStatus.PASS,
         name,
         f"{path.name} is valid ({enabled_services} enabled hardware services, "
-        f"{enabled_outputs} enabled outputs)",
+        f"{enabled_outputs} enabled outputs, {fragments} measurement fragments)",
     )
-    return config
+    return document
 
 
 def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simulated: bool) -> None:
@@ -491,10 +498,36 @@ def diagnose(
             )
     _check_runtime_image(report, compose_data)
 
-    # config.yaml remains the user's source of truth. In fake USB mode the
-    # containers instead read config.fake.yaml, so both files need checking.
+    # config.yaml plus config.d remain the operator-owned source. Containers
+    # consume only a complete generated runtime document.
     source_config_path = (live_dir / "config.yaml").resolve()
-    source_config = _validate_config(report, source_config_path, "Source configuration")
+    source_document = _validate_config(report, source_config_path, "Source configuration")
+    resolved_config_path = (live_dir / "config.resolved.yaml").resolve()
+    resolved_document = _validate_config(
+        report,
+        resolved_config_path,
+        "Resolved configuration",
+    )
+    if source_document is not None and resolved_document is not None:
+        if source_document.resolved_data == resolved_document.resolved_data:
+            report.add(
+                CheckStatus.PASS,
+                "Resolved configuration freshness",
+                "config.resolved.yaml matches config.yaml and its measurement fragments",
+            )
+        else:
+            report.add(
+                CheckStatus.FAIL,
+                "Resolved configuration freshness",
+                "config.resolved.yaml is stale; run 'labpulse config'",
+            )
+    else:
+        report.add(
+            CheckStatus.SKIP,
+            "Resolved configuration freshness",
+            "source or resolved configuration is unavailable",
+        )
+
     runtime_config_path = _runtime_config_path(live_dir, compose_data)
     simulated = runtime_config_path.name == "config.fake.yaml"
     if compose_data is None:
@@ -510,13 +543,30 @@ def diagnose(
             (
                 "fake USB via config.fake.yaml"
                 if simulated
-                else "real hardware via config.yaml"
+                else "real hardware via config.resolved.yaml"
             ),
         )
-    if runtime_config_path == source_config_path.resolve():
-        runtime_config = source_config
+        expected_runtime_path = (
+            (live_dir / "config.fake.yaml").resolve()
+            if simulated
+            else resolved_config_path
+        )
+        if runtime_config_path != expected_runtime_path:
+            report.add(
+                CheckStatus.FAIL,
+                "Runtime configuration mount",
+                f"Compose mounts {runtime_config_path}; expected {expected_runtime_path}",
+            )
+        else:
+            report.add(
+                CheckStatus.PASS,
+                "Runtime configuration mount",
+                f"Compose mounts {expected_runtime_path.name}",
+            )
+    if runtime_config_path == resolved_config_path:
+        runtime_document = resolved_document
     else:
-        runtime_config = _validate_config(report, runtime_config_path, "Runtime configuration")
+        runtime_document = _validate_config(report, runtime_config_path, "Runtime configuration")
 
     # These are the three LabPulse-owned Home Assistant outputs. User-owned
     # automations.yaml, scripts.yaml, and scenes.yaml are deliberately excluded.
@@ -541,7 +591,11 @@ def diagnose(
             "configuration, alarms, and dashboard are present",
         )
 
-    _check_hardware(report, runtime_config, simulated=simulated)
+    _check_hardware(
+        report,
+        None if runtime_document is None else runtime_document.config,
+        simulated=simulated,
+    )
 
     if compose_services:
         _check_docker(report, live_dir, compose_services, docker_prefix)

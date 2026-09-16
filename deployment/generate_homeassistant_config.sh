@@ -12,7 +12,7 @@ usage() {
   cat <<'EOF'
 Usage: ./generate_homeassistant_config.sh [options]
 
-Generates Home Assistant config from the live config.yaml.
+Generates Home Assistant config from the live source bundle.
 
 Options:
   --config PATH                 Config YAML to read. Default: ./config.yaml
@@ -21,6 +21,7 @@ Options:
   -h, --help                    Show this help text.
 
 Generated files:
+  config.resolved.yaml
   homeassistant/config/configuration.yaml
   homeassistant/config/packages/labpulse_generated.yaml
   homeassistant/config/labpulse-dashboard.yaml

@@ -84,6 +84,10 @@ include = ["labpulse*"]
   "setup_usb_devices.py",
   "simulate_serial.py",
 ]
+"share/labpulse/config.d" = [
+  "config.d/triton-01-measurements.yaml",
+  "config.d/triton-02-measurements.yaml",
+]
 "share/labpulse/deployment" = [
   "deployment/edit_config.sh",
   "deployment/generate_compose.sh",

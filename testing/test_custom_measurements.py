@@ -35,7 +35,6 @@ def custom_config() -> dict[str, object]:
             "temperature_difference": {
                 "label": "Temperature Difference",
                 "short_label": "Delta T",
-                "group": "Calculated",
                 "setups": ["water_loop"],
                 "inputs": {
                     "supply": "water_hub.supply",

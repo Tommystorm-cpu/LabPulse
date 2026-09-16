@@ -139,7 +139,10 @@ def render_power() -> tuple[dict, dict, str]:
 
     temp = REFACTOR_DIR / "testing" / "tmp" / f"power-{uuid4().hex}"
     ha_dir = temp / "homeassistant" / "config"
-    result = generate_homeassistant([str(SIM_CONFIG), str(ha_dir)])
+    temp.mkdir(parents=True)
+    config_path = temp / "config.yaml"
+    config_path.write_bytes(SIM_CONFIG.read_bytes())
+    result = generate_homeassistant([str(config_path), str(ha_dir)])
     if result != 0:
         raise AssertionError(f"generator returned {result}")
     package_text = (ha_dir / "packages" / "labpulse_generated.yaml").read_text(

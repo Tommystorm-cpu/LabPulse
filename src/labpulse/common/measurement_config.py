@@ -130,7 +130,6 @@ class MeasurementConfig(BaseModel):
     source: str | None = None
     label: str | None = None
     short_label: str | None = None
-    group: str | None = None
     setups: tuple[str, ...] | None = None
     alarmed: bool = Field(default=True, strict=True)
     required: bool = Field(default=True, strict=True)
@@ -186,7 +185,6 @@ class MeasurementDefaultsConfig(BaseModel):
 
     label: str | None = None
     short_label: str | None = None
-    group: str | None = None
     setups: tuple[str, ...] | None = None
     alarmed: bool | None = Field(default=None, strict=True)
     required: bool | None = Field(default=None, strict=True)
@@ -220,7 +218,6 @@ class CustomMeasurementConfig(BaseModel):
 
     label: str | None = None
     short_label: str | None = None
-    group: str | None = None
     setups: tuple[str, ...]
     inputs: dict[str, str]
     constants: dict[str, float] = Field(default_factory=dict)

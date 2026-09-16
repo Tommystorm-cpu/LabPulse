@@ -1,5 +1,20 @@
 # Troubleshooting incidents and notifications
 
+## Configuration fragment or resolved runtime fails
+
+Run `labpulse doctor` first. A `measurements_file` must be a relative `.yaml`
+or `.yml` path beneath `config.d`, may not use symlinks or `..`, and must contain
+a non-empty measurement mapping without a surrounding `measurements:` key.
+LabPulse rejects duplicate keys and reports the fragment path for measurement
+schema errors. A service must define exactly one of inline `measurements` and
+`measurements_file`.
+
+If Doctor reports that `config.resolved.yaml` is missing, stale, or different
+from the source bundle, run `labpulse config` and save the guarded edit. Do not
+repair the resolved file or Compose mount manually. Real containers mount
+`config.resolved.yaml`; fake mode mounts `config.fake.yaml`, which is derived
+after resolution.
+
 ## Service Offline
 
 Inspect the service status and container logs. Offline means the driver is

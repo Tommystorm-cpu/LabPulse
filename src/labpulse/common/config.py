@@ -1,9 +1,10 @@
-"""Load and validate the single authoritative LabPulse configuration."""
+"""Load and validate the authoritative LabPulse configuration source bundle."""
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from ipaddress import AddressValueError, IPv4Address
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -228,9 +229,15 @@ class LabPulseConfig(BaseModel):
             if setup.dashboard != "main" and setup.dashboard not in self.dashboards:
                 raise ValueError(f"setup {setup_id} references unknown dashboard: {setup.dashboard}")
 
-        for output_id in self.outputs:
+        for output_id, output in self.outputs.items():
             if not output_id or slug(output_id) != output_id:
                 raise ValueError("output IDs must use lowercase letters, numbers, and underscores")
+            missing = sorted(set(output.setups).difference(self.setups))
+            if missing:
+                raise ValueError(
+                    f"output {output_id} references unknown setups: "
+                    + ", ".join(missing)
+                )
 
         # Physical measurements may be shared by several experimental setups.
         available_setup_ids = set(self.setups)
@@ -324,6 +331,7 @@ class ConfigProblem:
 
     location: tuple[str | int, ...]
     message: str
+    source_path: Path | None = None
 
 
 class ConfigError(Exception):
@@ -339,10 +347,13 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class ConfigDocument:
-    """One validated configuration together with its authoritative source path."""
+    """One resolved configuration together with its operator-owned sources."""
 
     path: Path
     config: LabPulseConfig
+    resolved_data: dict[str, object]
+    source_paths: tuple[Path, ...]
+    measurement_sources: tuple[tuple[str, Path], ...] = ()
 
 
 def format_config_error(error: ConfigError) -> str:
@@ -351,12 +362,194 @@ def format_config_error(error: ConfigError) -> str:
     lines = [f"Configuration validation failed for {error.path}:"]
     for problem in error.problems:
         location = " -> ".join(str(item) for item in problem.location) or "root"
-        lines.append(f"[ {location} ]: {problem.message}")
+        source = f"{problem.source_path}: " if problem.source_path is not None else ""
+        lines.append(f"{source}[ {location} ]: {problem.message}")
     return "\n".join(lines)
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that refuses silent replacement of duplicate keys."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeyLoader,
+    node: yaml.nodes.MappingNode,
+    deep: bool = False,
+) -> dict[object, object]:
+    """Construct one mapping while reporting the second occurrence of a key."""
+
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as error:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found an unhashable mapping key",
+                key_node.start_mark,
+            ) from error
+        if duplicate:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
+def _decode_yaml(text: str, source_path: Path) -> object:
+    """Decode one YAML source with duplicate-key and source-aware errors."""
+
+    try:
+        return yaml.load(text, Loader=_UniqueKeyLoader)
+    except yaml.YAMLError as error:
+        raise ConfigError(
+            source_path,
+            (ConfigProblem((), str(error)),),
+        ) from error
+
+
+def _measurement_fragment_path(master_path: Path, value: object) -> Path:
+    """Validate and resolve one measurement fragment beneath config.d."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("measurements_file must be a non-blank relative YAML path")
+    raw = value.strip()
+    relative = Path(raw)
+    if (
+        relative.is_absolute()
+        or PureWindowsPath(raw).is_absolute()
+        or raw.startswith(("/", "\\"))
+    ):
+        raise ValueError("measurements_file must be relative to config.yaml")
+    if relative.suffix.lower() not in {".yaml", ".yml"}:
+        raise ValueError("measurements_file must name a .yaml or .yml file")
+    if not relative.parts or relative.parts[0] != "config.d" or ".." in relative.parts:
+        raise ValueError("measurements_file must stay beneath config.d")
+
+    candidate = master_path.parent.joinpath(*relative.parts)
+    current = master_path.parent
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"measurements_file must not use symlinks: {relative.as_posix()}")
+    resolved = candidate.resolve()
+    fragment_root = (master_path.parent / "config.d").resolve()
+    if not resolved.is_relative_to(fragment_root):
+        raise ValueError("measurements_file must stay beneath config.d")
+    if not candidate.exists():
+        raise ValueError(f"measurements_file does not exist: {relative.as_posix()}")
+    if not candidate.is_file():
+        raise ValueError(f"measurements_file is not a regular file: {relative.as_posix()}")
+    return resolved
+
+
+def _resolve_measurement_files(
+    data: Mapping[object, object],
+    master_path: Path,
+) -> tuple[dict[str, object], tuple[Path, ...], tuple[tuple[str, Path], ...]]:
+    """Replace only per-service measurement-file references with their mappings."""
+
+    resolved_data = deepcopy(dict(data))
+    services = resolved_data.get("services")
+    if not isinstance(services, Mapping):
+        return resolved_data, (master_path,), ()
+
+    source_paths: list[Path] = [master_path]
+    measurement_sources: list[tuple[str, Path]] = []
+    resolved_services = dict(services)
+    resolved_data["services"] = resolved_services
+    for service_name, raw_service in services.items():
+        if not isinstance(service_name, str) or not isinstance(raw_service, Mapping):
+            continue
+        service = dict(raw_service)
+        has_inline = "measurements" in service
+        has_file = "measurements_file" in service
+        if has_inline and has_file:
+            raise ConfigError(
+                master_path,
+                (ConfigProblem(
+                    ("services", service_name),
+                    "define exactly one of measurements or measurements_file, not both",
+                ),),
+            )
+        if not has_file:
+            continue
+        try:
+            fragment_path = _measurement_fragment_path(master_path, service["measurements_file"])
+            fragment_text = fragment_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError) as error:
+            raise ConfigError(
+                master_path,
+                (ConfigProblem(
+                    ("services", service_name, "measurements_file"),
+                    str(error),
+                ),),
+            ) from error
+        fragment = _decode_yaml(fragment_text, fragment_path)
+        if not isinstance(fragment, Mapping):
+            kind = "empty" if fragment is None else type(fragment).__name__
+            raise ConfigError(
+                master_path,
+                (ConfigProblem(
+                    ("services", service_name, "measurements_file"),
+                    f"measurement file root must be a non-empty mapping, not {kind}",
+                    source_path=fragment_path,
+                ),),
+            )
+        if not fragment:
+            raise ConfigError(
+                master_path,
+                (ConfigProblem(
+                    ("services", service_name, "measurements_file"),
+                    "measurement file root must be a non-empty mapping",
+                    source_path=fragment_path,
+                ),),
+            )
+        service.pop("measurements_file")
+        service["measurements"] = dict(fragment)
+        resolved_services[service_name] = service
+        if fragment_path not in source_paths:
+            source_paths.append(fragment_path)
+        measurement_sources.append((service_name, fragment_path))
+    return resolved_data, tuple(source_paths), tuple(measurement_sources)
+
+
+def render_resolved_config(document: ConfigDocument) -> str:
+    """Render one standalone runtime document without source-file references."""
+
+    return (
+        "# GENERATED BY LABPULSE.\n"
+        "# Changes to this file are overwritten by configuration regeneration.\n"
+        "# Edit config.yaml and files beneath config.d instead.\n"
+        + yaml.safe_dump(document.resolved_data, sort_keys=False, allow_unicode=True)
+    )
+
+
+def validate_resolved_config(text: str, output_path: str | Path) -> ConfigDocument:
+    """Validate rendered runtime YAML independently of its source document."""
+
+    document = load_config(output_path, text=text)
+    if document.measurement_sources:
+        raise ConfigError(
+            document.path,
+            (ConfigProblem((), "resolved configuration contains measurements_file"),),
+        )
+    return document
+
+
 def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH, *, text: str | None = None) -> ConfigDocument:
-    """Read or decode and validate one LabPulse configuration without exiting."""
+    """Read, resolve measurement fragments, and validate one source bundle."""
 
     config_path = Path(yaml_path).expanduser().resolve()
     if text is None:
@@ -364,10 +557,7 @@ def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH, *, text: str | None
             text = config_path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as error:
             raise ConfigError(config_path, (ConfigProblem((), str(error)),)) from error
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as error:
-        raise ConfigError(config_path, (ConfigProblem((), str(error)),)) from error
+    data = _decode_yaml(text, config_path)
 
     if not isinstance(data, Mapping):
         if data is None:
@@ -376,12 +566,33 @@ def load_config(yaml_path: str | Path = DEFAULT_CONFIG_PATH, *, text: str | None
             message = f"configuration root must be a mapping, not {type(data).__name__}"
         raise ConfigError(config_path, (ConfigProblem((), message),))
 
+    resolved_data, source_paths, measurement_sources = _resolve_measurement_files(
+        data,
+        config_path,
+    )
+    measurement_source_map = dict(measurement_sources)
     try:
-        config = LabPulseConfig.model_validate(dict(data))
+        config = LabPulseConfig.model_validate(resolved_data)
     except ValidationError as error:
         problems = tuple(
-            ConfigProblem(location=tuple(item["loc"]), message=str(item["msg"]))
+            ConfigProblem(
+                location=tuple(item["loc"]),
+                message=str(item["msg"]),
+                source_path=(
+                    measurement_source_map.get(str(item["loc"][1]))
+                    if len(item["loc"]) >= 2
+                    and item["loc"][0] == "services"
+                    and str(item["loc"][1]) in measurement_source_map
+                    else None
+                ),
+            )
             for item in error.errors()
         )
         raise ConfigError(config_path, problems) from error
-    return ConfigDocument(config_path, config)
+    return ConfigDocument(
+        config_path,
+        config,
+        resolved_data,
+        source_paths,
+        measurement_sources,
+    )

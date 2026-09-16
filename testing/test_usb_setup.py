@@ -191,6 +191,39 @@ def test_surgical_config_update_and_backup() -> None:
         shutil.rmtree(directory)
 
 
+def test_usb_assignment_validates_external_measurements_without_editing_them() -> None:
+    """Keep driver-port surgery in the master while resolving its measurement file."""
+
+    directory = TEST_TMP / f"usb-fragment-{uuid4().hex}"
+    (directory / "config.d").mkdir(parents=True)
+    path = directory / "config.yaml"
+    source = """mqtt: {broker: mosquitto}
+setups: {monitor: {}}
+services:
+  pressure_monitor:
+    label: Pressure Monitor
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /dev/ttyACM0
+    measurement_defaults: {setups: [monitor]}
+    measurements_file: config.d/pressure-measurements.yaml
+"""
+    fragment = directory / "config.d" / "pressure-measurements.yaml"
+    path.write_text(source, encoding="utf-8")
+    fragment.write_text("pressure: {unit: bar}\n", encoding="utf-8")
+    try:
+        updated = replace_serial_ports(
+            source,
+            {"pressure_monitor": "/dev/serial/by-id/usb-pressure"},
+            source=path,
+        )
+        assert 'port: "/dev/serial/by-id/usb-pressure"' in updated
+        assert fragment.read_text(encoding="utf-8") == "pressure: {unit: bar}\n"
+    finally:
+        shutil.rmtree(directory)
+
+
 def test_cli_modes() -> None:
     """Check real and fake workflows expose explicit safe command options."""
 

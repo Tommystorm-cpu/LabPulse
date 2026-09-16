@@ -1,13 +1,14 @@
 # Configuration reference
 
-The installed source of truth is:
+The installed source entry point is:
 
 ```text
 ~/labpulse-live/config.yaml
 ```
 
-The repository `config.yaml` is copied only when setup creates a new
-installation. Never edit it expecting an existing Pi to change.
+It may reference operator-owned physical-measurement mappings beneath
+`~/labpulse-live/config.d/`. The repository sources are copied only when setup
+creates a new installation. Never edit them expecting an existing Pi to change.
 
 For a real-hardware installation, use the guarded editor:
 
@@ -17,19 +18,20 @@ labpulse config
 
 ## Source and runtime configuration
 
-There is one operator-owned source and, in fake mode, one derived runtime
-projection:
+There is one operator-owned source bundle and one complete generated runtime:
 
 | Path | Ownership | Purpose |
 |---|---|---|
-| `~/labpulse-live/config.yaml` | Operator | Permanent service, measurement, setup, dashboard, MQTT, and SMS configuration |
-| `~/labpulse-live/config.fake.yaml` | Generated | Fake-USB transport substitutions used by simulated containers |
+| `~/labpulse-live/config.yaml` | Operator | Master service, setup, dashboard, MQTT, SMS, and inline-measurement configuration |
+| `~/labpulse-live/config.d/**/*.yaml` | Operator | Optional physical-measurement mappings selected by `measurements_file` |
+| `~/labpulse-live/config.resolved.yaml` | Generated | Complete validated real-hardware runtime with every measurement inline |
+| `~/labpulse-live/config.fake.yaml` | Generated | Complete fake-USB runtime derived from the resolved configuration |
 | repository `config.yaml` | Package | Starter copied only when a live source does not exist |
 
-Real Compose mounts `config.yaml` into Python containers as
-`/app/config.yaml`. Fake Compose mounts `config.fake.yaml` at that same
-container path. Hardware and SMS processes therefore use one stable internal
-path regardless of runtime mode.
+Real Compose mounts `config.resolved.yaml` into Python containers as
+`/app/config.yaml`. Fake Compose mounts `config.fake.yaml` at that same path.
+Source fragments are never mounted into containers. Do not edit either generated
+runtime file; `labpulse config`, setup, and direct generators replace them.
 
 Home Assistant generation uses the active runtime document. Fake derivation
 preserves service and measurement names, so both modes produce the same public
@@ -246,6 +248,7 @@ outputs:
   cooling_valve_enable:
     label: Cooling Valve Enable
     icon: mdi:valve
+    setups: [turbo_pump_experiment]
     driver:
       type: labpulse.gpio_output
       options:
@@ -258,14 +261,17 @@ outputs:
 ```
 
 Each enabled output becomes one `labpulse-output-...` container and one MQTT
-switch such as `switch.labpulse_output_cooling_valve_enable`. The switch is
-shown under Controlled Outputs on the Monitor and System Status views.
+switch such as `switch.labpulse_output_cooling_valve_enable`. An output with
+`setups` is shown under **Controls** inside each selected setup and remains on
+System Status. An output without `setups` is shown under **Controlled Outputs**
+on Monitor and on System Status.
 
 | Field | Default | Meaning |
 |---|---:|---|
 | `enabled` | `true` | Whether to generate and run this output worker |
 | `label` | required | Home Assistant switch and device label |
 | `icon` | `mdi:toggle-switch` | Material Design switch icon |
+| `setups` | none | Optional non-empty list of declared setups where this control is displayed |
 | `driver` | required | Output-capable driver and its options |
 | `reconnect_interval_seconds` | `5` | Seconds; greater than 0 and at most 3600 |
 | `maximum_active_seconds` | none | Seconds; greater than 0 and at most 86400 when supplied |
@@ -341,14 +347,12 @@ services:
       temperature:
         label: Main Lab Temperature
         short_label: Temperature
-        group: Environment
         setups: [compressed_air]
         unit: "°C"
         device_class: temperature
       humidity:
         label: Main Lab Humidity
         short_label: Humidity
-        group: Environment
         setups: [compressed_air]
         unit: "%"
         device_class: humidity
@@ -390,7 +394,6 @@ measurements:
   temperature:
     label: Cryogenics Room Temperature
     short_label: Room Temperature
-    group: Environment
     unit: "°C"
     precision: 1
     device_class: temperature
@@ -399,13 +402,45 @@ measurements:
     recovery_confirm_seconds: 15
 ```
 
+A service may instead move this mapping into one file:
+
+```yaml
+measurement_defaults:
+  setups: [triton_1]
+measurements_file: config.d/triton-01-measurements.yaml
+```
+
+`config.d/triton-01-measurements.yaml` contains the measurement mapping itself,
+without a surrounding `measurements:` key:
+
+```yaml
+mixing_chamber_temperature:
+  source: "Mixing Chamber T(K)"
+  unit: K
+  device_class: temperature
+cold_plate_temperature:
+  source: "Cold Plate T(K)"
+  unit: K
+  device_class: temperature
+```
+
+Define exactly one of `measurements` and `measurements_file` for each service.
+External files are supported only for physical service measurements. Driver
+settings, `measurement_defaults`, calculated measurements, outputs, setups,
+dashboards, MQTT, and SMS remain in `config.yaml`.
+
+The path must be relative to `config.yaml`, name a regular `.yaml` or `.yml`
+file beneath `config.d`, and must not use a symlink or `..`. Empty files, lists,
+duplicate keys, missing files, and malformed mappings are rejected with the
+fragment filename. Includes within fragments and general-purpose YAML includes
+are not supported.
+
 | Field | Default | Meaning |
 |---|---|---|
 | mapping key | required | Stable driver, MQTT, and entity ID; lowercase letters, numbers, and underscores |
 | `source` | driver-specific | Exact external field name; required by `labpulse.mqtt_json` and rejected by drivers that already produce stable IDs |
 | `label` | readable form of ID | Full label used for MQTT discovery, System Status, active problems, helpers, and notifications |
 | `short_label` | `label` | Shorter label used where the dashboard's setup heading supplies context |
-| `group` | none | Presentation grouping within a setup |
 | `setups` | required for ordinary values | One or more logical setup IDs |
 | `alarmed` | `true` | Whether to generate measurement alarm state, controls, and notifications |
 | `required` | `true` | Whether missing data needs attention, can notify, and affects service status; strict boolean |
@@ -417,9 +452,12 @@ measurements:
 | `icon` | derived | Explicit `mdi:` override |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
 
-Measurement IDs are mapping keys and preserve their YAML order. Use each key
-once: the current YAML loader does not reject duplicate keys and a later
-entry can replace an earlier one before validation. Hardware readings not listed in `measurements` are ignored.
+Measurement IDs are mapping keys and preserve their YAML order. Duplicate keys
+are rejected rather than allowing a later value to replace an earlier one.
+Hardware readings not listed in the resolved `measurements` mapping are ignored.
+Each setup renders its measurements in one card in this order. The former
+`group` field is unsupported; remove it from measurements, measurement defaults,
+and custom measurements when upgrading an existing configuration.
 
 `measurement_defaults` is optional and accepts the same presentation,
 availability, alarm, timing, unit, precision, device-class, icon, and state-class fields as
@@ -437,14 +475,15 @@ history, alarm thresholds, and detailed history graph retain the unrounded
 numeric value. The separate `custom_measurements.precision` field currently
 rounds a calculated result itself, including its history.
 
-Changing `label`, `short_label`, or `group` preserves identity. Changing a
+Changing `label` or `short_label` preserves identity. Changing a
 measurement mapping key creates a new MQTT topic, Home Assistant entity, alarm helpers, and
 history.
 
 Use `label` to keep a measurement unambiguous when it appears without its
 logical setup heading. Add `short_label` only when that heading makes a
 shorter name clearer. For example, `Triton 1 Temperature In` can appear as
-`Temperature In` within the `Triton 1` dashboard group.
+`Temperature In` within the `Triton 1` setup. Measurements appear in one card
+per setup, preserving their configuration order.
 
 Set `alarmed: false` for informational telemetry that should remain published
 and visible on operator dashboards and System Status without measurement alarm
@@ -471,7 +510,6 @@ custom_measurements:
   pump_room_temperature_difference:
     label: Pump Room Temperature Difference
     short_label: Temperature Difference
-    group: Calculated
     setups: [pump_room_system]
     inputs:
       supply: pump_room.temp0
@@ -500,7 +538,6 @@ numbers and must be used when declared.
 |---|---:|---|
 | `label` | readable form of custom ID | Full display and notification label |
 | `short_label` | `label` | Compact setup-dashboard label |
-| `group` | none | Presentation grouping within a setup |
 | `setups` | required | One or more logical setup IDs |
 | `inputs` | required | One or more alias-to-physical-measurement references |
 | `constants` | `{}` | Named finite numbers available to the formula |
@@ -802,8 +839,9 @@ confirmation values accept 1 to 3600 seconds.
 
 ## Fake configuration
 
-`labpulse setup --fake-usb` derives `config.fake.yaml` without altering the
-source. Substitution is deliberately narrow:
+`labpulse setup --fake-usb` first resolves `config.yaml` and `config.d` into
+`config.resolved.yaml`, then derives `config.fake.yaml` without altering the
+operator-owned source bundle. Substitution is deliberately narrow:
 
 - named `FAKE_PRESSURE_PORT`, `FAKE_PUMP_ROOM_PORT`, `FAKE_TURBO_PUMP_PORT`,
   and `FAKE_UPS_PORT` placeholders map to fixed pseudo-terminal paths;
@@ -821,7 +859,7 @@ without hardware. The simulator's fixed channel names must match the configured
 measurement names. See
 [simulation controls](USER_GUIDE.md#choose-real-hardware-or-simulation).
 
-Do not edit `config.fake.yaml` manually. The current `labpulse config` workflow
+Do not edit `config.resolved.yaml` or `config.fake.yaml` manually. The current `labpulse config` workflow
 detects whether generated Compose is using fake USB, regenerates
 `config.fake.yaml` from the edited source, and preserves that runtime mode:
 
@@ -829,10 +867,9 @@ detects whether generated Compose is using fake USB, regenerates
 labpulse config
 ```
 
-The guarded workflow validates both the edited source and derived fake runtime
-configuration through the central loader. It then builds Compose and Home
-Assistant output from one loaded runtime document before replacing managed
-live files.
+The guarded workflow validates the complete staged source bundle, renders and
+independently validates the standalone resolved runtime, and then builds
+Compose and Home Assistant output from that same runtime document.
 
 ## Validation and application
 
@@ -840,7 +877,15 @@ The supported workflow is:
 
 ```bash
 labpulse config
+labpulse config config.d/triton-01-measurements.yaml
+labpulse config config.yaml config.d/triton-01-measurements.yaml
 ```
+
+With no path, the command edits `config.yaml` and lists its referenced
+measurement files. Passing paths opens staged copies of the selected sources.
+The command compares and backs up the complete source bundle, so changing only
+a fragment still regenerates and refreshes the deployment. A master reference
+and a new fragment can be created in one invocation by passing both paths.
 
 For diagnostics without mutation:
 

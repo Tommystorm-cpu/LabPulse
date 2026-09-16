@@ -65,7 +65,7 @@
 [% endif %]
 [% include "dashboard/setup_measurements.yaml.j2" %]
 [% endfor %]
-[% if model.outputs %]
+[% if model.unassigned_outputs %]
   - type: vertical-stack
     cards:
     - type: heading
@@ -75,7 +75,7 @@
     - type: entities
       show_header_toggle: false
       entities:
-[% for output in model.outputs %]
+[% for output in model.unassigned_outputs %]
       - entity: [[ output.entity_id ]]
         name: [[ output.label | yaml_scalar ]]
         icon: [[ output.icon ]]

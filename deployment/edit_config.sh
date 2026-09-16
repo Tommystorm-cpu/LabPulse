@@ -1,32 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Edit, validate, and apply the live Raspberry Pi LabPulse configuration.
+# Edit, validate, and apply the operator-owned LabPulse configuration bundle.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${LABPULSE_LIVE_DIR:-$SCRIPT_DIR}"
 CONFIG_PATH="$PROJECT_DIR/config.yaml"
-BACKUP_DIR="$PROJECT_DIR/backups"
-CONFIG_BACKUP="$BACKUP_DIR/config.yaml.edit-backup"
+CONFIG_DIR="$PROJECT_DIR/config.d"
+RESOLVED_CONFIG_PATH="$PROJECT_DIR/config.resolved.yaml"
 FAKE_CONFIG_PATH="$PROJECT_DIR/config.fake.yaml"
-FAKE_CONFIG_BACKUP="$BACKUP_DIR/config.fake.yaml.edit-backup"
+BACKUP_DIR="$PROJECT_DIR/backups"
+SOURCE_BACKUP="$BACKUP_DIR/config-source.edit-backup"
 COMPOSE_PATH="$PROJECT_DIR/compose.yaml"
 HOST_PYTHON="${LABPULSE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
 
-# Remove temporary validation files without touching the live configuration.
 cleanup() {
-  if [ -n "${WORK_CONFIG:-}" ] && [ -e "$WORK_CONFIG" ]; then
-    rm -f "$WORK_CONFIG"
-  fi
-  if [ -n "${WORK_FAKE_CONFIG:-}" ] && [ -e "$WORK_FAKE_CONFIG" ]; then
-    rm -f "$WORK_FAKE_CONFIG"
+  if [ -n "${WORK_ROOT:-}" ] && [ -d "$WORK_ROOT" ]; then
+    rm -rf -- "$WORK_ROOT"
   fi
   if [ -n "${CHECK_DIR:-}" ] && [ -d "$CHECK_DIR" ]; then
-    rm -rf "$CHECK_DIR"
+    rm -rf -- "$CHECK_DIR"
+  fi
+  if [ -n "${BACKUP_STAGING:-}" ] && [ -d "$BACKUP_STAGING" ]; then
+    rm -rf -- "$BACKUP_STAGING"
   fi
 }
 trap cleanup EXIT
 
-# Fail with setup guidance before creating temporary files or opening an editor.
 if [ ! -f "$CONFIG_PATH" ]; then
   echo "ERROR: Required LabPulse file is missing: $CONFIG_PATH" >&2
   exit 1
@@ -44,7 +43,6 @@ if [ "${#DOCKER_PARTS[@]}" -eq 0 ]; then
   exit 1
 fi
 
-# Preserve the runtime mode selected by the current generated Compose file.
 ACTIVE_FAKE_USB=0
 if [ -f "$COMPOSE_PATH" ] && \
   grep -Eq 'config\.fake\.yaml:/app/config\.yaml(:ro)?' "$COMPOSE_PATH"; then
@@ -55,11 +53,18 @@ if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
   COMPOSE_MODE_ARGS+=("--fake-usb")
 fi
 
-# Work beside config.yaml so any relative config paths keep the same base directory.
-WORK_CONFIG="$(mktemp "$PROJECT_DIR/.config.yaml.editing.XXXXXX")"
-WORK_FAKE_CONFIG=""
+WORK_ROOT="$(mktemp -d "$PROJECT_DIR/.config-source.editing.XXXXXX")"
 CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/labpulse-config-check.XXXXXX")"
-cp -p "$CONFIG_PATH" "$WORK_CONFIG"
+BACKUP_STAGING=""
+cp -p "$CONFIG_PATH" "$WORK_ROOT/config.yaml"
+mkdir -p "$WORK_ROOT/config.d"
+if [ -d "$CONFIG_DIR" ]; then
+  if find "$CONFIG_DIR" -type l -print -quit | grep -q .; then
+    echo "ERROR: config.d must not contain symbolic links." >&2
+    exit 1
+  fi
+  cp -a "$CONFIG_DIR/." "$WORK_ROOT/config.d/"
+fi
 
 if [ -n "${VISUAL:-}" ]; then
   EDITOR_COMMAND="$VISUAL"
@@ -79,84 +84,142 @@ if [ "${#EDITOR_PARTS[@]}" -eq 0 ]; then
   exit 1
 fi
 
-echo "Editing live LabPulse configuration: $CONFIG_PATH"
-if ! "${EDITOR_PARTS[@]}" "$WORK_CONFIG"; then
+REQUESTED_FILES=("$@")
+if [ "${#REQUESTED_FILES[@]}" -eq 0 ]; then
+  REQUESTED_FILES=("config.yaml")
+  echo "Configured measurement files:"
+  "$HOST_PYTHON" - "$CONFIG_PATH" <<'PY' || true
+from pathlib import Path
+import sys
+
+from labpulse.common.config import ConfigError, load_config
+
+master = Path(sys.argv[1]).resolve()
+try:
+    document = load_config(master)
+except ConfigError as error:
+    print(f"  unavailable until the current source validates: {error}")
+else:
+    fragments = [path.relative_to(master.parent) for path in document.source_paths[1:]]
+    if fragments:
+        for path in fragments:
+            print(f"  {path.as_posix()}")
+    else:
+        print("  none")
+PY
+fi
+
+if ! EDIT_PATH_OUTPUT="$(
+  "$HOST_PYTHON" - "$PROJECT_DIR" "$WORK_ROOT" "${REQUESTED_FILES[@]}" <<'PY'
+from pathlib import Path, PureWindowsPath
+import sys
+
+live_root = Path(sys.argv[1]).resolve()
+work_root = Path(sys.argv[2]).resolve()
+for raw in sys.argv[3:]:
+    relative = Path(raw)
+    allowed = relative == Path("config.yaml") or (
+        len(relative.parts) >= 2
+        and relative.parts[0] == "config.d"
+        and relative.suffix.lower() in {".yaml", ".yml"}
+    )
+    if (
+        not allowed
+        or relative.is_absolute()
+        or PureWindowsPath(raw).is_absolute()
+        or raw.startswith(("/", "\\"))
+        or ".." in relative.parts
+    ):
+        raise SystemExit(
+            f"ERROR: Config edit target must be config.yaml or YAML beneath config.d: {raw}"
+        )
+    current = live_root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise SystemExit(f"ERROR: Config edit target must not use symlinks: {raw}")
+    staged = work_root.joinpath(*relative.parts)
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    if not staged.exists():
+        staged.write_text("{}\n", encoding="utf-8")
+    print(staged)
+PY
+)"; then
+  exit 1
+fi
+mapfile -t EDIT_PATHS <<< "$EDIT_PATH_OUTPUT"
+
+echo "Editing staged LabPulse source files:"
+printf '  %s\n' "${REQUESTED_FILES[@]}"
+if ! "${EDITOR_PARTS[@]}" "${EDIT_PATHS[@]}"; then
   echo "Editor exited with an error; no changes were applied." >&2
   exit 1
 fi
 
-if cmp -s "$CONFIG_PATH" "$WORK_CONFIG"; then
-  echo "No configuration changes detected; nothing was restarted."
-  exit 0
-fi
-
-RUNTIME_WORK_CONFIG="$WORK_CONFIG"
-if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
-  WORK_FAKE_CONFIG="$(mktemp "$PROJECT_DIR/.config.fake.yaml.editing.XXXXXX")"
-  "$HOST_PYTHON" - "$WORK_CONFIG" "$WORK_FAKE_CONFIG" <<'PY'
-from pathlib import Path
-import sys
-
-from labpulse.common.fake_config import derive_fake_config
-
-source_path = Path(sys.argv[1])
-runtime_path = Path(sys.argv[2])
-runtime_path.write_text(derive_fake_config(source_path.read_text()))
-PY
-  RUNTIME_WORK_CONFIG="$WORK_FAKE_CONFIG"
-fi
-
-# Exercise the single pipeline away from the live outputs before installing anything.
-echo "Validating and checking generated Compose and Home Assistant configuration..."
+echo "Validating the complete source bundle and generated outputs..."
 "$HOST_PYTHON" -m labpulse.deployment \
-  --config "$RUNTIME_WORK_CONFIG" \
+  --config "$WORK_ROOT/config.yaml" \
   --compose-output "$CHECK_DIR/compose.yaml" \
-  --project-dir "$PROJECT_DIR" \
+  --project-dir "$CHECK_DIR" \
+  --external-files-dir "$PROJECT_DIR" \
   --ha-config-dir "$CHECK_DIR/homeassistant/config" \
   "${COMPOSE_MODE_ARGS[@]}"
 
-# Keep one predictable rollback copy instead of accumulating timestamped backups.
-mkdir -p "$BACKUP_DIR"
-cp -p "$CONFIG_PATH" "$CONFIG_BACKUP"
-if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
-  if [ ! -f "$FAKE_CONFIG_PATH" ]; then
-    echo "ERROR: Active fake-USB mode is missing $FAKE_CONFIG_PATH." >&2
-    echo "Run 'labpulse setup --fake-usb' to repair the deployment." >&2
-    exit 1
-  fi
-  cp -p "$FAKE_CONFIG_PATH" "$FAKE_CONFIG_BACKUP"
+SOURCE_CHANGED=0
+if ! cmp -s "$CONFIG_PATH" "$WORK_ROOT/config.yaml"; then
+  SOURCE_CHANGED=1
+elif [ ! -d "$CONFIG_DIR" ] || ! diff -qr "$CONFIG_DIR" "$WORK_ROOT/config.d" >/dev/null; then
+  SOURCE_CHANGED=1
 fi
-cp -p "$WORK_CONFIG" "$CONFIG_PATH"
-RUNTIME_CONFIG="$CONFIG_PATH"
-if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
-  cp -p "$WORK_FAKE_CONFIG" "$FAKE_CONFIG_PATH"
-  RUNTIME_CONFIG="$FAKE_CONFIG_PATH"
+RESOLVED_CHANGED=0
+if [ ! -f "$RESOLVED_CONFIG_PATH" ] || \
+  ! cmp -s "$RESOLVED_CONFIG_PATH" "$CHECK_DIR/config.resolved.yaml"; then
+  RESOLVED_CHANGED=1
+fi
+if [ "$SOURCE_CHANGED" -eq 0 ] && [ "$RESOLVED_CHANGED" -eq 0 ]; then
+  echo "No configuration changes detected; generated runtime is current. Nothing was restarted."
+  exit 0
 fi
 
-# Restore the prior source of truth and its deterministic outputs after a failed check.
-restore_previous_config() {
-  echo "Restoring the previous validated configuration..." >&2
-  cp -p "$CONFIG_BACKUP" "$CONFIG_PATH"
-  local restored_runtime_config="$CONFIG_PATH"
-  if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
-    cp -p "$FAKE_CONFIG_BACKUP" "$FAKE_CONFIG_PATH"
-    restored_runtime_config="$FAKE_CONFIG_PATH"
-  fi
+# Keep one complete rolling source rollback rather than independent file copies.
+mkdir -p "$BACKUP_DIR"
+BACKUP_STAGING="$(mktemp -d "$BACKUP_DIR/.config-source.edit-backup.XXXXXX")"
+cp -p "$CONFIG_PATH" "$BACKUP_STAGING/config.yaml"
+mkdir -p "$BACKUP_STAGING/config.d"
+if [ -d "$CONFIG_DIR" ]; then
+  cp -a "$CONFIG_DIR/." "$BACKUP_STAGING/config.d/"
+fi
+rm -rf -- "$SOURCE_BACKUP"
+mv "$BACKUP_STAGING" "$SOURCE_BACKUP"
+BACKUP_STAGING=""
+
+install_source_bundle() {
+  local source_root="$1"
+  cp -p "$source_root/config.yaml" "$CONFIG_PATH"
+  rm -rf -- "$CONFIG_DIR"
+  mkdir -p "$CONFIG_DIR"
+  cp -a "$source_root/config.d/." "$CONFIG_DIR/"
+}
+
+generate_live_outputs() {
   "$HOST_PYTHON" -m labpulse.deployment \
-    --config "$restored_runtime_config" \
+    --config "$CONFIG_PATH" \
     --compose-output "$PROJECT_DIR/compose.yaml" \
     --project-dir "$PROJECT_DIR" \
+    --external-files-dir "$PROJECT_DIR" \
     --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
     "${COMPOSE_MODE_ARGS[@]}"
 }
 
-echo "Generating live configuration..."
-if ! "$HOST_PYTHON" -m labpulse.deployment \
-  --config "$RUNTIME_CONFIG" \
-  --compose-output "$PROJECT_DIR/compose.yaml" \
-  --project-dir "$PROJECT_DIR" \
-  --ha-config-dir "$PROJECT_DIR/homeassistant/config" \
-  "${COMPOSE_MODE_ARGS[@]}"; then
+restore_previous_config() {
+  echo "Restoring the previous validated configuration source bundle..." >&2
+  install_source_bundle "$SOURCE_BACKUP"
+  generate_live_outputs
+}
+
+install_source_bundle "$WORK_ROOT"
+echo "Generating live runtime configuration and projections..."
+if ! generate_live_outputs; then
   restore_previous_config
   exit 1
 fi
@@ -186,15 +249,26 @@ if ! "${HA_CHECK[@]}" python -m homeassistant --script check_config --config /co
 fi
 
 echo "Refreshing LabPulse and Home Assistant..."
-"${DOCKER_PARTS[@]}" compose up -d --remove-orphans --force-recreate
+if ! "${DOCKER_PARTS[@]}" compose up -d --remove-orphans --force-recreate; then
+  echo "Service recreation failed; restoring the previous source bundle." >&2
+  restore_previous_config
+  "${DOCKER_PARTS[@]}" compose up -d --remove-orphans --force-recreate || true
+  exit 1
+fi
 "${DOCKER_PARTS[@]}" compose ps
 
+RUNTIME_CONFIG="$RESOLVED_CONFIG_PATH"
+if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
+  RUNTIME_CONFIG="$FAKE_CONFIG_PATH"
+fi
 cat <<EOF
 
 Configuration applied successfully.
-Source config: $CONFIG_PATH
+Master config: $CONFIG_PATH
+Measurement config directory: $CONFIG_DIR
+Resolved config: $RESOLVED_CONFIG_PATH
 Runtime config: $RUNTIME_CONFIG
-Rollback copy: $CONFIG_BACKUP
+Source rollback copy: $SOURCE_BACKUP
 
 SAFETY REMINDER
 Home Assistant has been refreshed. Check Monitor for "Global Mute Applied" and

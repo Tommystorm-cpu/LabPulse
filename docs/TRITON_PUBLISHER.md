@@ -776,20 +776,7 @@ services:
     measurement_defaults:
       setups: [triton_1]
       alarmed: false
-    measurements:
-      mixing_chamber_temperature:
-        source: "Mixing Chamber T(K)"
-        unit: K
-        device_class: temperature
-      cold_plate_temperature:
-        source: "Cold Plate T(K)"
-        unit: K
-        device_class: temperature
-      condense_pressure:
-        source: "P2 Condense (Bar)"
-        unit: bar
-        device_class: pressure
-        required: false
+    measurements_file: config.d/triton-01-measurements.yaml
     maximum_measurement_age_seconds: 180
 
   triton_02:
@@ -804,21 +791,36 @@ services:
     measurement_defaults:
       setups: [triton_2]
       alarmed: false
-    measurements:
-      mixing_chamber_temperature:
-        source: "Mixing Chamber T(K)"
-        unit: K
-        device_class: temperature
-      cold_plate_temperature:
-        source: "Cold Plate T(K)"
-        unit: K
-        device_class: temperature
-      condense_pressure:
-        source: "P2 Condense (Bar)"
-        unit: bar
-        device_class: pressure
-        required: false
+    measurements_file: config.d/triton-02-measurements.yaml
     maximum_measurement_age_seconds: 180
+```
+
+Open the master and both fragments together so they are validated and applied
+as one candidate bundle:
+
+```bash
+labpulse config config.yaml \
+  config.d/triton-01-measurements.yaml \
+  config.d/triton-02-measurements.yaml
+```
+
+Put only the mapping below in each fridge's fragment. Use the exact captured
+headers for that fridge; do not add a surrounding `measurements:` key:
+
+```yaml
+mixing_chamber_temperature:
+  source: "Mixing Chamber T(K)"
+  unit: K
+  device_class: temperature
+cold_plate_temperature:
+  source: "Cold Plate T(K)"
+  unit: K
+  device_class: temperature
+condense_pressure:
+  source: "P2 Condense (Bar)"
+  unit: bar
+  device_class: pressure
+  required: false
 ```
 
 Rules:
@@ -836,7 +838,8 @@ Rules:
   fields above, each service will show Offline until its production publisher
   starts in section 11; leave notifications muted through that switch.
 
-Do not duplicate `services:` or `setups:`. Saving `labpulse config` validates,
+Do not duplicate `services:` or `setups:`. Saving `labpulse config` validates
+the complete source bundle, writes the standalone `config.resolved.yaml`,
 regenerates, and starts both services. Inspect them:
 
 ```bash

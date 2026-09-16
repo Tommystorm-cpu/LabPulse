@@ -51,6 +51,7 @@ def live_install() -> Iterator[Path]:
     generated = path / "homeassistant" / "config"
     (generated / "packages").mkdir(parents=True)
     (path / "config.yaml").write_text(VALID_CONFIG, encoding="utf-8")
+    (path / "config.resolved.yaml").write_text(VALID_CONFIG, encoding="utf-8")
     (path / "config.fake.yaml").write_text(VALID_CONFIG, encoding="utf-8")
     (path / "compose.yaml").write_text(COMPOSE, encoding="utf-8")
     (path / "watchdog0").touch()
@@ -162,6 +163,53 @@ def test_healthy_diagnostics_are_read_only_and_report_runtime_mode() -> None:
         }
         if after != before:
             raise AssertionError("doctor modified the live installation")
+
+
+def test_doctor_reports_missing_measurement_fragment() -> None:
+    """Name source-bundle failures instead of treating them as runtime faults."""
+
+    with live_install() as live_dir:
+        (live_dir / "config.yaml").write_text(
+            """mqtt: {broker: mosquitto}
+setups: {fridge: {}}
+services:
+  triton_01:
+    label: Triton 1
+    driver:
+      type: labpulse.mqtt_json
+      options: {topic: labpulse/triton/triton-01/measurements}
+    measurement_defaults: {setups: [fridge]}
+    measurements_file: config.d/missing.yaml
+""",
+            encoding="utf-8",
+        )
+        with patch.object(doctor.subprocess, "run", side_effect=healthy_runner), patch.object(
+            doctor.socket, "create_connection", side_effect=healthy_connector
+        ), patch.object(doctor, "WATCHDOG_PATH", live_dir / "watchdog0"):
+            report = diagnose(live_dir, docker_prefix=["docker"])
+        source = next(check for check in report.checks if check.name == "Source configuration")
+        assert source.status is CheckStatus.FAIL
+        assert "config.d/missing.yaml" in source.detail
+
+
+def test_doctor_reports_stale_resolved_configuration() -> None:
+    """Compare the generated real runtime with the current source semantics."""
+
+    with live_install() as live_dir:
+        (live_dir / "config.yaml").write_text(
+            VALID_CONFIG.replace("port: 1883", "port: 1884"),
+            encoding="utf-8",
+        )
+        with patch.object(doctor.subprocess, "run", side_effect=healthy_runner), patch.object(
+            doctor.socket, "create_connection", side_effect=healthy_connector
+        ), patch.object(doctor, "WATCHDOG_PATH", live_dir / "watchdog0"):
+            report = diagnose(live_dir, docker_prefix=["docker"])
+        freshness = next(
+            check for check in report.checks
+            if check.name == "Resolved configuration freshness"
+        )
+        assert freshness.status is CheckStatus.FAIL
+        assert "stale" in freshness.detail
 
 
 def test_service_and_endpoint_failures_include_corrective_actions() -> None:
