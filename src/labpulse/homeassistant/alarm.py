@@ -382,13 +382,30 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
     for setup_id in setup_ids:
         setup_config = config.setups[setup_id]
         items = measurements_by_setup[setup_id]
+        measurement_blocks: list[dict[str, Any]] = []
+        compact_measurements: list[dict[str, Any]] = []
+        for item in items:
+            if item["show_graph"]:
+                if compact_measurements:
+                    measurement_blocks.append({
+                        "kind": "entities",
+                        "measurements": tuple(compact_measurements),
+                    })
+                    compact_measurements = []
+                measurement_blocks.append({"kind": "graph", "measurement": item})
+            else:
+                compact_measurements.append(item)
+        if compact_measurements:
+            measurement_blocks.append({
+                "kind": "entities",
+                "measurements": tuple(compact_measurements),
+            })
         monitor_setup_records[setup_id] = {
             "setup_id": setup_id,
             "label": setup_config.display_label(setup_id),
             "icon": setup_config.icon,
             "measurements": tuple(items),
-            "compact_measurements": tuple(item for item in items if not item["show_graph"]),
-            "graph_measurements": tuple(item for item in items if item["show_graph"]),
+            "measurement_blocks": tuple(measurement_blocks),
             "outputs": tuple(outputs_by_setup[setup_id]),
         }
     monitor_setups = tuple(

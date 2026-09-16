@@ -324,7 +324,7 @@ def test_monitor_projects_measurements_and_links_problems_to_their_settings() ->
 
 
 def test_optional_measurement_graphs_support_defaults_overrides_and_calculations() -> None:
-    """Pair opted-in measurement rows with native 24-hour sensor cards."""
+    """Replace opted-in rows with graphs at their configured positions."""
 
     config = dashboard_config()
     hub_a = config["services"]["hub_a"]  # type: ignore[index]
@@ -346,28 +346,42 @@ def test_optional_measurement_graphs_support_defaults_overrides_and_calculations
 
     _, dashboard, _ = generate(config)
     monitor = view(dashboard, "monitor")
-    graph_pairs = [
+    graph_cards = [
         item for item in walk(monitor)
         if isinstance(item, dict)
-        and item.get("type") == "horizontal-stack"
-        and len(item.get("cards", [])) == 2
-        and item["cards"][0].get("type") == "entities"
-        and item["cards"][1].get("type") == "sensor"
-        and item["cards"][1].get("graph") == "line"
-    ]
-    graph_cards = [
-        pair["cards"][1] for pair in graph_pairs
+        and item.get("type") == "sensor"
+        and item.get("graph") == "line"
     ]
     assert graph_cards
     assert all(card["hours_to_show"] == 24 and card["detail"] == 2 for card in graph_cards)
-    assert all(
-        pair["cards"][0]["entities"][0]["entity"] == pair["cards"][1]["entity"]
-        for pair in graph_pairs
-    )
     graph_entities = [card["entity"] for card in graph_cards]
     assert "sensor.labpulse_hub_a_alpha_only" in graph_entities
     assert "sensor.labpulse_custom_difference" in graph_entities
     assert "sensor.labpulse_hub_a_alpha_general" not in graph_entities
+    alpha_stack = next(
+        card for card in monitor["cards"]
+        if any(
+            child.get("heading") == "Alpha Setup"
+            for child in card.get("cards", [])
+            if isinstance(child, dict)
+        )
+    )
+    alpha_cards = alpha_stack["cards"]
+    alpha_entities = [
+        card.get("entity")
+        if card.get("type") == "sensor"
+        else [row["entity"] for row in card.get("entities", [])]
+        for card in alpha_cards[1:]
+    ]
+    assert alpha_entities == [
+        ["sensor.labpulse_hub_a_alpha_general"],
+        "sensor.labpulse_hub_a_alpha_only",
+        "sensor.labpulse_hub_a_shared",
+        ["sensor.labpulse_hub_b_alpha_other_hub"],
+        "sensor.labpulse_custom_difference",
+    ]
+    assert occurrences(monitor, "sensor.labpulse_hub_a_alpha_only") == 1
+    assert occurrences(monitor, "sensor.labpulse_custom_difference") == 1
     assert occurrences(monitor, "sensor.labpulse_hub_a_alpha_general") == 1
     assert occurrences(monitor, "sensor.labpulse_hub_b_alpha_other_hub") == 1
 

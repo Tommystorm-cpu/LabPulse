@@ -7,29 +7,23 @@
     - type: markdown
       content: No measurements or controls are currently assigned to this setup.
 [% endif %]
-[% if setup.compact_measurements %]
+[% for block in setup.measurement_blocks %]
+[% if block.kind == 'entities' %]
     - type: entities
       show_header_toggle: false
       entities:
-[% for measurement in setup.compact_measurements %]
+[% for measurement in block.measurements %]
       - entity: [[ measurement.entity_id ]]
         name: [[ measurement.short_label | yaml_scalar ]]
 [% endfor %]
+[% else %]
+    - type: sensor
+      entity: [[ block.measurement.entity_id ]]
+      name: [[ block.measurement.short_label | yaml_scalar ]]
+      graph: line
+      hours_to_show: 24
+      detail: 2
 [% endif %]
-[% for measurement in setup.graph_measurements %]
-    - type: horizontal-stack
-      cards:
-      - type: entities
-        show_header_toggle: false
-        entities:
-        - entity: [[ measurement.entity_id ]]
-          name: [[ measurement.short_label | yaml_scalar ]]
-      - type: sensor
-        entity: [[ measurement.entity_id ]]
-        name: [[ measurement.short_label | yaml_scalar ]]
-        graph: line
-        hours_to_show: 24
-        detail: 2
 [% endfor %]
 [% if setup.outputs %]
     - type: entities

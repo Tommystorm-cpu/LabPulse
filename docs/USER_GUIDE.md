@@ -256,9 +256,10 @@ them from its **Add target** menu. Physical and calculated measurements remain
 recorded. Danger-zone binary sensors also remain recorded because
 observation-window calculations depend on their history.
 
-Set `show_graph: true` on a physical or calculated measurement to show its row
-beside a native card containing the current value and a 24-hour line graph.
-Measurements without this option retain the compact list layout.
+Set `show_graph: true` on a physical or calculated measurement to replace its
+compact row with a native card containing the current value and a 24-hour line
+graph at the same position in the setup. Measurements without this option
+retain the compact list layout.
 
 ## Calculated measurements
 

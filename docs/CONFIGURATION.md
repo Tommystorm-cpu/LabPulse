@@ -449,7 +449,7 @@ are not supported.
 | `recovery_confirm_seconds` | `15` | Continuous usable data required before its missing-reading incident closes; 0 to 3600 seconds |
 | `unit` | none | Exact published unit |
 | `precision` | none | Optional Home Assistant display decimal places, strict integer from 0 to 10; MQTT state and graph history retain the full reading |
-| `show_graph` | `false` | Strict boolean; show the measurement row beside a native 24-hour line graph |
+| `show_graph` | `false` | Strict boolean; replace the measurement's compact row with a native 24-hour line graph at the same position |
 | `device_class` | none | LabPulse semantic category and default-icon source |
 | `icon` | derived | Explicit `mdi:` override |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
@@ -484,11 +484,11 @@ history.
 Use `label` to keep a measurement unambiguous when it appears without its
 logical setup heading. Add `short_label` only when that heading makes a
 shorter name clearer. For example, `Triton 1 Temperature In` can appear as
-`Temperature In` within the `Triton 1` setup. Set `show_graph: true` to show
-that measurement in a dedicated row beside a native Home Assistant sensor card
-containing its current value and a 24-hour line graph. Other measurements
-retain the compact entities card. Available graph history follows Home
-Assistant Recorder retention.
+`Temperature In` within the `Triton 1` setup. Set `show_graph: true` to replace
+that measurement's compact row with a native Home Assistant sensor card at the
+same position, containing its current value and a 24-hour line graph. Other
+measurements retain the compact entities layout. Available graph history
+follows Home Assistant Recorder retention.
 
 Set `alarmed: false` for informational telemetry that should remain published
 and visible on operator dashboards and System Status without measurement alarm
