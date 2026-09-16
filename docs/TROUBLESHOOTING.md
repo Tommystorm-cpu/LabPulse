@@ -19,7 +19,7 @@ usable.
 If the service is Working or Needs attention, inspect the named sensor, wiring,
 firmware, source field, and service log. Required readings open one incident
 after `missing_confirm_seconds`; readings configured with `required: false`
-display **No recent data — optional** and never notify or block an update.
+display **No recent data — optional** and never notify.
 
 Calculated readings are unavailable when a dependency is unavailable or a
 division would use zero. Their configured `required` setting applies to the
@@ -27,22 +27,19 @@ calculated result.
 
 ## No notification was delivered
 
-Check update maintenance, Global Mute, the reading or power mute, all affected
-setup mutes, Test mode, recipient configuration, `sms.dry_run`, and the SMS
-service log. No recovery message is expected when the opening notification was
-suppressed.
+For a missing persistent Home Assistant notification, check that the incident
+was confirmed and that Global Mute and its service, reading, setup, or power
+mute allow delivery. SMS worker state does not block these notifications.
+For a missing SMS, also check Test mode,
+recipient configuration, `sms.dry_run`, and the SMS service log. A recovery SMS
+requires an opening SMS request and current notification permission.
 
-## Update remains in maintenance
+## Update failed or SMS worker is offline
 
-Read the command error first. Home Assistant must receive the retained request
-and publish an acknowledgement with the same request ID, and every required
-physical reading must publish fresh telemetry. Non-required readings are not part
-of this readiness check. After correcting the cause, run:
-
-```bash
-labpulse up labpulse-sms
-```
-
-This performs the acknowledged maintenance-clear operation before resuming SMS
-delivery. Keeping suppression active on failure is deliberate protection
-against false outage, recovery, and queued-SMS bursts.
+Read the update error and inspect `labpulse ps --all` and `labpulse logs
+labpulse-sms`. Repair the reported package, setup, or Compose problem, then run
+`labpulse up` to start the generated stack. There is no retained update mute to
+clear. If the SMS worker was disconnected, queued QoS 1 requests from its
+persistent MQTT session may be delivered on reconnect, including a failure and
+its recovery close together. Check Test mode and recipient settings before
+interpreting where those messages were sent.

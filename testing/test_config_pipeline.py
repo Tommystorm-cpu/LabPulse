@@ -72,6 +72,25 @@ def test_valid_document_and_typed_driver_options() -> None:
         raise AssertionError("setups do not default to the main dashboard")
 
 
+def test_measurement_precision_is_optional_strict_and_inherited() -> None:
+    """Validate display precision without imposing rounding by default."""
+
+    data = repository_data()
+    pressure_service = data["services"]["pressure_monitor"]  # type: ignore[index]
+    pressure_service["measurement_defaults"]["precision"] = 1  # type: ignore[index]
+    pressure_service["measurements"]["pressure"]["precision"] = 3  # type: ignore[index]
+    config = load_config(REPOSITORY / "config.yaml", text=yaml.safe_dump(data)).config
+    measurements = config.services["pressure_monitor"].measurements
+    assert measurements["pressure"].precision == 3
+    assert measurements["temperature"].precision == 1
+    assert config.services["room_environment"].measurements["temperature"].precision is None
+
+    for invalid_precision in (True, 1.5, "2", -1, 11):
+        invalid = repository_data()
+        invalid["services"]["pressure_monitor"]["measurements"]["pressure"]["precision"] = invalid_precision  # type: ignore[index]
+        expect_error(invalid, "precision")
+
+
 def test_root_and_schema_errors_are_structured() -> None:
     """Reject empty, scalar, unknown-field, driver, and option failures uniformly."""
 

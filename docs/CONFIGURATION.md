@@ -50,7 +50,6 @@ mqtt:
 
 sms:
   dry_run: true
-  send_recovery_sms: false
   recipients: []
   test_recipients: []
 
@@ -152,9 +151,11 @@ sms:
 
 - `dry_run` defaults to `true`. Requests are validated and logged without using
   a modem.
-- `send_recovery_sms` defaults to `false`. Home Assistant always clears a
-  recovered problem, but sends a recovery SMS only when this is enabled and
-  the original incident actually requested an SMS.
+- Every incident that requested an opening SMS also requests a recovery SMS
+  when the condition resolves, unless notification delivery is muted at recovery.
+  Test mode at recovery sends the message to the current test recipients.
+- Remove any old `send_recovery_sms` line from `~/labpulse-live/config.yaml`
+  before updating LabPulse; it is no longer a valid SMS setting.
 - `recipients` receive normal live alerts.
 - `test_recipients` receive requests created while Home Assistant Test mode is
   enabled.
@@ -391,6 +392,7 @@ measurements:
     short_label: Room Temperature
     group: Environment
     unit: "°C"
+    precision: 1
     device_class: temperature
     icon: mdi:snowflake-thermometer
     missing_confirm_seconds: 60
@@ -406,10 +408,11 @@ measurements:
 | `group` | none | Presentation grouping within a setup |
 | `setups` | required for ordinary values | One or more logical setup IDs |
 | `alarmed` | `true` | Whether to generate measurement alarm state, controls, and notifications |
-| `required` | `true` | Whether missing data needs attention, can notify, affects service status, and blocks update readiness; strict boolean |
+| `required` | `true` | Whether missing data needs attention, can notify, and affects service status; strict boolean |
 | `missing_confirm_seconds` | `60` | Continuous missing data required before a required-reading incident opens; 1 to 86400 seconds |
 | `recovery_confirm_seconds` | `15` | Continuous usable data required before its missing-reading incident closes; 0 to 3600 seconds |
 | `unit` | none | Exact published unit |
+| `precision` | none | Optional Home Assistant display decimal places, strict integer from 0 to 10; MQTT state and graph history retain the full reading |
 | `device_class` | none | LabPulse semantic category and default-icon source |
 | `icon` | derived | Explicit `mdi:` override |
 | `state_class` | `measurement` | Home Assistant statistics metadata; may be `null` |
@@ -419,12 +422,20 @@ once: the current YAML loader does not reject duplicate keys and a later
 entry can replace an earlier one before validation. Hardware readings not listed in `measurements` are ignored.
 
 `measurement_defaults` is optional and accepts the same presentation,
-availability, alarm, timing, unit, device-class, icon, and state-class fields as
+availability, alarm, timing, unit, precision, device-class, icon, and state-class fields as
 an individual measurement. It cannot set `source`, because external source
 names identify individual readings. Explicit fields on a measurement override
 the service defaults; all other fields retain the ordinary measurement
 defaults. LabPulse resolves this inheritance once while loading the file, so
 runtime services receive complete validated measurement settings.
+
+For ordinary service readings, `precision: 0` shows a whole number and
+`precision: 2` suggests two decimal places. Omitting it publishes no display
+precision suggestion from LabPulse. Home Assistant may apply its own display
+defaults or an operator's entity-level override. The sensor state, recorded
+history, alarm thresholds, and detailed history graph retain the unrounded
+numeric value. The separate `custom_measurements.precision` field currently
+rounds a calculated result itself, including its history.
 
 Changing `label`, `short_label`, or `group` preserves identity. Changing a
 measurement mapping key creates a new MQTT topic, Home Assistant entity, alarm helpers, and

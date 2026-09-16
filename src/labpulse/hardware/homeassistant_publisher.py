@@ -79,6 +79,10 @@ def measurement_discovery_payload(
     }
     if measurement.unit:
         payload["unit_of_measurement"] = measurement.unit
+    if measurement.precision is not None:
+        # Presentation only: the MQTT state and recorded graph history keep
+        # the original numeric value.
+        payload["suggested_display_precision"] = measurement.precision
     # Home Assistant converts numeric values when a convertible device class
     # is present. LabPulse treats the configured unit as the data contract, so
     # discovery publishes an icon while device_class stays internal metadata.

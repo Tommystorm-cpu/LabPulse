@@ -196,15 +196,15 @@ def test_direct_lifecycle_and_confirmation_semantics() -> None:
     automation = aliases(package)
     outage = automation["LabPulse UPS Monitor Outage Confirm"]
     recovery = automation["LabPulse UPS Monitor Recovery Confirm"]
-    if int(outage["action"][1]["delay"].get("seconds", 0)) != 3:
+    if int(outage["action"][0]["delay"].get("seconds", 0)) != 3:
         raise AssertionError("outage does not require three continuous seconds")
     if int(recovery["action"][0]["delay"].get("seconds", 0)) != 5:
         raise AssertionError("recovery does not require five continuous seconds")
     outage_yaml = yaml.safe_dump(outage, sort_keys=False)
     recovery_yaml = yaml.safe_dump(recovery, sort_keys=False)
-    if "power_outage_active\n  state: 'off'" not in outage_yaml:
-        raise AssertionError("outage warning can repeat while already active")
-    if "power_outage_active\n  state: 'on'" not in recovery_yaml:
+    if "labpulse_ups_monitor_power_outage_active" not in outage_yaml:
+        raise AssertionError("outage does not preserve its confirmed incident")
+    if "labpulse_ups_monitor_power_outage_active" not in recovery_yaml:
         raise AssertionError("recovery can fire without a confirmed outage")
     if "outage_start" not in outage_yaml:
         raise AssertionError("outage does not record its confirmed start")

@@ -9,12 +9,7 @@
       to: 'on'
     - platform: homeassistant
       event: start
-    - platform: mqtt
-      topic: [[ model.update_maintenance_topic | yaml_scalar ]]
     action:
-    - condition: template
-      value_template: >-
-        {{ trigger.platform != 'mqtt' or trigger.payload_json.state == 'OFF' }}
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       state: 'on'
@@ -36,22 +31,22 @@
     - delay:
         seconds: [[ service.health_offline_confirm_seconds | yaml_scalar ]]
     - condition: state
-      entity_id: input_boolean.labpulse_update_maintenance
-      state: 'off'
-    - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       state: 'on'
-    - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
-      state: 'off'
-    - service: input_datetime.set_datetime
-      target:
-        entity_id: [[ entity_id('input_datetime', service.name, 'service_offline_started') | yaml_scalar ]]
-      data:
-        timestamp: "{{ as_timestamp(now()) }}"
-    - service: input_boolean.turn_on
-      target:
-        entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
+          state: 'off'
+        sequence:
+        - service: input_datetime.set_datetime
+          target:
+            entity_id: [[ entity_id('input_datetime', service.name, 'service_offline_started') | yaml_scalar ]]
+          data:
+            timestamp: "{{ as_timestamp(now()) }}"
+        - service: input_boolean.turn_on
+          target:
+            entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
     - service: script.labpulse_open_incident
       data:
         notification_id: labpulse_[[ service.service_id ]]_service_offline
@@ -88,15 +83,17 @@
     - platform: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       to: 'off'
+    - platform: homeassistant
+      event: start
     action:
     - delay:
         seconds: [[ service.health_recovery_confirm_seconds | yaml_scalar ]]
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
       state: 'off'
-    - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
-      state: 'on'
+    - condition: template
+      value_template: >-
+        {{ is_state('[[ entity_id('input_boolean', service.name, 'service_offline_incident_active') ]]', 'on') }}
     - variables:
         offline_started: >-
           {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'service_offline_started') ]]'), as_timestamp(now())) }}

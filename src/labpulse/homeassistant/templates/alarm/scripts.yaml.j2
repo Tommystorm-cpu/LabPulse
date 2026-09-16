@@ -13,32 +13,40 @@ script:
       notification_sent_entity: {required: true}
       sms_requested_entity: {required: true}
       delivery_allowed: {required: true}
+      resend: {required: false}
     sequence:
-    - condition: state
-      entity_id: input_boolean.labpulse_update_maintenance
-      state: 'off'
     - condition: state
       entity_id: input_boolean.labpulse_global_notifications_muted
       state: 'off'
     - condition: template
       value_template: "{{ delivery_allowed | bool }}"
-    - service: persistent_notification.create
-      data:
-        title: "{{ title }}"
-        message: "{{ message }}"
-        notification_id: "{{ notification_id }}"
-    - service: input_boolean.turn_on
-      target:
-        entity_id: "{{ notification_sent_entity }}"
-    - service: mqtt.publish
-      data:
-        topic: [[ model.sms_send_topic | yaml_scalar ]]
-        qos: 1
-        retain: false
-        payload: "{{ sms_payload }}"
-    - service: input_boolean.turn_on
-      target:
-        entity_id: "{{ sms_requested_entity }}"
+    - choose:
+      - conditions: >-
+          {{ resend | default(false) | bool or is_state(notification_sent_entity, 'off') }}
+        sequence:
+        - service: persistent_notification.create
+          data:
+            title: "{{ title }}"
+            message: "{{ message }}"
+            notification_id: "{{ notification_id }}"
+        - service: input_boolean.turn_on
+          target:
+            entity_id: "{{ notification_sent_entity }}"
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: >-
+            {{ resend | default(false) | bool or is_state(sms_requested_entity, 'off') }}
+        sequence:
+        - service: mqtt.publish
+          data:
+            topic: [[ model.sms_send_topic | yaml_scalar ]]
+            qos: 1
+            retain: false
+            payload: "{{ sms_payload }}"
+        - service: input_boolean.turn_on
+          target:
+            entity_id: "{{ sms_requested_entity }}"
 
   labpulse_close_incident:
     alias: Close Confirmed LabPulse Incident
@@ -64,9 +72,6 @@ script:
         - condition: template
           value_template: "{{ original_notification_sent and delivery_allowed | bool }}"
         - condition: state
-          entity_id: input_boolean.labpulse_update_maintenance
-          state: 'off'
-        - condition: state
           entity_id: input_boolean.labpulse_global_notifications_muted
           state: 'off'
         sequence:
@@ -75,18 +80,21 @@ script:
             title: "{{ recovery_title }}"
             message: "{{ recovery_message }}"
             notification_id: "{{ notification_id }}_recovery"
-        - choose:
-          - conditions:
-            - condition: template
-              value_template: >-
-                {{ [[ model.send_recovery_sms | tojson ]] and original_sms_requested }}
-            sequence:
-            - service: mqtt.publish
-              data:
-                topic: [[ model.sms_send_topic | yaml_scalar ]]
-                qos: 1
-                retain: false
-                payload: "{{ recovery_sms_payload }}"
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: >-
+            {{ original_sms_requested and delivery_allowed | bool }}
+        - condition: state
+          entity_id: input_boolean.labpulse_global_notifications_muted
+          state: 'off'
+        sequence:
+        - service: mqtt.publish
+          data:
+            topic: [[ model.sms_send_topic | yaml_scalar ]]
+            qos: 1
+            retain: false
+            payload: "{{ recovery_sms_payload }}"
     - service: input_boolean.turn_off
       target:
         entity_id:
@@ -102,9 +110,6 @@ script:
     # effect without regenerating the LabPulse package.
     - condition: state
       entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
-      state: 'off'
-    - condition: state
-      entity_id: input_boolean.labpulse_update_maintenance
       state: 'off'
     - service: mqtt.publish
       data:

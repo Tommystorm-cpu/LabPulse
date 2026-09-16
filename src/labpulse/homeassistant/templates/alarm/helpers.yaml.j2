@@ -146,8 +146,6 @@ input_boolean:
   labpulse_notification_test_mode:
     name: LabPulse Notification Test Mode
     initial: true
-  labpulse_update_maintenance:
-    name: LabPulse Update Maintenance
 [% if model.bulk_alarm_targets %]
   [[ 'input_boolean.labpulse_bulk_alarm_editor_expanded'.split('.', 1)[1] ]]:
     name: Bulk Alarm Editor Expanded
@@ -210,12 +208,6 @@ input_boolean:
 [% endfor %]
 
 input_datetime:
-{# Maintenance-clear time prevents pre-maintenance threshold history from
-   satisfying a new alarm immediately after an update. #}
-  labpulse_update_maintenance_cleared:
-    name: LabPulse Update Maintenance Cleared
-    has_date: true
-    has_time: true
 {# Store when an incident started so later messages can report its duration. #}
 [% for service in model.services %]
   labpulse_[[ service.service_id ]]_service_offline_started:

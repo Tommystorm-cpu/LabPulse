@@ -293,13 +293,7 @@ def test_update_installs_refreshes_and_recreates_every_container(
         control, "run_compose", return_value=0
     ) as compose, patch.object(
         control, "_wait_for_homeassistant", return_value=True
-    ), patch.object(
-        control, "wait_for_fresh_telemetry", return_value=True
-    ) as telemetry, patch.object(
-        control, "publish_update_maintenance", side_effect=("maint-on", "maint-off")
-    ) as maintenance, patch.object(
-        control, "wait_for_update_maintenance_ack", return_value=True
-    ) as maintenance_ack, patch.object(control.time, "sleep"):
+    ):
         result = control.run_update_command(live_dir.resolve(), None)
 
     assert result == 0
@@ -325,18 +319,6 @@ def test_update_installs_refreshes_and_recreates_every_container(
         expected_setup.append("--fake-usb")
     assert setup.args[0] == expected_setup
     assert compose.call_args_list == [
-        call(live_dir.resolve(), ("stop", "labpulse-sms")),
-        call(
-            live_dir.resolve(),
-            (
-                "up",
-                "-d",
-                "--pull",
-                "missing",
-                "--force-recreate",
-                "homeassistant",
-            ),
-        ),
         call(
             live_dir.resolve(),
             (
@@ -346,18 +328,9 @@ def test_update_installs_refreshes_and_recreates_every_container(
                 "missing",
                 "--remove-orphans",
                 "--force-recreate",
-                "mosquitto",
-                "labpulse-pressure",
             ),
         ),
-        call(live_dir.resolve(), ("up", "-d", "labpulse-sms")),
     ]
-    maintenance.assert_has_calls([call(True), call(False)])
-    maintenance_ack.assert_has_calls([call("maint-on", True), call("maint-off", False)])
-    telemetry.assert_called_once_with(
-        live_dir.resolve() / ("config.fake.yaml" if fake_usb else "config.yaml"),
-        control.UPDATE_TELEMETRY_TIMEOUT_SECONDS,
-    )
     doctor = run.call_args_list[2]
     assert doctor.args[0] == [
         "/home/lab/.local/bin/labpulse",
@@ -389,138 +362,39 @@ def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
     compose.assert_not_called()
 
 
-def test_update_readiness_excludes_optional_measurements(
-    workspace_tmp_path: Path, repository_root: Path
-) -> None:
-    """Do not let installed spare or known-broken readings block an update."""
-
-    import yaml
-
-    data = yaml.safe_load((repository_root / "config.yaml").read_text(encoding="utf-8"))
-    pressure = data["services"]["pressure_monitor"]["measurements"]["pressure"]
-    pressure["required"] = False
-    path = workspace_tmp_path / "config.yaml"
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    topics = control.required_telemetry_topics(path)
-    assert topics is not None
-    assert "home/sensor/pressure_monitor/pressure/state" not in topics
-    assert "home/sensor/pressure_monitor/temperature/state" in topics
-
-
-def test_update_keeps_sms_stopped_when_telemetry_does_not_recover(
+def test_update_reports_compose_failure_without_suppressing_notifications(
     live_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Do not resume real delivery while update transitions are unresolved."""
+    """A failed recreation leaves no retained mute or stopped SMS worker."""
 
-    (live_dir / "compose.yaml").write_text(
-        "services:\n"
-        "  homeassistant: {}\n"
-        "  mosquitto: {}\n"
-        "  labpulse-sms: {}\n"
-        "  labpulse-pressure: {}\n",
-        encoding="utf-8",
+    commands = {"pipx": "/usr/bin/pipx", "labpulse": "/home/lab/.local/bin/labpulse"}
+    with patch.object(control, "__version__", "0.1.1"), patch.object(
+        control, "latest_published_version", return_value="0.2.0"
+    ), patch.object(
+        control.shutil, "which", side_effect=lambda command: commands.get(command)
+    ), patch.object(
+        control.subprocess, "run",
+        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"])),
+    ), patch.object(control, "run_compose", return_value=7) as compose:
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 7
+    compose.assert_called_once_with(
+        live_dir.resolve(),
+        ("up", "-d", "--pull", "missing", "--remove-orphans", "--force-recreate"),
     )
-
-    commands = {
-        "pipx": "/usr/bin/pipx",
-        "labpulse": "/home/lab/.local/bin/labpulse",
-    }
-    with patch.object(control, "__version__", "0.1.1"), patch.object(
-        control, "latest_published_version", return_value="0.2.0"
-    ), patch.object(
-        control.shutil, "which", side_effect=lambda command: commands.get(command)
-    ), patch.object(
-        control.subprocess,
-        "run",
-        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"])),
-    ), patch.object(
-        control, "run_compose", return_value=0
-    ) as compose, patch.object(
-        control, "_wait_for_homeassistant", return_value=True
-    ), patch.object(
-        control, "wait_for_fresh_telemetry", return_value=False
-    ), patch.object(
-        control, "publish_update_maintenance", return_value="maint-on"
-    ) as maintenance, patch.object(
-        control, "wait_for_update_maintenance_ack", return_value=True
-    ) as maintenance_ack:
-        result = control.run_update_command(live_dir.resolve(), None)
-
-    assert result == 1
-    assert call(live_dir.resolve(), ("up", "-d", "labpulse-sms")) not in compose.call_args_list
-    maintenance.assert_called_once_with(True)
-    maintenance_ack.assert_called_once_with("maint-on", True)
-    error = capsys.readouterr().err
-    assert "maintenance mode remains active" in error
-    assert "SMS delivery remains stopped" in error
+    assert "stack could not be recreated" in capsys.readouterr().err
 
 
-def test_update_does_not_recreate_containers_without_maintenance_ack(
-    live_dir: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The retained request alone is not proof that HA applied suppression."""
+def test_starting_sms_is_ordinary_compose_up(live_dir: Path) -> None:
+    """Starting the SMS worker needs no separate notification handshake."""
 
-    commands = {
-        "pipx": "/usr/bin/pipx",
-        "labpulse": "/home/lab/.local/bin/labpulse",
-    }
-    with patch.object(control, "__version__", "0.1.1"), patch.object(
-        control, "latest_published_version", return_value="0.2.0"
-    ), patch.object(
-        control.shutil, "which", side_effect=lambda command: commands.get(command)
-    ), patch.object(
-        control.subprocess,
-        "run",
-        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"])),
-    ), patch.object(control, "run_compose") as compose, patch.object(
-        control, "publish_update_maintenance", return_value="maint-on"
-    ), patch.object(
-        control, "wait_for_update_maintenance_ack", return_value=False
-    ):
-        result = control.run_update_command(live_dir.resolve(), None)
-
-    assert result == 1
-    compose.assert_not_called()
-    assert "No containers were recreated" in capsys.readouterr().err
-
-
-def test_starting_sms_after_repair_clears_update_maintenance(live_dir: Path) -> None:
-    """Make the documented recovery command restore health notifications."""
-
-    with patch.dict(
-        os.environ, {"LABPULSE_DOCKER_COMMAND": "docker"}, clear=False
-    ), patch.object(
-        control.subprocess, "run", return_value=completed(["docker"])
-    ), patch.object(
-        control, "publish_update_maintenance", return_value="maint-off"
-    ) as maintenance, patch.object(
-        control, "wait_for_update_maintenance_ack", return_value=True
-    ) as maintenance_ack:
-        result = control.main(
-            ["--live-dir", str(live_dir), "up", "labpulse-sms"]
-        )
+    with patch.object(control, "run_compose", return_value=0) as compose:
+        result = control.main(["--live-dir", str(live_dir), "up", "labpulse-sms"])
 
     assert result == 0
-    maintenance.assert_called_once_with(False)
-    maintenance_ack.assert_called_once_with("maint-off", False)
+    compose.assert_called_once_with(live_dir.resolve(), ["up", "-d", "--pull", "missing", "labpulse-sms"])
 
-
-def test_starting_sms_waits_for_maintenance_clear_ack(live_dir: Path) -> None:
-    """Never subscribe the worker while Home Assistant is still suppressed."""
-
-    with patch.object(
-        control, "run_compose"
-    ) as compose, patch.object(
-        control, "publish_update_maintenance", return_value="maint-off"
-    ), patch.object(
-        control, "wait_for_update_maintenance_ack", return_value=False
-    ):
-        result = control.main(
-            ["--live-dir", str(live_dir), "up", "labpulse-sms"]
-        )
-
-    assert result == 1
-    compose.assert_not_called()
 
 
 def test_failed_pipx_update_leaves_setup_and_containers_alone(live_dir: Path) -> None:

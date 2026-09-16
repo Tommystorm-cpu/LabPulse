@@ -9,17 +9,9 @@
       to: 'off'
     - platform: homeassistant
       event: start
-    - platform: mqtt
-      topic: [[ model.update_maintenance_topic | yaml_scalar ]]
     action:
-    - condition: template
-      value_template: >-
-        {{ trigger.platform != 'mqtt' or trigger.payload_json.state == 'OFF' }}
     - delay:
         seconds: [[ power.config.outage_confirm_seconds | yaml_scalar ]]
-    - condition: state
-      entity_id: input_boolean.labpulse_update_maintenance
-      state: 'off'
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'mains_present', 'reading_available') | yaml_scalar ]]
       state: 'on'
@@ -32,23 +24,26 @@
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
       state: 'off'
-    - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
-      state: 'off'
-    - variables:
-        outage_start: "{{ as_timestamp(now()) }}"
-    - service: input_datetime.set_datetime
-      target:
-        entity_id: [[ entity_id('input_datetime', service.name, 'power', 'outage_started') | yaml_scalar ]]
-      data:
-        timestamp: "{{ outage_start }}"
-    - service: input_boolean.turn_on
-      target:
-        entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
-    - service: input_select.select_option
-      target:
-        entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
-      data: {option: Running on battery}
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+          state: 'off'
+        sequence:
+        - variables:
+            outage_start: "{{ as_timestamp(now()) }}"
+        - service: input_datetime.set_datetime
+          target:
+            entity_id: [[ entity_id('input_datetime', service.name, 'power', 'outage_started') | yaml_scalar ]]
+          data:
+            timestamp: "{{ outage_start }}"
+        - service: input_boolean.turn_on
+          target:
+            entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+        - service: input_select.select_option
+          target:
+            entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
+          data: {option: Running on battery}
     - service: script.labpulse_open_incident
       data:
         notification_id: labpulse_[[ service.service_id ]]_power
@@ -95,9 +90,9 @@
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
       state: 'on'
-    - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
-      state: 'on'
+    - condition: template
+      value_template: >-
+        {{ is_state('[[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]', 'on') }}
     - variables:
         outage_start: >-
           {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'power', 'outage_started') ]]'), as_timestamp(now())) }}

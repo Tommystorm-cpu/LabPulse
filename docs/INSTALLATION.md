@@ -333,25 +333,63 @@ the cached result still prints the installed and available versions and suggests
 operation remains responsive when the Pi is offline or TestPyPI is unavailable.
 The `labpulse update` command always fetches fresh release metadata.
 
+Before upgrading from a release with `sms.send_recovery_sms`, remove that line
+from `~/labpulse-live/config.yaml`. Recovery SMS now follows an opening SMS
+automatically when current notification settings allow it, and the old key is
+rejected by the strict live-config validator. Keep the rest of the live
+configuration as it is.
+
 Update resolves the latest version from TestPyPI only, installs that exact
 version with pipx using fresh package-index metadata, refreshes package-managed
 deployment assets with backups, preserves the active real-hardware or fake-USB
-mode, pulls images, and recreates every container. During that planned outage
-it publishes a retained maintenance request before recreating runtime services.
-Home Assistant applies maintenance and publishes an acknowledgement with the
-same request ID; update does not stop SMS or disrupt any container until that
-acknowledgement arrives. It then stops the SMS worker. Every notification
-path is gated before an SMS MQTT request can be queued. Update waits only for
-fresh required physical readings, lets classification settle, then clears
-maintenance and verifies the matching acknowledgement before starting SMS and
-running `labpulse doctor` through the newly installed command.
+mode, pulls images, and recreates every container in one Compose operation.
+It then runs `labpulse doctor` through the newly installed command. Confirmed
+incidents during the recreation follow ordinary confirmation and explicit mute
+rules. The SMS worker's persistent MQTT subscription queues QoS 1 failure and
+recovery requests while it is unavailable; both may arrive shortly after it
+reconnects. A failed update reports the installation, setup, Compose, or doctor
+error. Repair the reported problem and run `labpulse up` when needed.
 
-If maintenance acknowledgement or required fresh telemetry does not arrive
-within two minutes, update exits with SMS delivery stopped and update
-maintenance active instead of risking a notification flood. Repair the
-reported service or required reading, confirm telemetry is current, then run
-`labpulse up labpulse-sms`; that command clears maintenance with the same
-acknowledged handshake before resuming delivery.
+Before updating, save an operator rollback archive and record the installed
+version:
+
+```bash
+labpulse version
+mkdir -p ~/labpulse-backups
+labpulse backup ~/labpulse-backups/before-notification-update.tar.gz
+```
+
+After the new release is published, run `labpulse update` on the Pi, then verify
+the generated stack and notification worker:
+
+```bash
+labpulse ps --all
+labpulse doctor --timeout 5
+labpulse logs --tail 50 labpulse-sms
+grep -R 'labpulse_update_maintenance' ~/labpulse-live/homeassistant/config/packages
+```
+
+The final `grep` should produce no match. The SMS worker should report a direct
+MQTT subscription and online status rather than waiting for a retained
+maintenance state. Check a confirmed incident in Home Assistant with an
+explicitly unmuted test recipient before relying on live SMS delivery.
+
+If the update fails, read its error and run `labpulse up` after repairing the
+cause. To return to the previous published package, use the version recorded
+above:
+
+```bash
+previous_version=0.1.1 # replace with the version recorded above
+labpulse update "$previous_version"
+labpulse ps --all
+labpulse doctor --timeout 5
+```
+
+If configuration or Home Assistant private state also needs to be restored,
+use `labpulse restore ~/labpulse-backups/before-notification-update.tar.gz`.
+That replaces live state, so inspect the archive and follow the restore
+procedure below before running it. The Windows Triton publishers need no change
+for this notification-control update.
 
 `--backup` keeps one rolling copy of each replaced package-managed file in
 `~/labpulse-live/backups/`. A later setup or update replaces the corresponding
@@ -365,7 +403,7 @@ Pi.
 
 ## Backup and blank-Pi reconstruction
 
-After first-install acceptance and before maintenance, create an archive
+After first-install acceptance and before updating, create an archive
 outside the live directory:
 
 ```bash

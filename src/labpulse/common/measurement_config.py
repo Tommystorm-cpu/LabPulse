@@ -137,6 +137,7 @@ class MeasurementConfig(BaseModel):
     missing_confirm_seconds: int = Field(default=60, ge=1, le=86400)
     recovery_confirm_seconds: int = Field(default=15, ge=0, le=3600)
     unit: str | None = None
+    precision: int | None = Field(default=None, ge=0, le=10, strict=True)
     device_class: str | None = None
     icon: str | None = None
     state_class: str | None = "measurement"
@@ -192,6 +193,7 @@ class MeasurementDefaultsConfig(BaseModel):
     missing_confirm_seconds: int | None = Field(default=None, ge=1, le=86400)
     recovery_confirm_seconds: int | None = Field(default=None, ge=0, le=3600)
     unit: str | None = None
+    precision: int | None = Field(default=None, ge=0, le=10, strict=True)
     device_class: str | None = None
     icon: str | None = None
     state_class: str | None = None

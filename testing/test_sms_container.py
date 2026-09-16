@@ -16,7 +16,6 @@ from labpulse.common.mqtt_contracts import (
     SMS_STATUS_DISCOVERY_TOPIC,
     SMS_STATUS_TOPIC,
     SMS_SUBSCRIPTION_TOPIC,
-    UPDATE_MAINTENANCE_TOPIC,
     SmsRequest,
     sms_result_topic,
 )
@@ -456,18 +455,8 @@ def test_subscriber_uses_persistent_qos_one_session() -> None:
     subscriber.on_connect(client, None, None, 0, None)
     assert_equal(
         client.subscriptions,
-        [(UPDATE_MAINTENANCE_TOPIC, 1)],
-        "maintenance is subscribed before queued alerts",
-    )
-    maintenance_off = type(
-        "Message", (),
-        {"topic": UPDATE_MAINTENANCE_TOPIC, "payload": b'{"request_id":"ready","state":"OFF"}'},
-    )()
-    subscriber.on_message(client, None, maintenance_off)
-    assert_equal(
-        client.subscriptions,
-        [(UPDATE_MAINTENANCE_TOPIC, 1), (SMS_SUBSCRIPTION_TOPIC, 1)],
-        "SMS subscribes after retained maintenance",
+        [(SMS_SUBSCRIPTION_TOPIC, 1)],
+        "SMS requests are subscribed immediately",
     )
     assert_equal(client.published[-2][0], SMS_STATUS_DISCOVERY_TOPIC, "status discovery topic")
     assert_equal(client.published[-1][0], SMS_STATUS_TOPIC, "online status topic")
@@ -495,30 +484,22 @@ def test_payload_parser_is_strict() -> None:
         raise AssertionError(f"invalid payload accepted: {payload!r}")
 
 
-def test_subscriber_discards_queued_alerts_during_maintenance() -> None:
-    """Do not deliver queued QoS-one requests until retained maintenance is off."""
+def test_subscriber_replays_queued_failure_and_recovery_in_order() -> None:
+    """Persistent-session delivery accepts distinct opening/recovery requests."""
 
     sender = FakeSender()
     client = FakeSmsClient()
     with patch.object(sms_subscriber.mqtt, "Client", return_value=client):
         subscriber = SmsSubscriber(MqttConfig(broker="mosquitto"), sender, SMS_TEST_STATE)
     subscriber.on_connect(client, None, None, 0, None)
-    alert = type(
-        "Message", (),
-        {
+    for request_id, event in ((f"failure-{uuid4()}", "warning"), (f"recovery-{uuid4()}", "recovery")):
+        message = type("Message", (), {
             "topic": SMS_SUBSCRIPTION_TOPIC,
-            "payload": json.dumps(request_payload(f"maintenance-{uuid4()}")).encode(),
-        },
-    )()
-    subscriber.on_message(client, None, alert)
-    assert_equal(sender.requests, [], "queued alert suppressed before maintenance state")
-    maintenance_off = type(
-        "Message", (),
-        {"topic": UPDATE_MAINTENANCE_TOPIC, "payload": b'{"request_id":"ready","state":"OFF"}'},
-    )()
-    subscriber.on_message(client, None, maintenance_off)
-    subscriber.on_message(client, None, alert)
-    assert_equal(len(sender.requests), 1, "alert accepted after maintenance clears")
+            "payload": json.dumps(request_payload(request_id, event)).encode(),
+        })()
+        subscriber.on_message(client, None, message)
+    assert_equal([item.event for item in sender.requests], ["warning", "recovery"], "paired order")
+
 
 
 def test_subscriber_deduplicates_and_rate_limits() -> None:

@@ -22,26 +22,17 @@
     - platform: homeassistant
       id: startup
       event: start
-    - platform: mqtt
-      id: maintenance
-      topic: [[ model.update_maintenance_topic | yaml_scalar ]]
 [% if measurement.alarmed %]
     - platform: state
       id: resend
       entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
 [% endif %]
     action:
-    - condition: template
-      value_template: >-
-        {{ trigger.platform != 'mqtt' or trigger.payload_json.state == 'OFF' }}
     - choose:
       - conditions: "{{ trigger.id != 'resend' }}"
         sequence:
         - delay:
             seconds: [[ measurement.missing_confirm_seconds | yaml_scalar ]]
-        - condition: state
-          entity_id: input_boolean.labpulse_update_maintenance
-          state: 'off'
         - condition: state
           entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
           state: 'off'
@@ -53,17 +44,20 @@
           entity_id: [[ entity_id('input_boolean', blocking_service_name, 'service_offline_incident_active') | yaml_scalar ]]
           state: 'off'
 [% endfor %]
-        - condition: state
-          entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
-          state: 'off'
-        - service: input_datetime.set_datetime
-          target:
-            entity_id: [[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') | yaml_scalar ]]
-          data:
-            timestamp: "{{ as_timestamp(now()) }}"
-        - service: input_boolean.turn_on
-          target:
-            entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
+        - choose:
+          - conditions:
+            - condition: state
+              entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
+              state: 'off'
+            sequence:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: [[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') | yaml_scalar ]]
+              data:
+                timestamp: "{{ as_timestamp(now()) }}"
+            - service: input_boolean.turn_on
+              target:
+                entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
     - condition: state
       entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
       state: 'on'
@@ -79,6 +73,7 @@
           [[ measurement.notification_context ]]
         notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_notification_sent') | yaml_scalar ]]
         sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_sms_requested') | yaml_scalar ]]
+        resend: "{{ trigger.id == 'resend' }}"
         delivery_allowed: >-
           {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
              and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
@@ -103,15 +98,17 @@
     - platform: state
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
       to: 'on'
+    - platform: homeassistant
+      event: start
     action:
     - delay:
         seconds: [[ measurement.recovery_confirm_seconds | yaml_scalar ]]
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
       state: 'on'
-    - condition: state
-      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
-      state: 'on'
+    - condition: template
+      value_template: >-
+        {{ is_state('[[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') ]]', 'on') }}
     - variables:
         missing_started: >-
           {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') ]]'), as_timestamp(now())) }}

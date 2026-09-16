@@ -25,8 +25,7 @@ README.
   troubleshooting.
 - [Operations](OPERATIONS.md): interpreting state, notification controls, and
   safe update recovery.
-- [Troubleshooting](TROUBLESHOOTING.md): service, reading, delivery, and
-  maintenance problems.
+- [Troubleshooting](TROUBLESHOOTING.md): service, reading, and delivery problems.
 - [Hardware](HARDWARE.md): current interface boundary and placeholders for the
   future photographed build record.
 - [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended

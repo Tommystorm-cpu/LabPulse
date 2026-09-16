@@ -69,7 +69,6 @@ class SmsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = Field(default=True, strict=True)
-    send_recovery_sms: bool = Field(default=False, strict=True)
     recipients: list[str] = Field(default_factory=list)
     test_recipients: list[str] = Field(default_factory=list)
 

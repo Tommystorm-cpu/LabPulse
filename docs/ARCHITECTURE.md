@@ -419,12 +419,15 @@ Home Assistant owns:
 - global, setup, measurement, and power mutes;
 - Test mode;
 - explicit resend requests for active measurement alerts;
-- retained update-maintenance request and acknowledgement state;
 - one central incident dispatcher for persistent notification and SMS request
   creation, suppression, and recovery eligibility.
 
 Python publishes measurements and health facts. It does not decide whether a
 measurement is dangerous.
+
+Physical measurement `precision` is sent only as MQTT discovery's
+`suggested_display_precision`; the state topic keeps the full numeric value for
+alarms and detailed history.
 
 The notification path is deliberately one-way:
 
@@ -433,18 +436,20 @@ MQTT facts
   -> service / reading / alarm classification
   -> confirmed incident transition
   -> central dispatcher
-  -> persistent Home Assistant problem and optional SMS request
+       -> persistent Home Assistant problem (explicit mutes only)
+       -> optional SMS request (explicit mutes)
 ```
 
 Stable incident and persistent-notification IDs plus restored delivery flags
 prevent duplicates after a Home Assistant restart. Service outages suppress
 their subordinate reading incidents. A recovery always dismisses the matching
 problem, but creates a recovery message only if the opening notification was
-actually created; recovery SMS additionally requires `send_recovery_sms`.
-The SMS subscriber listens for retained maintenance before attaching its
-persistent alert subscription. This prevents queued QoS 1 messages from racing
-ahead of an ON request. A fresh broker with no retained request is treated as
-normal operation after a short, fail-closed handshake.
+actually created. Recovery SMS is paired with an opening SMS request and obeys
+the current notification mutes and Test mode. Confirmed Home Assistant
+notifications do not depend on the SMS worker. The SMS worker subscribes with a
+persistent MQTT session, so distinct failure and recovery requests queued while
+it is unavailable are replayed in order after reconnect. The request-ID cache
+rejects duplicate QoS 1 deliveries.
 
 ## SMS process
 

@@ -91,7 +91,7 @@ class FakeMqttClient:
 def make_publisher(
     service_name: str = "pressure_monitor",
     device_name: str = "Air Pressure Sensor Hub",
-    measurements: dict[str, dict[str, str]] | None = None,
+    measurements: dict[str, dict[str, object]] | None = None,
     power_detection: dict[str, object] | None = None,
     maximum_measurement_age_seconds: int = 300,
 ) -> HomeAssistantMqttPublisher:
@@ -197,6 +197,8 @@ def test_publish_discovery_once_then_measurements() -> None:
     assert_equal(payload["unit_of_measurement"], "bar", "unit")
     assert_equal(payload["state_class"], "measurement", "state class")
     assert_equal(payload["icon"], "mdi:gauge", "derived measurement icon")
+    if "suggested_display_precision" in payload:
+        raise AssertionError("default discovery should not request display rounding")
     if "device_class" in payload:
         raise AssertionError("discovery enables unwanted Home Assistant conversion")
     assert_equal(payload["device"]["name"], "Air Pressure Sensor Hub", "device name")
@@ -208,6 +210,36 @@ def test_publish_discovery_once_then_measurements() -> None:
     )
     assert_equal(first_state["payload"], 1.23, "first state payload")
     assert_equal(second_state["payload"], 1.23, "second state payload")
+
+
+def test_precision_changes_display_discovery_without_rounding_measurement() -> None:
+    """Publish full numeric precision while suggesting a shorter display."""
+
+    publisher = make_publisher(measurements={
+        "pressure": {"setups": ["test_setup"], "unit": "bar", "precision": 2},
+        "temperature": {"setups": ["test_setup"], "unit": "°C", "precision": 0},
+        "humidity": {"setups": ["test_setup"], "unit": "%"},
+    })
+    readings = {"pressure": 1.23456, "temperature": 18.789, "humidity": 51.234}
+    publisher.publish(readings)
+
+    messages = publisher.client.published
+    discoveries = {
+        item["topic"]: json.loads(str(item["payload"]))
+        for item in messages if str(item["topic"]).endswith("/config")
+    }
+    assert discoveries["homeassistant/sensor/pressure_monitor_pressure/config"]["suggested_display_precision"] == 2
+    assert discoveries["homeassistant/sensor/pressure_monitor_temperature/config"]["suggested_display_precision"] == 0
+    assert "suggested_display_precision" not in discoveries["homeassistant/sensor/pressure_monitor_humidity/config"]
+    states = {
+        item["topic"]: item["payload"]
+        for item in messages if str(item["topic"]).endswith("/state")
+    }
+    assert states == {
+        "home/sensor/pressure_monitor/pressure/state": 1.23456,
+        "home/sensor/pressure_monitor/temperature/state": 18.789,
+        "home/sensor/pressure_monitor/humidity/state": 51.234,
+    }
 
 
 def test_publish_status_discovery_once_then_status() -> None:

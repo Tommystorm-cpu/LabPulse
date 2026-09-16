@@ -6,15 +6,15 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
 import yaml
 from jinja2 import UndefinedError
+from pydantic import ValidationError
 
-from labpulse.common.config import load_config
+from labpulse.common.config import SmsConfig, load_config
 from labpulse.common.mqtt_contracts import (
     SMS_ALERT_PAYLOAD_FIELDS,
     SMS_SEND_TOPIC,
-    UPDATE_MAINTENANCE_ACK_TOPIC,
-    UPDATE_MAINTENANCE_TOPIC,
 )
 import labpulse.homeassistant.generator as generator
 from labpulse.homeassistant.generator import main as generate_homeassistant
@@ -101,7 +101,6 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
             f"{helper}_missing_reading_notification_sent",
             f"{helper}_alarm_notification_sent",
             "labpulse_global_notifications_muted",
-            "labpulse_update_maintenance",
         },
         "input_button": {f"{helper}_resend_active_alert"},
         "script": {
@@ -122,17 +121,7 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     }
     assert all(aliases.count(alias) == 1 for alias in expected)
 
-    maintenance = automation(package, "LabPulse Synchronize Update Maintenance")
-    assert maintenance["trigger"] == [
-        {"platform": "mqtt", "topic": UPDATE_MAINTENANCE_TOPIC}
-    ]
-    acknowledgement = next(
-        item for item in walk(maintenance)
-        if isinstance(item, dict)
-        and item.get("service") == "mqtt.publish"
-    )
-    assert acknowledgement["data"]["topic"] == UPDATE_MAINTENANCE_ACK_TOPIC
-    assert acknowledgement["data"]["retain"] is True
+    assert "labpulse_update_maintenance" not in paths.package.read_text(encoding="utf-8")
     danger = automation(package, "LabPulse Pressure Danger")
     unavailable = automation(package, "LabPulse Pressure Reading Missing")
     resend = f"input_button.{helper}_resend_active_alert"
@@ -157,26 +146,23 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
     )
     assert central_publish["data"]["topic"] == SMS_SEND_TOPIC
     open_incident = package["script"]["labpulse_open_incident"]["sequence"]
-    maintenance_gate_index = next(
-        index for index, item in enumerate(open_incident)
-        if item.get("condition") == "state"
-        and item.get("entity_id") == "input_boolean.labpulse_update_maintenance"
-        and item.get("state") == "off"
-    )
     notification_index = next(
         index for index, item in enumerate(open_incident)
-        if item.get("service") == "persistent_notification.create"
+        if any(isinstance(child, dict) and child.get("service") == "persistent_notification.create"
+               for child in walk(item))
     )
     sms_index = next(
         index for index, item in enumerate(open_incident)
-        if item.get("service") == "mqtt.publish"
+        if any(isinstance(child, dict) and child.get("service") == "mqtt.publish"
+               for child in walk(item))
     )
-    assert maintenance_gate_index < notification_index < sms_index
+    assert notification_index < sms_index
+    assert "input_boolean.labpulse_global_notifications_muted" in str(open_incident[:notification_index])
+    assert "delivery_allowed" in str(open_incident[:notification_index])
 
     close_incident = str(package["script"]["labpulse_close_incident"])
     assert "original_notification_sent" in close_incident
     assert "original_sms_requested" in close_incident
-    assert "input_boolean.labpulse_update_maintenance" in close_incident
 
     incident_alias_suffixes = (
         " Danger", " Recovery", " Reading Missing", " Reading Restored",
@@ -202,7 +188,7 @@ def test_generated_package_exposes_alarm_lifecycle_and_sms_contract() -> None:
             for item in walk(automation(package, alias)["action"])
             if isinstance(item, dict) and item.get("condition") == "state"
         }
-        assert ("input_boolean.labpulse_update_maintenance", "off") in conditions
+        assert ("input_boolean.labpulse_update_maintenance", "off") not in conditions
 
 
 def test_threshold_helpers_restore_state_without_seed_files() -> None:
@@ -352,6 +338,78 @@ def test_service_failure_notification_switch_and_fridge_wording() -> None:
         if sensor["unique_id"] == "labpulse_triton_01_service_offline"
     )
     assert "awaiting_heartbeat" not in service_offline["state"]
+
+
+def test_every_sms_incident_requests_its_recovery_without_a_second_option() -> None:
+    """Pair recovery SMS with its opening request across every incident type."""
+
+    root = REPOSITORY / "testing" / "tmp" / f"generator-paired-{uuid4().hex}"
+    ha_dir = root / "homeassistant" / "config"
+    assert generate_homeassistant([str(REPOSITORY / "config.yaml"), str(ha_dir)]) == 0
+    package = yaml.safe_load((ha_dir / "packages" / "labpulse_generated.yaml").read_text(encoding="utf-8"))
+    recovery_automations = [
+        item for item in package["automation"]
+        if str(item.get("alias", "")).endswith((
+            " Recovery", " Reading Restored", " Service Working", " Recovery Confirm",
+        ))
+    ]
+    assert all(any(str(item.get("alias", "")).endswith(suffix)
+                   for item in recovery_automations) for suffix in (
+        " Recovery", " Reading Restored", " Service Working", " Recovery Confirm",
+    ))
+    for recovery in recovery_automations:
+        dispatches = [
+            item for item in walk(recovery)
+            if isinstance(item, dict) and item.get("service") == "script.labpulse_close_incident"
+        ]
+        assert len(dispatches) == 1
+        assert "recovery_sms_payload" in dispatches[0]["data"]
+        assert "recovery_sms_pending_entity" not in dispatches[0]["data"]
+        assert '"test_mode": is_state(' in dispatches[0]["data"]["recovery_sms_payload"]
+        assert "input_boolean.labpulse_notification_test_mode" in dispatches[0]["data"]["recovery_sms_payload"]
+
+    opening_suffixes = (
+        " Danger", " Reading Missing", " Service Offline", " Outage Confirm",
+    )
+    for opening in package["automation"]:
+        if str(opening.get("alias", "")).endswith(opening_suffixes):
+            assert not any(
+                isinstance(item, dict) and item.get("condition") == "state"
+                and item.get("entity_id") == "input_boolean.labpulse_update_maintenance"
+                for item in walk(opening["action"])
+            )
+
+    close_sequence = package["script"]["labpulse_close_incident"]["sequence"]
+    sms_dispatch = next(
+        (index, item) for index, item in enumerate(close_sequence)
+        if item.get("choose") and any(
+            isinstance(child, dict) and child.get("service") == "mqtt.publish"
+            for child in walk(item)
+        )
+    )
+    notification_dispatch = next(
+        (index, item) for index, item in enumerate(close_sequence)
+        if item.get("choose") and any(
+            isinstance(child, dict) and child.get("service") == "persistent_notification.create"
+            for child in walk(item)
+        )
+    )
+    assert notification_dispatch[0] < sms_dispatch[0]
+    assert "labpulse_update_maintenance" not in str(notification_dispatch[1])
+    assert sms_dispatch[1]["choose"][0]["conditions"] == [
+        {
+            "condition": "template",
+            "value_template": "{{ original_sms_requested and delivery_allowed | bool }}",
+        },
+        {
+            "condition": "state",
+            "entity_id": "input_boolean.labpulse_global_notifications_muted",
+            "state": "off",
+        },
+    ]
+    assert "recovery_sms_pending_entity" not in str(close_sequence)
+    with pytest.raises(ValidationError):
+        SmsConfig.model_validate({"send_recovery_sms": False})
 
 
 def test_first_install_mutes_once_without_overriding_restored_state() -> None:

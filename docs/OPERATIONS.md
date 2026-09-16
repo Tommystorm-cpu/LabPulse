@@ -25,8 +25,7 @@ Global, setup, per-reading, and power mutes suppress delivery without changing
 the underlying incident. Per-reading and power mutes also hide their condition
 from Current Problems; System Status remains available. Test mode selects the test recipient list. **Resend
 active alert** retries the currently confirmed Danger or missing-reading
-alert through the same central dispatcher and therefore respects maintenance
-and every mute.
+alert through the same central dispatcher. Both delivery paths respect explicit mutes.
 
 Set `notify_on_service_failure: false` on an individual service in the live
 config to suppress its offline and recovery Home Assistant/SMS notifications.
@@ -35,20 +34,19 @@ alarms retain their own policies.
 
 A recovery always dismisses the matching persistent Home Assistant problem.
 LabPulse creates a recovery notification only when the corresponding opening
-notification was created. SMS recovery additionally requires
-`sms.send_recovery_sms: true`; it defaults to false.
+notification was created. Every opening SMS request is paired with a recovery
+SMS request when the condition resolves and the current global, service, setup,
+reading, or power mute allows it.
+Changing Test mode before recovery routes the SMS to the current test recipient
+list.
 
 ## Safe updates
 
-`labpulse update` requests retained maintenance before disrupting runtime
-services. Home Assistant must acknowledge the same request ID. Update then
-recreates the stack, waits for fresh telemetry from required readings only,
-allows state reconciliation to settle, clears maintenance with another
-acknowledgement, and starts SMS delivery. Threshold alarms then collect a new
-observation window instead of reusing dangerous history from the restart.
-
-If the command fails during that sequence, maintenance remains active and the
-SMS worker remains stopped. Correct the reported service or required-reading
-problem, verify telemetry, then run `labpulse up labpulse-sms`. Do not start the
-worker separately without clearing acknowledged maintenance: a persistent MQTT
-session may contain queued QoS 1 requests from an older deployment.
+`labpulse update` installs the release, refreshes generated files, and recreates
+the whole stack. It runs the new release's `labpulse doctor` after recreation.
+There is no separate notification pause or telemetry-readiness gate. Confirmed
+outages during an update follow normal confirmation and explicit mute rules.
+The SMS worker has a persistent MQTT session: if it is briefly unavailable,
+queued QoS 1 failure and recovery requests are delivered in order when it
+reconnects, with duplicate request IDs rejected. If Compose fails, fix the
+reported problem and use `labpulse up` to start the stack again.

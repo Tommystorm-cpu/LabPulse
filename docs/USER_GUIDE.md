@@ -71,11 +71,10 @@ next setup or configuration operation will replace.
 bind-mounted state; `labpulse restart` restarts all or selected services.
 `labpulse update` installs the latest published release, refreshes generated
 files, and recreates the complete stack only when the version has changed.
-It temporarily suppresses sensor-health notifications and keeps the SMS worker
-stopped until every configured physical measurement has published a fresh
-value. If telemetry readiness times out, SMS remains stopped and the command
-reports how to resume it and clear maintenance mode after the underlying
-problem is repaired.
+Confirmed incidents during an update follow their usual timing and mute rules.
+The SMS worker's persistent MQTT session queues requests while it is unavailable;
+failure and recovery requests can arrive together when it reconnects. A failed
+update reports the installation or Compose error and does not leave a hidden mute.
 After every LabPulse command finishes, a short version check prints a
 `labpulse update` reminder only when TestPyPI has a newer release. The check is
 silent on network failure and does not change the command's result.
@@ -345,9 +344,10 @@ Normal recipients are used only after an operator deliberately disables Test
 mode. Test mode changes routing, not the underlying alarm calculations.
 Muting suppresses delivery and removes that measurement or power condition
 from **Current Problems**, without changing its underlying state. System Status
-still shows the underlying service and reading condition. A recovery message is never generated when the
-matching opening notification was not delivered. Recovery SMS is separately
-configurable and off by default.
+still shows the underlying service and reading condition. A Home Assistant
+recovery notification requires an opening Home Assistant notification. A
+recovery SMS requires an opening SMS request and obeys the mutes and Test mode
+in effect at recovery.
 
 ## SMS behaviour
 

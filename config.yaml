@@ -25,8 +25,7 @@ mqtt:
 sms:
   # Keep true for safe testing; set false on the real Pi to send through mmcli.
   dry_run: true
-  # Recoveries always clear Home Assistant incidents. SMS recoveries are opt-in.
-  send_recovery_sms: false
+  # Recovery SMS follows an opening SMS unless notifications are muted at recovery.
   # Emergency contact numbers for system alerts.
   recipients:
     - "+447700900000"
@@ -118,6 +117,8 @@ services:
         # allowing Home Assistant to convert the configured unit. Add icon:
         # mdi:... only when overriding that default.
         unit: bar
+        # Optional display-only rounding; MQTT readings and history keep full precision.
+        precision: 2
         device_class: pressure
       temperature:
         label: Main Lab Temperature

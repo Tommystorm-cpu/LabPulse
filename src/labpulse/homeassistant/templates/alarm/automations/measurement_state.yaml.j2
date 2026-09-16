@@ -1,5 +1,5 @@
 {# High/low alarm state is evaluated only from an available reading. Delivery
-   goes through the shared incident scripts so mute and maintenance rules have
+   goes through the shared incident scripts so mute rules have
    exactly one implementation. #}
   - alias: LabPulse [[ measurement.label ]] Initialize Alarm Timing
     mode: single
@@ -35,24 +35,20 @@
     - platform: template
       id: natural
       value_template: >
-        {{ is_state('input_boolean.labpulse_update_maintenance', 'off')
-           and is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]', 'on')
+        {{ is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]', 'on')
 [% for blocking_service_name in measurement.blocking_service_names %]
            and is_state('[[ entity_id('binary_sensor', blocking_service_name, 'service_offline') ]]', 'off')
            and is_state('[[ entity_id('input_boolean', blocking_service_name, 'service_offline_incident_active') ]]', 'off')
 [% endfor %]
            and states('[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]') | float(0)
-             >= states('[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]') | float(70)
-           and as_timestamp(now()) - as_timestamp(
-             states('input_datetime.labpulse_update_maintenance_cleared'), as_timestamp(now())
-           ) >= states('[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]') | int(120) }}
+             >= states('[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]') | float(70) }}
+    - platform: homeassistant
+      id: startup
+      event: start
     - platform: state
       id: resend
       entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
     condition:
-    - condition: state
-      entity_id: input_boolean.labpulse_update_maintenance
-      state: 'off'
     - condition: state
       entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
       state: 'on'
@@ -66,9 +62,11 @@
 [% endfor %]
     - condition: template
       value_template: >-
-        {{ (trigger.id == 'natural' and is_state(
-             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]', 'Normal'))
-           or (trigger.id == 'resend' and is_state(
+        {{ (trigger.id in ['natural', 'startup'] and is_state(
+             '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]', 'Normal')
+             and states('[[ entity_id('sensor', service.name, measurement.name, 'observed_danger_percent') ]]') | float(0)
+               >= states('[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]') | float(70))
+           or (trigger.id in ['resend', 'startup'] and is_state(
              '[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]', 'Danger')) }}
     - condition: template
       value_template: >-
@@ -100,6 +98,7 @@
           [[ measurement.notification_context ]]
         notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_notification_sent') | yaml_scalar ]]
         sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_sms_requested') | yaml_scalar ]]
+        resend: "{{ trigger.id == 'resend' }}"
         delivery_allowed: >-
           {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
              and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
@@ -122,17 +121,17 @@
     mode: single
     trigger:
     - platform: template
+      id: natural
       value_template: >
-        {{ is_state('input_boolean.labpulse_update_maintenance', 'off')
-           and is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]', 'on')
+        {{ is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]', 'on')
            and is_state('[[ entity_id('binary_sensor', service.name, measurement.name, 'recovery_zone') ]]', 'on') }}
       for:
         seconds: >-
           {{ states('[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]') | int(120) }}
     condition:
-    - condition: state
-      entity_id: [[ entity_id('input_select', service.name, measurement.name, 'alarm_state') | yaml_scalar ]]
-      state: Danger
+    - condition: template
+      value_template: >-
+        {{ is_state('[[ entity_id('input_select', service.name, measurement.name, 'alarm_state') ]]', 'Danger') }}
     action:
     - service: script.labpulse_close_incident
       data:
