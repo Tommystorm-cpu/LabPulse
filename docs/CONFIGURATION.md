@@ -40,6 +40,8 @@ entity and alarm identities.
 ## Top-level structure
 
 ```yaml
+timezone: Europe/London
+
 mqtt:
   broker: mosquitto
   port: 1883
@@ -71,11 +73,12 @@ requires at least one enabled sensor service. Other YAML blocks in this guide
 are **fragments** to place under the shown key, not complete files. Use the
 [complete examples](#complete-examples) for standalone validation.
 
-`mqtt`, `setups`, and `services` are required mappings. `sms` defaults to dry-run
-with empty recipient lists; `service_health` defaults to 10/15-second confirmation;
-`dashboards`, `outputs`, and `custom_measurements` default to empty mappings.
-`mqtt.broker` has no default; `mqtt.port` defaults to 1883. The external MQTT
-listener defaults to disabled.
+`mqtt`, `setups`, and `services` are required mappings. `timezone` defaults to
+`Europe/London`; `sms` defaults to dry-run with empty recipient lists;
+`service_health` defaults to 10/15-second confirmation; `dashboards`, `outputs`,
+and `custom_measurements` default to empty mappings. `mqtt.broker` has no
+default; `mqtt.port` defaults to 1883. The external MQTT listener defaults to
+disabled.
 
 Configuration is validated with Pydantic before generation and service startup.
 Unknown driver IDs, invalid driver options, missing setup references, unstable
@@ -91,12 +94,29 @@ The same validated document is consumed differently:
 
 | Consumer | Reads from the document |
 |---|---|
-| Compose generator | enabled services and outputs, runtime image inputs, driver resources, SMS mode |
+| Compose generator | timezone, enabled services and outputs, runtime image inputs, driver resources, SMS mode |
 | Hardware CLI | one selected service, its typed driver options, MQTT settings |
 | Home Assistant generator | enabled services and outputs, dashboards, setups, measurements, health and power timing |
 | SMS CLI | MQTT settings, delivery mode, normal and test recipients |
 | Output CLI | one selected output, its typed driver options, MQTT settings, and safety timing |
 | Doctor | source/runtime agreement, enabled workers, declared host resources |
+
+## Timezone
+
+```yaml
+timezone: America/New_York
+```
+
+`timezone` is the deployment's IANA timezone and is passed to Home Assistant as
+its `TZ` environment value. Examples include `Europe/London`, `America/New_York`,
+`Asia/Tokyo`, and `Australia/Sydney`. Run `timedatectl list-timezones` on the
+Raspberry Pi to find the required name.
+
+Set the Pi host to the same timezone and enable NTP as described in the
+[installation guide](INSTALLATION.md#requirements). NTP synchronizes
+the underlying clock worldwide; the timezone controls how that time is displayed
+in Home Assistant and logs. Invalid timezone names are rejected during
+configuration validation.
 
 ## MQTT
 

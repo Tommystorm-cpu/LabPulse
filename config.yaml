@@ -9,6 +9,10 @@
 # dashboard. A fresh installation starts with all notifications muted.
 
 # Global settings
+# Use an IANA timezone from `timedatectl list-timezones`. Keep the Raspberry Pi
+# host on the same timezone so Home Assistant, logs, and diagnostics agree.
+timezone: Europe/London
+
 mqtt:
   broker: mosquitto
   port: 1883

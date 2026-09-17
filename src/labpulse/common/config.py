@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from ipaddress import AddressValueError, IPv4Address
 from pathlib import Path, PureWindowsPath
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 import yaml
@@ -204,6 +205,7 @@ class LabPulseConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    timezone: str = "Europe/London"
     mqtt: MqttConfig
     sms: SmsConfig = Field(default_factory=SmsConfig)
     service_health: ServiceHealthConfig = Field(default_factory=ServiceHealthConfig)
@@ -212,6 +214,22 @@ class LabPulseConfig(BaseModel):
     services: dict[str, ServiceConfig]
     outputs: dict[str, OutputConfig] = Field(default_factory=dict)
     custom_measurements: dict[str, CustomMeasurementConfig] = Field(default_factory=dict)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, timezone_name: str) -> str:
+        """Require one canonical IANA timezone understood by the containers."""
+
+        normalized = timezone_name.strip()
+        if not normalized:
+            raise ValueError("timezone must not be blank")
+        try:
+            ZoneInfo(normalized)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise ValueError(
+                "timezone must be an IANA name, for example Europe/London or America/New_York"
+            ) from error
+        return normalized
 
     @model_validator(mode="after")
     def validate_cross_references(self) -> "LabPulseConfig":

@@ -562,8 +562,6 @@ GPIO/I2C enablement and wiring are not restored from an archive.
 
 - The generated deployment assumes a trusted private network and anonymous
   local Mosquitto; it must not be exposed directly to the public internet.
-- Home Assistant currently receives a hard-coded `Europe/London` container
-  timezone as well as host local time.
 - YAML duplicate mapping keys are not rejected before schema validation; use
   each key once.
 - Some possible service/output names can collide with fixed Compose names; use

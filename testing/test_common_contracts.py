@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 
+import pytest
 from pydantic import ValidationError
 
 
@@ -145,6 +146,7 @@ def test_service_health_config_contract() -> None:
         },
     }
     defaulted = LabPulseConfig.model_validate(base)
+    assert_equal(defaulted.timezone, "Europe/London", "timezone default")
     assert_equal(defaulted.service_health.offline_confirm_seconds, 10, "offline default")
     assert_equal(defaulted.service_health.recovery_confirm_seconds, 15, "recovery default")
     assert_equal(defaulted.mqtt.external_listener.enabled, False, "external MQTT default")
@@ -157,13 +159,18 @@ def test_service_health_config_contract() -> None:
     configured = LabPulseConfig.model_validate(
         {
             **base,
+            "timezone": "America/New_York",
             "service_health": {
                 "offline_confirm_seconds": 7,
                 "recovery_confirm_seconds": 12,
             },
         }
     )
+    assert_equal(configured.timezone, "America/New_York", "timezone override")
     assert_equal(configured.service_health.offline_confirm_seconds, 7, "offline override")
+
+    with pytest.raises(ValidationError, match="timezone"):
+        LabPulseConfig.model_validate({**base, "timezone": "Mars/Olympus_Mons"})
 
     service_override = LabPulseConfig.model_validate({
         **base,

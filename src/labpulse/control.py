@@ -10,12 +10,11 @@ import os
 from pathlib import Path
 import shlex
 import shutil
-import socket
 import subprocess
 import sys
 import time
 from typing import Sequence
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import webbrowser
 
@@ -320,18 +319,51 @@ def run_uninstall_command(live_dir: Path, *, assume_yes: bool) -> int:
     return 0
 
 
-def _wait_for_homeassistant(timeout: float = 120.0) -> bool:
-    """Wait for Home Assistant's local endpoint after reconstruction."""
+def _homeassistant_http_ready(timeout: float = 2.0) -> bool:
+    """Return whether Home Assistant is serving a non-error HTTP response."""
+
+    request = Request(
+        "http://127.0.0.1:8123/",
+        headers={"User-Agent": f"LabPulse/{__version__} readiness probe"},
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return response.status < 500
+    except HTTPError as error:
+        # An authentication or routing response still proves that Home
+        # Assistant's HTTP server is running. Server errors do not.
+        return error.code < 500
+    except (OSError, TimeoutError, URLError):
+        return False
+
+
+def _wait_for_homeassistant(
+    timeout: float = 120.0,
+    *,
+    stable_for: float = 10.0,
+    poll_interval: float = 2.0,
+) -> bool:
+    """Wait until Home Assistant serves HTTP continuously for a stable period."""
 
     deadline = time.monotonic() + timeout
+    ready_since: float | None = None
     while time.monotonic() < deadline:
-        try:
-            connection = socket.create_connection(("127.0.0.1", 8123), timeout=2.0)
-        except (OSError, TimeoutError):
-            time.sleep(2.0)
-            continue
-        connection.close()
-        return True
+        if _homeassistant_http_ready():
+            checked_at = time.monotonic()
+            if ready_since is None:
+                ready_since = checked_at
+            elif checked_at - ready_since >= stable_for:
+                return True
+        else:
+            # Home Assistant may briefly bind its port and then restart while
+            # loading configuration. Any failed probe restarts the stability
+            # window so final diagnostics cannot run during that gap.
+            ready_since = None
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(poll_interval, remaining))
     return False
 
 

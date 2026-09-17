@@ -476,6 +476,72 @@ def test_update_waits_for_homeassistant_and_skips_early_diagnostics(
     assert "did not become ready within 120 seconds" in output.err
 
 
+@pytest.mark.parametrize(("status", "expected"), [(200, True), (503, False)])
+def test_homeassistant_readiness_requires_a_non_error_http_response(
+    status: int, expected: bool
+) -> None:
+    """Distinguish a working HTTP service from an initializing server error."""
+
+    response = BytesIO()
+    response.status = status  # type: ignore[attr-defined]
+    with patch.object(control, "urlopen", return_value=response) as open_url:
+        result = control._homeassistant_http_ready(timeout=3.0)
+
+    assert result is expected
+    request = open_url.call_args.args[0]
+    assert request.full_url == "http://127.0.0.1:8123/"
+    assert open_url.call_args.kwargs == {"timeout": 3.0}
+
+
+def test_homeassistant_authentication_response_proves_http_is_ready() -> None:
+    """Accept an HTTP response even when the endpoint requires authentication."""
+
+    authentication_required = control.HTTPError(
+        "http://127.0.0.1:8123/",
+        401,
+        "Unauthorized",
+        {},
+        None,
+    )
+    with patch.object(control, "urlopen", side_effect=authentication_required):
+        assert control._homeassistant_http_ready() is True
+
+
+def test_homeassistant_readiness_must_remain_stable_after_a_brief_listener() -> None:
+    """Do not accept a port that opens briefly before Home Assistant restarts."""
+
+    current_time = 0.0
+
+    def monotonic() -> float:
+        """Return controllable time without delaying the test."""
+
+        return current_time
+
+    def sleep(seconds: float) -> None:
+        """Advance controllable time instead of sleeping."""
+
+        nonlocal current_time
+        current_time += seconds
+
+    readiness = (True, False, True, True, True, True, True, True)
+    with patch.object(
+        control, "_homeassistant_http_ready", side_effect=readiness
+    ) as probe, patch.object(
+        control.time, "monotonic", side_effect=monotonic
+    ), patch.object(
+        control.time, "sleep", side_effect=sleep
+    ):
+        result = control._wait_for_homeassistant(
+            timeout=30.0,
+            stable_for=10.0,
+            poll_interval=2.0,
+        )
+
+    assert result is True
+    assert probe.call_count == len(readiness)
+    assert current_time == 14.0
+
+
 def test_explicit_current_version_does_not_recheck(live_dir: Path) -> None:
     """Treat an explicit version as authoritative without querying metadata."""
 

@@ -100,9 +100,9 @@ timedatectl status
 ```
 
 Replace `Europe/London` with the deployment's actual timezone. The current
-Compose generator also hard-codes Home Assistant `TZ: Europe/London`; there is
-no YAML timezone setting. A non-London deployment needs that implementation
-limitation resolved and Home Assistant's timezone checked explicitly.
+`timezone` value in `~/labpulse-live/config.yaml` must use the same IANA name.
+LabPulse passes that value to Home Assistant, so deployments in any region use
+their configured local timezone while NTP keeps the underlying clock synchronized.
 
 Do not proceed with alarm acceptance until the local time and timezone are
 correct and `System clock synchronized` reports `yes`.
@@ -609,8 +609,8 @@ a host Docker policy problem, not a sensor problem.
 Incorrect time makes history, alarm ordering and logs misleading. Inspect
 `timedatectl status`, select the deployment timezone and enable NTP. Do not
 accept alarm timestamps until `System clock synchronized` reports `yes`.
-The generated Home Assistant container currently also has a known
-`Europe/London` timezone limitation.
+Confirm that `timezone` in `~/labpulse-live/config.yaml` matches the host, then
+run `labpulse config` to regenerate and restart the deployment.
 
 ### Configuration is rejected
 

@@ -70,7 +70,7 @@ def build_compose(
         "    privileged: true",
         "    network_mode: host",
         "    environment:",
-        "      TZ: Europe/London",
+        f"      TZ: {json.dumps(config.timezone)}",
         "",
         "  mosquitto:",
         "    container_name: labpulse-mqtt",

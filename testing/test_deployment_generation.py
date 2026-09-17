@@ -152,6 +152,23 @@ def test_default_mqtt_listener_remains_loopback_only() -> None:
     assert "listener 8883" not in build_mosquitto_config(document)
 
 
+def test_homeassistant_uses_the_configured_iana_timezone() -> None:
+    """Generate Home Assistant with the deployment's explicit local timezone."""
+
+    TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    with temporary_test_directory("timezone") as project_dir:
+        config_path = project_dir / "config.yaml"
+        source = yaml.safe_load((REFACTOR_DIR / "config.yaml").read_text(encoding="utf-8"))
+        source["timezone"] = "America/New_York"
+        config_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+
+        compose = compose_document(config_path, project_dir, force_simulated=False)
+
+    assert compose["services"]["homeassistant"]["environment"] == {
+        "TZ": "America/New_York"
+    }
+
+
 def test_fake_usb_compose_contract() -> None:
     """Generate fake-USB Compose and verify stable names, mounts, and commands."""
 

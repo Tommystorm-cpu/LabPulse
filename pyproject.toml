@@ -29,6 +29,7 @@ dependencies = [
   "paho-mqtt>=2,<3",
   "pydantic>=2,<3",
   "PyYAML>=6,<7",
+  "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

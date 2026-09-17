@@ -49,6 +49,8 @@ artifacts are published.
 
 ### Changed
 
+- Home Assistant now receives the validated IANA timezone selected in
+  `config.yaml` instead of a hard-coded `Europe/London` timezone.
 - Service measurement configuration now supports typed shared defaults,
   infers labels from stable IDs when omitted, and keeps MQTT JSON source names
   beside their measurements instead of duplicating IDs under driver options.
