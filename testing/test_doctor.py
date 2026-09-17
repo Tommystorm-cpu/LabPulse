@@ -137,10 +137,10 @@ def test_healthy_diagnostics_are_read_only_and_report_runtime_mode() -> None:
         if not any(
             check.name == "Runtime mode"
             and check.status is CheckStatus.PASS
-            and check.detail == "fake USB via config.fake.yaml"
+            and check.detail == "fake hardware via config.fake.yaml"
             for check in report.checks
         ):
-            raise AssertionError("doctor did not report the active fake-USB mode")
+            raise AssertionError("doctor did not report the active fake-hardware mode")
         expected_platform_checks = {
             "Runtime image": f"labpulse:{__version__}",
             "Docker daemon": "29.6.1",

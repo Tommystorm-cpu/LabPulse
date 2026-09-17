@@ -50,7 +50,6 @@ from labpulse.common.config import (
     load_config,
 )
 REAL_DEVICE_DIR = Path("/dev/serial/by-id")
-FAKE_DEVICE_DIR = Path("/tmp/labpulse-fake-serial")
 
 
 @dataclass(frozen=True)
@@ -259,11 +258,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
-    parser.add_argument(
-        "--fake-usb",
-        action="store_true",
-        help="identify simulator endpoints instead of /dev/serial/by-id",
-    )
     parser.add_argument("--device-dir", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--dry-run", action="store_true", help="detect and preview without writing config")
     parser.add_argument("--yes", action="store_true", help="apply the detected mapping without a final prompt")
@@ -275,7 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     config_path = args.config.expanduser().resolve()
-    device_dir = args.device_dir or (FAKE_DEVICE_DIR if args.fake_usb else REAL_DEVICE_DIR)
+    device_dir = args.device_dir or REAL_DEVICE_DIR
     try:
         services = load_serial_services(config_path)
         if not services:

@@ -1,12 +1,10 @@
 # Changelog
 
-All notable user-visible changes will be recorded here. LabPulse is currently
-pre-release, and its earlier prototype history was not maintained as formal
-releases.
+All notable user-visible changes will be recorded here. The earlier prototype
+history was not maintained as formal releases.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Versioning will follow [Semantic Versioning](https://semver.org/) once release
-artifacts are published.
+Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
@@ -37,14 +35,15 @@ artifacts are published.
 - Compressed-air Arduino firmware that publishes pressure plus SHT40
   temperature/humidity through the standard serial pipe, with the superseded
   pressure-only sketch retained under `legacy/Arduino/pressure_monitor/`.
-- Hardware-free fake serial devices and controllable alarm scenarios.
+- Complete fake-hardware deployments which preserve the configured dashboard
+  and container layout while simulating every sensor and output in memory.
 - Generated Home Assistant MQTT entities, alarm package, and native YAML
   dashboard.
 - Dry-run, test-mode, and modem-backed SMS delivery with subscription controls.
 - Checksummed, consistent state archives and guarded blank-host reconstruction
   through `labpulse backup` and `labpulse restore`.
 - A release workflow that validates wheel, source distribution, and container
-  artifacts, publishes through TestPyPI Trusted Publishing, and publishes
+  artifacts, publishes through PyPI Trusted Publishing, and publishes
   attested AMD64/ARM64 images to GHCR.
 
 ### Changed
@@ -64,7 +63,7 @@ artifacts are published.
 - Real-Pi reliability acceptance now records two weeks of continuous operation,
   real and injected hardware faults, UPS and abrupt-power recovery, restart
   alarm reconciliation, SMS delivery, and the built-in watchdog decision.
-- `labpulse config` now preserves an active fake-USB deployment and validates
+- `labpulse config` now preserves an active fake-hardware deployment and validates
   and regenerates its derived runtime configuration transactionally.
 - Hardware lifecycle logs now include stable service/driver/target context,
   status transitions, and the age of the last valid reading.

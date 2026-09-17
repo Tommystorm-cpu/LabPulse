@@ -12,7 +12,7 @@ the Python package runs and deliberately has no hardware access.
 | `output_config.py` | Output-driver and safe-state configuration |
 | `identity.py` | Stable slugs, IDs, titles and Home Assistant entity IDs |
 | `mqtt_contracts.py` | Topic constructors and strict SMS requests |
-| `fake_config.py` | Derive the narrow fake-USB runtime projection |
+| `fake_config.py` | Preserve the complete resolved fake-hardware runtime document |
 | `logging_config.py` | Stdout and optional persistent logging |
 | `generated_files.py` | Atomically replace one complete file |
 | `sms_templates.py` / `sms_templates.yaml` | Validate and supply notification text |

@@ -61,9 +61,7 @@ docker build \
   --build-arg LABPULSE_VERSION="$LABPULSE_VERSION" \
   -t "labpulse-dev:$LABPULSE_VERSION" .
 export LABPULSE_IMAGE="labpulse-dev:$LABPULSE_VERSION"
-labpulse setup --fake-usb
-cd ~/labpulse-live
-./simulate_serial.py start
+labpulse setup --fake-hardware
 labpulse up
 ```
 
@@ -238,7 +236,7 @@ Focused suites:
 | Power and setup alarm behavior | `test_power_monitor.py`, `test_setup_grouping.py`, `test_notification_context.py` |
 | Compose and staged generation | `test_deployment_generation.py`, `test_unified_generation.py` |
 | Packaging and container release | `test_packaging.py`, `test_container_release.py` |
-| Fake hardware and USB mapping | `test_simulate_serial.py`, `test_usb_setup.py` |
+| Fake hardware and USB mapping | `test_fake_hardware.py`, `test_simulate_serial.py`, `test_usb_setup.py` |
 | SMS pipeline | `test_sms_container.py` |
 | Firmware layout | `test_firmware_layout.py` |
 | Documentation links and complete config examples | `test_documentation.py` |
@@ -354,7 +352,10 @@ Before release:
 4. verify console entry points and package data;
 5. smoke-test the runtime image on supported architectures;
 6. update the changelog;
-7. create an immutable `vVERSION` release tag.
+7. confirm the production PyPI Trusted Publisher names owner
+   `lairdgrouplancaster`, repository `LabPulse`, workflow `release.yml`, and
+   environment `pypi`;
+8. create an immutable `vVERSION` release tag.
 
 The release workflow publishes Python artifacts and version-matched AMD64 and
 ARM64 images. Never move or reuse a released tag; correct it with a new patch
@@ -395,7 +396,7 @@ one operation across helpers merely to shorten it.
 The release workflow runs on published GitHub releases. Its validation job
 checks the tag against setuptools-scm, runs pytest, builds and checks wheel/sdist,
 smoke-installs both, performs fake setup, and tests a locally built container.
-Separate dependent jobs publish to TestPyPI and build/push AMD64/ARM64 images
+Separate dependent jobs publish to PyPI and build/push AMD64/ARM64 images
 with provenance/SBOM. Full-version and major.minor image tags are emitted;
 the latter can advance with patch releases. A build for both architectures is
 not a recorded real-hardware test on both architectures. See the

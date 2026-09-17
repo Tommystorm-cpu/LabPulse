@@ -21,12 +21,12 @@ safety interlock.
 
 Implemented foundations include:
 
-- a `src/`-layout Python package published to TestPyPI with pipx-visible
+- a `src/`-layout Python package published to PyPI with pipx-visible
   commands;
 - a generated `~/labpulse-live` Docker Compose installation;
 - tag-derived versions shared by the Python distributions, installed command,
   generated Compose services, and runtime image;
-- automated clean-install release validation and TestPyPI Trusted Publishing;
+- automated clean-install release validation and PyPI Trusted Publishing;
 - attested AMD64 and ARM64 runtime images published to GHCR;
 - typed configuration shared by deployment and runtime components;
 - one isolated container per enabled hardware service;
@@ -97,7 +97,7 @@ can continue powering the Pi.
 
 - [x] Make first installation, configuration, generation, startup, and diagnosis
   one coherent documented workflow.
-- [x] Make `labpulse config` preserve and regenerate the active fake-USB mode.
+- [x] Make `labpulse config` preserve and regenerate the active fake-hardware mode.
 - [x] Improve health reporting where container-running and sensor-connected states
   differ.
 - [x] Make logs consistently identify the service, driver, device path, connection

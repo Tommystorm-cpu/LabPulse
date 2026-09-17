@@ -169,8 +169,8 @@ def test_homeassistant_uses_the_configured_iana_timezone() -> None:
     }
 
 
-def test_fake_usb_compose_contract() -> None:
-    """Generate fake-USB Compose and verify stable names, mounts, and commands."""
+def test_fake_hardware_compose_contract() -> None:
+    """Generate fake Compose with the same workers and no physical access."""
 
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
     project_dir = TEST_TMP_DIR / f"deployment-{uuid4().hex}"
@@ -191,7 +191,7 @@ services:
     driver:
       type: labpulse.serial_pipe
       options:
-        port: /tmp/labpulse-fake-serial/pressure
+        port: /dev/serial/by-id/real-pressure-device
     measurements:
       pressure:
         setups: [monitor]
@@ -234,6 +234,7 @@ services:
             "/app/config.yaml",
             "--service",
             "pressure_monitor",
+            "--simulate",
         ]:
             raise AssertionError(f"unexpected hardware command: {hardware['command']!r}")
 
@@ -248,6 +249,7 @@ services:
             "labpulse.sms",
             "--config",
             "/app/config.yaml",
+            "--dry-run",
         ]:
             raise AssertionError(f"unexpected SMS command: {sms['command']!r}")
         if sms.get("privileged") is True:
@@ -256,14 +258,10 @@ services:
             raise AssertionError("dry-run SMS worker unexpectedly has the D-Bus mount")
 
         hardware_mounts = hardware["volumes"]
-        for mount in (
-            "/tmp/labpulse-fake-serial:/tmp/labpulse-fake-serial",
-            "/dev/pts:/dev/pts",
-        ):
-            if mount not in hardware_mounts:
-                raise AssertionError(f"missing fake-USB mount: {mount}")
         if hardware.get("privileged") is True or hardware.get("devices"):
-            raise AssertionError("fake serial service unexpectedly has real-device access")
+            raise AssertionError("fake service unexpectedly has real-device access")
+        if any(mount.startswith("/dev") for mount in hardware_mounts):
+            raise AssertionError("fake service unexpectedly mounts a host device")
         expected_config_mount = "./config.fake.yaml:/app/config.yaml:ro"
         if expected_config_mount not in hardware_mounts:
             raise AssertionError("fake hardware does not mount the derived runtime config")
@@ -460,8 +458,8 @@ services:
         project_dir.rmdir()
 
 
-def test_gpio_output_compose_is_isolated_and_omitted_in_fake_mode() -> None:
-    """Run one least-privilege output worker only in real-hardware mode."""
+def test_gpio_output_compose_uses_an_in_memory_driver_in_fake_mode() -> None:
+    """Keep the output worker and dashboard switch without exposing GPIO."""
 
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
     project_dir = TEST_TMP_DIR / f"gpio-output-deployment-{uuid4().hex}"
@@ -513,8 +511,22 @@ outputs:
             raise AssertionError("GPIO output received broad device privileges")
 
         fake_compose = compose_document(config_path, project_dir, force_simulated=True)
-        if "labpulse-output-cooling-valve-enable" in fake_compose["services"]:
-            raise AssertionError("fake-USB mode retained a physical actuator worker")
+        if set(fake_compose["services"]) != set(compose["services"]):
+            raise AssertionError("fake mode changed the configured container set")
+        fake_output = fake_compose["services"]["labpulse-output-cooling-valve-enable"]
+        if fake_output["command"] != [
+            "python",
+            "-m",
+            "labpulse.output",
+            "--config",
+            "/app/config.yaml",
+            "--output",
+            "cooling_valve_enable",
+            "--simulate",
+        ]:
+            raise AssertionError(f"unexpected simulated output command: {fake_output['command']!r}")
+        if fake_output.get("devices") or fake_output.get("privileged") is True:
+            raise AssertionError("simulated output received physical GPIO access")
     finally:
         for path in sorted(project_dir.rglob("*"), reverse=True):
             if path.is_file():
@@ -525,7 +537,7 @@ outputs:
 
 
 def test_sms_delivery_mode_controls_modem_access() -> None:
-    """Give only real-delivery SMS workers the modem-specific Compose settings."""
+    """Force fake hardware to dry-run while real mode retains modem access."""
 
     TEST_TMP_DIR.mkdir(parents=True, exist_ok=True)
     project_dir = TEST_TMP_DIR / f"sms-deployment-{uuid4().hex}"
@@ -558,7 +570,7 @@ services:
         compose = compose_document(
             config_path,
             project_dir,
-            force_simulated=True,
+            force_simulated=False,
             runtime_image="local/labpulse:test",
         )
         sms = compose["services"]["labpulse-sms"]
@@ -569,6 +581,18 @@ services:
         for mount in ("/run/dbus:/run/dbus:ro", "/dev:/dev"):
             if mount not in sms["volumes"]:
                 raise AssertionError(f"real SMS delivery is missing mount: {mount}")
+
+        fake_compose = compose_document(
+            config_path,
+            project_dir,
+            force_simulated=True,
+            runtime_image="local/labpulse:test",
+        )
+        fake_sms = fake_compose["services"]["labpulse-sms"]
+        if fake_sms["command"][-1] != "--dry-run":
+            raise AssertionError("fake-hardware SMS worker was not forced into dry-run mode")
+        if fake_sms.get("privileged") is True or "/dev:/dev" in fake_sms["volumes"]:
+            raise AssertionError("fake-hardware SMS worker received modem access")
     finally:
         for path in sorted(project_dir.rglob("*"), reverse=True):
             if path.is_file():

@@ -1,4 +1,4 @@
-# Complete development example using two channels from the pump-room simulator.
+# Complete development example using two physical inputs and one calculation.
 mqtt:
   broker: mosquitto
 sms:

@@ -14,7 +14,7 @@ authors = [
   { name = "LabPulse contributors" },
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Science/Research",
   "Operating System :: POSIX :: Linux",
@@ -58,6 +58,8 @@ labpulse-open = "labpulse.control:open_main"
 labpulse-setup = "labpulse.installer:main"
 
 [project.urls]
+Documentation = "https://github.com/lairdgrouplancaster/LabPulse/tree/main/docs"
+Issues = "https://github.com/lairdgrouplancaster/LabPulse/issues"
 Repository = "https://github.com/lairdgrouplancaster/LabPulse"
 
 [tool.setuptools]
@@ -83,7 +85,6 @@ include = ["labpulse*"]
   "config.yaml",
   "requirements-host.txt",
   "setup_usb_devices.py",
-  "simulate_serial.py",
 ]
 "share/labpulse/config.d" = [
   "config.d/triton-01-measurements.yaml",

@@ -1,26 +1,20 @@
 # Installation
 
-LabPulse installs its operator command from TestPyPI with pipx and runs a
+LabPulse installs its operator command from PyPI with pipx and runs a
 matching versioned container image from GitHub Container Registry. It creates
 a self-contained live deployment under `~/labpulse-live`; a repository
 checkout is required only for development.
 
 ## Distribution
 
-The commands below retain `0.1.1` as a **historical pinned distribution
-example**, not a claim that it is the latest release or contains all features
-in this checkout. Select a published package and matching GHCR image for your
-installation, then use that version consistently. Confirm availability in the
-project's release records before installation. For current working-source
-features, use the [development installation](#development-installation).
-Install published packages from TestPyPI with the production PyPI index
-available for dependencies. The required command is in
-[Install the command](#install-the-command).
-
-For that pinned example, the expected runtime image name is:
+Each GitHub release publishes a Python package and a matching GHCR image with
+the same version. Installing the latest package is the simplest route. For a
+reproducible deployment, select a version from the project's release records
+and use it consistently. For example, the runtime image paired with Python
+package `1.0.0` is:
 
 ```text
-ghcr.io/lairdgrouplancaster/labpulse:0.1.1
+ghcr.io/lairdgrouplancaster/labpulse:1.0.0
 ```
 
 Public distributions do not require a repository checkout or local container
@@ -110,21 +104,14 @@ correct and `System clock synchronized` reports `yes`.
 ## Install the command
 
 ```bash
-pipx install \
-  --index-url https://test.pypi.org/simple/ \
-  --pip-args="--extra-index-url https://pypi.org/simple/" \
-  "labpulse==0.1.1"
+pipx install labpulse
 ```
 
-The arguments are currently necessary:
+To install a particular release instead, pin its version:
 
-- `--index-url https://test.pypi.org/simple/` tells pipx to obtain LabPulse
-  from TestPyPI;
-- `--pip-args="--extra-index-url https://pypi.org/simple/"` allows pip to
-  obtain LabPulse's ordinary dependencies from production PyPI, because
-  TestPyPI is not a dependency mirror;
-- `"labpulse==0.1.1"` pins the historical example; replace the version with
-  the published release you have chosen.
+```bash
+pipx install "labpulse==1.0.0"
+```
 
 This installs the unified `labpulse` command into a user-owned isolated
 environment; administrator rights are not required. Confirm the installed
@@ -138,7 +125,7 @@ labpulse help
 Expected version output:
 
 ```text
-LabPulse 0.1.1
+LabPulse 1.0.0
 ```
 
 ## Create a real-hardware installation
@@ -317,37 +304,33 @@ Create a complete state archive after acceptance. See
 
 ## Create a simulated installation
 
-Fake mode resolves `config.yaml` and referenced `config.d` fragments into
-`config.resolved.yaml`, then derives `~/labpulse-live/config.fake.yaml` without
-changing the operator-owned source bundle:
+Fake-hardware mode resolves `config.yaml` and referenced `config.d` fragments
+without changing the operator-owned source bundle:
 
 ```bash
-labpulse setup --fake-usb
-cd ~/labpulse-live
-./simulate_serial.py start
+labpulse setup --fake-hardware
 labpulse up
 labpulse doctor
 ```
 
-With the starter config, fake mode converts the known serial placeholders,
-`room_environment` DHT11/SHT40, and the power service to pseudo-serial endpoints.
-It does not convert arbitrary hardware configurations. Inspect the
-[exact substitutions](CONFIGURATION.md#fake-configuration) when adapting a lab.
-This walkthrough requires a supported Linux host, but no physical sensors,
-modem, or outputs. It is not a Windows-native simulator.
+Fake mode keeps every enabled service and output container and generates the
+same Home Assistant files as real mode. Each sensor worker publishes generated
+values for every configured measurement without loading its real driver. Each
+output worker retains its switch state in memory, and the SMS worker is forced
+to dry-run without modem access. This works for arbitrary registered drivers,
+service names and measurement files. It requires a supported Linux host and
+Docker, but no sensor, modem or output hardware.
 
 Always edit `config.yaml` and referenced `config.d` fragments, never
 `config.resolved.yaml` or `config.fake.yaml`. The guarded `labpulse config`
-command detects the active fake-USB Compose mount, regenerates both runtime
+command detects the active fake-hardware Compose mount, regenerates both runtime
 files, and keeps the deployment simulated.
 
 After starting the simulated stack, complete the same Home Assistant account
-and MQTT onboarding as the real path. Keep SMS dry-run enabled. Confirm the
-pressure reading changes, then follow
-[simulation controls](USER_GUIDE.md#choose-real-hardware-or-simulation)
-to exercise stale/danger/recovery states. These validate the software path,
-not physical wiring. Restart the simulator after a host reboot before expecting
-its pseudo-terminal paths to exist. Setup does not install a simulator boot service.
+and MQTT onboarding as the real path. Confirm that every enabled service is
+online and every configured measurement changes. This validates configuration,
+containers, MQTT and Home Assistant, but not the real driver, wiring,
+calibration, external publisher or modem.
 
 ## Alternate live directory
 
@@ -409,7 +392,7 @@ pipx uninstall labpulse
 
 ## Updating
 
-Update to the latest LabPulse version published on TestPyPI:
+Update to the latest LabPulse version published on PyPI:
 
 ```bash
 labpulse update
@@ -424,15 +407,15 @@ If that version is already installed, the command exits without changing the
 installation or restarting containers. To select a specific release instead:
 
 ```bash
-labpulse update 0.1.1
+labpulse update 1.0.0
 ```
 
 Every LabPulse command performs a quick, best-effort check for a newer release
-after it finishes. The TestPyPI result is cached for six hours, so normal
+after it finishes. The PyPI result is cached for six hours, so normal
 commands do not wait for the network each time. When an update is available,
 the cached result still prints the installed and available versions and suggests
 `labpulse update`. A failed check is silent and cached for ten minutes, so normal
-operation remains responsive when the Pi is offline or TestPyPI is unavailable.
+operation remains responsive when the Pi is offline or PyPI is unavailable.
 The `labpulse update` command always fetches fresh release metadata.
 
 Before upgrading from a release with `sms.send_recovery_sms`, remove that line
@@ -441,9 +424,9 @@ automatically when current notification settings allow it, and the old key is
 rejected by the strict live-config validator. Keep the rest of the live
 configuration as it is.
 
-Update resolves the latest version from TestPyPI only, installs that exact
+Update resolves the latest version from PyPI, installs that exact
 version with pipx using fresh package-index metadata, refreshes package-managed
-deployment assets with backups, preserves the active real-hardware or fake-USB
+deployment assets with backups, preserves the active real-hardware or fake-hardware
 mode, pulls images, and recreates every container in one Compose operation.
 It then runs `labpulse doctor` through the newly installed command. Confirmed
 incidents during the recreation follow ordinary confirmation and explicit mute
@@ -560,10 +543,10 @@ once.
 
 ### pipx cannot find or install LabPulse
 
-The release workflow publishes LabPulse to TestPyPI rather than production
-PyPI. Use the complete pinned command from [Install the command](#install-the-command),
-including production PyPI as the dependency index. Confirm the selected
-version exists and then run `labpulse version`. Do not use `sudo pip` or
+Confirm the selected version exists on the
+[LabPulse PyPI page](https://pypi.org/project/labpulse/) and then run
+`labpulse version`. If installation metadata may be cached, retry with
+`pipx install --pip-args="--no-cache-dir" labpulse`. Do not use `sudo pip` or
 `--break-system-packages` to bypass installation errors.
 
 If the command is not found after installation, open a new shell after
@@ -666,21 +649,20 @@ Close Arduino serial monitors that may own the port. Rerun
 replaced or identities changed, then apply with `labpulse config`. Do not make
 `/dev/ttyUSB0` or `/dev/ttyACM0` the permanent identity.
 
-### Fake serial readings do not appear
+### Fake-hardware readings do not appear
 
-Fake setup creates configuration and mounts but does not start the simulator.
+Fake workers start with the ordinary stack; no separate simulator is required.
 Run:
 
 ```bash
-cd ~/labpulse-live
-./simulate_serial.py start
-./simulate_serial.py status
-labpulse restart
+labpulse ps --all
+labpulse doctor
+labpulse logs --tail 100
 ```
 
-Verify the configured endpoint names and `/tmp/labpulse-fake-serial` paths.
-The simulator must be restarted after a host reboot. It does not cover arbitrary
-renamed services or every driver.
+Confirm `compose.yaml` mounts `config.fake.yaml` and the affected worker command
+ends with `--simulate`. Run `labpulse setup --fake-hardware` again if the live
+directory was accidentally regenerated in real-hardware mode.
 
 ### Serial data repeatedly reconnects or becomes stale
 

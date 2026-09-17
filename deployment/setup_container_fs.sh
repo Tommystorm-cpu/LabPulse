@@ -33,8 +33,8 @@ Override target:
   labpulse --live-dir /path/to/labpulse-live setup
 
 Options:
-  -fake_usb  Derive config.fake.yaml and mount pseudo-serial sensors,
-             including the UPS power monitor, for simulator testing.
+  --fake-hardware  Run every configured sensor and output through safe,
+                   in-memory simulation while preserving the real config.
   --backup  Keep one rolling copy of each replaced file in backups/.
 
 After this script has run once, work from ~/labpulse-live:
@@ -117,7 +117,7 @@ PY
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -fake_usb|--fake-usb|--fake_usb)
+    -fake_usb|--fake-hardware|--fake-usb|--fake_usb)
       FAKE_USB=1
       shift
       ;;
@@ -229,16 +229,12 @@ consolidate_legacy_backups
 
 install_host_python_environment
 
-if [ "$FAKE_USB" -eq 1 ]; then
-  mkdir -p /tmp/labpulse-fake-serial
-fi
-
 # Keep the final operator summary in ordinary language rather than exposing the
 # numeric shell flag used above.
 if [ "$FAKE_USB" -eq 1 ]; then
-  USB_MODE_DESCRIPTION="fake USB serial simulator, including UPS power"
+  USB_MODE_DESCRIPTION="complete fake hardware; no LabPulse worker accesses physical devices"
 else
-  USB_MODE_DESCRIPTION="real Arduino USB serial devices"
+  USB_MODE_DESCRIPTION="real configured hardware"
 fi
 
 # These are copied into ~/labpulse-live because operators run them after the
@@ -255,8 +251,6 @@ copy_file "$ASSET_DIR/testing/real_hardware/test_x1200_faults.sh" "$PROJECT_DIR/
 chmod +x "$PROJECT_DIR/test_x1200_faults.sh"
 copy_file "$ASSET_DIR/testing/real_hardware/test_dht11_fault.sh" "$PROJECT_DIR/test_dht11_fault.sh"
 chmod +x "$PROJECT_DIR/test_dht11_fault.sh"
-copy_file "$ASSET_DIR/simulate_serial.py" "$PROJECT_DIR/simulate_serial.py"
-chmod +x "$PROJECT_DIR/simulate_serial.py"
 copy_file "$ASSET_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
 chmod +x "$PROJECT_DIR/setup_usb_devices.py"
 
@@ -276,11 +270,11 @@ fi
 # config.resolved.yaml and derives config.fake.yaml from that complete document.
 RUNTIME_CONFIG="$LIVE_CONFIG"
 
-# Pass fake USB mode through to Compose generation so the right device mounts
-# are written into compose.yaml.
+# Pass fake-hardware mode through to Compose generation so workers select safe
+# in-memory drivers and receive no physical device mounts.
 COMPOSE_MODE_ARGS=()
 if [ "$FAKE_USB" -eq 1 ]; then
-  COMPOSE_MODE_ARGS+=("-fake_usb")
+  COMPOSE_MODE_ARGS+=("--fake-hardware")
 fi
 
 # Leave the live folder with outputs built from one validated configuration load.
@@ -292,10 +286,10 @@ fi
   "${COMPOSE_MODE_ARGS[@]}"
 
 FAKE_CONFIG_OUTPUT=""
-NEXT_USB_COMMAND="./setup_usb_devices.py --config config.yaml"
+NEXT_HARDWARE_COMMAND="./setup_usb_devices.py --config config.yaml"
 if [ "$FAKE_USB" -eq 1 ]; then
   FAKE_CONFIG_OUTPUT="  $PROJECT_DIR/config.fake.yaml"
-  NEXT_USB_COMMAND="./setup_usb_devices.py --config config.fake.yaml --fake-usb"
+  NEXT_HARDWARE_COMMAND="# No device assignment or separate simulator is needed."
 fi
 
 # Finish with the exact files and commands the operator will use next.
@@ -314,7 +308,6 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/edit_config.sh
   $PROJECT_DIR/test_x1200_faults.sh
   $PROJECT_DIR/test_dht11_fault.sh
-  $PROJECT_DIR/simulate_serial.py
   $PROJECT_DIR/setup_usb_devices.py
   $PROJECT_DIR/requirements-host.txt
   $PROJECT_DIR/.venv/
@@ -323,7 +316,7 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/mosquitto/config/mosquitto.conf
   $PROJECT_DIR/logs/
 
-USB mode:
+Hardware mode:
   $USB_MODE_DESCRIPTION
 
 Preserved:
@@ -331,7 +324,7 @@ Preserved:
 
 Next commands:
   cd "$PROJECT_DIR"
-  $NEXT_USB_COMMAND
+  $NEXT_HARDWARE_COMMAND
   labpulse config
   labpulse up
   labpulse restart
@@ -346,6 +339,7 @@ Important:
   Do not edit config.resolved.yaml, config.fake.yaml, or a package/repository
   config.yaml for the running Pi system.
 
-  In fake mode, config.fake.yaml is derived from the complete source bundle.
-  Run labpulse config after editing to refresh every generated file.
+  In fake mode, config.fake.yaml preserves the complete resolved source bundle.
+  Compose selects in-memory drivers at runtime. Run labpulse config after
+  editing to refresh every generated file.
 EOF

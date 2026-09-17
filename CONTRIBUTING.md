@@ -1,8 +1,8 @@
 # Contributing to LabPulse
 
-Thank you for helping improve LabPulse. The project is being prepared for
-broader open-source use, but it is still pre-release and its public interfaces
-may change.
+Thank you for helping improve LabPulse. Changes to public commands,
+configuration or extension interfaces need migration notes and normal semantic
+versioning so existing installations are not surprised.
 
 ## Before starting
 

@@ -76,7 +76,8 @@ setups:
 
 # Physical outputs are deliberately separate from read-only services. Each
 # enabled output becomes a Home Assistant MQTT switch and its own container.
-# Fake-USB mode omits all physical output containers.
+# Fake-hardware mode keeps each output container and dashboard switch, but uses
+# an in-memory output which cannot operate physical GPIO.
 outputs: {}
 # Example:
 # outputs:
@@ -301,8 +302,8 @@ services:
   #       active_high: false
   #   read_interval_seconds: 1
 
-  # Verified X1200 UPS hardware. Fake-USB setup changes only this service's
-  # transport to the UPS simulator while preserving these measurements and IDs.
+  # Verified X1200 UPS hardware. Fake-hardware mode preserves this complete
+  # declaration while the worker publishes safe in-memory values.
   ups_monitor:
     label: UPS Monitor
     driver:

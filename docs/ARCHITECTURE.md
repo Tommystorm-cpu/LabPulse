@@ -45,17 +45,16 @@ Generated Compose always contains:
 - `mosquitto`;
 - `labpulse-sms`;
 - one `labpulse-<service-slug>` container for every enabled service;
-- one `labpulse-output-<output-slug>` container for every enabled output in
-  real-hardware mode.
+- one `labpulse-output-<output-slug>` container for every enabled output.
 
 Hardware services do not share a Python process. A blocked or failed device
 therefore does not stop another sensor service, and Docker can restart workers
 independently.
 
-Output workers likewise do not share a process. They own GPIO continuously,
+In real-hardware mode, output workers likewise do not share a process. They own GPIO continuously,
 subscribe only to their own command topic, publish verified latch state and
 availability, and apply their configured safe state when command authority is
-lost. Fake-USB mode omits physical actuator workers.
+lost. Fake-hardware mode keeps the same workers but stores state only in memory.
 
 ## Installed host layout
 
@@ -67,14 +66,13 @@ assets. `labpulse setup` creates or refreshes:
   config.yaml                         user-owned master configuration
   config.d/                           optional user-owned measurement mappings
   config.resolved.yaml                generated complete real runtime
-  config.fake.yaml                    generated complete fake-USB runtime
+  config.fake.yaml                    generated complete fake-hardware runtime
   compose.yaml                        generated
   .venv/                              managed host generation environment
   edit_config.sh                      package-managed workflow helper
   generate_compose.sh                 package-managed low-level wrapper
   generate_homeassistant_config.sh    package-managed low-level wrapper
   setup_usb_devices.py                package-managed USB mapper
-  simulate_serial.py                  package-managed simulator
   test_dht11_fault.sh                 package-managed acceptance helper
   test_x1200_faults.sh                package-managed acceptance helper
   backups/                            one rolling copy per backed-up live file
@@ -247,20 +245,24 @@ The shell files `generate_compose.sh` and
 `generate_homeassistant_config.sh` are live-directory wrappers around Python
 entry points. They are operational conveniences, not generation logic.
 
-### Fake-USB mode
+### Fake-hardware mode
 
 The source of truth remains `config.yaml` plus any referenced `config.d`
 measurement mappings. Generation first creates `config.resolved.yaml`. Fake mode
-derives `config.fake.yaml` from that complete document by replacing real
-transports with supported pseudo-serial drivers while preserving identities.
+copies that complete resolved document to `config.fake.yaml` without changing
+services, drivers, measurements, outputs or presentation metadata.
 
 Compose mounts the derived file as `/app/config.yaml`. `labpulse config`
 detects that runtime mode, regenerates the derived file, validates it, and
-keeps the deployment simulated.
+keeps the deployment simulated. Compose adds `--simulate` to every sensor and
+output worker, removes their physical device requirements, and forces the SMS
+worker to dry-run. The workers then use in-memory implementations instead of
+constructing the configured hardware drivers.
 
-Physical output containers are omitted in fake-USB mode. When generation
-switches modes, Compose's orphan removal stops an old output worker so its
-shutdown path applies the configured safe state before releasing GPIO.
+The service and output container sets are therefore identical in real and fake
+modes. Generated Home Assistant files are also identical. Fake mode tests the
+complete configuration, container, MQTT and dashboard path without claiming to
+test physical transports, wiring or calibration.
 
 ## Hardware process
 

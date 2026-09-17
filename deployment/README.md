@@ -33,8 +33,8 @@ Setup and guarded editing use the unified deployment generator. It resolves the
 operator-owned `config.yaml` and referenced `config.d` measurement fragments
 into a standalone `config.resolved.yaml`, validates it independently, and then
 builds Compose and Home Assistant output from that document before managed live
-files are replaced. Fake mode derives `config.fake.yaml` from the resolved
-document.
+files are replaced. Fake mode preserves the complete resolved document in
+`config.fake.yaml`; Compose selects safe in-memory workers at runtime.
 
 The scripts accept live paths and version/image selections from the operator
 command; they do not own the configuration schema. A failed validation or

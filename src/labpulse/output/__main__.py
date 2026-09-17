@@ -9,6 +9,7 @@ import paho.mqtt.client as mqtt
 from labpulse.common.config import ConfigError, DEFAULT_CONFIG_PATH, format_config_error, load_config
 from labpulse.common.logging_config import configure_logging
 from labpulse.hardware.driver import HardwareOutputDriver
+from labpulse.hardware._simulation import SimulatedOutputDriver
 from labpulse.hardware.registry import get_driver_definition
 from labpulse.output.service import OutputMqttService
 
@@ -19,6 +20,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one LabPulse output service")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to LabPulse config YAML")
     parser.add_argument("--output", required=True, help="Output name from config.yaml")
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="retain output state in memory without accessing hardware",
+    )
     args = parser.parse_args(argv)
 
     configure_logging(f"output-{args.output}")
@@ -38,10 +44,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     definition = get_driver_definition(output_config.driver.type)
-    driver = definition.create_driver(args.output, output_config.driver.options)
-    if not isinstance(driver, HardwareOutputDriver):
+    configured_driver = definition.create_driver(args.output, output_config.driver.options)
+    if not isinstance(configured_driver, HardwareOutputDriver):
         logger.critical("Driver %s is not output-capable", definition.driver_id)
         return 1
+    driver = (
+        SimulatedOutputDriver(args.output, configured_driver.safe_state)
+        if args.simulate
+        else configured_driver
+    )
 
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,

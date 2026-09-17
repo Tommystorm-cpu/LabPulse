@@ -38,9 +38,8 @@ DEFAULT_LIVE_DIR = Path("~/labpulse-live")
 HOME_ASSISTANT_URL = "http://localhost:8123"
 FIRMWARE_SOURCE_URL = "https://github.com/lairdgrouplancaster/LabPulse/tree/main/firmware"
 FIRMWARE_ARCHIVE_URL = "https://github.com/lairdgrouplancaster/LabPulse/archive/refs/heads/main.zip"
-TEST_PYPI_INDEX_URL = "https://test.pypi.org/simple/"
 PYPI_INDEX_URL = "https://pypi.org/simple/"
-TEST_PYPI_PROJECT_URL = "https://test.pypi.org/pypi/labpulse/json"
+PYPI_PROJECT_URL = "https://pypi.org/pypi/labpulse/json"
 UPDATE_CHECK_TIMEOUT_SECONDS = 2.0
 UPDATE_CHECK_CACHE_SECONDS = 6 * 60 * 60
 UPDATE_CHECK_FAILURE_CACHE_SECONDS = 10 * 60
@@ -480,7 +479,7 @@ def run_setup(
 
     installer_arguments: list[str] = []
     if fake_usb:
-        installer_arguments.append("--fake-usb")
+        installer_arguments.append("--fake-hardware")
     if backup:
         installer_arguments.append("--backup")
 
@@ -507,10 +506,10 @@ def run_setup(
 
 
 def latest_published_version(*, timeout: float = 15.0) -> str:
-    """Return the latest LabPulse version reported by TestPyPI."""
+    """Return the latest LabPulse version reported by PyPI."""
 
     request = Request(
-        TEST_PYPI_PROJECT_URL,
+        PYPI_PROJECT_URL,
         headers={
             "Accept": "application/json",
             "Cache-Control": "no-cache",
@@ -522,12 +521,12 @@ def latest_published_version(*, timeout: float = 15.0) -> str:
         with urlopen(request, timeout=timeout) as response:
             payload = json.load(response)
     except (OSError, URLError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"could not check TestPyPI: {error}") from error
+        raise RuntimeError(f"could not check PyPI: {error}") from error
 
     info = payload.get("info") if isinstance(payload, dict) else None
     version = info.get("version") if isinstance(info, dict) else None
     if not isinstance(version, str) or not version.strip():
-        raise RuntimeError("TestPyPI returned no latest LabPulse version")
+        raise RuntimeError("PyPI returned no latest LabPulse version")
     return version.strip()
 
 
@@ -624,7 +623,7 @@ def run_update_command(live_dir: Path, requested_version: str | None) -> int:
     try:
         target_version = requested_version or latest_published_version()
         if requested_version is None and target_version == __version__:
-            # TestPyPI metadata can briefly differ between cache edges just
+            # PyPI metadata can briefly differ between cache edges just
             # after a release. Recheck before declaring the installation current.
             target_version = latest_published_version()
         compose_text = compose_path.read_text(encoding="utf-8")
@@ -655,8 +654,8 @@ def run_update_command(live_dir: Path, requested_version: str | None) -> int:
         "install",
         "--force",
         "--index-url",
-        TEST_PYPI_INDEX_URL,
-        f"--pip-args=--no-cache-dir --extra-index-url {PYPI_INDEX_URL}",
+        PYPI_INDEX_URL,
+        "--pip-args=--no-cache-dir",
         f"labpulse=={target_version}",
     ]
     try:
@@ -678,7 +677,7 @@ def run_update_command(live_dir: Path, requested_version: str | None) -> int:
         "--backup",
     ]
     if fake_usb:
-        setup_command.append("--fake-usb")
+        setup_command.append("--fake-hardware")
     try:
         setup_result = subprocess.run(setup_command, check=False).returncode
     except FileNotFoundError as error:
@@ -743,11 +742,12 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser = commands.add_parser("setup", help="create or refresh the live LabPulse installation")
     setup_parser.add_argument(
         "-fake_usb",
+        "--fake-hardware",
         "--fake-usb",
         "--fake_usb",
         dest="fake_usb",
         action="store_true",
-        help="configure simulated USB serial hardware",
+        help="simulate every enabled sensor and output without physical hardware",
     )
     setup_parser.add_argument(
         "--backup",
@@ -762,7 +762,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument(
         "version",
         nargs="?",
-        help="release to install (default: latest version published on TestPyPI)",
+        help="release to install (default: latest version published on PyPI)",
     )
 
     up_parser = commands.add_parser("up", help="start the stack or selected services in the background")

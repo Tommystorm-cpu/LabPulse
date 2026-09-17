@@ -4,6 +4,7 @@ import json
 import re
 
 from labpulse.common.config import ConfigDocument
+from labpulse.hardware.driver import ContainerRequirements
 from labpulse.hardware.registry import get_driver_definition
 
 
@@ -29,14 +30,7 @@ def build_compose(
         raise ValueError("config mount source cannot be empty")
     config = document.config
     enabled_services = [(name, service) for name, service in config.services.items() if service.enabled]
-    # Fake-USB mode never starts physical actuator workers. Regeneration uses
-    # --remove-orphans, so changing into fake mode also stops any old output
-    # container and lets its orderly shutdown apply the configured safe state.
-    enabled_outputs = (
-        []
-        if force_simulated
-        else [(name, output) for name, output in config.outputs.items() if output.enabled]
-    )
+    enabled_outputs = [(name, output) for name, output in config.outputs.items() if output.enabled]
     if not enabled_services:
         raise ValueError("configuration has no enabled hardware services")
 
@@ -103,11 +97,14 @@ def build_compose(
         f"      - {config_mount_source}:/app/config.yaml:ro",
         "      - /etc/localtime:/etc/localtime:ro",
     ])
-    # Dry-run SMS never touches the host modem. Real delivery needs DBus and
-    # device access so mmcli can communicate with ModemManager.
-    if not config.sms.dry_run:
+    # Fake hardware always forces SMS into dry-run mode and never exposes the
+    # host modem, even when the unchanged real configuration enables delivery.
+    if not config.sms.dry_run and not force_simulated:
         lines.extend(["      - /run/dbus:/run/dbus:ro", "      - /dev:/dev", "    privileged: true"])
-    sms_command = json.dumps(["python", "-m", "labpulse.sms", "--config", "/app/config.yaml"])
+    sms_command_parts = ["python", "-m", "labpulse.sms", "--config", "/app/config.yaml"]
+    if force_simulated:
+        sms_command_parts.append("--dry-run")
+    sms_command = json.dumps(sms_command_parts)
     lines.extend(
         [
             "    container_name: labpulse-sms",
@@ -130,7 +127,11 @@ def build_compose(
         used_container_names.add(container_name)
 
         definition = get_driver_definition(service.driver.type)
-        requirements = definition.container_requirements(service.driver.options, force_simulated)
+        requirements = (
+            ContainerRequirements()
+            if force_simulated
+            else definition.container_requirements(service.driver.options, False)
+        )
         service_lines = [
             f"  {container_name}:",
             "    <<: *labpulse-runtime-base",
@@ -149,9 +150,12 @@ def build_compose(
             service_lines.append("    privileged: true")
         # JSON list syntax is also valid YAML and safely quotes service names in
         # the generated Compose command.
-        command = json.dumps([
+        command_parts = [
             "python", "-m", "labpulse.hardware", "--config", "/app/config.yaml", "--service", service_name
-        ])
+        ]
+        if force_simulated:
+            command_parts.append("--simulate")
+        command = json.dumps(command_parts)
         service_lines.extend([f"    container_name: {container_name}", f"    command: {command}", ""])
         lines.extend(service_lines)
 
@@ -161,7 +165,11 @@ def build_compose(
         slug = service_slug(output_name)
         container_name = f"labpulse-output-{slug}"
         definition = get_driver_definition(output.driver.type)
-        requirements = definition.container_requirements(output.driver.options, force_simulated)
+        requirements = (
+            ContainerRequirements()
+            if force_simulated
+            else definition.container_requirements(output.driver.options, False)
+        )
         output_lines = [
             f"  {container_name}:",
             "    <<: *labpulse-runtime-base",
@@ -178,9 +186,12 @@ def build_compose(
         output_lines.extend(f"      - {mount}" for mount in requirements.mounts)
         if requirements.privileged:
             output_lines.append("    privileged: true")
-        command = json.dumps([
+        command_parts = [
             "python", "-m", "labpulse.output", "--config", "/app/config.yaml", "--output", output_name
-        ])
+        ]
+        if force_simulated:
+            command_parts.append("--simulate")
+        command = json.dumps(command_parts)
         output_lines.extend([f"    container_name: {container_name}", f"    command: {command}", ""])
         lines.extend(output_lines)
     return "\n".join(lines)

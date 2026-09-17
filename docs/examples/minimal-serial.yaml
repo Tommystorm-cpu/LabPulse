@@ -1,4 +1,4 @@
-# Complete development example: start the simulator separately on Linux.
+# Complete development example for one standard serial measurement.
 mqtt:
   broker: mosquitto
 sms:

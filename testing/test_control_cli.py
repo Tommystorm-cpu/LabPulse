@@ -39,7 +39,7 @@ def live_dir(workspace_tmp_path: Path) -> Path:
 
 @pytest.fixture(autouse=True)
 def update_notice() -> object:
-    """Prevent command-routing tests from contacting TestPyPI."""
+    """Prevent command-routing tests from contacting PyPI."""
 
     with patch.object(control, "notify_if_update_available") as notice:
         yield notice
@@ -196,7 +196,7 @@ def test_setup_command_delegates_installer_arguments(live_dir: Path) -> None:
         )
 
     assert result == 0
-    installer.assert_called_once_with(["--fake-usb", "--backup"])
+    installer.assert_called_once_with(["--fake-hardware", "--backup"])
 
 
 @pytest.mark.parametrize("version", [None, "0.2.0"])
@@ -215,8 +215,8 @@ def test_update_command_accepts_an_optional_version(
     update.assert_called_once_with(live_dir.resolve(), version)
 
 
-def test_latest_version_comes_from_test_pypi_metadata() -> None:
-    """Use TestPyPI's project metadata rather than the dependency index."""
+def test_latest_version_comes_from_pypi_metadata() -> None:
+    """Use PyPI's project metadata rather than the dependency index."""
 
     response = BytesIO(b'{"info": {"version": "0.2.0"}}')
     with patch.object(control, "urlopen", return_value=response) as open_url:
@@ -224,7 +224,7 @@ def test_latest_version_comes_from_test_pypi_metadata() -> None:
 
     assert version == "0.2.0"
     request = open_url.call_args.args[0]
-    assert request.full_url == control.TEST_PYPI_PROJECT_URL
+    assert request.full_url == control.PYPI_PROJECT_URL
     assert request.get_header("Cache-control") == "no-cache"
     assert request.get_header("Pragma") == "no-cache"
     assert open_url.call_args.kwargs == {"timeout": 3.0}
@@ -362,8 +362,8 @@ def test_update_installs_refreshes_and_recreates_every_container(
         "install",
         "--force",
         "--index-url",
-        "https://test.pypi.org/simple/",
-        "--pip-args=--no-cache-dir --extra-index-url https://pypi.org/simple/",
+        "https://pypi.org/simple/",
+        "--pip-args=--no-cache-dir",
         "labpulse==0.2.0",
     ]
     setup = run.call_args_list[1]
@@ -375,7 +375,7 @@ def test_update_installs_refreshes_and_recreates_every_container(
         "--backup",
     ]
     if fake_usb:
-        expected_setup.append("--fake-usb")
+        expected_setup.append("--fake-hardware")
     assert setup.args[0] == expected_setup
     assert compose.call_args_list == [
         call(
@@ -403,7 +403,7 @@ def test_update_installs_refreshes_and_recreates_every_container(
 
 
 def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
-    """Avoid setup and container downtime when TestPyPI matches the CLI."""
+    """Avoid setup and container downtime when PyPI matches the CLI."""
 
     with patch.object(control, "__version__", "0.2.0"), patch.object(
         control, "latest_published_version", return_value="0.2.0"
@@ -424,7 +424,7 @@ def test_update_does_nothing_when_latest_is_installed(live_dir: Path) -> None:
 
 
 def test_update_rechecks_equal_metadata_and_uses_newly_visible_release(live_dir: Path) -> None:
-    """Handle TestPyPI propagation without reporting contradictory results."""
+    """Handle PyPI propagation without reporting contradictory results."""
 
     commands = {"pipx": "/usr/bin/pipx", "labpulse": "/home/lab/.local/bin/labpulse"}
     with patch.object(control, "__version__", "0.3.0"), patch.object(

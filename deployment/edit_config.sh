@@ -50,7 +50,7 @@ if [ -f "$COMPOSE_PATH" ] && \
 fi
 COMPOSE_MODE_ARGS=()
 if [ "$ACTIVE_FAKE_USB" -eq 1 ]; then
-  COMPOSE_MODE_ARGS+=("--fake-usb")
+  COMPOSE_MODE_ARGS+=("--fake-hardware")
 fi
 
 WORK_ROOT="$(mktemp -d "$PROJECT_DIR/.config-source.editing.XXXXXX")"

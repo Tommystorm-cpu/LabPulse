@@ -1,4 +1,4 @@
-"""Behavior tests for interactive real/fake USB serial assignment."""
+"""Behavior tests for interactive real USB serial assignment."""
 
 import os
 import shutil
@@ -225,12 +225,12 @@ services:
 
 
 def test_cli_modes() -> None:
-    """Check real and fake workflows expose explicit safe command options."""
+    """Check preview and confirmed-write options remain explicit."""
 
     parser = build_parser()
-    fake = parser.parse_args(["--config", "config.fake.yaml", "--fake-usb", "--dry-run"])
-    if not fake.fake_usb or not fake.dry_run:
-        raise AssertionError(f"fake dry-run options were not parsed: {fake!r}")
+    preview = parser.parse_args(["--config", "config.yaml", "--dry-run"])
+    if not preview.dry_run:
+        raise AssertionError(f"dry-run option was not parsed: {preview!r}")
     real = parser.parse_args(["--config", "config.yaml", "--yes"])
-    if real.fake_usb or not real.yes:
+    if not real.yes:
         raise AssertionError(f"real apply options were not parsed: {real!r}")

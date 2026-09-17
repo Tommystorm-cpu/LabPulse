@@ -93,7 +93,7 @@ def _validation_detail(error: Exception) -> str:
 
 
 def _runtime_config_path(live_dir: Path, compose_data: Any) -> Path:
-    """Find the config mounted into containers, including fake-USB mode."""
+    """Find the config mounted into containers, including fake-hardware mode."""
 
     if not isinstance(compose_data, dict):
         return (live_dir / "config.resolved.yaml").resolve()
@@ -182,8 +182,11 @@ def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simu
         for service_name, service in config.services.items():
             if not service.enabled:
                 continue
+            if simulated:
+                service_paths[service_name] = set()
+                continue
             requirements = get_driver_definition(service.driver.type).container_requirements(
-                service.driver.options, simulated
+                service.driver.options, False
             )
             paths = {Path(device.split(":", 1)[0]) for device in requirements.devices}
             paths.update(Path(mount.split(":", 1)[0]) for mount in requirements.mounts)
@@ -191,10 +194,12 @@ def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simu
             if isinstance(port, str) and port:
                 paths.add(Path(port))
             service_paths[service_name] = paths
-        if not simulated:
-            for output_name, output in config.outputs.items():
-                if not output.enabled:
-                    continue
+        for output_name, output in config.outputs.items():
+            if not output.enabled:
+                continue
+            if simulated:
+                service_paths[f"output {output_name}"] = set()
+            else:
                 requirements = get_driver_definition(
                     output.driver.type
                 ).container_requirements(output.driver.options, False)
@@ -227,6 +232,8 @@ def _check_hardware(report: DoctorReport, config: LabPulseConfig | None, *, simu
             )
         else:
             detail = ", ".join(sorted(str(path) for path in paths))
+            if simulated:
+                detail = "simulated in memory; no physical device required"
             report.add(CheckStatus.PASS, f"Hardware {service_name}", detail or "driver declares no host paths")
 
 
@@ -541,7 +548,7 @@ def diagnose(
             CheckStatus.PASS,
             "Runtime mode",
             (
-                "fake USB via config.fake.yaml"
+                "fake hardware via config.fake.yaml"
                 if simulated
                 else "real hardware via config.resolved.yaml"
             ),

@@ -12,7 +12,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import LabPulseConfig, load_config
 from labpulse.common.identity import stable_id
-from labpulse.common.fake_config import convert_power_service_to_fake_serial
+from labpulse.common.fake_config import derive_fake_config
 from labpulse.common.service_config import ServiceConfig
 from labpulse.homeassistant.generator import main as generate_homeassistant
 
@@ -97,8 +97,8 @@ def test_config_validation_and_stable_identity() -> None:
         raise AssertionError("removed voltage threshold is silently accepted")
 
 
-def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
-    """Switch transport while retaining the direct normalized mains measurement."""
+def test_fake_hardware_preserves_power_config_identity_and_metadata() -> None:
+    """Keep the real power declaration intact for runtime-level simulation."""
 
     live_data = yaml.safe_load(SIM_CONFIG.read_text(encoding="utf-8"))
     service = live_data["services"]["ups_monitor"]
@@ -114,14 +114,13 @@ def test_fake_usb_conversion_preserves_power_identity_and_metadata() -> None:
     }
     source = yaml.safe_dump(live_data, sort_keys=False)
     before = LabPulseConfig.model_validate(yaml.safe_load(source))
-    converted_text = convert_power_service_to_fake_serial(source)
+    converted_text = derive_fake_config(source)
     converted = LabPulseConfig.model_validate(yaml.safe_load(converted_text))
     fake = converted.services["ups_monitor"]
-    if (fake.driver.type, getattr(fake.driver.options, "port", None)) != (
-        "labpulse.serial_pipe",
-        "/tmp/labpulse-fake-serial/ups_monitor",
-    ):
-        raise AssertionError("fake conversion selected the wrong UPS transport")
+    if fake.driver.type != "labpulse.x1200":
+        raise AssertionError("fake mode changed the configured UPS driver")
+    if converted_text != source:
+        raise AssertionError("fake mode changed the resolved source configuration")
     before_ids = [
         stable_id("ups_monitor", measurement_id)
         for measurement_id in before.services["ups_monitor"].measurements

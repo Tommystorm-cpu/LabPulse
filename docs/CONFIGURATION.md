@@ -25,7 +25,7 @@ There is one operator-owned source bundle and one complete generated runtime:
 | `~/labpulse-live/config.yaml` | Operator | Master service, setup, dashboard, MQTT, SMS, and inline-measurement configuration |
 | `~/labpulse-live/config.d/**/*.yaml` | Operator | Optional physical-measurement mappings selected by `measurements_file` |
 | `~/labpulse-live/config.resolved.yaml` | Generated | Complete validated real-hardware runtime with every measurement inline |
-| `~/labpulse-live/config.fake.yaml` | Generated | Complete fake-USB runtime derived from the resolved configuration |
+| `~/labpulse-live/config.fake.yaml` | Generated | Complete fake-hardware runtime preserving the resolved configuration |
 | repository `config.yaml` | Package | Starter copied only when a live source does not exist |
 
 Real Compose mounts `config.resolved.yaml` into Python containers as
@@ -331,8 +331,9 @@ logical `ON` returns automatically to `safe_state: false` when that timer
 expires. Repeated `ON` commands do not extend the original timer. A maximum
 active time cannot be combined with `safe_state: true`.
 
-`labpulse setup --fake-usb` does not run physical output containers. Returning
-to real-hardware mode starts each output in its safe state.
+`labpulse setup --fake-hardware` runs the same output containers with in-memory
+drivers. Returning to real-hardware mode starts each physical output in its
+safe state.
 
 ### Generic GPIO output
 
@@ -828,8 +829,8 @@ driver:
 The container receives only the configured `/dev/i2c-<bus>` device. The driver
 uses high-precision measurement mode and has a default read interval of 2
 seconds. Declare measurements named `temperature` and `humidity` to match its
-output. Fake-USB mode substitutes the standard room-environment SHT40 service
-with the existing simulated serial temperature/humidity endpoint. Its Python
+output. Fake-hardware mode bypasses the physical driver and publishes generated
+values for both configured measurements. Its Python
 transport library belongs to the shared `i2c` dependency extra used by the
 X1200 driver.
 
@@ -884,28 +885,27 @@ confirmation values accept 1 to 3600 seconds.
 
 ## Fake configuration
 
-`labpulse setup --fake-usb` first resolves `config.yaml` and `config.d` into
+`labpulse setup --fake-hardware` first resolves `config.yaml` and `config.d` into
 `config.resolved.yaml`, then derives `config.fake.yaml` without altering the
-operator-owned source bundle. Substitution is deliberately narrow:
+operator-owned source bundle. The derived document retains every driver and
+measurement exactly. Compose selects simulation at the worker boundary:
 
-- named `FAKE_PRESSURE_PORT`, `FAKE_PUMP_ROOM_PORT`, `FAKE_TURBO_PUMP_PORT`,
-  and `FAKE_UPS_PORT` placeholders map to fixed pseudo-terminal paths;
-- the service named `room_environment` is converted only when it uses DHT11 or SHT40;
-- one enabled `power_detection` service is converted to the UPS endpoint;
-- when no power service is configured, a default simulated UPS service is added;
-- configured but disabled power services are not silently enabled, and more
-  than one enabled power service is rejected by fake derivation;
-- arbitrary serial paths, renamed environment services, GPIO inputs, and MQTT
-  sources are not automatically simulated;
-- Compose omits physical output workers in fake mode.
+- every enabled sensor service keeps its normal container and publishes a
+  sensible changing value for every configured measurement;
+- arbitrary driver types, service names, source mappings and measurement files
+  require no simulation-specific configuration;
+- every enabled output keeps its normal container and Home Assistant switch,
+  but changes only an in-memory state;
+- sensor and output workers receive no configured hardware devices or mounts;
+- SMS is forced to dry-run and receives no modem access;
+- disabled services and outputs remain disabled, exactly as in real mode.
 
-Inspect the derived config before expecting a custom installation to run
-without hardware. The simulator's fixed channel names must match the configured
-measurement names. See
-[simulation controls](USER_GUIDE.md#choose-real-hardware-or-simulation).
+Calculated measurements continue to be evaluated by Home Assistant from their
+simulated physical inputs. The fake deployment therefore has the same dashboard
+and container set as the real deployment.
 
 Do not edit `config.resolved.yaml` or `config.fake.yaml` manually. The current `labpulse config` workflow
-detects whether generated Compose is using fake USB, regenerates
+detects whether generated Compose is using fake hardware, regenerates
 `config.fake.yaml` from the edited source, and preserves that runtime mode:
 
 ```bash
@@ -963,7 +963,7 @@ instructions to overwrite an existing live installation.
 
 | File | Demonstrates |
 |---|---|
-| [minimal-serial.yaml](examples/minimal-serial.yaml) | One pressure sample on a known simulator endpoint |
+| [minimal-serial.yaml](examples/minimal-serial.yaml) | One pressure sample using the standard serial contract |
 | [calculated-measurement.yaml](examples/calculated-measurement.yaml) | Two physical temperatures, a calculated difference, grouping and a custom tab |
 | [mqtt-input.yaml](examples/mqtt-input.yaml) | Exact external header mapping into a configured measurement |
 
@@ -974,7 +974,6 @@ scratch directory without starting services:
 python -m labpulse.deployment --config docs/examples/minimal-serial.yaml --compose-output testing/tmp/doc-example/compose.yaml --project-dir testing/tmp/doc-example --ha-config-dir testing/tmp/doc-example/homeassistant/config
 ```
 
-This checks the schema and renders files; it does not start a broker, simulator,
-Home Assistant, or hardware. The serial example already uses a fake path, so
-the serial driver's fake-path handling supplies its mounts without changing
-the configuration through the setup workflow.
+This checks the schema and renders files; it does not start a broker, Home
+Assistant, or hardware. Pass `--fake-hardware` to the deployment generator when
+testing the complete container layout without exposing physical devices.

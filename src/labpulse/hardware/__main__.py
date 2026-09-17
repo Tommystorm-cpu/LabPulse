@@ -7,6 +7,7 @@ from pathlib import Path
 from labpulse.common.config import DEFAULT_CONFIG_PATH, ConfigError, ConfigProblem, format_config_error, load_config
 from labpulse.common.logging_config import configure_logging
 from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher
+from labpulse.hardware._simulation import SimulatedHardwareDriver
 from labpulse.hardware.registry import get_driver_definition
 from labpulse.hardware.runner import HardwareServiceRunner, RunnerTimings
 
@@ -18,6 +19,11 @@ def main() -> None:
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to LabPulse config YAML")
     parser.add_argument("--service", required=True, help="Service name from config.yaml, e.g. pump_room")
     parser.add_argument("--print", action="store_true", help="Print measurements to stdout")
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="publish safe generated values for every configured measurement",
+    )
     args = parser.parse_args()
 
     # Parse the service name first so every startup message, including config
@@ -45,7 +51,7 @@ def main() -> None:
     driver_config = service_config.driver.options
     read_interval_seconds = service_config.read_interval_seconds
     if read_interval_seconds is None:
-        read_interval_seconds = driver_definition.default_read_interval_seconds
+        read_interval_seconds = 1.0 if args.simulate else driver_definition.default_read_interval_seconds
 
     driver_options = driver_config.model_dump()
     target_fields = ("broker", "port", "topic", "pin", "bus", "address", "gpio_chip", "gpio_line")
@@ -54,7 +60,7 @@ def main() -> None:
         "Starting service=%s driver=%s target=(%s) config=%s "
         "read_interval=%.1fs reconnect_interval=%ss maximum_reading_age=%ss",
         args.service,
-        driver_definition.driver_id,
+        f"simulated({driver_definition.driver_id})" if args.simulate else driver_definition.driver_id,
         ", ".join(target_parts) or "driver-defined",
         config_path,
         read_interval_seconds,
@@ -62,7 +68,11 @@ def main() -> None:
         service_config.maximum_measurement_age_seconds,
     )
 
-    driver = driver_definition.create_driver(args.service, driver_config)
+    driver = (
+        SimulatedHardwareDriver(args.service, service_config.measurements)
+        if args.simulate
+        else driver_definition.create_driver(args.service, driver_config)
+    )
     publisher = HomeAssistantMqttPublisher(args.service, service_config, document.config.mqtt)
     publisher.connect()
     runner = HardwareServiceRunner(

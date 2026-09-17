@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: >-
+  If you use LabPulse in published research, please cite the software and
+  record the exact release and local configuration used.
+title: LabPulse
+type: software
+authors:
+  - name: LabPulse contributors
+repository-code: https://github.com/lairdgrouplancaster/LabPulse
+url: https://github.com/lairdgrouplancaster/LabPulse
+license: MIT

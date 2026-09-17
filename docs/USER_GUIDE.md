@@ -13,10 +13,10 @@ MQTT, builds a Home Assistant interface, evaluates alarms, and can send SMS
 notifications. An explicitly configured GPIO output can also expose a manual
 on/off switch.
 
-LabPulse is an alpha-stage monitoring aid. It is not a safety-rated alarm,
-emergency shutdown system, protective interlock or guaranteed notification
-channel. A missing alert does not prove that conditions are safe. Equipment
-with a risk of injury, damage or loss still needs independent local protection.
+LabPulse is a monitoring aid. It is not a safety-rated alarm, emergency
+shutdown system, protective interlock or guaranteed notification channel. A
+missing alert does not prove that conditions are safe. Equipment with a risk
+of injury, damage or loss still needs independent local protection.
 
 The supported reference is the documented Raspberry Pi 5 deployment. Other
 platforms can work but require their own acceptance. Real modem delivery,
@@ -78,36 +78,31 @@ The SMS worker's persistent MQTT session queues requests while it is unavailable
 failure and recovery requests can arrive together when it reconnects. A failed
 update reports the installation or Compose error and does not leave a hidden mute.
 After every LabPulse command finishes, a short version check prints a
-`labpulse update` reminder only when TestPyPI has a newer release. The check is
+`labpulse update` reminder only when PyPI has a newer release. The check is
 silent on network failure and does not change the command's result.
 
 ## Choose real hardware or simulation
 
 Choose the deployment mode before configuring or starting LabPulse. A physical
 installation begins with `labpulse setup`; a hardware-free installation begins
-with `labpulse setup --fake-usb`. The installation guide gives the complete
+with `labpulse setup --fake-hardware`. The installation guide gives the complete
 prerequisites and setup procedure for both modes.
 
-Fake mode resolves the source bundle into `config.resolved.yaml`, then derives
-`config.fake.yaml` without changing real hardware settings. It replaces the starter's known serial placeholders,
-converts the standard room-environment service, converts or adds one power
-service, and omits physical outputs. It does not simulate arbitrary renamed
-services, GPIO inputs, MQTT sources or every driver.
+Fake mode preserves the complete resolved configuration and therefore produces
+the same dashboard and the same enabled service/output containers as real
+mode. Sensor workers bypass their configured physical drivers and generate one
+sensible changing number for every configured measurement. This applies to
+serial, I²C, GPIO, UPS, MQTT JSON and future registered driver types.
 
 Always edit `config.yaml` and its referenced `config.d` fragments, even in fake
 mode, and complete `labpulse config` before starting the stack. The guarded
 configuration command regenerates the resolved runtime and fake projection.
 
-The simulator can apply normal, recovery, danger-low, danger-high and stale
-scenarios to fixed measurements. UPS power supports mains, battery and stale.
-It can disconnect and reconnect a whole endpoint to exercise driver recovery.
-Scenarios change readings only; Home Assistant's configured thresholds and
-timing still decide the alarm outcome.
-
-The simulator uses Linux pseudo-terminals and a local Unix control socket. It
-does not emulate firmware electronics, is not Windows-native and does not start
-automatically after reboot. Start it as part of the startup sequence in the
-next section.
+Output workers keep the configured Home Assistant switches and safety timers,
+but hold state only in memory. SMS is forced to dry-run and receives no modem
+mount. Fake mode exercises configuration, container lifecycle, MQTT discovery,
+dashboards and normal value publication. It deliberately does not prove real
+driver behaviour, wiring, calibration, external data delivery or modem delivery.
 
 ## Configuring LabPulse
 
@@ -152,26 +147,23 @@ logs and regenerate rather than editing `compose.yaml` by hand.
 
 ## Starting and verifying LabPulse
 
-Start LabPulse only after `labpulse config` completes successfully. In fake
-mode, start the pseudo-terminal simulator first:
+Start LabPulse only after `labpulse config` completes successfully:
 
 ```bash
-cd ~/labpulse-live
-./simulate_serial.py start
 labpulse up
 labpulse ps
 labpulse doctor
 ```
 
-For real hardware, omit the simulator command. Open Home Assistant with
-`labpulse open`, or browse to `http://<pi-address>:8123` from another
+Open Home Assistant with `labpulse open`, or browse to
+`http://<pi-address>:8123` from another
 computer. Confirm that every expected service is running, MQTT is connected,
 the System Status view reports the expected services, and measurements continue
 to update before relying on alarms or notifications.
 
 Generated Compose contains Home Assistant, Mosquitto, one SMS worker, one
-container per enabled sensor service and—outside fake mode—one container per
-enabled output. Each process loads and validates its own configuration at
+container per enabled sensor service and one container per enabled output.
+Each process loads and validates its own configuration at
 startup.
 
 Docker uses `restart: unless-stopped`. Sensor workers retry unavailable
@@ -541,8 +533,8 @@ equipment moved.
 `labpulse backup OUTPUT` briefly stops currently running services, copies the
 operator configuration, complete Home Assistant configuration/private state,
 Mosquitto retained data and SMS state, writes checksums and restarts the same
-services. It excludes ordinary Python logs, OS settings, firmware and the
-simulator process. Existing output is protected unless `--force` is used.
+services. It excludes ordinary Python logs, OS settings and firmware. Existing
+output is protected unless `--force` is used.
 
 Archives are owner-readable on Linux but not encrypted. Treat them as secrets
 because they contain Home Assistant credentials, phone-number state and

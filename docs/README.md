@@ -51,6 +51,8 @@ fake-runtime, Compose, and Home Assistant files are not independent settings.
 | Subject | Owner |
 |---|---|
 | Project summary, safety and maturity | [Root README](../README.md) |
+| Research citation metadata | [Citation file](../CITATION.cff) |
+| Private vulnerability reporting and supported security boundary | [Security policy](../SECURITY.md) |
 | First installation, updates, reconstruction and troubleshooting | [Installation](INSTALLATION.md) |
 | Day-to-day incident and update handling | [Operations](OPERATIONS.md) |
 | Incident and notification diagnosis | [Troubleshooting](TROUBLESHOOTING.md) |

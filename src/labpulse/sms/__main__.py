@@ -20,6 +20,11 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Run the SMS service")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to LabPulse config YAML")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="log messages without accessing ModemManager, regardless of config",
+    )
     args = parser.parse_args(argv)
 
     configure_logging("sms")
@@ -35,15 +40,16 @@ def main(argv: list[str] | None = None) -> int:
         [*config.sms.recipients, *config.sms.test_recipients],
         log_dir / "sms_subscriptions.json",
     )
+    dry_run = args.dry_run or config.sms.dry_run
     sender = SmsSender(
         config.sms.recipients,
         logger,
         subscription_registry=subscription_registry,
         test_recipients=config.sms.test_recipients,
-        dry_run=config.sms.dry_run,
+        dry_run=dry_run,
     )
     subscriber = SmsSubscriber(config.mqtt, sender, log_dir / "sms_processed_requests.json")
-    command_monitor = None if config.sms.dry_run else SmsCommandMonitor(sender, subscription_registry, logger)
+    command_monitor = None if dry_run else SmsCommandMonitor(sender, subscription_registry, logger)
 
     def stop_service(_signum: int, _frame: object) -> None:
         """Interrupt the MQTT loop so cleanup can drain queued messages."""

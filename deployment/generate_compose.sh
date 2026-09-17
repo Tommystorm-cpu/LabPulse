@@ -19,7 +19,7 @@ Options:
   --config PATH       Config YAML to read. Default: PROJECT_DIR/config.yaml
   --output PATH       Compose YAML to write. Default: PROJECT_DIR/compose.yaml
   --project-dir PATH  LabPulse container folder. Default: script directory
-  -fake_usb           Force pseudo-serial simulator mounts.
+  --fake-hardware     Simulate every enabled sensor and output.
   -h, --help          Show this help text.
 EOF
 }
@@ -38,7 +38,7 @@ while [ "$#" -gt 0 ]; do
       PROJECT_DIR="$2"
       shift 2
       ;;
-    -fake_usb|--fake-usb|--fake_usb)
+    -fake_usb|--fake-hardware|--fake-usb|--fake_usb)
       FAKE_USB=1
       shift
       ;;
@@ -69,7 +69,7 @@ ARGS=(
   --project-dir "$PROJECT_DIR"
 )
 if [ "$FAKE_USB" -eq 1 ]; then
-  ARGS+=(--fake-usb)
+  ARGS+=(--fake-hardware)
 fi
 
 "$HOST_PYTHON" -m labpulse.deployment "${ARGS[@]}"

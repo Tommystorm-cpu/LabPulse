@@ -17,7 +17,7 @@ python -m pytest
 | Outputs/SMS | `test_output_mqtt_service.py`, `test_sms_container.py` |
 | Deployment/operations | `test_deployment_generation.py`, `test_unified_generation.py`, `test_control_cli.py`, `test_doctor.py`, `test_backup_restore.py` |
 | Packaging/release | `test_packaging.py`, `test_container_release.py` |
-| Simulation/USB | `test_simulate_serial.py`, `test_usb_setup.py` |
+| Simulation/USB | `test_fake_hardware.py`, `test_simulate_serial.py`, `test_usb_setup.py` |
 | Firmware/external input | `test_firmware_layout.py`, `test_triton_logfile_decoder.py`, `test_mqtt_json_driver.py` |
 | Documentation | `test_documentation.py` |
 
