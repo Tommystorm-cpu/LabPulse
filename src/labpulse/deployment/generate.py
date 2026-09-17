@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     compose_output = args.compose_output.expanduser().resolve()
     runtime_image = os.environ.get(
         "LABPULSE_IMAGE",
-        f"ghcr.io/tommystorm-cpu/labpulse:{__version__}",
+        f"ghcr.io/lairdgrouplancaster/labpulse:{__version__}",
     ).strip()
     try:
         if args.ha_config_dir is not None:

@@ -37,8 +37,8 @@ from labpulse.doctor import run_doctor
 
 DEFAULT_LIVE_DIR = Path("~/labpulse-live")
 HOME_ASSISTANT_URL = "http://localhost:8123"
-FIRMWARE_SOURCE_URL = "https://github.com/Tommystorm-cpu/LabPulse/tree/main/firmware"
-FIRMWARE_ARCHIVE_URL = "https://github.com/Tommystorm-cpu/LabPulse/archive/refs/heads/main.zip"
+FIRMWARE_SOURCE_URL = "https://github.com/lairdgrouplancaster/LabPulse/tree/main/firmware"
+FIRMWARE_ARCHIVE_URL = "https://github.com/lairdgrouplancaster/LabPulse/archive/refs/heads/main.zip"
 TEST_PYPI_INDEX_URL = "https://test.pypi.org/simple/"
 PYPI_INDEX_URL = "https://pypi.org/simple/"
 TEST_PYPI_PROJECT_URL = "https://test.pypi.org/pypi/labpulse/json"

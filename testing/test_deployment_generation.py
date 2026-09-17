@@ -52,7 +52,7 @@ def compose_document(
         document,
         config_mount_source="./" + config_path.relative_to(project_dir).as_posix(),
         runtime_image=(
-            runtime_image or f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
+            runtime_image or f"ghcr.io/lairdgrouplancaster/labpulse:{__version__}"
         ),
         force_simulated=force_simulated,
     )
@@ -204,7 +204,7 @@ services:
             raise AssertionError(f"unexpected Compose services: {set(services)!r}")
 
         hardware = services["labpulse-pressure-monitor"]
-        expected_image = f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
+        expected_image = f"ghcr.io/lairdgrouplancaster/labpulse:{__version__}"
         if hardware.get("image") != expected_image:
             raise AssertionError(
                 f"hardware image is not version-coupled: {hardware.get('image')!r}"

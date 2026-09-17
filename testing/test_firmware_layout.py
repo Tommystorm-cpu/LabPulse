@@ -80,7 +80,7 @@ def test_arduino_library_metadata() -> None:
         (
             "name=LabPulseFirmware",
             "version=0.1.0",
-            "url=https://github.com/Tommystorm-cpu/LabPulse",
+            "url=https://github.com/lairdgrouplancaster/LabPulse",
             "architectures=*",
             "depends=DHT sensor library",
             "Adafruit SHT4x Library",

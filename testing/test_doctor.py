@@ -35,7 +35,7 @@ services:
     ports:
       - "127.0.0.1:1883:1883"
   labpulse-sms:
-    image: ghcr.io/tommystorm-cpu/labpulse:{__version__}
+    image: ghcr.io/lairdgrouplancaster/labpulse:{__version__}
     volumes:
       - ./config.fake.yaml:/app/config.yaml:ro
 """

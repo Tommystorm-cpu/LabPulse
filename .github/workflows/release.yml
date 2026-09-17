@@ -59,7 +59,7 @@ jobs:
           "$RUNNER_TEMP/wheel-smoke/bin/python" -c "from labpulse.installer import find_install_assets; print(find_install_assets())"
           "$RUNNER_TEMP/wheel-smoke/bin/labpulse" \
             --live-dir "$RUNNER_TEMP/labpulse-live" setup --fake-usb
-          "$RUNNER_TEMP/wheel-smoke/bin/python" -c "import sys, yaml; data = yaml.safe_load(open(sys.argv[1])); images = {service.get('image') for name, service in data['services'].items() if name.startswith('labpulse-')}; expected = {'ghcr.io/tommystorm-cpu/labpulse:${{ steps.version.outputs.version }}'}; assert images == expected, (images, expected)" "$RUNNER_TEMP/labpulse-live/compose.yaml"
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -c "import sys, yaml; data = yaml.safe_load(open(sys.argv[1])); images = {service.get('image') for name, service in data['services'].items() if name.startswith('labpulse-')}; expected = {'ghcr.io/lairdgrouplancaster/labpulse:${{ steps.version.outputs.version }}'}; assert images == expected, (images, expected)" "$RUNNER_TEMP/labpulse-live/compose.yaml"
           test ! -d "$RUNNER_TEMP/labpulse-live/labpulse-python"
           python -m venv "$RUNNER_TEMP/sdist-smoke"
           "$RUNNER_TEMP/sdist-smoke/bin/python" -m pip install dist/*.tar.gz
@@ -141,7 +141,7 @@ jobs:
         id: metadata
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/tommystorm-cpu/labpulse
+          images: ghcr.io/lairdgrouplancaster/labpulse
           tags: |
             type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }}
@@ -167,6 +167,6 @@ jobs:
       - name: Attest image provenance
         uses: actions/attest@v4
         with:
-          subject-name: ghcr.io/tommystorm-cpu/labpulse
+          subject-name: ghcr.io/lairdgrouplancaster/labpulse
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true

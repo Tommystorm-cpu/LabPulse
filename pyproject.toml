@@ -57,7 +57,7 @@ labpulse-open = "labpulse.control:open_main"
 labpulse-setup = "labpulse.installer:main"
 
 [project.urls]
-Repository = "https://github.com/Tommystorm-cpu/LabPulse"
+Repository = "https://github.com/lairdgrouplancaster/LabPulse"
 
 [tool.setuptools]
 include-package-data = true

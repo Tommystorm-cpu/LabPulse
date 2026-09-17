@@ -91,7 +91,7 @@ Runtime Python services use the image selected during generation. A released
 installation defaults to:
 
 ```text
-ghcr.io/tommystorm-cpu/labpulse:<installed-package-version>
+ghcr.io/lairdgrouplancaster/labpulse:<installed-package-version>
 ```
 
 ## User-owned and generated state

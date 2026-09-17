@@ -20,7 +20,7 @@ available for dependencies. The required command is in
 For that pinned example, the expected runtime image name is:
 
 ```text
-ghcr.io/tommystorm-cpu/labpulse:0.1.1
+ghcr.io/lairdgrouplancaster/labpulse:0.1.1
 ```
 
 Public distributions do not require a repository checkout or local container

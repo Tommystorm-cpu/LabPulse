@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ARG LABPULSE_VERSION
 
-LABEL org.opencontainers.image.source="https://github.com/Tommystorm-cpu/LabPulse"
+LABEL org.opencontainers.image.source="https://github.com/lairdgrouplancaster/LabPulse"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.version="${LABPULSE_VERSION}"
 

@@ -120,7 +120,7 @@ def _runtime_config_path(live_dir: Path, compose_data: Any) -> Path:
 def _check_runtime_image(report: DoctorReport, compose_data: Any) -> None:
     """Report whether LabPulse services use the installed release's image."""
 
-    expected = f"ghcr.io/tommystorm-cpu/labpulse:{__version__}"
+    expected = f"ghcr.io/lairdgrouplancaster/labpulse:{__version__}"
     services = compose_data.get("services") if isinstance(compose_data, dict) else None
     if not isinstance(services, dict):
         report.add(CheckStatus.SKIP, "Runtime image", "compose.yaml is unavailable")
