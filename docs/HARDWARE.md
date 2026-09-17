@@ -1,8 +1,48 @@
 # Hardware
 
-This page records the hardware boundary that can be stated before the final
-installation hardware, enclosure, and custom interface circuits are known. It
-is intentionally incomplete. Do not treat it as a wiring or assembly guide.
+You can try LabPulse without sensors, connect an existing Arduino sensor hub,
+or use one of the supported Pi interfaces. The software supports all of these,
+but the build instructions aren't equally complete. This page helps you choose
+a starting point and work out what information you need before connecting it.
+
+## Choose a starting point
+
+| What you want to do | What's available here | What you still need |
+|---|---|---|
+| Try the dashboard without sensors | [Installation](INSTALLATION.md) and a [guided first session](FIRST_STEPS.md) | A prepared Pi and a browser; no sensor wiring |
+| Connect an Arduino which already produces readings | Firmware examples, a serial format, and a [first-sensor walkthrough](FIRST_SENSOR.md) | Verified wiring and calibration for that board and its sensors |
+| Build an Arduino sensor hub from parts | [Firmware component descriptions and example pin assignments](../firmware/README.md) | Exact part numbers, a checked circuit, and assembly instructions for your build |
+| Connect SHT40, DHT11, or X1200 directly to the Pi | Drivers and [configuration examples](CONFIGURATION.md#built-in-drivers) | Instructions for the exact board revision, its connections, and checks of the real readings |
+| Read a GPIO signal | [GPIO input settings](CONFIGURATION.md#generic-gpio-input) | A suitable electrical interface between the equipment and the Pi |
+| Read a Triton control PC | A [Windows publisher and installation guide](TRITON_PUBLISHER.md) | Access to the control PC and a network plan suited to your lab; the guide describes a particular two-fridge arrangement |
+| Operate a relay, valve, or other output | Manual dashboard switches and a [GPIO output driver](CONFIGURATION.md#generic-gpio-output) | A designed and checked switching circuit for the actual load |
+
+The simulation route is documented from installation to a working dashboard.
+The Arduino walkthrough covers the software connection once a sensor board is
+working. There isn't yet a complete, verified shopping-and-assembly guide for
+a new lab to reproduce the whole physical installation.
+
+If you're starting from loose sensors rather than an existing board, don't
+assume that a firmware example is also a complete wiring plan. Start by
+identifying the exact parts and checking their datasheets.
+
+## Before connecting a sensor
+
+Keep a short record for each device:
+
+- its manufacturer, model, and board revision;
+- its supply voltage and signal levels;
+- which wire or connector goes to which pin;
+- the unit and range of its output, and how you will check its calibration;
+- its USB identity, I2C address, or GPIO assignment, as appropriate;
+- its service and measurement names in LabPulse.
+
+These notes make it much easier to identify the right device later or replace
+a failed sensor. Label the cable and board to match the record.
+
+For the first connection, check one reading at a time against a suitable
+reference. A plausible number on the dashboard isn't proof of correct wiring
+or conversion. Add alarm limits after the reading itself is trustworthy.
 
 ## Supported acquisition paths
 
@@ -33,11 +73,10 @@ The authoritative general pin and voltage reference is Raspberry Pi's
 Verify the documentation and datasheets for the exact Pi revision and attached
 device before wiring.
 
-The LabPulse GPIO input and output features are therefore complete at the
-software interface boundary: configuration selects a BCM GPIO number and the
-software reads or drives that 3.3 V logic point. The electrical interface
-between that point and future controlled hardware is deliberately custom and
-out of scope until the equipment is selected.
+LabPulse can read or drive a configured GPIO line. It doesn't provide the
+circuit needed to connect that line to arbitrary lab equipment. Choose and
+check that circuit for the actual signal or load before using GPIO inputs or
+outputs.
 
 ## Identifiers are not interchangeable
 
@@ -51,10 +90,18 @@ Keep these identities distinct:
 
 ## Existing hardware assets
 
-Repository PCB and enclosure assets are retained as design references. Their
-presence does not establish manufacturing readiness, electrical verification,
-fit, accessibility, thermal performance, or compatibility with the final
-LabPulse hardware. There is intentionally no top-level `hardware/README.md`.
+The repository contains PCB and enclosure design files. Treat them as design
+references until you've checked the revision, circuit, fit, and cooling against
+the parts you intend to use. Their presence in the repository doesn't mean
+they're a finished build kit.
+
+> **Photo to add: one verified sensor hub.** Show the board, sensor part numbers,
+> connector labels, and USB connection. Link the photo to its checked pin table
+> and calibration notes so readers know which build it documents.
+
+> **Photo to add: the assembled installation.** Show cable labels, power
+> connections, and enclosure layout. Name the hardware revisions shown; don't
+> use an unverified prototype as the assembly reference.
 
 ## To complete when hardware is selected
 
@@ -70,6 +117,7 @@ The eventual build-and-wire documentation must add verified:
   and output;
 - maintenance, safe replacement, and decommissioning instructions.
 
-Until those facts exist, use this page only to understand the current software
-boundary. LabPulse is monitoring software, not a safety-rated controller;
-critical equipment needs independent protection.
+Until that build record is complete, use the available software guides
+alongside the instructions for your exact hardware. LabPulse is monitoring
+software, not a safety-rated controller; critical equipment needs independent
+protection.

@@ -4,6 +4,10 @@ Ordinary pytest tests in this directory are hardware-free and run on developer
 machines and CI. `real_hardware/` contains deliberate Raspberry Pi acceptance
 procedures.
 
+New maintainers should read [what the tests prove](../docs/MAINTAINING.md#5-know-what-your-tests-prove)
+before interpreting a green run. It explains fakes, platform skips, and which
+changes still need a running Home Assistant or real-device check.
+
 ```bash
 python -m pip install --editable ".[dev]"
 python -m pytest

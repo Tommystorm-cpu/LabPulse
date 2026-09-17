@@ -6,6 +6,10 @@ versioning so existing installations are not surprised.
 
 ## Before starting
 
+If you're new to the project, start with
+[Your first day maintaining LabPulse](docs/MAINTAINING.md). It takes you from
+a fresh checkout to a tested change, with no hardware needed for the first steps.
+
 For a small correction, open a focused pull request. For a new feature,
 configuration change, public interface, or hardware driver, open an issue first
 so the intended behavior and test boundary can be agreed.
@@ -99,6 +103,11 @@ documents for completed features.
 Use relative links inside the repository. Examples must distinguish the
 repository starter `config.yaml` from the installed
 `~/labpulse-live/config.yaml`.
+
+Keep the [screenshot checklist](screenshot.md) in sync when adding, moving, or
+removing image insertion points. If a UI change makes a screenshot out of date,
+mark it for a new capture. Use plain language and explain unfamiliar terms;
+write as though you're helping a colleague who hasn't used LabPulse before.
 
 ## Participation
 

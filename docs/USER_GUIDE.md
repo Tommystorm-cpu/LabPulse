@@ -1,574 +1,707 @@
 # LabPulse User Guide
 
-This guide explains every user-visible LabPulse feature and how the system
-behaves during normal operation and failure. Use the
-[Installation guide](INSTALLATION.md) to create or repair an installation and
-the [Configuration reference](CONFIGURATION.md) for individual YAML fields.
+This guide is for people using an existing LabPulse installation. It explains
+the Home Assistant dashboard, alarms, notifications, simulation, and the
+`labpulse` commands used during normal operation.
 
-## Purpose and limits
+If you're setting up LabPulse for the first time, start with the
+[Installation guide](INSTALLATION.md). For changes to sensors, measurements,
+setups, recipients, or other YAML settings, the
+[Configuration reference](CONFIGURATION.md) explains each option and includes
+examples.
 
-LabPulse monitors laboratory infrastructure from a Raspberry Pi. It reads
-Arduino sensor hubs and supported Pi/network inputs, publishes readings through
-MQTT, builds a Home Assistant interface, evaluates alarms, and can send SMS
-notifications. An explicitly configured GPIO output can also expose a manual
-on/off switch.
+If you haven't used the dashboard yet, try
+[Your first look at LabPulse](FIRST_STEPS.md). It introduces the main pages and
+walks through a practice alarm using simulated data.
 
-LabPulse is a monitoring aid. It is not a safety-rated alarm, emergency
-shutdown system, protective interlock or guaranteed notification channel. A
-missing alert does not prove that conditions are safe. Equipment with a risk
-of injury, damage or loss still needs independent local protection.
+> [!IMPORTANT]
+> LabPulse is a monitoring aid, not a safety interlock, emergency shutdown
+> system, or guaranteed notification channel. Equipment which could cause
+> injury, damage, or loss still needs suitable independent protection.
 
-The supported reference is the documented Raspberry Pi 5 deployment. Other
-platforms can work but require their own acceptance. Real modem delivery,
-external Triton/fridge input and generic GPIO control are implemented but still
-experimental until accepted with the intended installation.
+## Contents
 
-## The main concepts
+- [Start here](#start-here)
+- [Using the dashboard](#using-the-dashboard)
+- [Understanding system state](#understanding-system-state)
+- [Configuring alarms](#configuring-alarms)
+- [Notifications, mutes, and Test mode](#notifications-mutes-and-test-mode)
+- [Testing SMS](#testing-sms)
+- [Using controlled outputs](#using-controlled-outputs)
+- [Everyday commands](#everyday-commands)
+- [Changing the configuration](#changing-the-configuration)
+- [Using fake hardware](#using-fake-hardware)
+- [Updating LabPulse](#updating-labpulse)
+- [Backups and restoration](#backups-and-restoration)
+- [Removing an installation](#removing-an-installation)
+- [Detailed behaviour](#detailed-behaviour)
+- [Limitations](#limitations)
 
-A **service** is one independently running acquisition worker, normally one
-sensor board or device. A **measurement** is one numeric channel from that
-service. A **driver** knows how to communicate with one kind of device or
-transport. A **setup** groups measurements by experiment or lab system even
-when their wires terminate at different services.
+## Start here
 
-**MQTT** is a lightweight message protocol. Processes publish messages on
-named topics through the Mosquitto broker; other processes subscribe to the
-topics they need. **Home Assistant** turns these messages into entities,
-records history, displays dashboards and evaluates alarm rules. **Docker
-Compose** starts each part in an isolated container and defines its files and
-hardware access.
+The normal way to use LabPulse is through Home Assistant. On the Raspberry Pi,
+run:
 
-The stable mapping is:
-
-```text
-physical or simulated source
-  -> one LabPulse service container
-  -> Mosquitto MQTT broker
-  -> Home Assistant entity, history and alarm state
-  -> optional SMS request
-
-Home Assistant output switch
-  -> one LabPulse output container
-  -> configured GPIO line
+```bash
+labpulse open
 ```
 
-## Installation layout and source of truth
+If you are connected to the Pi over SSH, open the following address on another
+computer instead:
 
-The public operator interface is the `labpulse` command. Its default working
-installation is `~/labpulse-live`. The operator-owned source bundle is:
+```text
+http://<pi-address>:8123
+```
+
+For a quick check of the installation, run:
+
+```bash
+labpulse ps
+labpulse doctor
+```
+
+Then check these things in Home Assistant:
+
+1. Open **System Status** and confirm that the expected services say
+   **Working**.
+2. Open **Monitor** and confirm that the readings are present and continue to
+   update.
+3. Open **Alarm Setup** and review the thresholds and notification controls.
+4. Leave **Test mode** enabled until test messages have reached the intended
+   test recipients.
+5. Only disable **Mute all notifications** after the alarms and recipient lists
+   have been reviewed.
+
+If something is missing or unhealthy, start with
+[Troubleshooting](TROUBLESHOOTING.md).
+
+## Using the dashboard
+
+LabPulse generates its Home Assistant dashboard from the live configuration.
+The exact measurements and setup names depend on the lab, but every installation
+uses the same main views.
+
+### Monitor
+
+**Monitor** is the page to leave open during ordinary use. It shows:
+
+- current readings grouped by experiment or lab setup;
+- graphs for measurements configured to show one;
+- UPS and external-power information when power monitoring is enabled;
+- manual output switches;
+- a **Current Problems** card for confirmed, unmuted problems;
+- banners when Global Mute or Test mode is active.
+
+Select a reading to open Home Assistant's detail window and view its history.
+A crossed threshold may be visible before an alarm becomes **Danger**, because
+the configured observation window still needs enough evidence.
+
+### System Status
+
+**System Status** answers two questions: is each monitoring service working,
+and are all of its required readings current?
+
+Each service card shows its latest readings and one of these states:
+
+| State | Meaning | What to do |
+|---|---|---|
+| **Working** | The service and all required readings are current. | No action is normally needed. |
+| **Needs attention** | The service is communicating, but a component or required reading has a problem. | Read the explanation on the card, then inspect that sensor or service. |
+| **Offline** | LabPulse cannot currently communicate with the service. | Check the hardware or external publisher and inspect its logs. |
+
+An optional reading shows **No recent data — optional** when absent, without
+raising a missing-data alert. The service can still need attention if its
+driver reports a problem. For example, an MQTT JSON message missing a field
+that you've configured is reported as a fault, even when that reading is
+optional. Other usable readings continue to update.
+
+### Alarm Setup
+
+**Alarm Setup** contains the controls which affect alarm decisions and message
+delivery. From here you can:
+
+- mute or unmute all notifications;
+- switch between Test mode and normal recipient routing;
+- send a phone-book test notification;
+- mute an entire setup;
+- open the alarm controls for one measurement;
+- apply timing settings to several measurements at once;
+- configure power monitoring alarms.
+
+The setup and power pages provide the detailed controls. They are generated by
+LabPulse and should not be edited as Home Assistant YAML.
+
+### Custom tabs and setup pages
+
+A measurement can belong to one or more logical setups even when it comes from
+a different physical device. Setups control dashboard grouping and notification
+context. An installation can also define custom dashboard tabs containing
+selected setups.
+
+## Understanding system state
+
+LabPulse deliberately separates different kinds of problem:
+
+| What you see | Meaning |
+|---|---|
+| **Danger** | A valid reading has remained outside its accepted range long enough to confirm an alarm. |
+| **No recent data** | A required measurement has stopped providing usable values. |
+| **Needs attention** | A service is still communicating but reports a partial problem or lacks required data. |
+| **Offline** | The whole service cannot communicate. |
+| **Running on battery** | The power monitor has confirmed loss of external power. |
+
+A running Docker container does not prove that its sensor is healthy. Use
+**System Status** to check whether the readings are actually getting through.
+
+If a whole service goes offline, LabPulse reports that problem once rather
+than raising a missing-data alert for every reading it supplies. If the service
+is still working but one required reading disappears, LabPulse reports that
+reading separately.
+
+Alarm state and notification delivery are also separate. Muting an alarm stops
+its messages; it does not turn a dangerous reading back to Normal.
+
+## Configuring alarms
+
+Open **Alarm Setup**, choose a setup, and select **Configure** beside the
+measurement you want to change.
+
+### Alarm mode and thresholds
+
+The alarm mode decides which threshold is active:
+
+- **Disabled**: display and record the measurement without a threshold alarm;
+- **Low Only**: values below the minimum can alarm;
+- **High Only**: values above the maximum can alarm;
+- **Range**: values below the minimum or above the maximum can alarm.
+
+Minimum and maximum thresholds use the unit displayed beside the measurement.
+The alarm state is read-only; LabPulse changes it after evaluating the live
+reading and timing settings.
+
+### Confirmation timing
+
+LabPulse does not have to alarm on one brief spike. It looks at the recent
+observation window and measures the percentage of time spent in the danger
+zone, using Home Assistant history. It does not count samples.
+
+For example, with a 120-second observation window and a required danger value
+of 70%, the reading must spend at least 84 seconds of that window outside the
+threshold before the state can change to **Danger**. Home Assistant updates
+the history statistic periodically, so this is not an exact countdown timer.
+
+Recovery requires the reading to remain safe for the configured recovery time.
+The recovery deadband also moves the safe boundary away from the threshold:
+
+- a high alarm recovers at or below `maximum - deadband`;
+- a low alarm recovers at or above `minimum + deadband`;
+- a range alarm requires both conditions.
+
+This prevents repeated alarm and recovery messages when a value sits close to
+the boundary.
+
+### Bulk alarm editor
+
+The bulk editor changes timing settings for a selected setup or compatible
+group of measurements. Choose the target, tick only the fields you intend to
+replace, review the summary, and apply the changes. Thresholds remain
+measurement-specific and are not replaced by the bulk timing editor.
+
+### Missing data
+
+Missing or non-numeric data is not treated as a dangerous numeric value. The
+threshold alarm pauses until valid data returns. A required reading opens a
+separate missing-data incident after its configured confirmation delay;
+optional readings do not open missing-data incidents. They can still produce
+threshold notifications while valid data is available.
+
+### Calculated measurements
+
+Calculated measurements behave like ordinary readings on the dashboard and can
+have threshold alarms. They become unavailable if an input is unavailable or
+non-numeric, or if a formula attempts to divide by zero. They are calculated by
+Home Assistant and do not create an additional sensor container.
+
+## Notifications, mutes, and Test mode
+
+LabPulse can leave notifications in Home Assistant and send text messages if
+you've set up SMS.
+
+### Test mode
+
+Test mode is enabled whenever Home Assistant starts. Messages created while it
+is enabled are prefixed `[TEST]` and use only the configured test recipients.
+Disabling Test mode routes new messages to the normal recipients.
+
+Changing Test mode does not change alarm calculations. If a Danger or
+missing-reading alert is already confirmed, open its controls and use
+**Resend active alert** to send it again using the current Test mode and mute
+settings.
+
+### Mutes
+
+- **Mute all notifications** blocks every generated notification.
+- A **setup mute** blocks messages for measurements belonging to that setup.
+- A **measurement mute** blocks messages for one reading.
+- The **power mute** blocks power-loss and power-restoration messages.
+- A service can also be configured not to notify when it goes offline.
+
+Mutes do not expire automatically and do not change the underlying service or
+alarm state. Muted measurement and power incidents are removed from **Current
+Problems**, but their condition remains visible elsewhere on the dashboard.
+
+A measurement shared between setups can still notify if at least one of its
+setups remains unmuted. Home Assistant warns before applying this kind of setup
+mute.
+
+To turn off a service's offline and recovery notifications, set
+`notify_on_service_failure: false` on that service through `labpulse config`.
+This stops both its Home Assistant and SMS notifications, but its status and
+confirmed outage stay visible. Its individual readings and power alarms keep
+their own notification settings. See [Services](CONFIGURATION.md#services)
+for the configuration fields.
+
+### Recovery messages
+
+A recovery closes the matching persistent Home Assistant problem. A recovery
+notification is only created when the corresponding opening notification was
+created. Likewise, a recovery SMS requires an opening SMS request and obeys the
+mute and Test mode settings in effect at recovery time.
+
+If you change Test mode while a problem is active, the recovery message uses
+the recipient list selected at recovery time.
+
+## Testing SMS
+
+SMS starts in dry-run mode. Dry-run validates and logs each request but does not
+use the modem. Keep it enabled while checking the rest of the system.
+
+To send a real test message:
+
+1. Use the [Configuration reference](CONFIGURATION.md#sms) to configure the
+   modem, check the test recipient's number, and disable `sms.dry_run`.
+2. Run `labpulse config`, then confirm the SMS container is running with
+   `labpulse ps`.
+3. In **Alarm Setup**, leave **Test mode** enabled and turn off **Mute all
+   notifications**.
+4. Press **Send phone book notification** and confirm the action.
+5. Check that every intended test handset receives the message.
+6. Inspect `labpulse logs labpulse-sms` if it does not arrive.
+7. Test one real alarm and its recovery before enabling normal routing.
+8. Review the normal recipient list, then disable Test mode only when the
+   installation is ready for normal use.
+
+Configured recipients may reply `UNSUBSCRIBE` or `SUBSCRIBE`. Commands from
+numbers outside the configured normal and test lists are ignored. SMS is best
+effort: modem acceptance does not prove that a handset received or displayed a
+message.
+
+## Using controlled outputs
+
+Configured outputs appear as Home Assistant switches. Outputs assigned to a
+setup appear in that setup's **Controls** card; unassigned outputs appear in
+the general **Controlled Outputs** section. **System Status** shows every
+enabled output.
+
+Before switching an output, confirm that:
+
+- the switch controls the intended GPIO line and equipment;
+- the equipment has appropriate electrical isolation and protection;
+- changing the output cannot bypass a safety system;
+- the configured safe state is appropriate.
+
+The worker applies its safe state on startup, orderly shutdown, MQTT loss,
+hardware failure, and retry. An optional maximum active time automatically
+returns an output from ON to its safe OFF state. Repeated ON commands do not
+extend that timer.
+
+The displayed state proves only the Raspberry Pi GPIO latch. It does not prove
+that a relay, valve, or attached machine moved. Outputs are manual experimental
+controls and must never be used as safety functions.
+
+In fake-hardware mode, the same switches and output containers are present, but
+their state exists only in memory and no GPIO is accessed.
+
+## Everyday commands
+
+Run commands on the Raspberry Pi which hosts LabPulse.
+
+| Command | Purpose |
+|---|---|
+| `labpulse open` | Open Home Assistant on the local machine. |
+| `labpulse ps` | Show running LabPulse containers. |
+| `labpulse ps --all` | Include stopped containers. |
+| `labpulse logs` | Show recent logs from every service. |
+| `labpulse logs SERVICE` | Show logs for one Compose service. |
+| `labpulse logs --tail 100` | Show the latest 100 lines. |
+| `labpulse logs --follow SERVICE` | Continue showing new log entries. |
+| `labpulse doctor` | Run read-only installation and connectivity checks. |
+| `labpulse setup` | Create or refresh a real-hardware installation; see the Installation guide. |
+| `labpulse setup --fake-hardware` | Create or refresh a simulated installation; see the Installation guide. |
+| `labpulse up` | Start the complete stack. |
+| `labpulse down` | Stop and remove containers without deleting persistent data. |
+| `labpulse restart` | Restart the complete stack. |
+| `labpulse config` | Edit, validate, regenerate, and apply the live configuration. |
+| `labpulse update` | Install the latest PyPI release and recreate the stack. |
+| `labpulse backup FILE.tar.gz` | Create a checksummed state archive. |
+| `labpulse restore FILE.tar.gz` | Restore an archive and diagnose the result. |
+| `labpulse uninstall` | Permanently remove the deployment after confirmation; back it up first. |
+| `labpulse firmware` | Show where to obtain the maintained firmware. |
+| `labpulse version` | Show the installed LabPulse version. |
+| `labpulse help COMMAND` | Show the exact options for one command. |
+
+`up`, `down`, `restart`, and `logs` accept service names when only part of the
+stack needs attention. For example:
+
+```bash
+labpulse restart labpulse-pressure-monitor
+labpulse logs --follow --timestamps labpulse-pressure-monitor
+```
+
+Use `labpulse ps --all`, `labpulse logs --tail 100`, and `labpulse doctor` as
+the normal first checks when something is wrong. Persistent worker logs are
+also stored beneath `~/labpulse-live/logs/` and retain the previous seven daily
+files.
+
+An alternate installation directory can be selected by placing `--live-dir`
+before the command:
+
+```bash
+labpulse --live-dir /srv/labpulse doctor
+```
+
+## Changing the configuration
+
+Your settings live in these files:
 
 ```text
 ~/labpulse-live/config.yaml
-~/labpulse-live/config.d/**/*.yaml   # only when referenced by measurements_file
+~/labpulse-live/config.d/**/*.yaml   when referenced by measurements_file
 ```
 
-The repository-level files are only starters copied into a new installation.
-`config.resolved.yaml` is the complete generated runtime file. `compose.yaml`,
-`config.fake.yaml` and LabPulse-managed Home Assistant YAML are also generated.
-Editing generated files creates changes that the next setup or configuration
-operation will replace.
-
-`labpulse setup` prepares the live directory but does not start the stack.
-`labpulse up` starts it; `labpulse down` removes containers without deleting
-bind-mounted state; `labpulse restart` restarts all or selected services.
-`labpulse update` installs the latest published release, refreshes generated
-files, and recreates the complete stack only when the version has changed.
-Confirmed incidents during an update follow their usual timing and mute rules.
-The SMS worker's persistent MQTT session queues requests while it is unavailable;
-failure and recovery requests can arrive together when it reconnects. A failed
-update reports the installation or Compose error and does not leave a hidden mute.
-After every LabPulse command finishes, a short version check prints a
-`labpulse update` reminder only when PyPI has a newer release. The check is
-silent on network failure and does not change the command's result.
-
-## Choose real hardware or simulation
-
-Choose the deployment mode before configuring or starting LabPulse. A physical
-installation begins with `labpulse setup`; a hardware-free installation begins
-with `labpulse setup --fake-hardware`. The installation guide gives the complete
-prerequisites and setup procedure for both modes.
-
-Fake mode preserves the complete resolved configuration and therefore produces
-the same dashboard and the same enabled service/output containers as real
-mode. Sensor workers bypass their configured physical drivers and generate one
-sensible changing number for every configured measurement. This applies to
-serial, I²C, GPIO, UPS, MQTT JSON and future registered driver types.
-
-Always edit `config.yaml` and its referenced `config.d` fragments, even in fake
-mode, and complete `labpulse config` before starting the stack. The guarded
-configuration command regenerates the resolved runtime and fake projection.
-
-Output workers keep the configured Home Assistant switches and safety timers,
-but hold state only in memory. SMS is forced to dry-run and receives no modem
-mount. Fake mode exercises configuration, container lifecycle, MQTT discovery,
-dashboards and normal value publication. It deliberately does not prove real
-driver behaviour, wiring, calibration, external data delivery or modem delivery.
-
-## Configuring LabPulse
-
-Configuration is part of initial commissioning. Run it after `labpulse setup`
-and before the first `labpulse up`:
+Open them with LabPulse's editor, which checks your changes before applying them:
 
 ```bash
 labpulse config
 ```
 
-The guarded editor changes a temporary copy of the complete source bundle.
-With no file arguments it asks whether to edit `config.yaml`, an existing
-measurement file, or create a new measurement file. Creating one opens it with
-the master config so you can add its `measurements_file` reference immediately.
-Specific source files can still be opened directly:
+The menu can open `config.yaml`, edit an existing measurement file, or create a
+new one. Files can also be named directly:
 
 ```bash
+labpulse config config.yaml
 labpulse config config.yaml config.d/triton-01-measurements.yaml
 ```
 
-Define the MQTT connection, SMS routing, services, drivers, measurements, setups, dashboard tabs, calculated
-measurements and any controlled outputs needed by this installation. The
-complete field-by-field reference and examples are in
-[Configuration](CONFIGURATION.md).
+The configuration describes MQTT, SMS recipients, services, drivers,
+measurements, setups, dashboard tabs, calculated measurements, and controlled
+outputs. The [Configuration reference](CONFIGURATION.md) explains how to write
+these settings and includes examples you can adapt.
 
-The command validates all referenced files, preserves fake mode where active, renders
-Compose and Home Assistant output, checks both output families, installs the
-source bundle and generated files, and displays status. It writes the standalone
-`config.resolved.yaml` used by real containers. It keeps rolling backups and
-attempts to restore the earlier source bundle and output if a downstream check
-fails. The rolling copies are kept together in `~/labpulse-live/backups/`.
+When you save a change and close the editor, LabPulse checks all your
+configuration files together, updates the generated files, and applies the
+changes. If it finds an error, it leaves the previous configuration in place.
 
-For real serial services, assign stable `/dev/serial/by-id/...` paths with the
-installed USB helper after the devices are connected, then run
-`labpulse config` again. Do not start a permanent installation using
-`/dev/ttyUSB0` or `/dev/ttyACM0` identities.
+Closing the editor without a configuration change does not rebuild missing
+generated files. Use the [repair procedure](TROUBLESHOOTING.md#installation-or-generated-files-are-missing)
+if those files need to be recreated.
 
-There is no automatic hot reload. Use `labpulse config` again whenever the
-live configuration changes. A group of filesystem replacements or external
-Docker actions cannot be fully transactional; if recreation fails, inspect
-logs and regenerate rather than editing `compose.yaml` by hand.
+Do not manually edit any of these generated files:
 
-## Starting and verifying LabPulse
+```text
+~/labpulse-live/config.resolved.yaml
+~/labpulse-live/config.fake.yaml
+~/labpulse-live/compose.yaml
+~/labpulse-live/homeassistant/config/configuration.yaml
+~/labpulse-live/homeassistant/config/packages/labpulse_generated.yaml
+~/labpulse-live/homeassistant/config/labpulse-*.yaml
+```
 
-Start LabPulse only after `labpulse config` completes successfully:
+Changes aren't picked up automatically; apply them through `labpulse config`.
+Changing a service or measurement key makes Home Assistant treat it as a new
+item with separate history. To rename something on the dashboard, change its
+label instead.
+
+## Using fake hardware
+
+Fake-hardware mode runs the complete configured deployment without accessing
+sensors, outputs, or a modem. It is useful for learning LabPulse, checking a
+new configuration, demonstrating a dashboard, and testing alarm controls.
+
+The installation must already have been created in fake mode as described in
+the [Installation guide](INSTALLATION.md#create-a-simulated-installation). Its
+normal operating commands remain the same:
 
 ```bash
 labpulse up
 labpulse ps
 labpulse doctor
+labpulse open
 ```
 
-Open Home Assistant with `labpulse open`, or browse to
-`http://<pi-address>:8123` from another
-computer. Confirm that every expected service is running, MQTT is connected,
-the System Status view reports the expected services, and measurements continue
-to update before relying on alarms or notifications.
+Fake hardware preserves the resolved configuration, dashboard, and enabled
+container set:
 
-Generated Compose contains Home Assistant, Mosquitto, one SMS worker, one
-container per enabled sensor service and one container per enabled output.
-Each process loads and validates its own configuration at
-startup.
+- every enabled service publishes a simulated value for every configured
+  measurement; analogue values usually vary, while digital inputs remain active;
+- calculated measurements use those simulated inputs;
+- every enabled output keeps its Home Assistant switch and safety timer, but
+  changes only in-memory state;
+- SMS is forced to dry-run;
+- no configured sensor, output, or modem hardware is mounted into a worker.
 
-Docker uses `restart: unless-stopped`. Sensor workers retry unavailable
-hardware at their configured interval. Opening a device does not make a worker
-healthy: it remains reconnecting until it publishes a valid reading. An
-orderly shutdown closes the driver. If a container disappears unexpectedly,
-MQTT Last Will and Home Assistant expiry provide separate failure indications.
+Confirm that every expected service says **Working**, every measurement is
+present and current, and all intended dashboard groups and controls exist.
+This checks the configuration, containers, MQTT, dashboards, and normal value
+flow. It does not validate drivers, wiring, calibration, an external publisher,
+equipment movement, or real SMS delivery.
 
-## Routine operation
+Continue editing the ordinary `config.yaml` and referenced files with
+`labpulse config`; never edit `config.fake.yaml`. Follow the Installation guide
+when changing an installation between fake and real hardware.
 
-```text
-labpulse setup       create or refresh the installation
-labpulse update      install the latest release and recreate the stack
-labpulse up          start all or selected services
-labpulse down        stop/remove containers without deleting state
-labpulse restart     restart all or selected services
-labpulse ps          show container status
-labpulse logs        show container logs
-labpulse config      edit, validate, regenerate and apply configuration
-labpulse doctor      run read-only diagnostics
-labpulse backup      create a checksummed state archive
-labpulse restore     reconstruct from an archive
-labpulse uninstall   remove the live deployment and Docker resources
-labpulse open        open local Home Assistant
-labpulse firmware    show firmware source/download information
-labpulse version     show the installed version
-labpulse help        show command help
+## Updating LabPulse
+
+Before an update, create a backup and check the current state:
+
+```bash
+labpulse backup ~/labpulse-before-update.tar.gz
+labpulse doctor
+labpulse update
 ```
 
-Use `labpulse help COMMAND` for exact options. `--live-dir DIR` precedes the
-subcommand. Service names can be supplied to `up`, `down`, `restart` and
-`logs`. `labpulse open` opens localhost on the machine running it; an SSH user
-normally browses to `http://<pi-address>:8123` instead.
+`labpulse update` installs the latest release from PyPI, refreshes the generated
+files, recreates the stack, and runs the new version's diagnostics. To install a
+specific release:
 
-Python workers log to container stdout and `~/labpulse-live/logs/`. Persistent
-logs rotate at local midnight and retain the previous seven daily files per
-worker, in addition to the current file. `labpulse ps --all`,
-`labpulse logs --tail 100` and `labpulse doctor` are the normal first checks.
+```bash
+labpulse update 1.0.0
+```
 
-## Setups and dashboards
+Afterward, run `labpulse ps`, open **System Status**, and confirm that readings
+resume. Updates don't automatically mute notifications or wait for fresh
+readings before allowing alarms. Confirmed problems follow the usual timing
+and mute settings. If you want to pause messages during maintenance, use
+**Mute all notifications** and turn it off again after checking the system.
 
-A measurement may belong to several logical setups without being duplicated
-on MQTT. Setups control dashboard grouping and notification context. The
-built-in `main` dashboard contains the Monitor view; configured dashboard tabs
-can place groups of setups on additional views.
+If the SMS worker is briefly unavailable, the broker can hold queued requests
+for it to process when it reconnects. You may therefore receive a failure
+message followed by a recovery after the interruption has ended. See
+[SMS delivery details](#sms-delivery-details) for the limits of this behaviour.
 
-The generated dashboard provides:
+If an update fails, read the reported error, then use:
 
-- **Monitor** for setup-grouped measurements, status banners and controlled
-  outputs;
-- configured custom tabs for selected setups;
-- **Alarm Setup** for thresholds, timing, mutes, Test mode and bulk editing;
-- **System Status** for a plain-language summary of services, readings and outputs;
-- setup and power subviews with detailed controls.
+```bash
+labpulse ps --all
+labpulse logs --tail 100
+labpulse doctor
+```
 
-It uses native Home Assistant YAML cards and requires no HACS frontend
-extensions. LabPulse manages the dashboard YAML, not Home Assistant `.storage`.
+Repair the reported package, configuration, Docker, or service problem and run
+`labpulse up`. See [Troubleshooting](TROUBLESHOOTING.md#update-failed-or-sms-worker-is-offline)
+for notification behaviour during an interrupted update.
 
-## Measurements, units and identity
+## Backups and restoration
+
+Create a backup once everything is working, before an update, and after important
+configuration or Home Assistant changes:
+
+```bash
+labpulse backup ~/labpulse-backup-2026-09-17.tar.gz
+```
+
+LabPulse briefly stops the services which are currently running, copies the
+operator configuration, Home Assistant state, Mosquitto retained data, and SMS
+state, writes checksums, and starts the same services again before compressing
+the archive. It does not include ordinary logs, firmware, wiring information,
+or host operating-system settings.
+
+External MQTT security files under `mosquitto/config/` are also excluded:
+certificates, private keys, `external-passwords`, and `external-acl`. Keep a
+separate protected copy if you use the external listener; restore those files
+before regenerating a deployment that enables it.
+
+The archive contains credentials, phone-number state, and Home Assistant
+history. On Linux it is restricted to its owner, but it is not encrypted. Store
+a copy outside `~/labpulse-live` somewhere only authorised people can access.
+Existing backup files are not overwritten unless you supply `--force`.
+
+Restore with:
+
+```bash
+labpulse restore ~/labpulse-backup-2026-09-17.tar.gz
+```
+
+Read the confirmation prompt carefully: restoring replaces your current
+settings and saved data. LabPulse checks the backup for damaged files, restores
+it, regenerates its configuration, starts the services, and runs Doctor once
+Home Assistant is ready. Where possible, it backs up your current data first
+so you can return to it. The `--yes` option skips the confirmation prompt.
+
+After restoration, verify host timezone and clock synchronisation, Docker,
+watchdog policy, modem provisioning, USB identities, GPIO/I²C enablement, and
+physical wiring. These are properties of the host and are not restored from the
+archive.
+
+Restoration uses the installed LabPulse package; it does not reinstall the
+version recorded in the archive. For a replacement Pi, follow
+[restoring on a replacement Pi](INSTALLATION.md#backups-and-restoring-on-a-new-pi).
+
+## Removing an installation
+
+To stop LabPulse while keeping your settings and history, use `labpulse down`.
+Use `uninstall` only when you want to remove the installation permanently.
+
+First create a backup **outside the live directory** if you may need its data
+again. Follow [Backups and restoration](#backups-and-restoration), including
+the separate copy of external MQTT security files if you use them.
+
+On the Pi, run:
+
+```bash
+labpulse uninstall
+```
+
+Check the installation path shown in the prompt, then type `UNINSTALL` to
+confirm. This removes the selected stack and its complete live directory,
+including configuration, Home Assistant history and settings, MQTT state,
+logs, and any backups stored inside that directory. For a non-default path,
+put `--live-dir /path/to/installation` before `uninstall`.
+
+The pipx-installed command remains available. To remove that too, run this
+after removing the installation:
+
+```bash
+pipx uninstall labpulse
+```
+
+## Detailed behaviour
+
+The remainder of this guide explains details which are useful when interpreting
+unusual behaviour. Implementation and contributor details belong in
+[Architecture](ARCHITECTURE.md), while field-level settings remain in the
+[Configuration reference](CONFIGURATION.md).
+
+### Services, measurements, drivers, and setups
+
+A **service** is one independently running acquisition worker, normally for one
+device or sensor board. A **measurement** is one numeric channel produced by
+that service. A **driver** communicates with one type of device or transport. A
+**setup** groups measurements by experiment or lab system, regardless of which
+device produced them.
+
+Each enabled sensor and output runs independently, so one failed device does
+not directly stop another. Supported inputs include the standard Arduino serial
+format, SHT40, DHT11, X1200 UPS, generic GPIO input, and named JSON over MQTT.
+The configuration reference documents their options and requirements.
+
+### Measurement identity and history
 
 Service and measurement mapping keys form stable MQTT topics, Home Assistant
-entity IDs, helper IDs and history identity. Changing a label changes display
-text; changing a key creates a new identity and can leave old Home Assistant
-state behind.
+entity IDs, helper IDs, and history identity. Labels are display text and can be
+changed without creating a new identity.
 
-LabPulse publishes the configured unit exactly and does not ask Home Assistant
-to convert it. `device_class` is LabPulse metadata used for default icons and
-alarm-control grouping. An explicit Material Design `mdi:` icon overrides the
-default. `alarmed: false` keeps a value visible without measurement threshold
-helpers or notifications; whole-service health remains separate.
+Physical readings use the configured unit without automatic Home Assistant
+device-class conversion. Calculated readings expose their configured device
+class to Home Assistant, which may convert their units; see
+[calculated measurements](CONFIGURATION.md#calculated-measurements) before
+choosing a class. Measurements can use a default or explicit icon and may be
+shown without threshold alarms. A measurement configured with `show_graph: true`
+displays a 24-hour graph on its
+dashboard card; every measurement still has Home Assistant history when
+selected.
 
-Measurements normally expire in Home Assistant when no state arrives within
-the configured maximum age. Values are MQTT QoS 0 and not retained; service
-status is QoS 1 and retained. QoS 1 can deliver a duplicate and is not an
-exactly-once guarantee.
+Physical and calculated measurements, plus the danger-history sensors required
+by observation windows, are recorded. Internal alarm helpers and automations
+are excluded from new Recorder history to avoid unnecessary storage.
 
-LabPulse excludes its internal alarm helpers, availability classifiers,
-automations, and scripts from Home Assistant Recorder. They remain active but
-do not consume new history storage. Home Assistant's History target picker
-lists registered entities independently, so Recorder exclusions do not remove
-them from its **Add target** menu. Physical and calculated measurements remain
-recorded. Danger-zone binary sensors also remain recorded because
-observation-window calculations depend on their history.
+### Freshness and reconnection
 
-Set `show_graph: true` on a physical or calculated measurement to replace its
-compact row with a native card containing the current value and a 24-hour line
-graph at the same position in the setup. Measurements without this option
-retain the compact list layout.
+Workers retry unavailable hardware at the configured interval. Empty, invalid,
+or missing samples do not refresh the last-successful-reading time. For drivers
+whose health depends on readings, stale data causes the worker to close and
+reconnect the driver. A valid sample is published before it returns to online.
 
-## Calculated measurements
+An MQTT JSON source with heartbeat monitoring reports publisher health
+separately. LabPulse waits for a fresh heartbeat and online availability, and
+does not reconnect solely because no new measurement arrives. Heartbeats do
+not refresh numeric readings: these still expire independently in Home
+Assistant. A healthy publisher with expired required readings therefore shows
+**Needs attention**. A running container alone does not prove that its source
+or readings are healthy.
 
-Home Assistant can calculate a measurement from physical LabPulse entities.
-Configuration gives each formula local input names, optional constants,
-arithmetic and rounding precision. Only names, finite numbers, parentheses,
-unary signs, addition, subtraction, multiplication and division are allowed.
-Function calls, powers, attribute access and chains of calculated measurements
-are rejected.
+### Power monitoring
 
-The calculated entity becomes unavailable when an input is unavailable or not
-numeric, or when a divisor is zero. Its threshold alarm pauses while the value
-cannot be evaluated. Calculated measurements run in Home Assistant; they do
-not create another container or MQTT measurement.
+Power monitoring combines `mains_present`, battery voltage, and charge level
+into one operator-facing power state. Loss and restoration have separate
+confirmation times. A confirmed outage is reported when it happens; the later
+restoration reports its duration.
 
-## Service status and missing readings
+Missing battery or mains telemetry remains distinct from a genuine **Running
+on battery** state. Power readings can remain visible without power alarms when
+all three measurements are configured with `alarmed: false`.
 
-The hardware runner schedules reads with a monotonic clock. A valid sample is
-published before the online status so recovery does not act on an old value.
-Transient errors are rate-limited in logs. A lost connection is closed and
-scheduled for retry.
+### SMS delivery details
 
-Empty or missing samples do not reset the last-success time. When their age
-reaches the configured maximum, the runner closes and reconnects the driver.
-Individual entities also expire in Home Assistant. A service may therefore be
-running as a container while its device or one measurement is unhealthy.
+The SMS worker validates requests, chooses the normal or test recipient list,
+filters unsubscribed numbers, rejects duplicate request IDs, and sends accepted
+work sequentially through ModemManager. Failed modem operations are retried.
 
-System Status combines the technical signals into one operator-facing service
-state. **Working** means the service and every required reading are current.
-**Needs attention** means the service is communicating but has reported a
-component problem or lacks required data. **Offline** means LabPulse cannot
-currently communicate with the service. Threshold alarm state remains a
-separate Normal or Danger decision and is evaluated only when data is present.
+It keeps a persistent MQTT session, so the broker can queue notification
+requests while the worker is disconnected. On reconnection, queued failure
+and recovery requests are processed in order, and duplicate request IDs are
+rejected. This broker queue is separate from work already accepted by the
+SMS worker.
 
-A confirmed service outage is one root incident. While it is pending or active,
-LabPulse suppresses subordinate unavailable-reading incidents. If the service
-remains healthy but one required reading disappears, that reading gets its own
-incident after its configured confirmation delay. Measurements with
-`required: false` remain visible and show **No recent data — optional**, but
-their absence is informational and leaves the service **Working**.
+Delivery remains best effort. The in-memory work queue does not survive abrupt
+process loss, and acceptance by the modem or mobile network is not proof that a
+person read the message. Subscription and recent-request state are persisted
+in the live logs directory and included in backups.
 
-## Measurement alarm behaviour
+### Arduino and external sources
 
-Each alarmed ordinary or calculated measurement has a threshold state:
-
-```text
-Normal -> Danger -> Normal
-```
-
-Minimum and maximum thresholds define dangerous values. A measurement enters
-Danger only when the required proportion of recent observations is dangerous
-within the observation window. This filters a brief spike but deliberately
-delays the alarm by the configured evidence requirement.
-
-Recovery requires continuous safe data for the recovery period. The value
-must also move beyond the deadband: a high alarm recovers below
-`maximum - deadband`, while a low alarm recovers above `minimum + deadband`.
-Deadband prevents repeated transitions near a boundary.
-
-Missing or non-numeric telemetry is represented separately from a dangerous
-value. Threshold evaluation pauses until valid data returns, then
-reconciles against the current thresholds. Alarm state and notification
-delivery are separate: muting a
-notification never makes a dangerous state Normal. Alarm state is read-only
-on the dashboard and changes only when these measurement rules run.
-
-When an active Danger or missing-reading alert needs to be delivered again, open
-that measurement's alarm controls and press **Resend active alert**. The action
-keeps the alarm state unchanged and repeats the matching warning using the
-current Test mode, measurement mute, setup mute, and global mute settings. For
-example, after an alarm was first sent to test recipients, disable Test mode
-and use this button to send the still-active alert to the normal recipients.
-
-Thresholds, observation window, dangerous proportion, recovery time and
-deadband are adjusted in Home Assistant. They are not YAML fields. Home
-Assistant restores most helpers from its state; installation automations
-initialize missing values safely.
-
-The alarm summary uses color as a quick explanation of the current settings:
-an unused minimum or maximum is grey, a threshold currently crossed by the
-live reading is red, and the alarm-state tile is red while its state is
-**Danger**. A crossed threshold can appear red before the alarm state changes
-because the observation-window requirement has not yet been satisfied.
-
-## Power alarm behaviour
-
-Power monitoring uses `mains_present` plus battery telemetry as one composite
-alarm. Loss and restoration have separate confirmation times. A confirmed
-outage and confirmed restoration are separate events; restoration reports the
-duration rather than delaying the initial warning until power returns.
-
-Missing voltage, charge, or mains readings and complete service loss remain
-distinguishable from an actual **Running on battery** condition. LabPulse avoids
-duplicate alerts after Home Assistant restarts. Raw power readings can
-remain visible without power notifications by setting all three measurements
-to `alarmed: false`.
-
-## Mutes and Test mode
-
-Global mute blocks all generated notifications. Per-reading and setup mutes block messages for
-measurements assigned to that setup. Mutes are manual controls and do not
-expire; the dashboard continues to show that delivery is muted.
-
-Test mode starts enabled after every Home Assistant startup. Messages created
-in Test mode are prefixed `[TEST]` and route only to `sms.test_recipients`.
-Normal recipients are used only after an operator deliberately disables Test
-mode. Test mode changes routing, not the underlying alarm calculations.
-Muting suppresses delivery and removes that measurement or power condition
-from **Current Problems**, without changing its underlying state. System Status
-still shows the underlying service and reading condition. A Home Assistant
-recovery notification requires an opening Home Assistant notification. A
-recovery SMS requires an opening SMS request and obeys the mutes and Test mode
-in effect at recovery.
-
-## SMS behaviour
-
-Dry-run is the default. It validates requests, applies routing/deduplication
-and logs intended messages without using a modem. Real delivery requires
-ModemManager, a provisioned modem and at least one normal recipient.
-
-The SMS worker validates every MQTT request, suppresses reused request IDs and
-recent duplicate event keys, then filters unsubscribed numbers. Accepted work
-is queued and sent sequentially. Modem discovery, message creation and sending
-use `mmcli`; failed attempts are retried and temporary modem messages are
-deleted where possible. Delivery is best effort: the in-memory queue does not
-survive abrupt process loss and modem acceptance is not proof that a person
-read the message.
-
-Configured numbers can reply `UNSUBSCRIBE` or `SUBSCRIBE`. Inbound commands
-from numbers outside the configured normal/test lists are ignored. Subscription
-and recent-request state are persisted in the live logs directory and included
-in backups.
-
-## Controlled GPIO outputs
-
-An output can be placed with the experiment it controls by adding one or more
-setup IDs to its live configuration:
-
-```yaml
-outputs:
-  cooling_valve_enable:
-    label: Cooling Valve Enable
-    setups: [turbo_pump_experiment]
-    driver:
-      type: labpulse.gpio_output
-      options:
-        gpio_line: 18
-```
-
-Assigned outputs appear in a **Controls** card inside each selected setup.
-Unassigned outputs remain in the Monitor page's general **Controlled Outputs**
-section. All enabled outputs remain visible on System Status.
-
-Each enabled output becomes a Home Assistant switch and an independent worker.
-The worker accepts exact live `ON` and `OFF` commands only; retained or malformed
-commands are rejected. After a write it reads the GPIO latch before publishing
-state. Availability is online only when MQTT and output hardware are ready.
-
-On startup, orderly shutdown, MQTT disconnection, hardware failure and retry,
-the worker applies its configured logical safe state. An optional
-`maximum_active_seconds` returns an output from ON to safe-state OFF; repeated
-ON commands do not extend the existing timer. A maximum time cannot be combined
-with a safe state of ON. Fake mode omits physical output containers.
-
-The output proves only the Raspberry Pi latch. It does not prove that a relay,
-valve or machine moved. Pi GPIO uses 0 V/3.3 V logic; a custom interface must
-provide whatever switching, isolation and protection the selected equipment
-requires. The local broker has no application-level command authentication, so
-do not expose this path to an untrusted network. Automatic alarm-driven
-actuation and safety functions are not supported.
-
-## Sensor services and drivers
-
-Every enabled service names a registered driver and the measurements LabPulse
-is allowed to publish. Values returned by a driver but absent from the service
-configuration are ignored. One faulty service cannot directly stop another
-because they run in different containers.
-
-### Arduino serial services
-
-The standard serial driver reads complete newline-terminated records such as:
+The standard Arduino serial format is a newline-terminated record such as:
 
 ```text
 pressure:1.02|temperature:21.4|humidity:48.2
 ```
 
-Names and numeric values are separated by a colon, fields by a pipe. The wire
-format contains no units; configuration assigns units. Firmware writes `null`
-for a channel it could not measure. The parser publishes usable fields from a
-partial sample and reports a partial fault; a line with no usable fields is
-rejected.
+Firmware owns device sampling and calibration. LabPulse owns parsing,
+freshness, health, and publication. Real boards should use stable
+`/dev/serial/by-id/...` paths rather than `/dev/ttyUSB0` or `/dev/ttyACM0`.
+Use `labpulse firmware` for the maintained firmware location.
 
-Real installations should identify boards using `/dev/serial/by-id/...`
-rather than changeable `/dev/ttyUSB0` or `/dev/ttyACM0` names. The USB helper
-guides the operator through unplugging and reconnecting each board, updates
-only its configured port and keeps one rolling backup in
-`~/labpulse-live/backups/`.
+Named JSON over MQTT accepts a versioned snapshot from another computer. It
+keeps the newest valid snapshot, maps configured external fields to stable
+LabPulse measurements, and rejects stale, future, malformed, oversized, or
+unsupported messages. The external network, publisher, source units, and
+instrument behaviour require their own local acceptance.
 
-The maintained firmware examples provide pressure/environment, pump-room and
-turbo-pump hubs. Firmware owns sampling and calibration; Python owns parsing,
-freshness and publication. See the [firmware README](../firmware/README.md).
+### What Doctor proves
 
-### SHT40
+`labpulse doctor` checks the live and generated configuration, active mode,
+clock synchronisation, watchdog, declared hardware paths, Docker access and
+versions, Compose syntax and container state, plus local MQTT and Home Assistant
+reachability.
 
-The SHT40 driver reads temperature and humidity directly over I2C, a shared
-two-wire bus addressed by device number. It requests the high-precision
-conversion, waits for the device, verifies both checksums, scales the values
-and rounds to two decimals. Invalid transfers are not presented as readings.
-The default bus is 1 and address is `0x44`.
+A warning does not make Doctor fail; any **FAIL** result does. Passing Doctor
+does not prove that a sensor is calibrated, Home Assistant's MQTT integration
+is correct, an SMS reached a handset, or attached equipment moved.
 
-### DHT11
+## Limitations
 
-The DHT11 driver uses an explicit Raspberry Pi/Blinka pin name and publishes
-temperature and humidity. Timing failures are treated as transient; loss of
-device access causes reconnection. If only one channel is valid, it can be
-published with a partial fault. The default read interval is two seconds.
-
-### X1200 UPS
-
-The X1200 driver reads battery voltage and charge level over I2C and external
-power presence from a GPIO input. A GPIO-only failure preserves valid battery
-telemetry while reporting a component fault. A power service must define
-`voltage`, `battery_level` and `mains_present`; these readings are presented as
-one dedicated power monitor rather than grouped into experimental setups.
-
-### Generic GPIO input
-
-The GPIO input driver uses one service to read multiple lines on one Linux GPIO
-chip. Each configured measurement publishes its logical state as `0.0` or `1.0`.
-It is intended for stable digital equipment states, not short-pulse counting or
-debouncing. `active_high: false` reverses the electrical interpretation.
-
-Raspberry Pi GPIO uses 0 V and 3.3 V logic. The physical header-pin number and
-Linux GPIO line offset are different. Equipment-specific isolation, conversion
-and connectors are custom to the eventual hardware.
-
-### Named JSON over MQTT
-
-The MQTT JSON driver accepts a versioned snapshot published by another
-computer. Configuration maps exact external field names to stable LabPulse
-measurement IDs. Messages include a source timestamp and measurements object.
-The driver rejects unsupported versions, wildcard topics, oversized messages,
-invalid/future/stale timestamps and samples with no usable mapped values.
-
-It keeps the newest snapshot rather than a history queue. Missing or invalid
-individual fields create partial faults while valid fields continue. This is
-the implemented path for the optional Triton/fridge logfile publisher, but the
-real instrument format, network and units still need installation-specific
-acceptance.
-
-## Firmware responsibilities
-
-Arduino firmware owns pin allocation, device sampling, calibration and the
-complete serial record. LabPulse Python owns transport parsing and system
-health. Change firmware and the serial parser/tests together when names or the
-wire contract change. There is no automatic firmware flashing command;
-`labpulse firmware` points to the repository source.
-
-## System Status and command-line diagnostics
-
-The Home Assistant **System Status** view shows each service as Working, Needs
-attention, or Offline. It lists the latest readings and gives a plain-language
-explanation when action may be needed. A reading's time shows when its latest
-sample was received, even if the numeric value stayed the same. A status time
-shows when that status last changed.
-
-`labpulse doctor` does not change the installation. It checks the live and
-runtime configuration, mode, clock/NTP, watchdog, generated files, declared
-hardware paths, Docker access and versions, Compose syntax and services, plus
-local MQTT and Home Assistant TCP reachability. A warning does not make the
-command fail; any FAIL result does.
-
-Passing diagnostics proves that those boundaries are reachable, not that a
-sensor is calibrated, an MQTT integration is correct, an SMS arrived or
-equipment moved.
-
-## Backup and restoration
-
-`labpulse backup OUTPUT` briefly stops currently running services, copies the
-operator configuration, complete Home Assistant configuration/private state,
-Mosquitto retained data and SMS state, writes checksums and restarts the same
-services. It excludes ordinary Python logs, OS settings and firmware. Existing
-output is protected unless `--force` is used.
-
-Archives are owner-readable on Linux but not encrypted. Treat them as secrets
-because they contain Home Assistant credentials, phone-number state and
-history. Store them outside `~/labpulse-live`.
-
-`labpulse restore ARCHIVE` validates paths and checksums before replacement,
-scaffolds a missing installation, stops services and creates an automatic
-rollback archive when existing state is present. It restores source state,
-regenerates managed files, starts the stack, waits for Home Assistant and runs
-Doctor. It attempts rollback if generation/startup fails, but failing storage
-or Docker can also prevent rollback.
-
-Host timezone, NTP, watchdog, Docker policy, modem provisioning, USB identity,
-GPIO/I2C enablement and wiring are not restored from an archive.
-
-## Known limitations
-
-- The generated deployment assumes a trusted private network and anonymous
-  local Mosquitto; it must not be exposed directly to the public internet.
-- YAML duplicate mapping keys are not rejected before schema validation; use
-  each key once.
-- Some possible service/output names can collide with fixed Compose names; use
-  clear project-specific IDs.
-- DHT pin names are not automatically cross-checked against numeric GPIO line
+- LabPulse assumes a trusted private network. Do not expose its local MQTT or
+  output-control path directly to the public internet.
+- SMS and Home Assistant notifications are best-effort monitoring channels.
+- GPIO outputs are manual controls, not safety mechanisms.
+- DHT pin names are not automatically cross-checked against numeric GPIO-line
   allocations.
-- The MQTT JSON/Triton path needs separate external network/TLS provisioning
-  and real-instrument validation.
-- File replacement is atomic per file, not across the complete deployment.
-- Driver reads cannot be interrupted by the runner if a third-party library
-  blocks forever.
-- SMS is best effort and outputs are manual experimental controls, not safety
-  mechanisms.
-- Firmware calibration, wiring, PCB choice, enclosure fit and equipment motion
-  require physical validation.
+- Named MQTT/Triton sources need installation-specific network, TLS, format,
+  and instrument validation.
+- A third-party hardware library which blocks forever cannot be interrupted by
+  the normal read scheduler.
+- Calibration, wiring, isolation, enclosure fit, modem delivery, and equipment
+  movement require physical testing.
 
-Future work belongs in the repository [roadmap](../ROADMAP.md), not in this
-guide as if it already exists.
+For planned work, see the [roadmap](../ROADMAP.md). For a problem with an
+existing installation, use [Troubleshooting](TROUBLESHOOTING.md).

@@ -92,6 +92,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - The generated Diagnostics view is now a human-readable System Status view
   with Working, Needs attention, and Offline service states.
 
+### Fixed
+
+- `labpulse backup` now handles private Home Assistant files copied through
+  `sudo docker`, reports progress instead of appearing frozen, and restarts
+  services before archive compression.
+
 ### Removed
 
 - Prototype package layouts and earlier Pi implementations from the active

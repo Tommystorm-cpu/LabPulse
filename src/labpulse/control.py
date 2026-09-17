@@ -259,7 +259,13 @@ def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
     """Create a consistent private archive of user-owned runtime state."""
 
     try:
-        archive_path = create_backup(live_dir, output, docker_command(), force=force)
+        archive_path = create_backup(
+            live_dir,
+            output,
+            docker_command(),
+            force=force,
+            progress=lambda message: print(f"[backup] {message}", flush=True),
+        )
     except (BackupError, OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1

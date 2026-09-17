@@ -835,7 +835,9 @@ Rules:
   units.
 - Use internal `mosquitto:1883`, not the external Pi address and port.
 - Required readings create an incident when absent; optional readings remain
-  visible but do not alert, make the service unhealthy, or block updates.
+  visible without a missing-reading incident. Missing mapped fields still cause
+  an MQTT JSON driver fault and **Needs attention**, while valid fields continue
+  updating. Optional readings can still produce numeric threshold alarms.
 - Start with `alarmed: false` and enable thresholds only after commissioning.
 - Increase the two age limits if Triton genuinely writes records more slowly.
 - The foreground setup publisher does not send heartbeats. With the heartbeat
@@ -974,8 +976,9 @@ availability policies. For readings needing thresholds:
 4. Test **Resend active alert** on a controlled active condition if required.
 5. Unmute readings and then global notifications only when testing is complete.
 
-Optional missing readings should show **Unavailable — optional** without an
-incident. One complete MQTT failure should become one service-level incident,
+Optional missing readings should show **No recent data — optional** without a
+missing-reading incident; their driver fault can still affect service health.
+One complete MQTT failure should become one service-level incident,
 not one notification for every reading.
 
 ## Final acceptance checklist

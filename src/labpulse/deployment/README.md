@@ -12,9 +12,11 @@ configuration changes and restore, not as a long-lived container.
 | `__init__.py` | Identify the package |
 
 Generation requires an enabled sensor service. Real mode creates one worker per
-enabled service and output; fake mode omits physical outputs. Fixed services
-are Home Assistant, Mosquitto and SMS. All rendering finishes before live files
-are replaced, although several replacements are not one atomic transaction.
+enabled service and output. Fake mode preserves that worker set, substitutes
+in-memory sensors and outputs, removes hardware access, and forces SMS dry-run.
+Fixed services are Home Assistant, Mosquitto and SMS. All rendering finishes
+before live files are replaced, although several replacements are not one
+atomic transaction.
 
 Linux installation policy remains in the root [`deployment/`](../../../deployment/README.md),
 models in [`common/`](../common/README.md), and template behaviour in

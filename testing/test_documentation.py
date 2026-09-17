@@ -2,11 +2,13 @@
 
 from pathlib import Path
 import re
+import runpy
 from urllib.parse import unquote
 
 import pytest
 
 from labpulse.deployment.generate import generate_deployment
+from labpulse.hardware.driver import ConnectionLost, ContainerRequirements
 
 
 DOCUMENTATION_EXAMPLES = (
@@ -14,6 +16,27 @@ DOCUMENTATION_EXAMPLES = (
     "minimal-serial.yaml",
     "mqtt-input.yaml",
 )
+
+
+def test_maintainer_counter_example_runs_without_hardware(repository_root: Path) -> None:
+    """Keep the tutorial's registration, lifecycle, and resource example usable."""
+    example = runpy.run_path(str(repository_root / "docs/examples/counter_driver.py"))
+    definition = example["DRIVER_DEFINITION"]
+    config = definition.validate_config({"start": 4.0, "step": 0.5})
+    driver = definition.create_driver("counter", config)
+    assert definition.container_requirements(config, False) == ContainerRequirements()
+    with pytest.raises(ConnectionLost):
+        driver.read()
+    driver.connect()
+    assert driver.read().values == {"count": 4.0}
+    assert driver.read().values == {"count": 4.5}
+    driver.close()
+    driver.close()
+    with pytest.raises(ConnectionLost):
+        driver.read()
+    driver.connect()
+    assert driver.read().values == {"count": 4.0}
+    driver.close()
 
 README_PATHS = {
     "README.md",
@@ -42,6 +65,7 @@ def _maintained_markdown_files(repository_root: Path) -> tuple[Path, ...]:
         repository_root / "CONTRIBUTING.md",
         repository_root / "ROADMAP.md",
         repository_root / "SECURITY.md",
+        repository_root / "screenshot.md",
     )
     readmes = tuple(repository_root / path for path in sorted(README_PATHS - {"README.md"}))
     return (*root_guides, *readmes, *sorted((repository_root / "docs").glob("*.md")))

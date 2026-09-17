@@ -6,7 +6,7 @@ Docker containers.
 
 | Path | Responsibility | Runs in |
 |---|---|---|
-| `control.py` | Public `labpulse` command: setup, lifecycle, configuration, backup, restore and diagnostics | Pi host |
+| `control.py` | Public `labpulse` command: setup, lifecycle, configuration, updates, uninstall, backup, restore and diagnostics | Pi host |
 | `installer.py` | Locate packaged assets and launch the Linux bootstrap | Pi host |
 | `backup.py` | Create, validate and restore checksummed state archives | Pi host |
 | `doctor.py` | Read-only installation, hardware, Docker and endpoint checks | Pi host |
@@ -22,8 +22,9 @@ Docker containers.
 
 Each process loads the validated configuration independently and coordinates
 through MQTT rather than shared Python memory. The operator-owned source is
-`~/labpulse-live/config.yaml`; the repository `config.yaml` is only an
-installation template.
+`~/labpulse-live/config.yaml` plus referenced measurement files beneath
+`~/labpulse-live/config.d/`; the repository `config.yaml` is only an
+installation template. Workers consume the generated resolved configuration.
 
 Configuration is validated at process boundaries. Drivers normalize hardware,
 runners own retry and freshness, Home Assistant owns alarm decisions, and SMS

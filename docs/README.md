@@ -1,33 +1,35 @@
 # LabPulse documentation
 
-The guides here explain complete workflows that cross several code packages.
-Implementation details for one package live in the nearest source-folder
-README.
+Start with the route that fits what you're trying to do. You don't need to
+read every guide before using LabPulse.
 
 ## New operator
 
-1. Read [Installation](INSTALLATION.md) and complete either the real-hardware
-   or simulation path.
-2. Use the [User Guide](USER_GUIDE.md) to understand every feature and its
-   normal, failure and recovery behaviour.
-3. Use [Configuration](CONFIGURATION.md) when editing the live `config.yaml`
-   and referenced measurement files beneath `config.d/`.
-4. Use [Operations](OPERATIONS.md) for normal incident/update handling and
-   [Troubleshooting](TROUBLESHOOTING.md) when state or delivery is unexpected.
+1. Read [Your first look at LabPulse](FIRST_STEPS.md#what-youre-installing) to
+   understand what runs where and what the dashboard shows.
+2. Follow [Installation](INSTALLATION.md), including getting onto the Pi if
+   it's new to you. Start with simulation; no sensors are needed.
+3. Try [the dashboard and practice alarm](FIRST_STEPS.md#find-your-way-around).
+4. Check [Hardware](HARDWARE.md#choose-a-starting-point), then follow
+   [Connect your first sensor](FIRST_SENSOR.md) when you're ready for an Arduino.
+5. Use the [User Guide](USER_GUIDE.md) for everyday tasks and
+   [Configuration](CONFIGURATION.md) to look up settings. Its
+   [YAML basics](CONFIGURATION.md#a-few-yaml-basics) explain how to edit examples.
+
+If something doesn't work, go straight to [Troubleshooting](TROUBLESHOOTING.md).
 
 ## Existing operator
 
 - [User Guide](USER_GUIDE.md): commands, dashboards, alarms, SMS, outputs,
-  simulation, diagnostics, backups and limitations.
+  simulation, maintenance, backups, removal, and limitations.
 - [Configuration](CONFIGURATION.md): fields, defaults, constraints and complete
   examples.
-- [Installation](INSTALLATION.md): updates, reconstruction and symptom-led
-  troubleshooting.
-- [Operations](OPERATIONS.md): interpreting state, notification controls, and
-  safe update recovery.
-- [Troubleshooting](TROUBLESHOOTING.md): service, reading, and delivery problems.
-- [Hardware](HARDWARE.md): current interface boundary and placeholders for the
-  future photographed build record.
+- [Installation](INSTALLATION.md): Pi preparation, installation, updates, and
+  restoring on a replacement Pi.
+- [Troubleshooting](TROUBLESHOOTING.md): installation, host, device, reading,
+  notification and recovery problems.
+- [Hardware](HARDWARE.md): connection choices, available build information,
+  and the wiring and calibration details you still need to supply.
 - [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended
   Windows control-PC installation.
 
@@ -38,28 +40,37 @@ fake-runtime, Compose, and Home Assistant files are not independent settings.
 
 ## Contributor
 
-1. Read [Architecture](ARCHITECTURE.md) for process boundaries and data flow.
-2. Read the nearest package README, starting with
-   [`src/labpulse`](../src/labpulse/README.md).
-3. Use [Development](DEVELOPMENT.md) for setup, tests, packaging, CI and
-   real-Pi acceptance.
-4. Use the [roadmap](../ROADMAP.md) for planned work; do not infer features from
-   historical or future descriptions.
+The [screenshot checklist](../screenshot.md) links to the screenshots and
+hardware photos still needed. Keep it updated as the guides change.
+
+1. Follow [Your first day maintaining LabPulse](MAINTAINING.md) to set up a
+   checkout, run tests, generate files, and follow one reading through the code.
+2. Try [the worked changes](MAINTAINER_EXAMPLES.md), starting with a dashboard
+   heading before moving on to configuration and drivers.
+3. Use [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), and the
+   nearest [package README](../src/labpulse/README.md) as references.
+4. Check [the roadmap's current-source summary](../ROADMAP.md#current-source-status)
+   before deciding what's missing. Use [Releasing](RELEASING.md) when preparing
+   a version for other people to install.
 
 ## Authoritative homes
 
 | Subject | Owner |
 |---|---|
 | Project summary, safety and maturity | [Root README](../README.md) |
+| First dashboard visit and practice alarm | [First steps](FIRST_STEPS.md) |
+| One Arduino reading from serial output to dashboard | [First sensor](FIRST_SENSOR.md) |
 | Research citation metadata | [Citation file](../CITATION.cff) |
 | Private vulnerability reporting and supported security boundary | [Security policy](../SECURITY.md) |
-| First installation, updates, reconstruction and troubleshooting | [Installation](INSTALLATION.md) |
-| Day-to-day incident and update handling | [Operations](OPERATIONS.md) |
-| Incident and notification diagnosis | [Troubleshooting](TROUBLESHOOTING.md) |
-| Every user-visible feature and its behaviour | [User Guide](USER_GUIDE.md) |
+| First installation, commissioning, updates and reconstruction | [Installation](INSTALLATION.md) |
+| Installation, incident and notification diagnosis | [Troubleshooting](TROUBLESHOOTING.md) |
+| Everyday use, notification controls, maintenance, and removal | [User Guide](USER_GUIDE.md) |
 | YAML sections, fields, defaults and examples | [Configuration](CONFIGURATION.md) |
 | Cross-process design, ownership and failure boundaries | [Architecture](ARCHITECTURE.md) |
-| Development, tests, packaging and release process | [Development](DEVELOPMENT.md) |
+| First maintainer session and debugging recipes | [Maintaining](MAINTAINING.md) |
+| Worked dashboard, configuration, and driver changes | [Maintainer examples](MAINTAINER_EXAMPLES.md) |
+| Development conventions and local builds | [Development](DEVELOPMENT.md) |
+| Release preparation and publication | [Releasing](RELEASING.md) |
 | Physical interface status and future build evidence | [Hardware](HARDWARE.md) |
 | Triton logfile publication from Windows control PCs | [Triton publisher](TRITON_PUBLISHER.md) |
 | One Python package or template tree | Its folder `README.md` |

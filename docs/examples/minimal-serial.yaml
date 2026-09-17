@@ -1,4 +1,7 @@
-# Complete development example for one standard serial measurement.
+# Complete first-sensor example. Also works in fake-hardware mode.
+# Replace the serial path with your board's actual /dev/serial/by-id/ path
+# before using real hardware. See ../FIRST_SENSOR.md.
+timezone: Europe/London
 mqtt:
   broker: mosquitto
 sms:
@@ -12,9 +15,12 @@ services:
     driver:
       type: labpulse.serial_pipe
       options:
-        port: /tmp/labpulse-fake-serial/pressure
+        port: /dev/serial/by-id/REPLACE_WITH_YOUR_BOARD
+        baud_rate: 9600
     measurements:
       pressure:
+        label: Pressure
         setups: [compressed_air]
         unit: bar
         device_class: pressure
+        show_graph: true

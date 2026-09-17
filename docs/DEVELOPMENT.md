@@ -3,6 +3,10 @@
 This guide covers the current source tree, package entry-point conventions,
 local execution, tests, generated artifacts, and release checks.
 
+New to the code? Start with [Your first day maintaining LabPulse](MAINTAINING.md)
+for a checkout-to-first-change walkthrough. This page is the reference for
+the conventions and commands you'll use afterward.
+
 ## Requirements
 
 Development requires:
@@ -19,14 +23,20 @@ host and provisional alternatives are described in [Installation](INSTALLATION.m
 
 ## Editable installation
 
-From the repository root:
+For a first checkout, follow the
+[virtual-environment instructions](MAINTAINING.md#1-get-a-working-checkout).
+They work without pipx, Docker, or hardware.
+
+To exercise the pipx-installed command on a dedicated development Pi, install
+from the repository root:
 
 ```bash
-pipx install --editable . --force
+pipx install --editable .
 labpulse help
 ```
 
-Python source changes are immediately visible to the pipx command. Reinstall
+Use a host without an existing pipx LabPulse install for this route. Python
+source changes are visible the next time the command runs. Reinstall
 after changing package metadata, console entry points, dependencies, or package
 data declarations.
 
@@ -47,11 +57,18 @@ python -m labpulse.deployment --help
 
 ## Host code and runtime images
 
-The operator CLI and generators run from the installed Python package. Sensor
-and SMS services run from a container image, so an editable host install alone
-does not test runtime source changes.
+The operator CLI and generators run from the installed Python package. Sensor,
+output, and SMS services run from a container image, so an editable host install
+alone does not test runtime source changes.
 
-Build and select a local image:
+Use the commands below in **Bash on a dedicated Linux development host**, from
+the checkout with its virtual environment active. Docker and the Compose
+plugin must be installed. A development Pi is the closest match to deployment.
+Don't run a second LabPulse stack beside a live one: changing `--live-dir`
+doesn't isolate the fixed container names or host ports.
+
+Build and select a local image. The Dockerfile installs the wheel in `dist/`,
+so rebuild that wheel whenever runtime source changes:
 
 ```bash
 python -m pip install build setuptools-scm
@@ -59,14 +76,36 @@ LABPULSE_VERSION="$(python -m setuptools_scm)"
 python -m build
 docker build \
   --build-arg LABPULSE_VERSION="$LABPULSE_VERSION" \
-  -t "labpulse-dev:$LABPULSE_VERSION" .
-export LABPULSE_IMAGE="labpulse-dev:$LABPULSE_VERSION"
-labpulse setup --fake-hardware
-labpulse up
+  -t labpulse-dev:working .
+export LABPULSE_IMAGE=labpulse-dev:working
+labpulse --live-dir ~/labpulse-dev-live setup --fake-hardware
+labpulse --live-dir ~/labpulse-dev-live up
 ```
 
 Generation uses `LABPULSE_IMAGE` when it is set. Otherwise it selects the GHCR
-tag matching the installed package version.
+tag matching the installed package version. The local tag above stays valid
+even when the Git-derived package version contains development-version text.
+Use the same Docker daemon for building and running; if it requires `sudo`,
+use `sudo docker build` in place of `docker build`.
+
+Complete [Home Assistant onboarding](INSTALLATION.md#open-home-assistant), then
+try [the practice alarm](FIRST_STEPS.md#3-make-a-practice-alarm). This development
+directory starts with the packaged starter, not the small file generated under
+`testing/tmp/`. Use `labpulse --live-dir ~/labpulse-dev-live config` to change it.
+
+After another edit, rebuild the wheel and image using the commands above, then
+recreate the stack so containers use the rebuilt image:
+
+```bash
+labpulse --live-dir ~/labpulse-dev-live down
+labpulse --live-dir ~/labpulse-dev-live setup --fake-hardware
+labpulse --live-dir ~/labpulse-dev-live up
+```
+
+Keep `LABPULSE_IMAGE=labpulse-dev:working` set in that shell during setup.
+`down` preserves saved settings and history. For a host-only change, rebuilding
+the worker image isn't needed; for a template change, regenerate its YAML and
+restart Home Assistant. Use `down` when finished with the development stack.
 
 ## Source tree
 
@@ -277,8 +316,9 @@ Use `labpulse.serial_pipe` when firmware can emit the standard protocol. Add a
 direct driver only when the transport requires Python-owned hardware access or
 protocol logic.
 
-A direct driver keeps its configuration, implementation, optional container
-requirements function, and `DRIVER_DEFINITION` together in one module. See
+A direct driver keeps its configuration, implementation, required container
+requirements function, and `DRIVER_DEFINITION` together in one module. The
+function may return empty requirements when no host access is needed. See
 the [hardware driver package guide](../src/labpulse/hardware/drivers/README.md).
 
 ## Code quality
@@ -325,7 +365,7 @@ Document only current behavior:
 - installation or host prerequisites -> `INSTALLATION.md`;
 - config schema -> `CONFIGURATION.md`;
 - every user-visible feature and operator command -> `USER_GUIDE.md`;
-- symptom-led recovery -> the final troubleshooting section of `INSTALLATION.md`;
+- symptom-led recovery -> `TROUBLESHOOTING.md`;
 - component ownership/contracts -> `ARCHITECTURE.md`;
 - code-local ownership and contracts -> the nearest folder `README.md`;
 - contributor workflow -> this guide;
@@ -335,31 +375,9 @@ Do not create parallel implementation-history or refactor documents.
 
 ## Package and release checks
 
-Metadata and console entry points live in `pyproject.toml`. The Git tag is the
-released version source through `setuptools-scm`.
-
-Build locally:
-
-```bash
-python -m build
-```
-
-Before release:
-
-1. run the complete hardware-free suite;
-2. build wheel and source distribution;
-3. install each artifact in a clean environment;
-4. verify console entry points and package data;
-5. smoke-test the runtime image on supported architectures;
-6. update the changelog;
-7. confirm the production PyPI Trusted Publisher names owner
-   `lairdgrouplancaster`, repository `LabPulse`, workflow `release.yml`, and
-   environment `pypi`;
-8. create an immutable `vVERSION` release tag.
-
-The release workflow publishes Python artifacts and version-matched AMD64 and
-ARM64 images. Never move or reuse a released tag; correct it with a new patch
-release.
+Follow [Releasing LabPulse](RELEASING.md) for candidate builds, clean installs,
+version tags, publication, and partial-release recovery. It is the release
+checklist; the workflow source linked there defines what CI actually runs.
 
 ## Real-Pi acceptance
 
@@ -376,8 +394,9 @@ result, and logs for real-hardware acceptance.
 
 ## Change a feature without losing its contract
 
-Use the [package README hierarchy](../src/labpulse/README.md) and architecture
-guide to trace the existing procedure first.
+Start with [the worked maintainer examples](MAINTAINER_EXAMPLES.md), then use
+the [package README hierarchy](../src/labpulse/README.md) and architecture guide
+to trace the existing procedure for your change.
 For a new physical measurement, match firmware/driver output to its config key,
 choose its unit and setup membership, then test parser/driver output and MQTT
 discovery. For a calculated measurement, add inputs/constants/formula to config
@@ -392,15 +411,6 @@ failure/recovery and mute/Test-mode assertions. For SMS copy, edit the shared
 catalogue, pass generation-time records explicitly, preserve runtime expressions
 and `{current_measurement}`, and run notification/SMS tests. Avoid scattering
 one operation across helpers merely to shorten it.
-
-The release workflow runs on published GitHub releases. Its validation job
-checks the tag against setuptools-scm, runs pytest, builds and checks wheel/sdist,
-smoke-installs both, performs fake setup, and tests a locally built container.
-Separate dependent jobs publish to PyPI and build/push AMD64/ARM64 images
-with provenance/SBOM. Full-version and major.minor image tags are emitted;
-the latter can advance with patch releases. A build for both architectures is
-not a recorded real-hardware test on both architectures. See the
-[workflow source](../.github/workflows/release.yml) before performing a release.
 
 For shell syntax checks, run each script separately; `bash -n deployment/*.sh`
 only treats the first expansion as the script and the rest as arguments:

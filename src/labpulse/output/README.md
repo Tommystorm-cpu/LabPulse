@@ -12,7 +12,8 @@ The worker accepts exact, non-retained `ON` or `OFF` payloads only on its own
 topic. It writes the logical state, reads back the GPIO latch, then publishes
 retained state. Startup, shutdown, MQTT loss, hardware failure and an optional
 maximum-active deadline apply the safe state. Repeated `ON` does not extend an
-active deadline. Fake mode omits output workers.
+active deadline. Fake mode retains output workers and their switches and safety
+timers, using an in-memory driver without GPIO access.
 
 Readback proves the Pi latch, not equipment motion. Pi GPIO uses 0 V/3.3 V;
 equipment-specific switching and protection are custom. LabPulse is not a

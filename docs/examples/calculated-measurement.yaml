@@ -40,4 +40,5 @@ custom_measurements:
       scale: 1.0
     formula: (return_temp - supply) * scale
     unit: "°C"
-    device_class: temperature
+    # A temperature difference must not use absolute-temperature conversion.
+    icon: mdi:delta

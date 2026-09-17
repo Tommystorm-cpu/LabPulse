@@ -14,7 +14,7 @@ import platform
 import shutil
 import subprocess
 import tarfile
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from uuid import uuid4
 
 
@@ -205,7 +205,58 @@ def _copy_snapshot_from_container(
             f"Cannot read {live_dir / relative} as the current user and "
             f"could not copy it through the {service} container: {error}"
         ) from error
+    _make_container_copy_user_owned(destination, docker_prefix)
     _validate_snapshot_path(destination)
+
+
+def _make_container_copy_user_owned(
+    destination: Path,
+    docker_prefix: Sequence[str],
+) -> None:
+    """Return files created by ``sudo docker cp`` to the invoking user.
+
+    Docker creates local copies as the user which runs the Docker command. On
+    the supported Pi setup that command is run through sudo, so private Home
+    Assistant files otherwise become root-owned and fail during checksumming.
+    The ownership change is restricted to the disposable backup staging tree.
+    """
+
+    get_user_id = getattr(os, "getuid", None)
+    get_group_id = getattr(os, "getgid", None)
+    if (
+        get_user_id is None
+        or get_group_id is None
+        or not docker_prefix
+        or Path(docker_prefix[0]).name != "sudo"
+    ):
+        return
+
+    command = [
+        docker_prefix[0],
+        "chown",
+        "-R",
+        "--",
+        f"{get_user_id()}:{get_group_id()}",
+        str(destination),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise BackupError(
+            f"Cannot make the temporary container snapshot readable: {error}"
+        ) from error
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise BackupError(
+            "Cannot make the temporary container snapshot readable: "
+            f"{detail or f'exit {result.returncode}'}"
+        )
 
 
 def _assemble_snapshot(
@@ -289,6 +340,7 @@ def create_backup(
     *,
     force: bool = False,
     quiesce: bool = True,
+    progress: Callable[[str], None] | None = None,
 ) -> Path:
     """Create one checksummed private archive, restarting quiesced services."""
 
@@ -306,21 +358,36 @@ def create_backup(
 
     active_services: tuple[str, ...] = ()
     if quiesce:
+        if progress:
+            progress("Checking running services...")
         active_services = running_services(live_dir, docker_prefix)
 
     temporary_archive = archive_path.parent / (
         f".{archive_path.name}.creating-{uuid4().hex}"
     )
+    services_need_restart = False
     try:
-        # Services are stopped only while their mutable state is copied. The
-        # finally block restarts exactly those that were running beforehand.
+        # Services only remain stopped while mutable state is copied and
+        # checksummed. Compression can safely happen after they restart.
         if quiesce:
+            if progress:
+                progress(f"Stopping {len(active_services)} running services...")
+            services_need_restart = bool(active_services)
             stop_services(live_dir, docker_prefix, active_services)
         with _temporary_directory(
             archive_path.parent,
             "labpulse-backup-",
         ) as staging_root:
+            if progress:
+                progress("Copying state and calculating checksums...")
             _assemble_snapshot(live_dir, staging_root, docker_prefix)
+            if services_need_restart:
+                if progress:
+                    progress("Restarting services...")
+                start_services(live_dir, docker_prefix, active_services)
+                services_need_restart = False
+            if progress:
+                progress("Compressing the backup archive...")
             with tarfile.open(temporary_archive, "w:gz") as archive:
                 archive.add(staging_root / MANIFEST_NAME, arcname=MANIFEST_NAME)
                 archive.add(staging_root / PAYLOAD_DIRECTORY, arcname=PAYLOAD_DIRECTORY)
@@ -329,7 +396,9 @@ def create_backup(
     finally:
         if temporary_archive.exists():
             temporary_archive.unlink()
-        if quiesce:
+        if services_need_restart:
+            if progress:
+                progress("Restarting services after the interrupted backup...")
             start_services(live_dir, docker_prefix, active_services)
 
     return archive_path

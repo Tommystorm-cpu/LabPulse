@@ -4,6 +4,13 @@ This document describes the current LabPulse implementation. It is organized
 around ownership boundaries: which process owns each decision, which module is
 the source of truth, and which files are user-owned or generated.
 
+For a first tour, follow [one pressure reading through the code](MAINTAINING.md#2-follow-one-pressure-reading).
+That walkthrough gives concrete values, topics, and source links. Use this
+page for the broader design once you've followed that example.
+
+Looking for the code behind a feature? The [package guides](#package-guides)
+link to every README under `src/`.
+
 ## Product boundary
 
 LabPulse monitors laboratory infrastructure, produces best-effort alerts, and
@@ -138,6 +145,7 @@ labpulse config
 labpulse up | down | restart
 labpulse ps | logs
 labpulse backup | restore
+labpulse update | uninstall
 labpulse doctor
 labpulse open | firmware | version | help
 ```
@@ -310,6 +318,10 @@ read() -> HardwareReadings | None
 close() -> None
 ```
 
+The optional `health_status() -> SourceHealth | None` hook defaults to `None`,
+meaning successful readings establish source health. Drivers with independent
+publisher monitoring can return `WAITING`, `ONLINE`, or `OFFLINE` instead.
+
 `HardwareReadings.values` maps configured measurement names to finite numeric
 values. `None` means no complete sample is ready. `HardwareIssue` can accompany
 valid measurements when one part of a multi-function device is degraded.
@@ -327,15 +339,27 @@ disconnected
 reconnecting
 online
 error
+awaiting_heartbeat
 ```
+
+The runner can also publish a `HardwareIssue.code` from a partial sample, such
+as `missing_measurements`, while continuing to publish its usable readings.
 
 The MQTT Last Will publishes `offline` if the process loses its broker
 connection unexpectedly.
 
-When no valid batch arrives before `maximum_measurement_age_seconds`, the
-runner publishes `error`, closes the driver, and returns to bounded reconnect.
-A valid batch is published before the service transitions to `online`, so
-Home Assistant cannot interpret cached data as a recovery.
+When `health_status()` returns `None` and no valid batch arrives before
+`maximum_measurement_age_seconds`, the runner publishes `error`, closes the
+driver, and returns to bounded reconnect. It publishes a valid batch before
+transitioning to `online`, unless that batch carries a component fault.
+
+With independent health, `WAITING` maps to `awaiting_heartbeat` and `OFFLINE`
+to `disconnected`. `ONLINE` can establish online status without a new sample,
+but does not clear an existing component fault just because a heartbeat arrived.
+Missing samples do not trigger the reading-based reconnect timeout in this
+mode. Home Assistant still expires individual measurements and reports
+**Needs attention** when required readings are unavailable. Publisher health
+therefore does not imply fresh measurement data.
 
 ## Driver discovery and container resources
 
@@ -357,7 +381,9 @@ A `DriverDefinition` contains:
 - container-requirements function;
 - default read interval;
 - an optional measurement-source binder for transports whose external field
-  names differ from LabPulse's stable IDs.
+  names differ from LabPulse's stable IDs;
+- an optional measurement binder for drivers needing complete per-reading
+  configuration, such as GPIO line assignments.
 
 The definition validates configuration once and constructs the driver with the
 standard `(service_name, config)` constructor. This makes the driver itself
@@ -516,6 +542,25 @@ runtime mode, host clock, watchdog, driver resource paths, Docker and Compose,
 defined/running services, MQTT, and Home Assistant reachability.
 
 ## Source tree ownership
+
+### Package guides
+
+Start with the package overview, then follow the guide for the part you're
+working on. Each README maps its local files and points to relevant tests.
+
+| Guide | Open it when you need to understand or change… |
+|---|---|
+| [Python package overview](../src/labpulse/README.md) | Where host commands and container processes live |
+| [Shared configuration and contracts](../src/labpulse/common/README.md) | Settings, stable IDs, MQTT topics, logging, or shared notification text |
+| [Deployment generation](../src/labpulse/deployment/README.md) | How configuration becomes Compose and Home Assistant files |
+| [Hardware acquisition](../src/labpulse/hardware/README.md) | Reading schedules, retries, service health, and MQTT publication |
+| [Hardware drivers](../src/labpulse/hardware/drivers/README.md) | Device protocols, driver registration, or required hardware access |
+| [Home Assistant generation](../src/labpulse/homeassistant/README.md) | The data prepared for dashboards and alarms, and how generated files are installed |
+| [Home Assistant templates](../src/labpulse/homeassistant/templates/README.md) | Dashboard cards, alarm controls, or automation YAML |
+| [Controlled outputs](../src/labpulse/output/README.md) | Switch commands, output state, and safe-state handling |
+| [SMS delivery](../src/labpulse/sms/README.md) | Request handling, recipients, modem delivery, or subscriptions |
+
+### Directory map
 
 ```text
 src/labpulse/

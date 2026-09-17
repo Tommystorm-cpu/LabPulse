@@ -1,534 +1,405 @@
-# Installation
+# LabPulse Installation Guide
 
-LabPulse installs its operator command from PyPI with pipx and runs a
-matching versioned container image from GitHub Container Registry. It creates
-a self-contained live deployment under `~/labpulse-live`; a repository
-checkout is required only for development.
+This guide takes you from a Raspberry Pi to a working LabPulse
+dashboard. You can start with simulated readings or connect real sensors.
+Both use the same configuration and Home Assistant interface.
 
-## Distribution
+New to LabPulse? Read [What you're installing](FIRST_STEPS.md#what-youre-installing)
+first. It explains the pieces and the terms used here.
 
-Each GitHub release publishes a Python package and a matching GHCR image with
-the same version. Installing the latest package is the simplest route. For a
-reproducible deployment, select a version from the project's release records
-and use it consistently. For example, the runtime image paired with Python
-package `1.0.0` is:
+LabPulse installs with pipx and runs its services in Docker containers. You do
+not need a repository checkout or a local container build. For everyday use
+after installation, read the [User Guide](USER_GUIDE.md).
 
-```text
-ghcr.io/lairdgrouplancaster/labpulse:1.0.0
-```
+## Contents
 
-Public distributions do not require a repository checkout or local container
-build. Registry visibility and package availability must be verified for the
-version selected; a Git tag alone is not proof of successful publication.
+- [Requirements](#requirements)
+- [Get onto the Pi](#get-onto-the-pi)
+- [Prepare the Pi](#prepare-the-pi)
+- [Install LabPulse](#install-labpulse)
+- [Create a simulated installation](#create-a-simulated-installation)
+- [Create a real-hardware installation](#create-a-real-hardware-installation)
+- [Open Home Assistant](#open-home-assistant)
+- [Check the installation](#check-the-installation)
+- [Changing the configuration](#changing-the-configuration)
+- [Switching between simulated and real hardware](#switching-between-simulated-and-real-hardware)
+- [Updating](#updating)
+- [Backups and restoring on a new Pi](#backups-and-restoring-on-a-new-pi)
+- [Troubleshooting](#troubleshooting)
 
 ## Requirements
 
-The verified reference host is a Raspberry Pi 5 Model B Rev 1.1 with 8 GB RAM,
-running Raspberry Pi OS 64-bit based on Debian 12 (Bookworm). Other Raspberry
-Pi models and 64-bit Debian releases remain provisional until they complete the
-same installation, restart, hardware, alarm, SMS, and recovery checks.
+The reference system is a Raspberry Pi 5 with 8 GB RAM, running 64-bit
+Raspberry Pi OS based on Debian 12 (Bookworm). LabPulse's automated tests cover
+Python 3.11 and 3.12. Other Pi models and operating-system versions need their
+own deployment checks; 32-bit Raspberry Pi OS is not supported by the published
+runtime images.
 
-The host needs:
+You will need:
 
-- CPython 3.11 or 3.12; the reference Pi uses 3.11.2;
-- Python virtual-environment support (`python3-full` on Raspberry Pi OS);
-- pipx;
-- Docker Engine and the plugin-style `docker compose` command; the reference
-  Pi uses Engine 29.6.1 and Compose 5.3.1;
-- working network access while packages and container images are installed.
+- a Pi, a suitable power supply, and storage for its operating system;
+- a working network connection and an account which can use `sudo`;
+- Python, pipx, Docker Engine, and the Docker Compose plugin;
+- a browser on the Pi or another computer on the same trusted network;
+- for real hardware, the connected sensors and their wiring details.
 
-Minimum compatible Docker and Compose versions have not yet been established.
-Do not use 32-bit Raspberry Pi OS. Raspberry Pi OS Lite, Raspberry Pi OS based
-on Debian 13 (Trixie), Raspberry Pi 4, and other 64-bit Debian systems are
-provisional until they complete release qualification.
+Simulation needs no sensors, modem, or output hardware. Real SMS delivery
+additionally needs a supported modem, an active SIM, and ModemManager on the
+Pi. Review the [hardware guide](HARDWARE.md) before wiring physical devices.
 
-Follow Docker's official
-[Debian installation guide](https://docs.docker.com/engine/install/debian/)
-and [Compose plugin guide](https://docs.docker.com/compose/install/linux/).
-Verify:
+## Get onto the Pi
+
+If the Pi already runs the OS described above and you can open its terminal,
+skip to [Prepare the Pi](#prepare-the-pi).
+
+### Install the operating system
+
+For a fresh installation, you'll also need another computer and a way to
+write the Pi's storage, such as a microSD card reader.
+
+**On your own computer**, follow Raspberry Pi's
+[getting-started instructions](https://www.raspberrypi.com/documentation/computers/getting-started.html)
+to write Raspberry Pi OS to the Pi's storage using Raspberry Pi Imager. Choose
+the 64-bit Bookworm version used by the reference setup, rather than assuming
+the latest default is the same version. Writing an image erases the selected
+storage, so check which card or drive you've selected.
+
+In Imager, set a hostname, create your user account, and configure the network.
+Enable SSH if you want to use the Pi from another computer. Keep a note of
+the username and hostname you chose. Boot the Pi and let it join the network.
+
+### Open a terminal
+
+With a keyboard and screen attached to the Pi, open **Terminal** on its
+desktop. A terminal is the window where you type commands and read their
+results. On a Lite installation, log in at the text prompt instead.
+
+For remote access, open PowerShell on Windows or Terminal on macOS/Linux
+**on your own computer**. Connect using your Pi's username and hostname:
 
 ```bash
-sudo docker run hello-world
-sudo docker compose version
+ssh YOUR_USERNAME@YOUR_HOSTNAME.local
 ```
 
-Operators who intentionally use Docker without sudo can add their account to
-the Docker group, log out and back in, then select that command consistently:
+Replace both uppercase placeholders; don't type them literally. For example,
+an account named `alex` on a Pi named `labpulse-pi` uses
+`ssh alex@labpulse-pi.local`. Check that the address is your Pi before accepting
+its first connection prompt. If using password login, the password won't show
+as you type. After login, commands in this window run on the Pi.
 
-```bash
-sudo usermod -aG docker "$USER"
-export LABPULSE_DOCKER_COMMAND=docker
-docker run hello-world
-```
+If the hostname doesn't connect, use the Pi's IP address instead. You can find
+it in your router's device list or by running `hostname -I` in a terminal on
+the Pi. Raspberry Pi's [remote-access guide](https://www.raspberrypi.com/documentation/computers/remote-access.html)
+has more help with addresses and SSH.
 
-Docker-group membership grants root-equivalent access to the host. Keep the
-default `sudo docker` route if that is not acceptable for the installation.
+### Which computer do I use?
 
-Install pipx through the operating-system package manager where available:
+| Task | Where to do it |
+|---|---|
+| Install LabPulse or run a `labpulse` command | The Pi's terminal, either directly or through SSH |
+| View readings and change alarms | A browser on your own computer or on the Pi |
+| Upload Arduino firmware | The computer with the Arduino connected by USB |
+
+In command examples, copy the commands without the surrounding code fences.
+`sudo` asks to run a command with administrator privileges; `~` means your
+user's home directory. Run commands one at a time and check for errors before
+moving on.
+
+## Prepare the Pi
+
+Run these commands in a terminal on the Pi, either locally or over SSH. Use
+your usual user account for installation and later LabPulse commands.
+
+Install the Python tools and a text editor:
 
 ```bash
 sudo apt update
-sudo apt install -y python3-full pipx git
+sudo apt install -y python3-full pipx nano
 pipx ensurepath
 ```
 
-Start a new shell if `pipx ensurepath` changes the shell configuration. Do not
-use `sudo pip`, `--break-system-packages`, or install LabPulse dependencies into
-the system Python.
+Open a new terminal, or reconnect over SSH, if `pipx ensurepath` changes your
+PATH. Check that `python3 --version` and `pipx --version` work.
 
-Real SMS delivery additionally requires ModemManager and a supported modem. See
-[SMS behaviour](USER_GUIDE.md#sms-behaviour).
-
-Check the [hardware guide](HARDWARE.md) before connecting physical devices.
-Enable required interfaces and confirm pin allocations before starting workers.
-
-Correct host time is required for Home Assistant history, alarm ordering and
-log timestamps. Before installation, set the intended timezone and confirm NTP
-synchronization:
+Install Docker Engine using Docker's
+[Debian installation guide](https://docs.docker.com/engine/install/debian/#install-using-the-apt-repository),
+including the `docker-compose-plugin` package. Verify the installation:
 
 ```bash
-timedatectl list-timezones
+sudo docker run --rm hello-world
+sudo docker compose version
+```
+
+LabPulse normally uses `sudo docker` for container operations. It does not
+require membership of the Docker group. If Compose is missing, follow Docker's
+[Compose plugin instructions](https://docs.docker.com/compose/install/linux/).
+
+Set the Pi's timezone and enable clock synchronisation. Replace
+`Europe/London` with the lab's timezone:
+
+```bash
 sudo timedatectl set-timezone Europe/London
 sudo timedatectl set-ntp true
 timedatectl status
 ```
 
-Replace `Europe/London` with the deployment's actual timezone. The current
-`timezone` value in `~/labpulse-live/config.yaml` must use the same IANA name.
-LabPulse passes that value to Home Assistant, so deployments in any region use
-their configured local timezone while NTP keeps the underlying clock synchronized.
+Check that the time is correct and `System clock synchronized` says `yes`
+before testing alarms. Use the same timezone in LabPulse's configuration.
 
-Do not proceed with alarm acceptance until the local time and timezone are
-correct and `System clock synchronized` reports `yes`.
-
-## Install the command
+## Install LabPulse
 
 ```bash
 pipx install labpulse
-```
-
-To install a particular release instead, pin its version:
-
-```bash
-pipx install "labpulse==1.0.0"
-```
-
-This installs the unified `labpulse` command into a user-owned isolated
-environment; administrator rights are not required. Confirm the installed
-release:
-
-```bash
 labpulse version
 labpulse help
 ```
 
-Expected version output:
+pipx keeps LabPulse's dependencies in an isolated environment. Run this without
+`sudo`; do not install them into the system Python. The LabPulse worker image
+is selected to match the installed package version.
 
-```text
-LabPulse 1.0.0
-```
-
-## Create a real-hardware installation
-
-```bash
-labpulse setup
-```
-
-Setup:
-
-- creates `~/labpulse-live`;
-- preserves an existing live `config.yaml`;
-- creates `config.d/` and installs starter fragments only for a new live directory;
-- creates the private host `.venv`;
-- installs bounded generator dependencies into that environment;
-- links that environment to the exact pipx-installed LabPulse package;
-- installs operational helpers;
-- writes local Mosquitto configuration;
-- selects the GHCR image whose tag matches the installed package version;
-- generates Compose and Home Assistant YAML.
-
-Setup does not start the stack.
-
-Edit the live configuration with `labpulse config`. The complete schema and
-built-in driver examples are in the
-[Configuration reference](CONFIGURATION.md).
-
-```bash
-labpulse config
-```
-
-For enabled serial services, assign stable device paths with every serial
-device initially connected:
-
-```bash
-cd ~/labpulse-live
-./setup_usb_devices.py --config config.yaml
-```
-
-The helper asks for one device to be unplugged and reconnected at a time. It
-updates only `driver.options.port` and keeps one
-`backups/config.yaml.usb-setup-backup`. Do not use `/dev/ttyUSB0` or
-`/dev/ttyACM0` as permanent identities; use `/dev/serial/by-id/...`.
-
-Apply any USB mapping and start:
-
-```bash
-labpulse config
-labpulse up
-labpulse doctor
-```
-
-Open Home Assistant:
-
-```bash
-labpulse open
-```
-
-From another computer, browse to `http://<pi-address>:8123`. On first startup,
-create the Home Assistant account before evaluating LabPulse entities. Then
-add the MQTT integration with:
-
-```text
-Broker: 127.0.0.1
-Port: 1883
-```
-
-Home Assistant uses host networking. LabPulse Python containers deliberately
-use the Compose hostname `mosquitto:1883` instead.
-
-MQTT integration must be connected before LabPulse discovery, service health
-and alarm entities are considered ready. Retained discovery messages should
-then populate the dashboard without restarting sensor containers.
-
-## Move measurements into external files
-
-This is an optional configuration migration. Services with inline
-`measurements:` remain supported. Before changing an existing Pi, create a full
-archive so the source bundle, generated files, and Home Assistant state can be
-restored together:
-
-```bash
-mkdir -p ~/labpulse-backups
-labpulse backup ~/labpulse-backups/before-measurement-files.tar.gz
-labpulse update VERSION_WITH_MEASUREMENT_FILES
-```
-
-Replace the version placeholder with the published release containing this
-feature. Open the master and every fragment that will be created in one guarded
-edit. For the two Triton services:
-
-```bash
-labpulse config config.yaml \
-  config.d/triton-01-measurements.yaml \
-  config.d/triton-02-measurements.yaml
-```
-
-In `config.yaml`, replace each service's inline `measurements:` mapping with
-one field at the same indentation:
-
-```yaml
-measurements_file: config.d/triton-01-measurements.yaml
-```
-
-Put the removed mapping in the selected fragment without a surrounding
-`measurements:` key. Keep the driver, defaults, service timeouts, setups,
-outputs, calculated measurements, MQTT, and SMS configuration in
-`config.yaml`. Saving validates the complete staged bundle before replacing
-live files. A failure after installation restores the previous source bundle
-and generated deployment automatically.
-
-Verify the installed result:
-
-```bash
-labpulse doctor
-labpulse ps
-grep -n "config.resolved.yaml:/app/config.yaml:ro" ~/labpulse-live/compose.yaml
-if grep -n "measurements_file" ~/labpulse-live/config.resolved.yaml; then
-  echo "ERROR: resolved configuration still contains a source reference"
-else
-  echo "OK: resolved configuration is standalone"
-fi
-labpulse logs --tail 50 labpulse-triton-01
-labpulse logs --tail 50 labpulse-triton-02
-```
-
-Doctor should pass, Compose should show the resolved runtime mount, and the
-second `grep` should print nothing because the runtime is standalone. Confirm
-both fridge services and their existing Home Assistant entities continue to
-update. Their service and measurement IDs do not change during this migration.
-
-To roll back the whole migration, restore the archive and approve the prompted
-replacement:
-
-```bash
-labpulse restore ~/labpulse-backups/before-measurement-files.tar.gz
-labpulse doctor
-labpulse ps
-```
-
-Restore validates checksums, recreates the recorded real or fake runtime, and
-regenerates deployment files. If later legitimate state must be retained,
-instead run `labpulse config` with the master and affected fragments, copy each
-fragment mapping back beneath its service's `measurements:` key, remove its
-`measurements_file`, save, and delete only unreferenced fragment files afterward.
-
-## First-install acceptance
-
-Complete this check before disabling notification safeguards:
-
-```bash
-labpulse doctor
-labpulse ps
-labpulse logs --tail 50
-```
-
-Confirm:
-
-1. Doctor reports no failures; resolve clock, Docker, hardware or watchdog
-   warnings that apply to this deployment.
-2. Every expected Compose service is running.
-3. Home Assistant reports the MQTT integration as connected.
-4. The System Status view shows each physical service working and measurements
-   continue updating.
-5. On first installation, Alarm Setup shows Global Mute enabled and Test mode
-   enabled. Later restarts restore the global mute choice but reset Test mode on.
-6. If SMS is configured, follow the [SMS acceptance procedure](USER_GUIDE.md#sms-behaviour)
-   to deliberately test a reviewed recipient; dry-run never sends a real message.
-7. Run `labpulse restart`, repeat `labpulse doctor`, and confirm measurements
-   and service health recover without false recovery notifications.
-8. Review recipients, thresholds and mute controls before deliberately
-   disabling Test mode or Global Mute.
-
-Create a complete state archive after acceptance. See
-[Backup and blank-Pi reconstruction](#backup-and-blank-pi-reconstruction).
+Choose **one** of the next two paths. To explore the dashboard first, use the
+simulated installation.
 
 ## Create a simulated installation
-
-Fake-hardware mode resolves `config.yaml` and referenced `config.d` fragments
-without changing the operator-owned source bundle:
 
 ```bash
 labpulse setup --fake-hardware
 labpulse up
+```
+
+Setup creates `~/labpulse-live`, copies the starter configuration on a new
+installation, and generates the deployment. `labpulse up` downloads missing
+images and starts the containers; the first run can take several minutes.
+
+You'll see the same sensors and switches as you would with real hardware.
+LabPulse supplies simulated readings, and the switches don't operate any
+equipment. SMS runs in dry-run mode: messages are logged but aren't sent.
+
+Continue to [Open Home Assistant](#open-home-assistant). You can edit the
+configuration later with `labpulse config`; simulation stays enabled. If the
+Pi uses a timezone other than `Europe/London`,
+set the matching `timezone` through that editor before checking timestamps.
+
+## Create a real-hardware installation
+
+Connect the hardware and enable required Pi interfaces before starting workers.
+For I2C sensors such as SHT40 or X1200, enable I2C through `sudo raspi-config`
+as described in the [Pi configuration guide](https://www.raspberrypi.com/documentation/computers/configuration.html#enable-or-disable-i2c),
+and follow any reboot prompt. Arduino boards need the matching
+[LabPulse firmware](../firmware/README.md).
+
+Create the live directory:
+
+```bash
+labpulse setup
+```
+
+Setup generates files but does not start the stack. Its starter describes the
+example lab, so review it before use:
+
+```bash
+labpulse config
+```
+
+Select `config.yaml` in the editor menu. Use the
+[Configuration reference](CONFIGURATION.md) to:
+
+- set `timezone` to match the Pi;
+- keep only the services you need enabled, with at least one enabled service;
+- set each driver's port, bus, pin, or other hardware options;
+- match measurement names and units to the firmware or data source;
+- keep `sms.dry_run: true` while testing, and leave unused outputs disabled.
+
+Find stable serial paths with `ls -l /dev/serial/by-id/` and put the appropriate
+path in each service's `driver.options.port`. For interactive board
+identification, see [Assigning serial devices](TROUBLESHOOTING.md#assigning-serial-devices).
+
+Saving a changed configuration validates it, generates the deployment, checks
+the Home Assistant configuration, and recreates the containers. It can
+therefore start real workers immediately. An unchanged edit may exit without
+restarting anything. Ensure the stack is running with:
+
+```bash
+labpulse up
+```
+
+For a Triton control PC, follow the separate [Triton publisher guide](TRITON_PUBLISHER.md)
+for its network, credentials, and publisher setup. For a modem, complete
+[SMS host setup](TROUBLESHOOTING.md#sms-host-setup) before enabling real delivery.
+
+## Open Home Assistant
+
+On the Pi, run `labpulse open`. Over SSH, open `http://<pi-address>:8123` in a
+browser on your own computer. Replace `<pi-address>` with the Pi's network
+address, without the angle brackets. For example, if its address is
+`192.168.1.50`, open `http://192.168.1.50:8123`. Allow Home Assistant time to
+finish startup.
+
+1. Create the Home Assistant account and complete onboarding.
+2. Open **Settings → Devices & services**, choose **Add integration**, and
+   select [MQTT](https://www.home-assistant.io/integrations/mqtt/#configuration).
+3. Set the broker to `127.0.0.1` and port to `1883`. The standard local listener
+   does not require a username or password.
+4. Open the **LabPulse** dashboard from the sidebar.
+
+Home Assistant connects through the Pi's local address. LabPulse worker
+containers use `mosquitto:1883`; keep that hostname in the live configuration.
+Once MQTT is connected, the LabPulse sensors and switches should appear
+automatically.
+
+## Check the installation
+
+```bash
+labpulse ps --all
 labpulse doctor
 ```
 
-Fake mode keeps every enabled service and output container and generates the
-same Home Assistant files as real mode. Each sensor worker publishes generated
-values for every configured measurement without loading its real driver. Each
-output worker retains its switch state in memory, and the SMS worker is forced
-to dry-run without modem access. This works for arbitrary registered drivers,
-service names and measurement files. It requires a supported Linux host and
-Docker, but no sensor, modem or output hardware.
+Doctor should report no failures. Read its warnings and resolve those relevant
+to this installation, including host clock and
+[watchdog configuration](TROUBLESHOOTING.md#host-clock-or-watchdog-warning).
+Then check the dashboard:
 
-Always edit `config.yaml` and referenced `config.d` fragments, never
-`config.resolved.yaml` or `config.fake.yaml`. The guarded `labpulse config`
-command detects the active fake-hardware Compose mount, regenerates both runtime
-files, and keeps the deployment simulated.
+1. **System Status** shows the expected services as **Working** and their
+   required readings are current.
+2. **Monitor** shows the expected setups, readings, and controls. Simulated
+   analogue values generally change; digital states may stay constant while
+   continuing to publish.
+3. **Alarm Setup** has **Mute all notifications** and **Test mode** enabled on
+   a new installation. Review thresholds and recipients before unmuting.
+4. For real hardware, compare readings with the physical instruments and test
+   one failure and recovery. Follow [Testing SMS](USER_GUIDE.md#testing-sms)
+   before relying on modem delivery.
 
-After starting the simulated stack, complete the same Home Assistant account
-and MQTT onboarding as the real path. Confirm that every enabled service is
-online and every configured measurement changes. This validates configuration,
-containers, MQTT and Home Assistant, but not the real driver, wiring,
-calibration, external publisher or modem.
+Run `labpulse restart`, allow the services to recover, and check again. Test
+mode turns on whenever Home Assistant starts; the global mute choice is
+restored. Doctor checks installation and connectivity, but cannot prove
+calibration or that a text message reached a handset.
 
-## Alternate live directory
+Create a [backup](#backups-and-restoring-on-a-new-pi) once everything is working. To
+stop a demonstration without deleting configuration or history, run `labpulse down`.
 
-Every operator command accepts a global live-directory override:
+If you're using simulation, continue with
+[Your first look at LabPulse](FIRST_STEPS.md#find-your-way-around). It walks
+through a reading, its history, and a practice alarm. To connect an Arduino,
+use [Connect your first sensor](FIRST_SENSOR.md).
 
-```bash
-labpulse --live-dir /srv/labpulse setup
-labpulse --live-dir /srv/labpulse doctor
+## Changing the configuration
+
+Your settings live in these files:
+
+```text
+~/labpulse-live/config.yaml
+~/labpulse-live/config.d/       measurement files referenced by config.yaml
 ```
 
-The `LABPULSE_LIVE_DIR` environment variable provides the same override.
+Use `labpulse config` to edit them. You can also select files directly, such as
+`labpulse config config.yaml config.d/triton-01-measurements.yaml`. See
+[measurement files](CONFIGURATION.md#moving-measurements-into-configd) for the
+file format. The configuration in the repository is a starting example for new
+installations.
 
-## Development installation
+LabPulse replaces `compose.yaml`, `config.resolved.yaml`, `config.fake.yaml`
+when used, and these Home Assistant files during generation:
 
-An editable installation follows Python source changes in the checkout:
-
-```bash
-cd LabPulse
-pipx install --editable . --force
+```text
+homeassistant/config/configuration.yaml
+homeassistant/config/packages/labpulse_generated.yaml
+homeassistant/config/labpulse-dashboard.yaml
 ```
 
-Rerun this command after changing package metadata or console entry points.
-To test runtime source changes, build a wheel and local image, select it during
-generation, and start the stack:
+Don't edit those generated files by hand; LabPulse will overwrite your changes.
+It keeps your Home Assistant accounts and saved settings, along with
+automations, scripts, and scenes you've created in Home Assistant.
+
+For a different installation directory, put `--live-dir` before the command,
+for example `labpulse --live-dir /srv/labpulse setup`. Use that same directory
+for subsequent commands, or set `LABPULSE_LIVE_DIR` consistently.
+
+## Switching between simulated and real hardware
+
+Stop the current stack with `labpulse down`. To select simulation, run:
 
 ```bash
-python -m pip install setuptools-scm
-LABPULSE_VERSION="$(python -m setuptools_scm)"
-python -m build
-docker build --build-arg LABPULSE_VERSION="$LABPULSE_VERSION" -t "labpulse-dev:$LABPULSE_VERSION" .
-export LABPULSE_IMAGE="labpulse-dev:$LABPULSE_VERSION"
+labpulse setup --fake-hardware
+labpulse up
+```
+
+To select real hardware, review the configured devices, outputs, and SMS
+settings first, then run:
+
+```bash
 labpulse setup
 labpulse up
 ```
 
-See [Development](DEVELOPMENT.md).
-
-## Uninstalling the deployment
-
-Create a backup first if any configuration or Home Assistant history may be
-needed later. Then remove the complete live deployment:
-
-```bash
-labpulse uninstall
-```
-
-The command shows the selected live directory and requires typing `UNINSTALL`.
-It stops and removes the Compose containers, project network and volumes before
-permanently deleting the live directory, including configuration, Home
-Assistant data, Mosquitto data, logs and local backups. It also removes the
-LabPulse update-check cache. Use `--yes` only for unattended removal.
-
-The pipx command remains installed so LabPulse can be set up again. Remove that
-separately when the command itself is no longer wanted:
-
-```bash
-pipx uninstall labpulse
-```
+Setup preserves the live source configuration and Home Assistant private
+state. Real mode uses the configured hardware and `sms.dry_run` setting;
+simulation's forced dry-run no longer applies. If you need to edit the source
+before switching, use `labpulse config` in the current mode, then stop the
+stack again before running setup. Repeat the installation checks afterward.
 
 ## Updating
 
-Update to the latest LabPulse version published on PyPI:
+Record `labpulse version`, make a backup, and review release notes before running:
 
 ```bash
 labpulse update
 ```
 
-After recreating the containers, the update command waits up to two minutes for
-Home Assistant to accept local connections before running final diagnostics.
-This avoids reporting an ordinary Home Assistant startup delay as an update
-failure.
+The command installs the latest PyPI release, preserves the active hardware
+mode, refreshes managed files, recreates the stack, waits for Home Assistant,
+and runs Doctor. If that version is already installed, it exits without
+recreating anything. Confirm that readings resume in **System Status**.
 
-If that version is already installed, the command exits without changing the
-installation or restarting containers. To select a specific release instead:
+Updates don't automatically mute notifications or create a backup. Make your
+backup first, and use the dashboard's mute controls if you need to pause
+notifications during maintenance.
+For a particular published release, pass its version to `labpulse update`;
+use `labpulse help update` for the syntax. If an update fails, follow
+[update recovery](TROUBLESHOOTING.md#update-failed-or-sms-worker-is-offline).
 
-```bash
-labpulse update 1.0.0
-```
+## Backups and restoring on a new Pi
 
-Every LabPulse command performs a quick, best-effort check for a newer release
-after it finishes. The PyPI result is cached for six hours, so normal
-commands do not wait for the network each time. When an update is available,
-the cached result still prints the installed and available versions and suggests
-`labpulse update`. A failed check is silent and cached for ten minutes, so normal
-operation remains responsive when the Pi is offline or PyPI is unavailable.
-The `labpulse update` command always fetches fresh release metadata.
-
-Before upgrading from a release with `sms.send_recovery_sms`, remove that line
-from `~/labpulse-live/config.yaml`. Recovery SMS now follows an opening SMS
-automatically when current notification settings allow it, and the old key is
-rejected by the strict live-config validator. Keep the rest of the live
-configuration as it is.
-
-Update resolves the latest version from PyPI, installs that exact
-version with pipx using fresh package-index metadata, refreshes package-managed
-deployment assets with backups, preserves the active real-hardware or fake-hardware
-mode, pulls images, and recreates every container in one Compose operation.
-It then runs `labpulse doctor` through the newly installed command. Confirmed
-incidents during the recreation follow ordinary confirmation and explicit mute
-rules. The SMS worker's persistent MQTT subscription queues QoS 1 failure and
-recovery requests while it is unavailable; both may arrive shortly after it
-reconnects. A failed update reports the installation, setup, Compose, or doctor
-error. Repair the reported problem and run `labpulse up` when needed.
-
-Before updating, save an operator rollback archive and record the installed
-version:
-
-```bash
-labpulse version
-mkdir -p ~/labpulse-backups
-labpulse backup ~/labpulse-backups/before-notification-update.tar.gz
-```
-
-After the new release is published, run `labpulse update` on the Pi, then verify
-the generated stack and notification worker:
-
-```bash
-labpulse ps --all
-labpulse doctor --timeout 5
-labpulse logs --tail 50 labpulse-sms
-grep -R 'labpulse_update_maintenance' ~/labpulse-live/homeassistant/config/packages
-```
-
-The final `grep` should produce no match. The SMS worker should report a direct
-MQTT subscription and online status rather than waiting for a retained
-maintenance state. Check a confirmed incident in Home Assistant with an
-explicitly unmuted test recipient before relying on live SMS delivery.
-
-If the update fails, read its error and run `labpulse up` after repairing the
-cause. To return to the previous published package, use the version recorded
-above:
-
-```bash
-previous_version=0.1.1 # replace with the version recorded above
-labpulse update "$previous_version"
-labpulse ps --all
-labpulse doctor --timeout 5
-```
-
-If configuration or Home Assistant private state also needs to be restored,
-use `labpulse restore ~/labpulse-backups/before-notification-update.tar.gz`.
-That replaces live state, so inspect the archive and follow the restore
-procedure below before running it. The Windows Triton publishers need no change
-for this notification-control update.
-
-`--backup` keeps one rolling copy of each replaced package-managed file in
-`~/labpulse-live/backups/`. A later setup or update replaces the corresponding
-backup instead of accumulating timestamped files. The live `config.yaml` and
-existing Home Assistant configuration directory are preserved by the update
-workflow. The first backed-up setup after upgrading also consolidates backup
-files left in the live-directory root by earlier releases.
-
-Create a state backup and review the release notes before updating an installed
-Pi.
-
-## Backup and blank-Pi reconstruction
-
-After first-install acceptance and before updating, create an archive
-outside the live directory:
+Save an archive outside the live directory:
 
 ```bash
 mkdir -p ~/labpulse-backups
-labpulse backup ~/labpulse-backups/labpulse-$(date +%Y%m%d).tar.gz
+labpulse backup ~/labpulse-backups/labpulse-$(date +%Y%m%d-%H%M%S).tar.gz
 ```
 
-This briefly quiesces the running services to consistently capture
-`config.yaml`, complete Home Assistant configuration and private state,
-Mosquitto retained data, and SMS subscription/request state. The archive is
-checksummed and owner-readable only on Linux, but is not encrypted. Treat it as
-a secret because it includes credentials, tokens, phone-number state, and
-potentially sensitive history. Copy it to protected storage outside the Pi.
+LabPulse briefly stops running services to copy the source configuration,
+Home Assistant state, Mosquitto retained data, and SMS subscription/request
+state. It restarts those services before compressing the archive. Archives
+contain private data and are not encrypted; copy them to protected storage
+outside the Pi.
 
-To reconstruct a blank replacement Pi:
+External MQTT certificates, keys, passwords, and ACLs under
+`~/labpulse-live/mosquitto/config/` are **not included**. A Triton-enabled
+installation needs a separate protected copy of those files. Host settings,
+firmware, and Windows publisher files also require separate records.
 
-1. install Raspberry Pi OS and the prerequisites in this document;
-2. install the recorded compatible LabPulse package with pipx;
-3. connect the physical hardware;
-4. copy the archive onto the host;
-5. run:
+On a replacement Pi, prepare the host, install the recorded compatible LabPulse
+release, and reconnect the hardware. Restore any external MQTT security files
+to their original live paths and permissions before running:
 
-   ```bash
-   labpulse restore /path/to/labpulse-backup.tar.gz
-   ```
+```bash
+labpulse restore /path/to/labpulse-backup.tar.gz
+```
 
-Restore validates the archive, recreates the live deployment in its recorded
-real or fake-hardware mode, restores private state, regenerates managed files,
-pulls and starts the versioned stack, waits for Home Assistant, and runs
-`labpulse doctor`. If the target already contains LabPulse state, it first
-creates a timestamped automatic rollback archive.
+Restore asks for confirmation, restores the recorded hardware mode, regenerates
+managed files with the **currently installed package**, starts the stack, and
+runs diagnostics. It does not install the package version recorded in the
+archive. Existing state receives a rollback archive before replacement.
 
-Host settings are deliberately not applied from a backup. Recheck timezone and
-NTP, the systemd watchdog, Docker-group policy, modem provisioning, USB device
-identities, GPIO/I2C access, and physical wiring. The archive and failure
-behaviour are explained in the [User Guide](USER_GUIDE.md#backup-and-restoration).
+Recheck the host clock, watchdog, interfaces, modem, and device identities.
+See [backup and restore troubleshooting](TROUBLESHOOTING.md#backup-or-restore-fails)
+for failures and [the User Guide](USER_GUIDE.md#backups-and-restoration) for
+ordinary backup use.
 
 ## Troubleshooting
 
-Start with these read-only or observational commands:
+Start with:
 
 ```bash
 labpulse doctor
@@ -536,237 +407,11 @@ labpulse ps --all
 labpulse logs --tail 100
 ```
 
-Follow the system in order: host hardware, service container, Mosquitto, Home
-Assistant entity, alarm automation, then SMS delivery. Confirm the last
-working boundary before changing the next one. Do not alter several layers at
-once.
+Use [Troubleshooting](TROUBLESHOOTING.md) for installation failures, missing
+devices or readings, generated-file repair, alarms, SMS, and recovery. Edit
+the source with `labpulse config`; use the repair procedure when generated
+files alone are damaged.
 
-### pipx cannot find or install LabPulse
-
-Confirm the selected version exists on the
-[LabPulse PyPI page](https://pypi.org/project/labpulse/) and then run
-`labpulse version`. If installation metadata may be cached, retry with
-`pipx install --pip-args="--no-cache-dir" labpulse`. Do not use `sudo pip` or
-`--break-system-packages` to bypass installation errors.
-
-If the command is not found after installation, open a new shell after
-`pipx ensurepath`, inspect `pipx list`, and ensure the pipx binary directory is
-on `PATH`.
-
-### Installation or generated files are missing
-
-If `compose.yaml` or the live directory is missing, run:
-
-```bash
-labpulse setup
-```
-
-For a non-default directory, put the global option before the action:
-
-```bash
-labpulse --live-dir /path/to/live setup
-```
-
-If generated files are damaged but the source config is valid, rerun setup or
-`labpulse config`. Do not reconstruct them by hand. Setup preserves the live
-source and Home Assistant directory; `--backup` also keeps one rolling copy of
-each package-managed file in `backups/`.
-
-### Docker cannot run
-
-Check the service and plugin-style Compose command:
-
-```bash
-sudo systemctl status docker
-sudo docker version
-sudo docker compose version
-```
-
-LabPulse normally selects `sudo docker` for a non-root Linux user. If the
-operator intentionally uses Docker-group access, export
-`LABPULSE_DOCKER_COMMAND=docker` consistently. A permission-denied response is
-a host Docker policy problem, not a sensor problem.
-
-### Host clock is not synchronized
-
-Incorrect time makes history, alarm ordering and logs misleading. Inspect
-`timedatectl status`, select the deployment timezone and enable NTP. Do not
-accept alarm timestamps until `System clock synchronized` reports `yes`.
-Confirm that `timezone` in `~/labpulse-live/config.yaml` matches the host, then
-run `labpulse config` to regenerate and restart the deployment.
-
-### Configuration is rejected
-
-Use `labpulse config` so errors include the source path and field location.
-Check YAML indentation, required labels and measurements, exact registered
-driver IDs, option spelling, setup references, stable lowercase IDs, timing
-ranges and international-format SMS numbers. Unknown fields are rejected.
-
-Use every mapping key once. LabPulse rejects duplicate keys in both the master
-file and measurement fragments.
-
-For a `measurements_file` error, confirm the path is relative, ends in `.yaml`
-or `.yml`, stays beneath `config.d`, names a regular non-symlink file, and does
-not contain `..`. The fragment must be a non-empty measurement mapping without
-a surrounding `measurements:` key. Each service must define exactly one of
-inline `measurements` and `measurements_file`. Errors identify the source file
-that owns the invalid measurement.
-
-### Containers exit or restart repeatedly
-
-Inspect the selected service rather than the entire stack:
-
-```bash
-labpulse ps --all
-labpulse logs --tail 100 labpulse-pressure-monitor
-```
-
-Common causes are a config mounted from the wrong mode, missing host devices,
-incorrect driver options, Docker permissions or an unavailable MQTT broker.
-Compare the Compose runtime mount with generated `config.resolved.yaml` (real
-hardware) or `config.fake.yaml` (simulation), then run Doctor before editing
-code. Edit only the source bundle.
-
-### MQTT connection is refused
-
-The generated broker is reachable from LabPulse containers as
-`mosquitto:1883`. Home Assistant uses host networking and connects to
-`127.0.0.1:1883`. Check `labpulse-mqtt` logs, port 1883 in Doctor, and the Home
-Assistant MQTT integration. `localhost` inside a sensor container refers to
-that container, not Mosquitto.
-
-### A real serial device is missing
-
-Confirm the stable device exists on the host and inside the generated worker:
-
-```bash
-ls -l /dev/serial/by-id/
-labpulse doctor
-```
-
-Close Arduino serial monitors that may own the port. Rerun
-`~/labpulse-live/setup_usb_devices.py --config config.yaml` if boards were
-replaced or identities changed, then apply with `labpulse config`. Do not make
-`/dev/ttyUSB0` or `/dev/ttyACM0` the permanent identity.
-
-### Fake-hardware readings do not appear
-
-Fake workers start with the ordinary stack; no separate simulator is required.
-Run:
-
-```bash
-labpulse ps --all
-labpulse doctor
-labpulse logs --tail 100
-```
-
-Confirm `compose.yaml` mounts `config.fake.yaml` and the affected worker command
-ends with `--simulate`. Run `labpulse setup --fake-hardware` again if the live
-directory was accidentally regenerated in real-hardware mode.
-
-### Serial data repeatedly reconnects or becomes stale
-
-Inspect raw Arduino output at the configured baud rate only after stopping the
-worker that owns the port. Each line must terminate with a newline and contain
-at least one usable `name:value` field. Names must match configured measurement
-keys. Look for empty output, `null` channels, malformed fields, firmware resets,
-USB power problems and a read interval longer than the maximum measurement age.
-
-### GPIO input or output is unavailable
-
-Confirm the configured `/dev/gpiochipN` exists, the line offset is correct and
-no other process owns the line. Physical header pins and Linux line offsets are
-not interchangeable. Pi GPIO uses 0 V/3.3 V; never drive it with a higher
-voltage.
-
-An input publishes numeric 0/1 and does not debounce or count pulses. For an
-output, check availability, command logs, polarity and safe-state configuration.
-Latch readback proves only the Pi line. Check the custom interface and equipment
-feedback separately.
-
-### DHT11, SHT40 or X1200 is unavailable
-
-For DHT11, confirm the Blinka pin name, wiring and container privilege. A few
-timing errors can be transient; sustained errors indicate hardware access or
-sensor trouble.
-
-For SHT40, confirm I2C is enabled, `/dev/i2c-<bus>` exists, the configured
-address is present and no other service is using the device incorrectly. CRC
-failures indicate corrupt or incomplete transfers.
-
-For X1200, check both I2C battery telemetry and the configured mains GPIO.
-GPIO-only failure can leave voltage/charge available while reporting a power
-component fault. Confirm polarity against the installed board revision rather
-than changing alarm logic to hide an inverted signal.
-
-### A named MQTT or calculated measurement is unavailable
-
-For named MQTT input, verify broker/topic agreement, protocol/version,
-`recorded_at`, exact case-sensitive external field names and record age. The
-external publisher and local-only generated broker need separately provisioned
-network/TLS access.
-
-For a calculated measurement, inspect every physical input entity. Inputs must
-be numeric and available and every divisor non-zero. Calculations cannot depend
-on other calculated measurements. Fix the physical source or formula rather
-than forcing an available result.
-
-### A Home Assistant entity or dashboard is missing
-
-Confirm MQTT is connected, the corresponding service is enabled and publishing,
-and discovery topics have arrived. Restart the affected worker after MQTT
-onboarding if necessary. Run `labpulse config` to regenerate a stale dashboard;
-do not edit generated dashboard YAML or `.storage` as the source fix.
-
-Unexpected units and icons come from the measurement's exact configured `unit`,
-`device_class` and optional `icon`. LabPulse intentionally does not request
-Home Assistant unit conversion.
-
-### An alarm does not trigger or recover
-
-Check that the measurement is alarmed, its threshold includes the observed
-value, enough observations satisfy the danger proportion/window, and Test mode
-or mutes have not been confused with alarm state. Recovery requires continuous
-safe data beyond the deadband for the complete recovery time.
-
-Missing required data has its own confirmation delay. A complete service outage
-suppresses subordinate reading incidents. Measurements configured with
-`required: false` are deliberately silent when their data is absent.
-Inspect Alarm Setup and the User Guide's
-[alarm behaviour](USER_GUIDE.md#measurement-alarm-behaviour).
-
-### Alarm state changes but no SMS is received
-
-Check Global Mute, the relevant setup mute, Test mode, normal versus test
-recipient lists, `sms.dry_run`, `labpulse-sms` logs and the per-request result.
-In dry-run mode no real SMS is expected. For real delivery, confirm
-ModemManager sees the modem and the configured recipient has not unsubscribed.
-Modem acceptance is not proof of handset delivery.
-
-### Configuration was accepted but containers did not refresh
-
-`labpulse config` can successfully install configuration and then encounter an
-external Docker recreation failure. Run `labpulse ps --all`, inspect Compose
-and Home Assistant logs, and rerun `labpulse up` after correcting Docker or
-hardware access. The prior source is rolled back for validation/check failures,
-but no workflow can make several filesystem and daemon operations one atomic
-transaction.
-
-### Backup or restore fails
-
-Keep archives outside the live directory and ensure the destination does not
-already exist unless `--force` is intentional. A restore validates member
-paths, types and checksums; do not bypass an archive rejection. Confirm enough
-disk space and permissions for the live directory and rollback archive.
-
-If restore reports that Home Assistant did not become ready, the state may
-already have been restored. Inspect container status and logs before repeating
-the operation. Preserve the automatic pre-restore archive. Host packages,
-timezone, interfaces, modem and wiring still require manual reconstruction.
-
-### Asking for help
-
-Record the Pi model, operating system and architecture, Python version, Docker
-and Compose versions, LabPulse version, enabled driver IDs, runtime mode,
-`labpulse doctor` output and relevant logs. Remove credentials, tokens, phone
-numbers and private network details before sharing them.
+For dashboard and alarm operation, continue with the [User Guide](USER_GUIDE.md).
+For a source checkout or local image, use [Development](DEVELOPMENT.md).
+To remove the deployment, follow [Removing an installation](USER_GUIDE.md#removing-an-installation).

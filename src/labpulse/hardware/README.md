@@ -18,8 +18,12 @@ configuration -> registry -> driver -> runner -> MQTT publisher -> Mosquitto
 
 Drivers implement `connect`, `read` and `close` and return normalized numeric
 readings. The runner distinguishes unavailable hardware, transient bad samples
-and lost connections. A worker becomes online only after a valid sample.
-Missing data ages from the last success and eventually causes reconnection.
+and lost connections. By default, a worker becomes online after a valid sample,
+and missing data eventually causes reconnection. Drivers can instead report
+independent source health through `health_status()`. MQTT JSON heartbeat
+monitoring uses this path: the worker waits in `awaiting_heartbeat`, and a
+healthy publisher can become online without a new sample. Individual readings
+still expire in Home Assistant, and partial driver faults still need attention.
 Orderly shutdown closes resources; MQTT Last Will and entity expiry cover
 unexpected loss.
 

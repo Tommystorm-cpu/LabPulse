@@ -249,6 +249,46 @@ def test_complete_round_trip() -> None:
         )
 
 
+def test_backup_reports_progress_and_restarts_before_compression() -> None:
+    """Keep an operator informed and minimize the service outage."""
+
+    with state_tree() as (live, archive):
+        runner = ComposeRunner()
+        progress: list[str] = []
+        services_were_running_during_compression = False
+        original_tarfile_open = tarfile.open
+
+        def observed_tarfile_open(*args: object, **kwargs: object) -> tarfile.TarFile:
+            """Record whether Compose start ran before archive compression."""
+
+            nonlocal services_were_running_during_compression
+            services_were_running_during_compression = any(
+                command[-4:] == [
+                    "start",
+                    "homeassistant",
+                    "labpulse-sms",
+                    "mosquitto",
+                ]
+                for command in runner.commands
+            )
+            return original_tarfile_open(*args, **kwargs)
+
+        with patch("labpulse.backup.subprocess.run", side_effect=runner), patch(
+            "labpulse.backup.tarfile.open", side_effect=observed_tarfile_open
+        ):
+            create_backup(live, archive, ["docker"], progress=progress.append)
+
+        assert progress == [
+            "Checking running services...",
+            "Stopping 3 running services...",
+            "Copying state and calculating checksums...",
+            "Restarting services...",
+            "Compressing the backup archive...",
+        ]
+        if not services_were_running_during_compression:
+            raise AssertionError("services were not restarted before compression")
+
+
 def test_restore_older_single_file_source_removes_current_fragments() -> None:
     """Treat absent optional config.d state as intentional during restoration."""
 
@@ -321,6 +361,33 @@ def test_container_copy_fallback_for_unreadable_homeassistant_state() -> None:
             for command in runner.commands
         ):
             raise AssertionError("backup did not use Compose cp for unreadable state")
+
+
+def test_sudo_container_copy_returns_temporary_files_to_operator() -> None:
+    """Make a sudo Docker copy readable before hashing private HA state."""
+
+    with state_tree() as (live, archive):
+        runner = ContainerCopyRunner()
+        original_copy2 = shutil.copy2
+
+        def permission_denied(source: Path, destination: Path) -> str:
+            """Force the container-copy fallback for one private file."""
+
+            if Path(source).name == "production_auth.json":
+                raise PermissionError(13, "Permission denied", str(source))
+            return str(original_copy2(source, destination))
+
+        with patch("labpulse.backup.shutil.copy2", side_effect=permission_denied), patch(
+            "labpulse.backup.subprocess.run", side_effect=runner
+        ), patch("labpulse.backup.os.getuid", create=True, return_value=1000), patch(
+            "labpulse.backup.os.getgid", create=True, return_value=1001
+        ):
+            create_backup(live, archive, ["sudo", "docker"], quiesce=False)
+
+        expected_prefix = ["sudo", "chown", "-R", "--", "1000:1001"]
+        if not any(command[:5] == expected_prefix for command in runner.commands):
+            raise AssertionError("sudo Docker snapshot was not returned to the operator")
+        inspect_backup(archive)
 
 
 def _write_member(

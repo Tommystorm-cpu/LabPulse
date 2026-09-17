@@ -77,6 +77,10 @@ publishing validated measurements.
 
 ## Try it without hardware
 
+New to Raspberry Pi or Home Assistant? Start with
+[Your first look at LabPulse](docs/FIRST_STEPS.md), then follow the installation
+guide. The walkthrough explains the pieces and gives you a practice alarm to try.
+
 You do not need a finished sensor build to see how LabPulse works. The reference
 setup is a Raspberry Pi 5 running 64-bit Raspberry Pi OS based on Debian 12.
 After installing the prerequisites in the
@@ -91,20 +95,19 @@ labpulse doctor
 labpulse open
 ```
 
-Each normal worker container stays present but uses a safe in-memory driver. It
-publishes a sensible changing value for every enabled measurement, regardless
-of whether the real source is serial, I²C, GPIO, UPS hardware or another MQTT
-publisher. Configured outputs retain their dashboard switches but change only
-in-memory state, and SMS is forced into dry-run mode. If the Pi is being used
-over SSH, open `http://<pi-address>:8123` from another computer instead of
-running `labpulse open`.
+You'll see simulated readings for every enabled sensor, including those that
+would normally use serial, I²C, GPIO, UPS hardware or MQTT. Most readings vary
+over time; digital inputs stay active. You can try the output switches without
+operating any equipment, and SMS messages are logged without being sent. If
+you're using the Pi over SSH, open `http://<pi-address>:8123` from another
+computer instead of running `labpulse open`.
 
 On the first visit, create a Home Assistant account and add its MQTT integration
 using broker `127.0.0.1` and port `1883`. When the setup is ready, the System
 Status dashboard should show the example services and their readings should
-continue to change. The [installation guide](docs/INSTALLATION.md#create-a-simulated-installation)
-walks through onboarding, and the [user guide](docs/USER_GUIDE.md#choose-real-hardware-or-simulation)
-explains the boundary between simulated and real operation.
+continue to update. The [installation guide](docs/INSTALLATION.md#create-a-simulated-installation)
+walks through onboarding, and the [user guide](docs/USER_GUIDE.md#using-fake-hardware)
+explains what you can test in simulation and what needs real hardware.
 
 When finished, stop the containers without deleting their state:
 
@@ -155,7 +158,7 @@ a new installation; changing it does not change an existing Pi.
   [User Guide](docs/USER_GUIDE.md).
 - **I am configuring sensors or measurements:** use the
   [Configuration Reference](docs/CONFIGURATION.md).
-- **I am operating an existing system:** use [Operations](docs/OPERATIONS.md)
+- **I am operating an existing system:** use the [User Guide](docs/USER_GUIDE.md)
   and [Troubleshooting](docs/TROUBLESHOOTING.md).
 - **I want to understand or change the code:** read
   [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md) and

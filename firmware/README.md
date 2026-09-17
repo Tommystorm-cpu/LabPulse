@@ -158,8 +158,11 @@ The sensor object uses `FLOW1.pin` and serial output uses `FLOW1.name`.
 Changing the record therefore changes the physical input or emitted identity in
 one place.
 
-Measurement names must exactly match the live Pi service configuration. A name
-change creates a new MQTT and Home Assistant identity.
+Emit lowercase measurement names matching the live Pi service configuration.
+Renaming a configured measurement key creates a new MQTT and Home Assistant
+identity. Changing only the firmware name, beyond case or surrounding
+whitespace, stops updates to the old key unless the configuration is changed
+to match.
 
 ## Retained example calibration
 
@@ -254,11 +257,13 @@ temperature: 18.42 | pressure: null
 
 Each physical line is one UTF-8/ASCII sample. Fields are separated by `|` and
 each field is `name: value`. Names must match configured measurement keys;
-values are finite decimal numbers or `null`. Whitespace around fields is
-ignored, duplicate names are invalid, unknown names are ignored by the service,
-and a malformed field does not prevent other valid fields on that line from
-being published. The Pi-side contract and parser ownership are documented in
-the [driver package guide](../src/labpulse/hardware/drivers/README.md).
+values are finite numbers or `null`. Firmware should emit unique lowercase
+names. The Pi parser strips surrounding whitespace and lowercases names; if a
+name occurs more than once, its last valid finite value wins. A later `null` or
+malformed value does not erase an earlier valid value. Unknown names are ignored
+by the publisher, and malformed or unavailable fields do not prevent other
+valid fields on that line from being published. The Pi-side contract and parser
+ownership are documented in the [driver package guide](../src/labpulse/hardware/drivers/README.md).
 
 ### `PulseFlowSensor`
 

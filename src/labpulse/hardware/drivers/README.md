@@ -21,12 +21,23 @@ Serial uses `name:value|name:value` at 9600 baud by default. Units come from
 configuration, not the wire. Firmware emits `null` for unavailable channels;
 valid fields in a partial sample can continue.
 
+Input drivers may implement `health_status() -> SourceHealth | None` to report
+publisher health independently of measurement freshness. The default `None`
+uses successful readings to establish health. MQTT JSON uses `WAITING`,
+`ONLINE`, and `OFFLINE` when heartbeat monitoring is configured; heartbeats do
+not refresh readings or by themselves clear partial-channel faults.
+
 To add a driver, define its typed options, implement idempotent
 `connect/read/close`, translate expected boundary failures, declare only the
 needed container resources, export one stable definition, and test normal,
 invalid, failure and recovery paths. Prefer serial when firmware can normalize
 the sensor. Inputs do not publish MQTT or sleep for retry. Outputs subclass
 `HardwareOutputDriver` and run through `labpulse.output`.
+
+Every `DriverDefinition` requires a container-requirements function, even if
+it returns an empty `ContainerRequirements()`. Optional `bind_measurement_sources`
+and `bind_measurements` callbacks receive external-name mappings and complete
+measurement configuration respectively, during service validation.
 
 GPIO uses a Linux chip and line offset, not a physical header-pin number. Pi
 GPIO uses 0 V/3.3 V logic; equipment-specific interfacing is custom to the

@@ -9,13 +9,33 @@ maintainer-only knowledge, and add standard or custom sensors through stable,
 documented interfaces.
 
 The immediate priority is delivering useful monitoring in the current
-laboratory. Stage 1 established a reliable base; the next priority is a
-read-only Triton integration. The release-engineering baseline was completed
+laboratory. Stage 1 established a reliable base; read-only Triton software is
+now implemented, with deployment and acceptance work to track separately.
+The release-engineering baseline was completed
 after Stage 1 so installations no longer depend on a repository checkout.
 Generic extension systems and wider-adoption work should be pulled forward
 only when a concrete need justifies them. Equipment control remains a
 separate, explicitly opt-in capability and must not turn LabPulse into a
 safety interlock.
+
+## Current source status
+
+This summary describes the source reviewed on 17 September 2026. It doesn't
+claim that every supported device or deployment has passed physical checks.
+
+| Area | In the current source | Work or evidence to keep separate |
+|---|---|---|
+| Triton input | Windows logfile publisher, named MQTT measurements, heartbeat/availability monitoring, and deployment instructions | Actual control-PC rollout, network checks, useful measurement selection, and unattended acceptance for each fridge |
+| Sensor inputs | Serial, SHT40, DHT11, X1200, GPIO input, and MQTT JSON drivers | Wiring, calibration, and reliability of the exact device being installed |
+| Outputs | Manual GPIO switches, safe-state handling, and simulation | Electrical design and checked behaviour of the attached equipment |
+| Configuration and dashboards | Measurement files/defaults, calculated readings, dashboard generation, and alarm controls | Real Home Assistant checks for changes to timing, restart behaviour, or layout |
+| Simulation and delivery | Full simulated sensor/output workers and SMS dry-run | Driver execution against real devices and actual phone delivery |
+| Releases | Versioned Python packages and container publication workflow | Both publishing jobs succeeding and the candidate being checked on a development Pi |
+
+The stage descriptions below preserve the project's goals and earlier
+acceptance records. Use this table to see what's already implemented, and the
+recorded revision and procedure to judge what has actually been tested. For
+release work, follow [Releasing LabPulse](docs/RELEASING.md).
 
 ## Current foundation
 
@@ -111,8 +131,10 @@ can continue powering the Pi.
 - [x] Define and test complete backup and reconstruction on a blank Pi.
 
 The completed health-reporting work separates process availability, physical
-service state, component faults, and individual measurement validity. Recovery
-requires a valid new reading rather than container startup alone.
+service state, component faults, and individual measurement validity. For
+reading-based drivers, recovery requires a valid new reading rather than
+container startup alone. The current MQTT JSON driver can also track publisher
+health independently through heartbeats; numeric readings still expire separately.
 
 Notification mutes remain explicit manual toggles. They survive ordinary Home
 Assistant restarts and do not expire silently; the dashboard continues to show
@@ -161,7 +183,11 @@ trigger occurs. They are not mandatory sequential stages.
 
 ## Stage 2: Triton read-only vertical slice
 
-Status: active.
+Status: software implemented; deployment acceptance remains to be recorded
+for each installation. The discovery and implementation tasks below describe
+the original scope, not a request to create a second integration. Current
+code uses Windows logfiles and named MQTT measurements; see the
+[Triton guide](docs/TRITON_PUBLISHER.md) for setup and acceptance checks.
 
 ### Interface discovery
 
