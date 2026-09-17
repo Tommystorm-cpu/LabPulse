@@ -1,0 +1,349 @@
+# LabPulse starter configuration
+#
+# On the Raspberry Pi, edit the live config here:
+#
+#   ~/labpulse-live/config.yaml
+#
+# This repo file is copied there only when the live config does not already
+# exist. Alarm thresholds are configured through the generated Home Assistant
+# dashboard. A fresh installation starts with all notifications muted.
+
+# Global settings
+mqtt:
+  broker: mosquitto
+  port: 1883
+  # Enable only after installing the server certificate, password database,
+  # and ACL described in docs/TRITON_PUBLISHER.md.
+  external_listener:
+    enabled: false
+    # Publish only on the two isolated fridge-facing Pi addresses.
+    bind_addresses:
+      - 10.50.1.1
+      - 10.50.2.1
+    port: 8883
+
+sms:
+  # Keep true for safe testing; set false on the real Pi to send through mmcli.
+  dry_run: true
+  # Recovery SMS follows an opening SMS unless notifications are muted at recovery.
+  # Emergency contact numbers for system alerts.
+  recipients:
+    - "+447700900000"
+  # Test-mode alerts are routed only to these numbers.
+  test_recipients:
+    - "+447700900001"
+
+# Whole sensor-service failures produce one hub-level warning instead of one
+# stale-measurement warning per sensor. These timers also reject brief USB glitches.
+service_health:
+  offline_confirm_seconds: 10
+  recovery_confirm_seconds: 15
+
+# Optional extra operator dashboard tabs. Setups use dashboard: <ID> to move
+# from the built-in main Monitor tab. Custom tabs appear before Alarm Setup.
+dashboards: {}
+# Example:
+# dashboards:
+#   pump_systems:
+#     label: Pump Systems
+#     icon: mdi:water-pump
+#     order: 10
+
+# Logical experimental setups are independent of the physical sensor hubs
+# under services. Every ordinary measurement selects one or more setups.
+setups:
+  compressed_air:
+    label: Compressed Air
+    icon: mdi:gauge
+    order: 10
+  pump_room_system:
+    label: Pump Room Experiment
+    icon: mdi:water-pump
+    order: 20
+    # dashboard: pump_systems
+  turbo_pump_experiment:
+    label: Turbo Pump Experiment
+    icon: mdi:snowflake-thermometer
+    order: 30
+  cryogenics_room:
+    label: Cryogenics Room
+    icon: mdi:home-thermometer-outline
+    order: 40
+
+# Physical outputs are deliberately separate from read-only services. Each
+# enabled output becomes a Home Assistant MQTT switch and its own container.
+# Fake-USB mode omits all physical output containers.
+outputs: {}
+# Example:
+# outputs:
+#   cooling_valve_enable:
+#     label: Cooling Valve Enable
+#     icon: mdi:valve
+#     setups: [turbo_pump_experiment]
+#     driver:
+#       type: labpulse.gpio_output
+#       options:
+#         gpio_chip: /dev/gpiochip0
+#         gpio_line: 18
+#         active_high: true
+#         safe_state: false
+#     reconnect_interval_seconds: 5
+#     maximum_active_seconds: 300
+
+services:
+  # Service-offline and recovery notifications default to on. Set
+  # notify_on_service_failure: false on a hub left disconnected or known to
+  # fail often; its status and confirmed outage remain visible.
+  # Measurements normally expire in Home Assistant after 300 seconds without
+  # an MQTT sample. Override maximum_measurement_age_seconds per service.
+  pressure_monitor:
+    label: Compressed Air and Environment Sensor Hub
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: FAKE_PRESSURE_PORT
+        baud_rate: 9600
+    measurement_defaults:
+      setups: [compressed_air]
+    measurements:
+      pressure:
+        # All readings are required by default. Use required: false for an
+        # installed spare or known-broken channel that should remain visible
+        # without alerting or blocking an update.
+        missing_confirm_seconds: 60
+        recovery_confirm_seconds: 15
+        # Set alarmed: false to display this reading without creating alarm
+        # helpers, controls, or notifications. The default is true.
+        # device_class selects LabPulse semantics and the default icon without
+        # allowing Home Assistant to convert the configured unit. Add icon:
+        # mdi:... only when overriding that default.
+        unit: bar
+        # Optional display-only rounding; MQTT readings and history keep full precision.
+        precision: 2
+        # Optional 24-hour graph replacing this measurement's compact row.
+        show_graph: true
+        device_class: pressure
+      temperature:
+        label: Main Lab Temperature
+        unit: "°C"
+        device_class: temperature
+      humidity:
+        label: Main Lab Humidity
+        unit: "%"
+        device_class: humidity
+
+  pump_room:
+    label: Pump Room Sensor Hub
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: FAKE_PUMP_ROOM_PORT
+        baud_rate: 9600
+    measurement_defaults:
+      setups: [pump_room_system]
+    measurements:
+      flow1:
+        label: Flow 1
+        unit: L/min
+        device_class: volume_flow_rate
+      flow2:
+        label: Flow 2
+        unit: L/min
+        device_class: volume_flow_rate
+      temp0:
+        label: Triton 1 Temperature 1
+        unit: "°C"
+        device_class: temperature
+      temp1:
+        label: Triton 1 Temperature 2
+        unit: "°C"
+        device_class: temperature
+      temp2:
+        label: Triton 2 Temperature 1
+        unit: "°C"
+        device_class: temperature
+      temp3:
+        label: Triton 2 Temperature 2
+        unit: "°C"
+        device_class: temperature
+      press1:
+        label: Pressure 1
+        unit: bar
+        device_class: pressure
+      press2:
+        label: Pressure 2
+        unit: bar
+        device_class: pressure
+      roomtemp:
+        label: Room Temperature
+        unit: "°C"
+        device_class: temperature
+      roomhum:
+        label: Room Humidity
+        unit: "%"
+        device_class: humidity
+
+  turbo_pump:
+    label: Turbo Pump Hub
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: FAKE_TURBO_PUMP_PORT
+        baud_rate: 9600
+    measurement_defaults:
+      setups: [turbo_pump_experiment]
+    measurements:
+      flow1:
+        label: Flow 1
+        unit: L/min
+        device_class: volume_flow_rate
+      flow2:
+        label: Flow 2
+        unit: L/min
+        device_class: volume_flow_rate
+      temp0:
+        label: Temperature 0
+        unit: "°C"
+        device_class: temperature
+      temp1:
+        label: Temperature 1
+        unit: "°C"
+        device_class: temperature
+      temp2:
+        label: Temperature 2
+        unit: "°C"
+        device_class: temperature
+      temp3:
+        label: Temperature 3
+        # This installed spare channel is retained for visibility but is not
+        # expected to provide telemetry on the reference installation.
+        required: false
+        unit: "°C"
+        device_class: temperature
+
+  room_environment:
+    label: Cryogenics Room Environment Sensor
+    driver:
+      type: labpulse.sht40
+      options:
+        bus: 1
+        address: 0x44
+    measurement_defaults:
+      setups: [cryogenics_room]
+    measurements:
+      temperature:
+        label: Room Temperature
+        unit: "°C"
+        device_class: temperature
+      humidity:
+        label: Room Humidity
+        unit: "%"
+        device_class: humidity
+    read_interval_seconds: 2
+
+  # A Windows-side Triton publisher can send every changing logfile header as
+  # one JSON message. Each source selects one exact field for LabPulse.
+  # triton_01:
+  #   label: Triton 1 Fridge
+  #   notify_on_service_failure: true
+  #   service_health:
+  #     offline_confirm_seconds: 120
+  #   driver:
+  #     type: labpulse.mqtt_json
+  #     options:
+  #       topic: labpulse/triton/triton-01/measurements
+  #       heartbeat_topic: labpulse/triton/triton-01/heartbeat
+  #       heartbeat_timeout_seconds: 60
+  #       maximum_record_age_seconds: 30
+  #   measurement_defaults:
+  #     setups: [cryogenics_room]
+  #   measurements_file: config.d/triton-01-measurements.yaml
+  #
+  # triton_02:
+  #   label: Triton 2 Fridge
+  #   notify_on_service_failure: true
+  #   service_health:
+  #     offline_confirm_seconds: 120
+  #   driver:
+  #     type: labpulse.mqtt_json
+  #     options:
+  #       topic: labpulse/triton/triton-02/measurements
+  #       heartbeat_topic: labpulse/triton/triton-02/heartbeat
+  #       heartbeat_timeout_seconds: 60
+  #       maximum_record_age_seconds: 30
+  #   measurement_defaults:
+  #     setups: [cryogenics_room]
+  #   measurements_file: config.d/triton-02-measurements.yaml
+  #   maximum_measurement_age_seconds: 30
+
+  # Generic digital GPIO inputs. One service owns and reads all selected lines.
+  # gpio_inputs:
+  #   label: GPIO Inputs
+  #   driver:
+  #     type: labpulse.gpio_input
+  #     options:
+  #       gpio_chip: /dev/gpiochip0
+  #   measurement_defaults:
+  #     setups: [io_testing]
+  #     state_class: null
+  #   measurements:
+  #     pin_17:
+  #       label: GPIO Pin 17
+  #       gpio_line: 17
+  #       active_high: true
+  #     pin_27:
+  #       label: GPIO Pin 27
+  #       gpio_line: 27
+  #       active_high: false
+  #   read_interval_seconds: 1
+
+  # Verified X1200 UPS hardware. Fake-USB setup changes only this service's
+  # transport to the UPS simulator while preserving these measurements and IDs.
+  ups_monitor:
+    label: UPS Monitor
+    driver:
+      type: labpulse.x1200
+      options:
+        bus: 1
+        address: 0x36
+        gpio_chip: /dev/gpiochip0
+        gpio_line: 6
+        mains_present_active_high: true
+    measurements:
+      voltage:
+        label: UPS Battery Voltage
+        unit: V
+        device_class: voltage
+      battery_level:
+        label: UPS Battery Level
+        unit: "%"
+        device_class: battery
+      mains_present:
+        label: External Power Present
+        state_class: null
+    read_interval_seconds: 1
+    maximum_measurement_age_seconds: 15
+    power_detection:
+      outage_confirm_seconds: 3
+      restore_confirm_seconds: 5
+
+# Optional calculated readings. Home Assistant evaluates these from one or
+# more physical measurements. They cannot depend on other custom measurements.
+custom_measurements: {}
+# Example:
+# custom_measurements:
+#   pump_room_temperature_difference:
+#     label: Pump Room Temperature Difference
+#     short_label: Temperature Difference
+#     setups: [pump_room_system]
+#     inputs:
+#       supply: pump_room.temp0
+#       return_temp: pump_room.temp1
+#     constants:
+#       scale: 1.0
+#     formula: (return_temp - supply) * scale
+#     precision: 2
+#     alarmed: true
+#     unit: "°C"
+#     device_class: temperature
+#     icon: mdi:delta

@@ -1,0 +1,329 @@
+{# Each measurement has a short and detailed view for both phone and desktop.
+   All four versions use the same saved settings. #}
+[% for measurement in setup.measurements %]
+[% set service_name = measurement.service_name %]
+[% for mobile in (false, true) %]
+{# Phone and desktop layouts edit the same alarm. Only the card layout changes. #}
+  - type: grid
+    column_span: 3
+    visibility:
+    - condition: screen
+      media_query: [[ ('(max-width: 899px)' if mobile else '(min-width: 900px)') | yaml_scalar ]]
+    cards:
+    - type: tile
+      entity: [[ measurement.entity_id ]]
+      name: [[ measurement.short_label | yaml_scalar ]]
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+{# Match the Monitor dashboard: selecting the live reading opens Home
+   Assistant's more-info dialog, including the measurement history graph. #}
+      tap_action: {action: more-info}
+      hold_action: {action: none}
+      double_tap_action: {action: none}
+      icon_tap_action: {action: more-info}
+[% for danger, state_condition, color in (
+  (true, 'state', 'red'),
+  (false, 'state_not', none)
+) %]
+{# Use separate native tiles because Lovelace card colors are not templatable.
+   The alarm helper remains read-only in both variants. #}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+        [[ state_condition ]]: Danger
+      - condition: state
+        entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'reading_available') ]]
+        state: 'on'
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+        name: Alarm state
+        icon: mdi:alarm-light-outline
+[% if color %]
+        color: [[ color ]]
+[% endif %]
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+        icon_tap_action: {action: none}
+[% endfor %]
+{# When the reading is absent, use the alarm-state slot for one clear message. #}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'reading_available') ]]
+        state: 'off'
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('binary_sensor', service_name, measurement.name, 'reading_available') ]]
+        name: [[ ('No recent data' if measurement.required else 'No recent data — optional') | yaml_scalar ]]
+        icon: [[ ('mdi:alert-outline' if measurement.required else 'mdi:information-outline') | yaml_scalar ]]
+[% if measurement.required %]
+        color: amber
+[% else %]
+        color: disabled
+[% endif %]
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+        icon_tap_action: {action: none}
+[% for role, label, icon, active_modes, comparison in (
+  ('minimum_threshold', 'Minimum', 'mdi:arrow-collapse-down', ['Low Only', 'Range'], 'below'),
+  ('maximum_threshold', 'Maximum', 'mdi:arrow-collapse-up', ['High Only', 'Range'], 'above')
+) %]
+{# Inactive thresholds remain visible but subdued. Active thresholds turn red
+   only while the current numeric reading violates that particular boundary. #}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+        state_not: [[ active_modes | yaml_scalar ]]
+      grid_options: {columns: [[ (4 if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+        name: [[ label ]]
+        icon: [[ icon ]]
+        color: disabled
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+        icon_tap_action: {action: none}
+[% for violated in (true, false) %]
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+        state: [[ active_modes | yaml_scalar ]]
+[% if not violated %]
+      - condition: not
+        conditions:
+[% endif %]
+[% set condition_indent = '        ' if not violated else '      ' %]
+[[ condition_indent ]]- condition: numeric_state
+[[ condition_indent ]]  entity: [[ measurement.entity_id ]]
+[[ condition_indent ]]  [[ comparison ]]: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+      grid_options: {columns: [[ (4 if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+        name: [[ label ]]
+        icon: [[ icon ]]
+[% if violated %]
+        color: red
+[% endif %]
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+        icon_tap_action: {action: none}
+[% endfor %]
+[% endfor %]
+[% for muted, label, icon, action in (
+  (false, 'Notifications active', 'mdi:bell-ring-outline', 'input_boolean.turn_on'),
+  (true, 'Notifications muted', 'mdi:bell-off-outline', 'input_boolean.turn_off')
+) %]
+{# Muting controls delivery for this measurement; it does not clear danger
+   state or hide the reading from Monitor. #}
+    - type: conditional
+      conditions:
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
+        state: [[ ('on' if muted else 'off') | yaml_scalar ]]
+      grid_options: {columns: [[ (4 if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
+        name: [[ label | yaml_scalar ]]
+        icon: [[ icon ]]
+        hide_state: true
+        tap_action:
+          action: perform-action
+          perform_action: [[ action ]]
+          target:
+            entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
+        icon_tap_action: {action: none}
+[% endfor %]
+[% for expanded, label, icon, action in (
+  (false, 'Configure', 'mdi:tune-variant', 'input_boolean.turn_on'),
+  (true, 'Close', 'mdi:close', 'input_boolean.turn_off')
+) %]
+{# Save whether the card is open so it stays the same when the page reloads. #}
+    - type: conditional
+      conditions:
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        state: [[ ('on' if expanded else 'off') | yaml_scalar ]]
+      grid_options: {columns: [[ ('full' if mobile else 6) ]]}
+      card:
+        type: tile
+        entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        name: [[ label ]]
+        icon: [[ icon ]]
+        hide_state: true
+        tap_action:
+          action: perform-action
+          perform_action: [[ action ]]
+          target:
+            entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        icon_tap_action: {action: none}
+[% endfor %]
+    - type: conditional
+      conditions:
+      - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+        state: 'on'
+      grid_options: {columns: full}
+      card:
+        type: vertical-stack
+        cards:
+[% if not mobile %]
+        - type: grid
+          columns: 2
+          square: false
+          cards:
+          - type: entities
+            title: [[ (measurement.short_label ~ ': Alarm behaviour') | yaml_scalar ]]
+            show_header_toggle: false
+            entities:
+            - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+              name: Alarm mode
+            - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
+              name: Measurement notifications muted
+[% for role, label, active_modes in (
+  ('minimum_threshold', 'Minimum threshold', ['Low Only', 'Range']),
+  ('maximum_threshold', 'Maximum threshold', ['High Only', 'Range']),
+  ('recovery_deadband', 'Recovery deadband', ['Low Only', 'High Only', 'Range'])
+) %]
+{# Keep inactive settings visible for context, but replace their input control
+   with Home Assistant's native read-only entity row. #}
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+                state: [[ active_modes | yaml_scalar ]]
+              row:
+                entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+                name: [[ label ]]
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+                state_not: [[ active_modes | yaml_scalar ]]
+              row:
+                type: simple-entity
+                entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+                name: [[ label ]]
+                tap_action: {action: none}
+                hold_action: {action: none}
+                double_tap_action: {action: none}
+[% endfor %]
+          - type: entities
+            title: Confirmation timing
+            show_header_toggle: false
+            entities:
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_danger_percent') ]]
+              name: Required danger
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'observation_window_seconds') ]]
+              name: Observation window
+            - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_recovery_seconds') ]]
+              name: Required recovery
+[% else %]
+        - type: entities
+          title: [[ (measurement.short_label ~ ': Alarm behaviour') | yaml_scalar ]]
+          show_header_toggle: false
+          entities:
+          - entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+            name: Alarm mode
+          - entity: [[ entity_id('input_boolean', service_name, measurement.name, 'reading_notifications_muted') ]]
+            name: Measurement notifications muted
+[% for role, label, active_modes in (
+  ('minimum_threshold', 'Minimum threshold', ['Low Only', 'Range']),
+  ('maximum_threshold', 'Maximum threshold', ['High Only', 'Range']),
+  ('recovery_deadband', 'Recovery deadband', ['Low Only', 'High Only', 'Range'])
+) %]
+          - type: conditional
+            conditions:
+            - condition: state
+              entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+              state: [[ active_modes | yaml_scalar ]]
+            row:
+              entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+              name: [[ label ]]
+          - type: conditional
+            conditions:
+            - condition: state
+              entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_mode') ]]
+              state_not: [[ active_modes | yaml_scalar ]]
+            row:
+              type: simple-entity
+              entity: [[ entity_id('input_number', service_name, measurement.name, role) ]]
+              name: [[ label ]]
+              tap_action: {action: none}
+              hold_action: {action: none}
+              double_tap_action: {action: none}
+[% endfor %]
+        - type: entities
+          title: Confirmation timing
+          show_header_toggle: false
+          entities:
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_danger_percent') ]]
+            name: Required danger
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'observation_window_seconds') ]]
+            name: Observation window
+          - entity: [[ entity_id('input_number', service_name, measurement.name, 'required_recovery_seconds') ]]
+            name: Required recovery
+[% endif %]
+        - type: entities
+{# Live status explains what the automation currently sees. Alarm state is
+   automation-owned, so expose it through a read-only row. #}
+          title: Live status
+          show_header_toggle: false
+          entities:
+          - entity: [[ measurement.entity_id ]]
+            name: Current value
+          - type: simple-entity
+            entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+            name: Alarm state
+            tap_action: {action: none}
+            hold_action: {action: none}
+            double_tap_action: {action: none}
+          - type: conditional
+            conditions:
+[% if measurement.required %]
+            - condition: or
+              conditions:
+              - condition: state
+                entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+                state: Danger
+              - condition: state
+                entity: [[ entity_id('input_boolean', service_name, measurement.name, 'missing_reading_incident_active') ]]
+                state: 'on'
+[% else %]
+            - condition: state
+              entity: [[ entity_id('input_select', service_name, measurement.name, 'alarm_state') ]]
+              state: Danger
+[% endif %]
+            row:
+              type: button
+              entity: [[ entity_id('input_button', service_name, measurement.name, 'resend_active_alert') ]]
+              name: Resend active alert
+              icon: mdi:message-alert-outline
+              action_name: Resend
+              tap_action:
+                action: perform-action
+                perform_action: input_button.press
+                target:
+                  entity_id: [[ entity_id('input_button', service_name, measurement.name, 'resend_active_alert') ]]
+                confirmation:
+                  text: Resend this alert using the current Test Mode and mute settings?
+          - type: button
+            entity: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+            name: Close editor
+            icon: mdi:close
+            action_name: Close
+            tap_action:
+              action: perform-action
+              perform_action: input_boolean.turn_off
+              target:
+                entity_id: [[ entity_id('input_boolean', service_name, measurement.name, 'alarm_controls_expanded') ]]
+[% endfor %]
+[% endfor %]

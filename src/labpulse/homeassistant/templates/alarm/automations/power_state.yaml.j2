@@ -1,0 +1,142 @@
+{# Power condition remains Mains power/Running on battery. Presence of its component
+   readings is handled by the common reading-incident path. #}
+  - id: labpulse_[[ service.service_id ]]_power_outage_confirm
+    alias: LabPulse [[ service.label ]] Outage Confirm
+    mode: restart
+    trigger:
+    - platform: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
+      to: 'off'
+    - platform: homeassistant
+      event: start
+    action:
+    - delay:
+        seconds: [[ power.config.outage_confirm_seconds | yaml_scalar ]]
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'mains_present', 'reading_available') | yaml_scalar ]]
+      state: 'on'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'service_offline') | yaml_scalar ]]
+      state: 'off'
+    - condition: state
+      entity_id: [[ entity_id('input_boolean', service.name, 'service_offline_incident_active') | yaml_scalar ]]
+      state: 'off'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
+      state: 'off'
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+          state: 'off'
+        sequence:
+        - variables:
+            outage_start: "{{ as_timestamp(now()) }}"
+        - service: input_datetime.set_datetime
+          target:
+            entity_id: [[ entity_id('input_datetime', service.name, 'power', 'outage_started') | yaml_scalar ]]
+          data:
+            timestamp: "{{ outage_start }}"
+        - service: input_boolean.turn_on
+          target:
+            entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+        - service: input_select.select_option
+          target:
+            entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
+          data: {option: Running on battery}
+    - service: script.labpulse_open_incident
+      data:
+        notification_id: labpulse_[[ service.service_id ]]_power
+        title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse external power lost' }}
+        message: >-
+          [[ service.label ]] directly detected loss of external power and is running on UPS battery.
+          Battery level: {{ states('[[ entity_id('sensor', service.name, 'battery_level') ]]') }}%.
+          Battery voltage: {{ states('[[ entity_id('sensor', service.name, 'voltage') ]]') }} V.
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, 'power', 'notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, 'power', 'sms_requested') | yaml_scalar ]]
+        delivery_allowed: "{{ is_state('[[ entity_id('input_boolean', service.name, 'power', 'muted') ]]', 'off') }}"
+        sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ service.service_id ]]_power_warning_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "warning",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "power",
+            "measurement_label": "External power",
+            "state": "Running on battery",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Power Outage',
+            "message": 'External power has been lost. [[ power.mains_present.notification_context ]]',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ entity_id('sensor', service.name, 'voltage') ]]')
+          } | to_json }}
+
+  - id: labpulse_[[ service.service_id ]]_power_recovery_confirm
+    alias: LabPulse [[ service.label ]] Recovery Confirm
+    mode: restart
+    trigger:
+    - platform: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
+      to: 'on'
+    - platform: homeassistant
+      event: start
+    action:
+    - delay:
+        seconds: [[ power.config.restore_confirm_seconds | yaml_scalar ]]
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'mains_present', 'reading_available') | yaml_scalar ]]
+      state: 'on'
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') | yaml_scalar ]]
+      state: 'on'
+    - condition: template
+      value_template: >-
+        {{ is_state('[[ entity_id('input_boolean', service.name, 'power', 'outage_active') ]]', 'on') }}
+    - variables:
+        outage_start: >-
+          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, 'power', 'outage_started') ]]'), as_timestamp(now())) }}
+        outage_duration: >-
+          {{ [0, as_timestamp(now()) - outage_start] | max | round(0) }}
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: [[ entity_id('input_datetime', service.name, 'power', 'last_outage_started') | yaml_scalar ]]
+      data:
+        timestamp: "{{ outage_start }}"
+    - service: input_number.set_value
+      target:
+        entity_id: [[ entity_id('input_number', service.name, 'power', 'last_outage_duration') | yaml_scalar ]]
+      data:
+        value: "{{ outage_duration }}"
+    - service: script.labpulse_close_incident
+      data:
+        notification_id: labpulse_[[ service.service_id ]]_power
+        recovery_title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse external power restored' }}
+        recovery_message: >-
+          [[ service.label ]] detected restored external power after {{ outage_duration }} seconds.
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, 'power', 'notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, 'power', 'sms_requested') | yaml_scalar ]]
+        delivery_allowed: "{{ is_state('[[ entity_id('input_boolean', service.name, 'power', 'muted') ]]', 'off') }}"
+        recovery_sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ service.service_id ]]_power_recovery_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "recovery",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "power",
+            "measurement_label": "External power",
+            "state": "Mains power",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Power Restored',
+            "message": 'External power was restored after ' ~ outage_duration ~ ' seconds. [[ power.mains_present.notification_context ]]',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ entity_id('sensor', service.name, 'voltage') ]]')
+          } | to_json }}
+    - service: input_boolean.turn_off
+      target:
+        entity_id: [[ entity_id('input_boolean', service.name, 'power', 'outage_active') | yaml_scalar ]]
+    - service: input_select.select_option
+      target:
+        entity_id: [[ entity_id('input_select', service.name, 'power', 'state') | yaml_scalar ]]
+      data: {option: Mains power}

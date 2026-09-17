@@ -1,0 +1,43 @@
+mqtt:
+  broker: mosquitto
+  port: 1883
+
+sms:
+  # Simulation must never contact a real modem.
+  dry_run: true
+  recipients:
+    - "+447700900000"
+  test_recipients:
+    - "+447700900001"
+
+service_health:
+  offline_confirm_seconds: 10
+  recovery_confirm_seconds: 15
+
+setups: {}
+
+services:
+  ups_monitor:
+    label: UPS Monitor
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: "/tmp/labpulse-fake-serial/ups_monitor"
+        baud_rate: 9600
+    measurements:
+      voltage:
+        label: "UPS Battery Voltage"
+        unit: "V"
+        device_class: "voltage"
+      battery_level:
+        label: "UPS Battery Level"
+        unit: "%"
+        device_class: "battery"
+      mains_present:
+        label: "External Power Present"
+        state_class: null
+    read_interval_seconds: 1
+    maximum_measurement_age_seconds: 15
+    power_detection:
+      outage_confirm_seconds: 3
+      restore_confirm_seconds: 5

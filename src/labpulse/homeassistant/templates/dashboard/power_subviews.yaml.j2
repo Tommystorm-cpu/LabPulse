@@ -1,0 +1,40 @@
+{# Give each power monitor its own settings page. Its controls apply to mains,
+   voltage, and battery readings together. #}
+[% for service in model.power_alarm_services %]
+- title: Power Monitoring
+  path: alarm-power-[[ service.service_id ]]
+  subview: true
+  back_path: /labpulse-monitor/alarm-setup
+  type: sections
+  max_columns: 1
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: Power Monitoring
+      heading_style: title
+      icon: mdi:battery-charging
+    - type: heading
+      heading: [[ service.label | yaml_scalar ]]
+      heading_style: subtitle
+      icon: mdi:chip
+    - type: entities
+      show_header_toggle: false
+      entities:
+      - entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+        name: System status
+        secondary_info: last-changed
+      - type: divider
+      - type: simple-entity
+        entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+        name: Power supply
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+      - entity: [[ entity_id('input_boolean', service.name, 'power', 'muted') ]]
+        name: Power alerts muted
+      - type: divider
+      - entity: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]
+        name: Mains power
+        secondary_info: last-changed
+[% endfor %]

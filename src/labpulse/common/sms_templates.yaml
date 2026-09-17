@@ -1,0 +1,73 @@
+# Single source of truth for every user-facing LabPulse SMS template.
+#
+# Alert title/message values are Home Assistant Jinja expressions. LabPulse
+# placeholders such as [[ service.label ]] are expanded by the generator before
+# Home Assistant receives the generated package. The SMS worker replaces
+# {current_measurement} after Home Assistant has evaluated the surrounding message.
+
+alerts:
+  service_offline:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Service Offline: [[ service.label ]]")
+    message: >-
+      "LabPulse cannot communicate with [[ service.label ]], so its readings may be missing. Check the service connection if this continues.\nLatest status: {current_measurement}."
+
+  service_recovery:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Service Restored: [[ service.label ]]")
+    message: >-
+      "Communication with [[ service.label ]] is working again after " ~ (downtime_seconds | string) ~ " seconds.\nLatest status: {current_measurement}."
+
+  measurement_warning:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Danger Warning: [[ service.label ]] - [[ measurement.label ]] is in danger")
+    message: >-
+      "Current Measurement: {current_measurement}. \nDanger threshold: " ~ threshold ~ ". \nEvidence: " ~ (observed | round(1) | string) ~ "% of the past " ~ (window | string) ~ " seconds spent in danger zone; required " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'required_danger_percent') ]]') ~ "% for warning. \nManual intervention may be required."
+
+  measurement_recovery:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Recovery Alert: [[ service.label ]] - [[ measurement.label ]] has recovered from a danger state.")
+    message: >-
+      "Current Measurement: {current_measurement}. \nRecovered after " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'required_recovery_seconds') ]]') ~ " seconds in the deadband-adjusted safe zone. \nThresholds: " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') ~ " to " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') ~ "; deadband " ~ states('[[ entity_id('input_number', service.name, measurement.name, 'recovery_deadband') ]]') ~ "."
+
+  missing_reading:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse No Recent Data: [[ service.label ]] - [[ measurement.label ]]")
+    message: >-
+      "No recent usable reading has been received. Check the sensor connection and service if this continues.\nLatest reading: {current_measurement}"
+
+  reading_restored:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Data Restored: [[ service.label ]] - [[ measurement.label ]]")
+    message: >-
+      "Recent data is being received again.\nLatest reading: {current_measurement}"
+
+  power_warning:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Power Outage Alert")
+    message: >-
+      "External power has been lost and [[ service.label ]] is running on its backup battery. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unknown") ~ ".\nBattery voltage: {current_measurement} V."
+
+  power_recovery:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Power Recovery Alert")
+    message: >-
+      "External power has been restored after " ~ (outage_duration | string) ~ " seconds. " ~ "Battery level: " ~ (states('[[ entity_id('sensor', service.name, 'battery_level') ]]') ~ "%" if is_number(states('[[ entity_id('sensor', service.name, 'battery_level') ]]')) else "unknown") ~ ".\nBattery voltage: {current_measurement} V."
+
+formatting:
+  test_prefix: "[TEST]"
+  unsubscribe_footer: >-
+    If you wish to stop receiving messages from LabPulse, reply with UNSUBSCRIBE. To resubscribe, message SUBSCRIBE
+
+commands:
+  unsubscribe_confirmation: >-
+    You have been unsubscribed from LabPulse messages. Reply SUBSCRIBE to receive messages again.
+  subscribe_confirmation: >-
+    You have been subscribed to LabPulse messages. Reply UNSUBSCRIBE to stop receiving messages.
+
+notifications:
+  phone_book:
+    title: >-
+      ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Phone Book Notification")
+    message: >-
+      "You are receiving this message because your phone number is registered for LabPulse monitoring alerts. No action is required. To pause notifications, reply UNSUBSCRIBE to this phone number. To re-enable notifications, reply SUBSCRIBE. For permanent removal, contact t.k.davey@lancaster.ac.uk. (This message was triggered manually from the LabPulse dashboard)"

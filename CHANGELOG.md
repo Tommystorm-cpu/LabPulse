@@ -1,0 +1,99 @@
+# Changelog
+
+All notable user-visible changes will be recorded here. LabPulse is currently
+pre-release, and its earlier prototype history was not maintained as formal
+releases.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning will follow [Semantic Versioning](https://semver.org/) once release
+artifacts are published.
+
+## Unreleased
+
+### Added
+
+- Independent Triton control-PC publisher heartbeats and availability, with
+  fridge service alerts driven by script health instead of logfile activity.
+- A per-service `notify_on_service_failure` setting, enabled by default, to
+  silence known unreliable or intentionally disconnected hubs without hiding
+  their status.
+
+- Repository-wide MIT licensing for software, firmware, documentation, and
+  hardware design files.
+- A reference Raspberry Pi deployment matrix and explicit pre-1.0 support,
+  compatibility, safety, and experimental-feature boundaries.
+- An explicit product boundary defining LabPulse as monitoring and best-effort
+  alerting rather than safety-critical equipment control.
+- A pipx-installable `labpulse` package and unified operator command.
+- Setup, lifecycle, logs, configuration, browser, firmware-help, and diagnostic
+  commands.
+- Version reporting through `labpulse version` and runtime-image matching in
+  `labpulse doctor`.
+- Tag-derived package, runtime, and container versions through `setuptools-scm`.
+- One-container-per-service hardware execution with a central lifecycle runner.
+- Self-contained serial, DHT11, and X1200 drivers with declarative resources.
+- A self-contained Sensirion SHT40 I2C temperature/humidity driver with
+  CRC-validated measurements and least-privilege device access.
+- Compressed-air Arduino firmware that publishes pressure plus SHT40
+  temperature/humidity through the standard serial pipe, with the superseded
+  pressure-only sketch retained under `legacy/Arduino/pressure_monitor/`.
+- Hardware-free fake serial devices and controllable alarm scenarios.
+- Generated Home Assistant MQTT entities, alarm package, and native YAML
+  dashboard.
+- Dry-run, test-mode, and modem-backed SMS delivery with subscription controls.
+- Checksummed, consistent state archives and guarded blank-host reconstruction
+  through `labpulse backup` and `labpulse restore`.
+- A release workflow that validates wheel, source distribution, and container
+  artifacts, publishes through TestPyPI Trusted Publishing, and publishes
+  attested AMD64/ARM64 images to GHCR.
+
+### Changed
+
+- Service measurement configuration now supports typed shared defaults,
+  infers labels from stable IDs when omitted, and keeps MQTT JSON source names
+  beside their measurements instead of duplicating IDs under driver options.
+- Optional hardware dependencies are grouped by the `serial`, `i2c`, and
+  `gpio` connection types instead of individual driver names.
+- The installed deployment directory is `~/labpulse-live`.
+- The guarded configuration command is `labpulse config`.
+- Deployment shell scripts are maintained under `deployment/`.
+- Measurement units are published exactly as configured while icons are
+  derived independently.
+- Real-Pi reliability acceptance now records two weeks of continuous operation,
+  real and injected hardware faults, UPS and abrupt-power recovery, restart
+  alarm reconciliation, SMS delivery, and the built-in watchdog decision.
+- `labpulse config` now preserves an active fake-USB deployment and validates
+  and regenerates its derived runtime configuration transactionally.
+- Hardware lifecycle logs now include stable service/driver/target context,
+  status transitions, and the age of the last valid reading.
+- `labpulse doctor` now reports the active runtime mode and gives corrective
+  commands or checks for common deployment, container, hardware, MQTT, and
+  Home Assistant failures.
+- `labpulse down` and `labpulse restart` accept individual Compose service
+  names.
+- Generated deployments use the GHCR image matching the installed package
+  version instead of copying source and rebuilding containers on each Pi.
+- Guarded configuration now uses the same configurable Docker command as every
+  other lifecycle operation.
+- Doctor now checks Docker daemon access and versions, host timezone/NTP state,
+  and systemd hardware-watchdog activation.
+- Installation now includes ordered Home Assistant/MQTT onboarding, a
+  first-install acceptance checklist, host-time validation, and a non-editable
+  production update command.
+- Power-loss and restoration notifications are explicitly separate: loss is
+  reported promptly, while recovery closes the lifecycle with outage duration.
+- Persistent Python worker logs now rotate daily and retain seven previous
+  daily files instead of growing without a bound.
+- The deployed USB assignment helper now reliably switches from the system
+  Python to LabPulse's managed environment before importing the package.
+- Measurement configuration now uses the optional strict boolean `required`
+  field, defaulting to `true`, with plainly named missing/recovery timers.
+- The generated Diagnostics view is now a human-readable System Status view
+  with Working, Needs attention, and Offline service states.
+
+### Removed
+
+- Prototype package layouts and earlier Pi implementations from the active
+  runtime. They remain under `legacy/` for reference only.
+- The redundant per-reading availability sensor and the old
+  `availability: required|optional` measurement configuration.

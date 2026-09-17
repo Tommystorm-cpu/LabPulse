@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm>=9.2,<11"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labpulse"
+dynamic = ["version"]
+description = "Raspberry Pi laboratory infrastructure monitoring with Home Assistant and MQTT"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "LabPulse contributors" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "Jinja2>=3.1,<4",
+  "packaging>=24,<27",
+  "paho-mqtt>=2,<3",
+  "pydantic>=2,<3",
+  "PyYAML>=6,<7",
+]
+
+[project.optional-dependencies]
+serial = ["pyserial>=3.5,<4"]
+i2c = ["smbus2>=0.5,<1"]
+gpio = [
+  "adafruit-blinka>=8,<9",
+  "adafruit-circuitpython-dht>=4,<5",
+  "gpiod>=2,<3",
+  "lgpio>=0.2,<1",
+]
+dev = [
+  "build>=1,<2",
+  "pytest>=8,<9",
+]
+
+[project.scripts]
+labpulse = "labpulse.control:main"
+labpulse-up = "labpulse.control:up_main"
+labpulse-down = "labpulse.control:down_main"
+labpulse-restart = "labpulse.control:restart_main"
+labpulse-ps = "labpulse.control:ps_main"
+labpulse-logs = "labpulse.control:logs_main"
+labpulse-config = "labpulse.control:config_main"
+labpulse-open = "labpulse.control:open_main"
+labpulse-setup = "labpulse.installer:main"
+
+[project.urls]
+Repository = "https://github.com/lairdgrouplancaster/LabPulse"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["labpulse*"]
+
+[tool.setuptools.package-data]
+"labpulse.common" = ["*.yaml"]
+"labpulse.homeassistant" = [
+  "templates/*.j2",
+  "templates/*/*.yaml",
+  "templates/*/*.j2",
+  "templates/*/*/*.j2",
+]
+
+[tool.setuptools.data-files]
+"share/labpulse" = [
+  "config.yaml",
+  "requirements-host.txt",
+  "setup_usb_devices.py",
+  "simulate_serial.py",
+]
+"share/labpulse/config.d" = [
+  "config.d/triton-01-measurements.yaml",
+  "config.d/triton-02-measurements.yaml",
+]
+"share/labpulse/deployment" = [
+  "deployment/edit_config.sh",
+  "deployment/generate_compose.sh",
+  "deployment/generate_homeassistant_config.sh",
+  "deployment/setup_container_fs.sh",
+]
+"share/labpulse/testing/real_hardware" = [
+  "testing/real_hardware/hardware_fault_common.sh",
+  "testing/real_hardware/test_dht11_fault.sh",
+  "testing/real_hardware/test_x1200_faults.sh",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["testing"]
+pythonpath = ["src", "."]
+norecursedirs = ["testing/tmp"]
+addopts = "--strict-markers -ra -p no:cacheprovider"

@@ -1,0 +1,151 @@
+{# System Status answers the operator's two questions: is each service working,
+   and what reading needs attention? Internal incident machinery stays hidden. #}
+- title: System Status
+  path: system-status
+  icon: mdi:heart-pulse
+  type: sections
+  max_columns: 3
+  dense_section_placement: false
+  sections:
+[% for service in model.services %]
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: [[ service.label | yaml_scalar ]]
+      heading_style: title
+      icon: mdi:chip
+    - type: tile
+      entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+      name: Status
+      icon: mdi:heart-pulse
+      state_content:
+      - state
+      - last-changed
+      tap_action: {action: none}
+      hold_action: {action: none}
+      double_tap_action: {action: none}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+        state_not: Working
+      card:
+        type: entities
+        title: What needs attention
+        show_header_toggle: false
+        entities:
+        - type: attribute
+          entity: [[ entity_id('sensor', service.name, 'service_health') ]]
+          attribute: reason
+          name: Explanation
+    - type: heading
+      heading: Latest readings
+      heading_style: subtitle
+      icon: mdi:gauge
+[% for measurement in service.measurements %]
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]
+        state: 'on'
+      card:
+        type: tile
+        entity: [[ measurement.entity_id ]]
+        name: [[ measurement.label | yaml_scalar ]]
+        state_content:
+        - state
+        - last-updated
+        tap_action: {action: more-info}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]
+        state: 'off'
+      card:
+        type: tile
+        entity: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') ]]
+        name: [[ (measurement.label ~ (' — No recent data' if measurement.required else ' — No recent data — optional')) | yaml_scalar ]]
+        icon: [[ ('mdi:alert-outline' if measurement.required else 'mdi:information-outline') | yaml_scalar ]]
+        color: [[ ('amber' if measurement.required else 'disabled') | yaml_scalar ]]
+        state_content: last-changed
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+[% endfor %]
+[% if service.power is not none and service.power.alarmed %]
+    - type: heading
+      heading: Power
+      heading_style: subtitle
+      icon: mdi:power-plug-battery
+    - type: tile
+      entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
+      name: Power supply
+      state_content:
+      - state
+      - last-changed
+      tap_action: {action: none}
+      hold_action: {action: none}
+      double_tap_action: {action: none}
+[% endif %]
+[% endfor %]
+[% if model.custom_measurements %]
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Calculated Readings
+      heading_style: title
+      icon: mdi:calculator-variant-outline
+[% for measurement in model.custom_measurements %]
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('binary_sensor', measurement.service_name, measurement.name, 'reading_available') ]]
+        state: 'on'
+      card:
+        type: tile
+        entity: [[ measurement.entity_id ]]
+        name: [[ measurement.label | yaml_scalar ]]
+        state_content:
+        - state
+        - last-changed
+        tap_action: {action: more-info}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: [[ entity_id('binary_sensor', measurement.service_name, measurement.name, 'reading_available') ]]
+        state: 'off'
+      card:
+        type: tile
+        entity: [[ entity_id('binary_sensor', measurement.service_name, measurement.name, 'reading_available') ]]
+        name: [[ (measurement.label ~ (' — No recent data' if measurement.required else ' — No recent data — optional')) | yaml_scalar ]]
+        icon: [[ ('mdi:alert-outline' if measurement.required else 'mdi:information-outline') | yaml_scalar ]]
+        color: [[ ('amber' if measurement.required else 'disabled') | yaml_scalar ]]
+        state_content: last-changed
+        tap_action: {action: none}
+        hold_action: {action: none}
+        double_tap_action: {action: none}
+[% endfor %]
+[% endif %]
+[% if model.outputs %]
+  - type: grid
+    column_span: 1
+    cards:
+    - type: heading
+      heading: Controlled Outputs
+      heading_style: title
+      icon: mdi:electric-switch
+[% for output in model.outputs %]
+    - type: tile
+      entity: [[ output.entity_id ]]
+      name: [[ output.label | yaml_scalar ]]
+      state_content:
+      - state
+      - last-changed
+[% endfor %]
+[% endif %]

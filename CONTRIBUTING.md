@@ -1,0 +1,108 @@
+# Contributing to LabPulse
+
+Thank you for helping improve LabPulse. The project is being prepared for
+broader open-source use, but it is still pre-release and its public interfaces
+may change.
+
+## Before starting
+
+For a small correction, open a focused pull request. For a new feature,
+configuration change, public interface, or hardware driver, open an issue first
+so the intended behavior and test boundary can be agreed.
+
+Read:
+
+1. [User guide and safety boundary](docs/USER_GUIDE.md)
+2. [Architecture](docs/ARCHITECTURE.md)
+3. [Development](docs/DEVELOPMENT.md)
+4. [Hardware driver package guide](src/labpulse/hardware/drivers/README.md)
+   when adding direct hardware support
+5. [Firmware guide](firmware/README.md) when changing Arduino firmware or
+   serial output
+
+## Development principles
+
+- Preserve `~/labpulse-live/config.yaml` as the installed source of truth.
+- Keep sensor acquisition in Python and alarm decisions in Home Assistant.
+- Keep equipment control and safety functions outside the measurement driver
+  contract; discuss any actuation proposal before implementation.
+- Prefer the standard serial protocol when firmware can normalize a device.
+- Keep optional hardware libraries lazy so unrelated drivers and host-side
+  generation do not require them.
+- Make important behavior testable without Raspberry Pi hardware.
+- Add compatibility or migration logic only for a concrete published-release
+  requirement.
+- Do not commit phone numbers, credentials, Home Assistant state, logs, or
+  locally generated deployment files.
+
+## Making a change
+
+1. Create a branch from the current main branch.
+2. Install the project in editable mode as described in
+   [Development](docs/DEVELOPMENT.md).
+3. Make the smallest coherent change.
+4. Add or update automated tests.
+5. Update the authoritative documentation for changed behavior.
+6. Run the complete hardware-free suite with `python -m pytest`.
+7. Describe any real-Pi checks that are still required.
+
+By submitting a contribution, you agree that it may be distributed under the
+[MIT License](LICENSE) used by this project.
+
+Do not hand-edit generated `compose.yaml`,
+`homeassistant/config/packages/labpulse_generated.yaml`, or
+`homeassistant/config/labpulse-dashboard.yaml` as source changes. Update their
+generators, models, templates, or source configuration.
+
+## Pull requests
+
+A pull request should explain:
+
+- the problem and intended behavior;
+- the components changed;
+- automated tests run;
+- real hardware tested, if any;
+- configuration or generated-output changes;
+- documentation updated;
+- remaining risks or follow-up work.
+
+Keep unrelated formatting and refactors out of functional changes. Preserve
+user changes already present in the branch.
+
+## Hardware contributions
+
+First decide whether the device can emit the unit-free pipe-delimited serial
+protocol. If it can, add firmware, configuration, simulator coverage, and
+documentation without creating a Python driver.
+
+A direct-hardware driver must include:
+
+- a stable driver ID and strict options model;
+- `connect`, `read`, and idempotent `close` behavior;
+- normalized numeric readings and classified failures;
+- declarative container resources;
+- lazy optional dependency imports;
+- hardware-free tests for configuration, reading, failure, and cleanup;
+- fake or injectable hardware where practical;
+- example configuration and documentation;
+- a recorded real-device smoke test before release.
+
+See the [hardware driver package guide](src/labpulse/hardware/drivers/README.md).
+
+## Documentation style
+
+Write current facts rather than implementation history. Put operator tasks in
+operator guides, cross-component contracts in architecture references, and
+code-local details in docstrings. Avoid creating one-off implementation-plan
+documents for completed features.
+
+Use relative links inside the repository. Examples must distinguish the
+repository starter `config.yaml` from the installed
+`~/labpulse-live/config.yaml`.
+
+## Participation
+
+Be respectful, constructive, and professional when opening issues, reviewing
+changes, or discussing the project. Do not publish credentials, phone numbers,
+private network details, or other sensitive information in issues or pull
+requests.

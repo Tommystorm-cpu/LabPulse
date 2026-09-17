@@ -1,0 +1,191 @@
+{# MQTT publishes facts. These derived entities classify service health,
+   reading presence, and threshold condition without mixing their state. #}
+sensor:
+[% if not model.alarm_measurements %]
+  []
+[% else %]
+[% for service, measurement in model.alarm_measurements %]
+  - platform: history_stats
+    name: [[ stable_id(service.name, measurement.name, 'observed_danger_percent') | yaml_scalar ]]
+    unique_id: [[ stable_id(service.name, measurement.name, 'observed_danger_percent') | yaml_scalar ]]
+    entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'danger_zone') | yaml_scalar ]]
+    state: 'on'
+    type: ratio
+    start: >
+      {{ now() - timedelta(seconds=states(
+        '[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]'
+      ) | int(120)) }}
+    end: >-
+      {{ now() }}
+[% endfor %]
+[% endif %]
+
+template:
+[% if model.custom_measurements %]
+  - sensor:
+[% for measurement in model.custom_measurements %]
+    - name: [[ stable_id('custom', measurement.custom_id) | yaml_scalar ]]
+      unique_id: [[ stable_id('custom', measurement.custom_id) | yaml_scalar ]]
+[% if measurement.config.unit is not none %]
+      unit_of_measurement: [[ measurement.config.unit | yaml_scalar ]]
+[% endif %]
+[% if measurement.config.device_class is not none %]
+      device_class: [[ measurement.config.device_class | yaml_scalar ]]
+[% endif %]
+[% if measurement.config.state_class is not none %]
+      state_class: [[ measurement.config.state_class | yaml_scalar ]]
+[% endif %]
+[% if measurement.config.icon is not none %]
+      icon: [[ measurement.config.icon | yaml_scalar ]]
+[% endif %]
+      availability: [[ measurement.availability_template | yaml_scalar ]]
+      state: [[ measurement.state_template | yaml_scalar ]]
+      attributes:
+        labpulse_custom_measurement: "{{ true }}"
+        formula: [[ measurement.config.formula | yaml_scalar ]]
+        physical_inputs: [[ ('{{ ' ~ (measurement.config.inputs | json) ~ ' }}') | yaml_scalar ]]
+        required: "{{ [[ 'true' if measurement.required else 'false' ]] }}"
+[% endfor %]
+[% endif %]
+[% if model.services %]
+  - sensor:
+[% for service in model.services %]
+    - name: [[ stable_id(service.name, 'service_health') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, 'service_health') | yaml_scalar ]]
+      icon: mdi:server-network
+      state: >
+        {% set raw = states('[[ entity_id('sensor', service.name, 'status') ]]') %}
+        {% if raw in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] %}
+          Offline
+        {% elif raw != 'online' or [[ service.any_required_measurement_invalid_template ]] %}
+          Needs attention
+        {% else %}
+          Working
+        {% endif %}
+      attributes:
+        reason: >-
+          {% set raw = states('[[ entity_id('sensor', service.name, 'status') ]]') %}
+          {% if raw == 'reconnecting' %}
+            Trying to reconnect to this sensor service.
+          {% elif raw == 'awaiting_heartbeat' %}
+            Waiting for the control-PC publisher's first current heartbeat.
+          {% elif raw in ['disconnected', 'offline'] %}
+            No connection to this sensor service.
+          {% elif raw == 'error' %}
+            The sensor service reported an error and is trying to recover.
+          {% elif raw in ['unknown', 'unavailable'] %}
+            No current status has been received from this sensor service.
+          {% elif raw != 'online' %}
+            The sensor service reported: {{ raw | replace('_', ' ') }}.
+          {% elif [[ service.any_required_measurement_invalid_template ]] %}
+            One or more required readings have no recent usable data.
+          {% else %}
+            The service and all required readings are working normally.
+          {% endif %}
+[% endfor %]
+    binary_sensor:
+[% for service in model.services %]
+    - name: [[ stable_id(service.name, 'service_offline') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, 'service_offline') | yaml_scalar ]]
+      device_class: problem
+      state: >-
+        {{ states('[[ entity_id('sensor', service.name, 'status') ]]')
+           in ['disconnected', 'reconnecting', 'error', 'offline', 'unknown', 'unavailable'] }}
+      attributes:
+        raw_service_status: >-
+          {{ states('[[ entity_id('sensor', service.name, 'status') ]]') }}
+[% endfor %]
+[% endif %]
+[% if model.measurements %]
+  - binary_sensor:
+[% for service, measurement in model.measurements %]
+    - name: [[ stable_id(service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+      device_class: connectivity
+      state: >-
+        {{ is_number(states('[[ measurement.entity_id ]]')) }}
+      attributes:
+        required: "{{ [[ 'true' if measurement.required else 'false' ]] }}"
+        reason: >-
+          {{ 'Current reading received' if is_number(states('[[ measurement.entity_id ]]'))
+             else 'No recent usable data' }}
+[% endfor %]
+[% endif %]
+[% if model.alarm_measurements %]
+  - binary_sensor:
+[% for service, measurement in model.alarm_measurements %]
+    - name: [[ stable_id(service.name, measurement.name, 'danger_zone') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, measurement.name, 'danger_zone') | yaml_scalar ]]
+      device_class: problem
+      state: >
+        {% set mode = states('[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]') %}
+        {% set raw = states('[[ measurement.entity_id ]]') %}
+        {% if mode == 'Disabled' or not is_number(raw) %}
+          false
+        {% else %}
+          {% set value = raw | float %}
+          {% set minimum = states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') | float(0) %}
+          {% set maximum = states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') | float(0) %}
+          {{ (mode == 'Low Only' and value < minimum)
+             or (mode == 'High Only' and value > maximum)
+             or (mode == 'Range' and (value < minimum or value > maximum)) }}
+        {% endif %}
+    - name: [[ stable_id(service.name, measurement.name, 'recovery_zone') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, measurement.name, 'recovery_zone') | yaml_scalar ]]
+      state: >
+        {% set mode = states('[[ entity_id('input_select', service.name, measurement.name, 'alarm_mode') ]]') %}
+        {% set raw = states('[[ measurement.entity_id ]]') %}
+        {% if not is_number(raw) %}
+          false
+        {% elif mode == 'Disabled' %}
+          true
+        {% else %}
+          {% set value = raw | float %}
+          {% set minimum = states('[[ entity_id('input_number', service.name, measurement.name, 'minimum_threshold') ]]') | float(0) %}
+          {% set maximum = states('[[ entity_id('input_number', service.name, measurement.name, 'maximum_threshold') ]]') | float(0) %}
+          {% set deadband = states('[[ entity_id('input_number', service.name, measurement.name, 'recovery_deadband') ]]') | float(0) %}
+          {{ (mode == 'Low Only' and value >= minimum + deadband)
+             or (mode == 'High Only' and value <= maximum - deadband)
+             or (mode == 'Range' and value >= minimum + deadband and value <= maximum - deadband) }}
+        {% endif %}
+[% endfor %]
+[% endif %]
+[% if model.bulk_alarm_targets %]
+  - binary_sensor:
+    - name: LabPulse Bulk Alarm Changes Selected
+      unique_id: labpulse_bulk_alarm_changes_selected
+      state: [[ bulk_selected_expression | yaml_scalar ]]
+    sensor:
+    - name: LabPulse Bulk Alarm Target Count
+      unique_id: labpulse_bulk_alarm_target_count
+      state: [[ bulk_target_count_template | yaml_scalar ]]
+      unit_of_measurement: measurements
+[% endif %]
+[% for service in model.power_alarm_services %]
+[% set power = service.power %]
+  - sensor:
+    - name: [[ stable_id(service.name, 'power', 'last_outage_started') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, 'power', 'last_outage_started') | yaml_scalar ]]
+      icon: mdi:calendar-clock
+      state: >-
+        {% set value = states('[[ entity_id('input_datetime', service.name, 'power', 'last_outage_started') ]]') %}
+        {{ 'Unknown' if value in ['unknown', 'unavailable', 'none', 'None', ''] else value }}
+    - name: [[ stable_id(service.name, 'power', 'last_outage_duration') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, 'power', 'last_outage_duration') | yaml_scalar ]]
+      icon: mdi:timer-outline
+      device_class: duration
+      unit_of_measurement: s
+      state_class: measurement
+      state: >-
+        {{ states('[[ entity_id('input_number', service.name, 'power', 'last_outage_duration') ]]') | float(0) | round(0) }}
+    binary_sensor:
+    - name: [[ stable_id(service.name, 'power', 'mains_present') | yaml_scalar ]]
+      unique_id: [[ stable_id(service.name, 'power', 'mains_present') | yaml_scalar ]]
+      device_class: power
+      availability: >-
+        {{ is_state('[[ entity_id('binary_sensor', service.name, 'mains_present', 'reading_available') ]]', 'on') }}
+      state: >-
+        {{ states('[[ entity_id('sensor', service.name, 'mains_present') ]]') | float(0) >= 0.5 }}
+      attributes:
+        meaning: On means external power present; off means running on UPS battery
+[% endfor %]

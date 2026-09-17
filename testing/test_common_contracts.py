@@ -1,0 +1,273 @@
+"""Regression tests for shared identity and MQTT boundaries."""
+
+from pathlib import Path
+import sys
+
+from pydantic import ValidationError
+
+
+
+REFACTOR_DIR = Path(__file__).resolve().parents[1]
+
+from labpulse.common.identity import entity_id, stable_id
+from labpulse.common.config import LabPulseConfig
+from labpulse.common.mqtt_contracts import (
+    SMS_ALERT_PAYLOAD_FIELDS,
+    SMS_RESULT_TOPIC_PREFIX,
+    SMS_SEND_TOPIC,
+    SMS_STATUS_DISCOVERY_TOPIC,
+    SMS_STATUS_TOPIC,
+    SMS_SUBSCRIPTION_TOPIC,
+    SmsRequest,
+    sms_result_topic,
+    sensor_discovery_topic,
+    sensor_state_topic,
+    service_status_topic,
+    status_discovery_topic,
+)
+
+
+def assert_equal(actual: object, expected: object, label: str) -> None:
+    """Raise AssertionError when two values differ."""
+
+    if actual != expected:
+        raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
+
+
+def test_stable_identity_contract() -> None:
+    """Check shared IDs reproduce established Home Assistant identities."""
+
+    assert_equal(
+        stable_id("pump_room", "flow1"),
+        "labpulse_pump_room_flow1",
+        "stable ID",
+    )
+    assert_equal(
+        entity_id("sensor", "pump_room", "flow1"),
+        "sensor.labpulse_pump_room_flow1",
+        "sensor entity ID",
+    )
+
+
+def test_sensor_topic_contract() -> None:
+    """Check shared topic helpers preserve established MQTT paths."""
+
+    assert_equal(
+        sensor_state_topic("pump_room", "flow1"),
+        "home/sensor/pump_room/flow1/state",
+        "measurement state topic",
+    )
+    assert_equal(
+        service_status_topic("pump_room"),
+        "home/sensor/pump_room/status",
+        "status state topic",
+    )
+    assert_equal(
+        sensor_discovery_topic("pump_room", "flow1"),
+        "homeassistant/sensor/pump_room_flow1/config",
+        "measurement discovery topic",
+    )
+    assert_equal(
+        status_discovery_topic("pump_room"),
+        "homeassistant/sensor/pump_room_status/config",
+        "status discovery topic",
+    )
+
+
+def test_sms_contract() -> None:
+    """Check the shared alert topic and required payload fields."""
+
+    assert_equal(SMS_SEND_TOPIC, "labpulse/sms/send", "SMS send topic")
+    assert_equal(SMS_SUBSCRIPTION_TOPIC, SMS_SEND_TOPIC, "SMS subscription topic")
+    assert_equal(SMS_STATUS_TOPIC, "labpulse/sms/status", "SMS status topic")
+    assert_equal(
+        SMS_STATUS_DISCOVERY_TOPIC,
+        "homeassistant/sensor/labpulse_sms_status/config",
+        "SMS status discovery topic",
+    )
+    assert_equal(SMS_RESULT_TOPIC_PREFIX, "labpulse/sms/result", "SMS result prefix")
+    assert_equal(sms_result_topic("request-1"), "labpulse/sms/result/request-1", "SMS result topic")
+    required = {
+        "request_id",
+        "event",
+        "service",
+        "measurement",
+        "state",
+        "title",
+        "message",
+        "test_mode",
+        "current_measurement",
+    }
+    if not required.issubset(SMS_ALERT_PAYLOAD_FIELDS):
+        raise AssertionError("SMS alert contract is missing required fields")
+    request = SmsRequest.model_validate(
+        {
+            "request_id": "request-1",
+            "event": "test",
+            "service": "manual",
+            "measurement": "sms",
+            "state": "Test",
+            "title": "Test",
+            "message": "Test message",
+        }
+    )
+    assert_equal(request.event, "test", "validated SMS request")
+    assert_equal(request.test_mode, False, "normal delivery default")
+    notification = SmsRequest.model_validate(
+        {
+            "request_id": "notification-1",
+            "event": "notification",
+            "service": "labpulse",
+            "measurement": "phone_book",
+            "state": "Notification",
+            "title": "LabPulse Phone Book Notification",
+            "message": "Phone book notification",
+        }
+    )
+    assert_equal(notification.event, "notification", "validated notification request")
+
+
+def test_service_health_config_contract() -> None:
+    """Validate global service-health defaults and bounded overrides."""
+
+    base = {
+        "mqtt": {"broker": "mosquitto"},
+        "setups": {"test_setup": {}},
+        "services": {
+            "hub": {
+                "label": "Hub",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/hub"},
+                },
+                "measurements": {"pressure": {"setups": ["test_setup"]}},
+            }
+        },
+    }
+    defaulted = LabPulseConfig.model_validate(base)
+    assert_equal(defaulted.service_health.offline_confirm_seconds, 10, "offline default")
+    assert_equal(defaulted.service_health.recovery_confirm_seconds, 15, "recovery default")
+    assert_equal(defaulted.mqtt.external_listener.enabled, False, "external MQTT default")
+    assert_equal(
+        defaulted.mqtt.external_listener.bind_addresses,
+        ["0.0.0.0"],
+        "MQTT bind defaults",
+    )
+    assert_equal(defaulted.mqtt.external_listener.port, 8883, "external MQTT port default")
+    configured = LabPulseConfig.model_validate(
+        {
+            **base,
+            "service_health": {
+                "offline_confirm_seconds": 7,
+                "recovery_confirm_seconds": 12,
+            },
+        }
+    )
+    assert_equal(configured.service_health.offline_confirm_seconds, 7, "offline override")
+
+    service_override = LabPulseConfig.model_validate({
+        **base,
+        "services": {
+            "hub": {
+                **base["services"]["hub"],
+                "service_health": {"offline_confirm_seconds": 120},
+            },
+        },
+    }).services["hub"].service_health
+    if service_override is None:
+        raise AssertionError("per-service health override was discarded")
+    assert_equal(service_override.offline_confirm_seconds, 120, "service offline override")
+    assert_equal(service_override.recovery_confirm_seconds, None, "service recovery inheritance")
+
+    try:
+        LabPulseConfig.model_validate(
+            {**base, "service_health": {"offline_confirm_seconds": 0}}
+        )
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("zero service-health confirmation was accepted")
+
+    try:
+        LabPulseConfig.model_validate({
+            **base,
+            "services": {
+                "hub": {
+                    **base["services"]["hub"],
+                    "service_health": {"offline_confirm_seconds": 0},
+                },
+            },
+        })
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("zero per-service health confirmation was accepted")
+
+
+def test_external_mqtt_listener_config_contract() -> None:
+    """Validate the optional control-PC listener and its network binding."""
+
+    base = {
+        "mqtt": {
+            "broker": "mosquitto",
+            "external_listener": {
+                "enabled": True,
+                "bind_addresses": ["10.50.1.1", "10.50.2.1"],
+                "port": 9443,
+            },
+        },
+        "setups": {},
+        "services": {},
+    }
+    configured = LabPulseConfig.model_validate(base)
+    assert_equal(configured.mqtt.external_listener.enabled, True, "external MQTT enabled")
+    assert_equal(
+        configured.mqtt.external_listener.bind_addresses,
+        ["10.50.1.1", "10.50.2.1"],
+        "MQTT binds",
+    )
+    assert_equal(configured.mqtt.external_listener.port, 9443, "external MQTT port")
+
+    for invalid_address in ("localhost", "999.1.1.1", "::1"):
+        try:
+            LabPulseConfig.model_validate(
+                {
+                    **base,
+                    "mqtt": {
+                        **base["mqtt"],
+                        "external_listener": {
+                            **base["mqtt"]["external_listener"],
+                            "bind_addresses": [invalid_address],
+                        },
+                    },
+                }
+            )
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError(f"invalid MQTT bind address was accepted: {invalid_address}")
+
+    for invalid_addresses in (
+        [],
+        ["10.50.1.1", "10.50.1.1"],
+        ["0.0.0.0", "10.50.1.1"],
+    ):
+        try:
+            LabPulseConfig.model_validate(
+                {
+                    **base,
+                    "mqtt": {
+                        **base["mqtt"],
+                        "external_listener": {
+                            **base["mqtt"]["external_listener"],
+                            "bind_addresses": invalid_addresses,
+                        },
+                    },
+                }
+            )
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError(
+                f"invalid MQTT bind address list was accepted: {invalid_addresses}"
+            )

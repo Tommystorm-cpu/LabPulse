@@ -1,0 +1,32 @@
+name: Test LabPulse
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install LabPulse and test dependencies
+        run: python -m pip install --editable ".[dev]"
+
+      - name: Run hardware-free tests
+        run: python -m pytest

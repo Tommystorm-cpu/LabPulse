@@ -1,0 +1,43 @@
+# Complete development example using two channels from the pump-room simulator.
+mqtt:
+  broker: mosquitto
+sms:
+  dry_run: true
+dashboards:
+  cooling:
+    label: Cooling
+setups:
+  water_loop:
+    label: Water Loop
+    dashboard: cooling
+services:
+  pump_room:
+    label: Pump Room
+    driver:
+      type: labpulse.serial_pipe
+      options:
+        port: /tmp/labpulse-fake-serial/pump_room
+    measurement_defaults:
+      setups: [water_loop]
+    measurements:
+      temp0:
+        label: Supply Temperature
+        # required defaults to true, so normal readings omit it.
+        unit: "°C"
+        device_class: temperature
+      temp1:
+        label: Return Temperature
+        unit: "°C"
+        device_class: temperature
+custom_measurements:
+  temperature_difference:
+    # Use required: false only if a missing calculated result is acceptable.
+    setups: [water_loop]
+    inputs:
+      supply: pump_room.temp0
+      return_temp: pump_room.temp1
+    constants:
+      scale: 1.0
+    formula: (return_temp - supply) * scale
+    unit: "°C"
+    device_class: temperature

@@ -1,0 +1,5 @@
+# Dependencies for LabPulse commands that run directly on the Raspberry Pi.
+# labpulse setup installs these into ~/labpulse-live/.venv.
+packaging>=24,<27
+pydantic>=2,<3
+PyYAML>=6,<7

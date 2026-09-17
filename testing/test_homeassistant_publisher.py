@@ -1,0 +1,449 @@
+import json
+from typing import Any
+
+from labpulse.common.config import MqttConfig
+from labpulse.common.service_config import ServiceConfig
+from labpulse.hardware.homeassistant_publisher import HomeAssistantMqttPublisher
+
+
+class FakeMqttClient:
+    """Small in-memory MQTT client used to test publishing without a broker."""
+
+    def __init__(self) -> None:
+        """Create empty connection and publish tracking state."""
+
+        self.published: list[dict[str, object]] = []
+        self.connected_to: tuple[str, int, int] | None = None
+        self.loop_started = False
+        self.loop_stopped = False
+        self.disconnected = False
+        self.will: dict[str, object] | None = None
+        self.events: list[str] = []
+
+    class PublishResult:
+        """Record whether a fake publish was flushed."""
+
+        def __init__(self, events: list[str]) -> None:
+            """Store the shared event list."""
+
+            self.events = events
+
+        def wait_for_publish(self, timeout: float | None = None) -> None:
+            """Record a blocking publish flush."""
+
+            self.events.append(f"publish_waited:{timeout}")
+
+    def will_set(
+        self, topic: str, payload: str, qos: int, retain: bool
+    ) -> None:
+        """Record Last Will configuration order and values."""
+
+        self.will = {
+            "topic": topic,
+            "payload": payload,
+            "qos": qos,
+            "retain": retain,
+        }
+        self.events.append("will_set")
+
+    def connect(self, broker: str, port: int, keepalive: int) -> None:
+        """Record MQTT connection arguments."""
+
+        self.connected_to = (broker, port, keepalive)
+        self.events.append("connect")
+
+    def loop_start(self) -> None:
+        """Record that the MQTT network loop was started."""
+
+        self.loop_started = True
+
+    def publish(
+        self,
+        topic: str,
+        payload: Any,
+        qos: int = 0,
+        retain: bool = False,
+    ) -> "FakeMqttClient.PublishResult":
+        """Record one MQTT publish call."""
+
+        self.published.append(
+            {
+                "topic": topic,
+                "payload": payload,
+                "qos": qos,
+                "retain": retain,
+            }
+        )
+        self.events.append(f"publish:{payload}")
+        return self.PublishResult(self.events)
+
+    def loop_stop(self) -> None:
+        """Record that the MQTT network loop was stopped."""
+
+        self.loop_stopped = True
+
+    def disconnect(self) -> None:
+        """Record that the MQTT client was disconnected."""
+
+        self.disconnected = True
+
+
+def make_publisher(
+    service_name: str = "pressure_monitor",
+    device_name: str = "Air Pressure Sensor Hub",
+    measurements: dict[str, dict[str, object]] | None = None,
+    power_detection: dict[str, object] | None = None,
+    maximum_measurement_age_seconds: int = 300,
+) -> HomeAssistantMqttPublisher:
+    """Create a publisher wired to FakeMqttClient."""
+
+    service_config = ServiceConfig(
+        label=device_name,
+        driver={
+            "type": "labpulse.serial_pipe",
+            "options": {
+                "port": "/tmp/labpulse-fake-serial/pressure",
+                "baud_rate": 9600,
+            },
+        },
+        measurements=measurements or {
+            "pressure": {
+                "label": "Pressure",
+                "setups": ["test_setup"],
+                "unit": "bar",
+                "device_class": "pressure",
+            }
+        },
+        maximum_measurement_age_seconds=maximum_measurement_age_seconds,
+        power_detection=power_detection,
+    )
+    mqtt_config = MqttConfig(broker="mosquitto", port=1883)
+    publisher = HomeAssistantMqttPublisher(
+        service_name,
+        service_config,
+        mqtt_config,
+    )
+    publisher.client = FakeMqttClient()
+    return publisher
+
+
+def assert_equal(actual: object, expected: object, label: str) -> None:
+    """Raise AssertionError when two values differ."""
+
+    if actual != expected:
+        raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
+
+
+def test_connect_and_disconnect() -> None:
+    """Check that connect and disconnect delegate to the MQTT client."""
+
+    publisher = make_publisher()
+
+    publisher.connect()
+    publisher.disconnect()
+
+    assert_equal(
+        publisher.client.will,
+        {
+            "topic": "home/sensor/pressure_monitor/status",
+            "payload": "offline",
+            "qos": 1,
+            "retain": True,
+        },
+        "Last Will",
+    )
+    assert_equal(publisher.client.events[:2], ["will_set", "connect"], "Will order")
+    offline = publisher.client.published[-1]
+    assert_equal(offline["payload"], "offline", "clean shutdown status")
+    assert_equal(offline["qos"], 1, "clean shutdown qos")
+    assert_equal(offline["retain"], True, "clean shutdown retain")
+    if publisher.client.events.index("publish_waited:2.0") > publisher.client.events.index("publish:offline") + 1:
+        raise AssertionError("offline publish was not waited on immediately")
+    assert_equal(publisher.client.connected_to, ("mosquitto", 1883, 60), "connect args")
+    assert_equal(publisher.client.loop_started, True, "loop started")
+    assert_equal(publisher.client.loop_stopped, True, "loop stopped")
+    assert_equal(publisher.client.disconnected, True, "disconnected")
+
+
+def test_publish_discovery_once_then_measurements() -> None:
+    """Check discovery is retained once and state measurements publish every time."""
+
+    publisher = make_publisher()
+    measurements = {"pressure": 1.23}
+
+    publisher.publish(measurements)
+    publisher.publish(measurements)
+
+    published = publisher.client.published
+    assert_equal(len(published), 3, "publish count")
+
+    discovery = published[0]
+    first_state = published[1]
+    second_state = published[2]
+
+    assert_equal(discovery["retain"], True, "discovery retain")
+    assert_equal(
+        discovery["topic"],
+        "homeassistant/sensor/pressure_monitor_pressure/config",
+        "discovery topic",
+    )
+
+    payload = json.loads(str(discovery["payload"]))
+    assert_equal(payload["name"], "Pressure", "entity name")
+    assert_equal(payload["expire_after"], 300, "measurement expiry")
+    assert_equal(payload["unique_id"], "labpulse_pressure_monitor_pressure", "unique id")
+    assert_equal(payload["object_id"], "labpulse_pressure_monitor_pressure", "object id")
+    assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_pressure", "default entity id")
+    assert_equal(payload["unit_of_measurement"], "bar", "unit")
+    assert_equal(payload["state_class"], "measurement", "state class")
+    assert_equal(payload["icon"], "mdi:gauge", "derived measurement icon")
+    if "suggested_display_precision" in payload:
+        raise AssertionError("default discovery should not request display rounding")
+    if "device_class" in payload:
+        raise AssertionError("discovery enables unwanted Home Assistant conversion")
+    assert_equal(payload["device"]["name"], "Air Pressure Sensor Hub", "device name")
+
+    assert_equal(
+        first_state["topic"],
+        "home/sensor/pressure_monitor/pressure/state",
+        "first state topic",
+    )
+    assert_equal(first_state["payload"], 1.23, "first state payload")
+    assert_equal(second_state["payload"], 1.23, "second state payload")
+
+
+def test_precision_changes_display_discovery_without_rounding_measurement() -> None:
+    """Publish full numeric precision while suggesting a shorter display."""
+
+    publisher = make_publisher(measurements={
+        "pressure": {"setups": ["test_setup"], "unit": "bar", "precision": 2},
+        "temperature": {"setups": ["test_setup"], "unit": "°C", "precision": 0},
+        "humidity": {"setups": ["test_setup"], "unit": "%"},
+    })
+    readings = {"pressure": 1.23456, "temperature": 18.789, "humidity": 51.234}
+    publisher.publish(readings)
+
+    messages = publisher.client.published
+    discoveries = {
+        item["topic"]: json.loads(str(item["payload"]))
+        for item in messages if str(item["topic"]).endswith("/config")
+    }
+    assert discoveries["homeassistant/sensor/pressure_monitor_pressure/config"]["suggested_display_precision"] == 2
+    assert discoveries["homeassistant/sensor/pressure_monitor_temperature/config"]["suggested_display_precision"] == 0
+    assert "suggested_display_precision" not in discoveries["homeassistant/sensor/pressure_monitor_humidity/config"]
+    states = {
+        item["topic"]: item["payload"]
+        for item in messages if str(item["topic"]).endswith("/state")
+    }
+    assert states == {
+        "home/sensor/pressure_monitor/pressure/state": 1.23456,
+        "home/sensor/pressure_monitor/temperature/state": 18.789,
+        "home/sensor/pressure_monitor/humidity/state": 51.234,
+    }
+
+
+def test_publish_status_discovery_once_then_status() -> None:
+    """Check service status discovery is retained once and status updates publish."""
+
+    publisher = make_publisher()
+
+    publisher.publish_status("disconnected")
+    publisher.publish_status("reconnecting")
+
+    published = publisher.client.published
+    assert_equal(len(published), 3, "publish count")
+
+    discovery = published[0]
+    first_status = published[1]
+    second_status = published[2]
+
+    assert_equal(discovery["retain"], True, "status discovery retain")
+    assert_equal(
+        discovery["topic"],
+        "homeassistant/sensor/pressure_monitor_status/config",
+        "status discovery topic",
+    )
+
+    payload = json.loads(str(discovery["payload"]))
+    assert_equal(payload["name"], "Status", "status name")
+    assert_equal(payload["state_topic"], "home/sensor/pressure_monitor/status", "status state topic")
+    assert_equal(payload["unique_id"], "labpulse_pressure_monitor_status", "status unique id")
+    assert_equal(payload["object_id"], "labpulse_pressure_monitor_status", "status object id")
+    assert_equal(payload["default_entity_id"], "sensor.labpulse_pressure_monitor_status", "status default entity id")
+    assert_equal(payload["icon"], "mdi:heart-pulse", "status icon")
+
+    assert_equal(first_status["topic"], "home/sensor/pressure_monitor/status", "first status topic")
+    assert_equal(first_status["payload"], "disconnected", "first status payload")
+    assert_equal(first_status["qos"], 1, "first status qos")
+    assert_equal(first_status["retain"], True, "first status retain")
+    assert_equal(second_status["payload"], "reconnecting", "second status payload")
+
+
+def test_reconnect_republishes_current_status_and_discovery() -> None:
+    """Restore retained status after a broker restart without a runner transition."""
+
+    publisher = make_publisher()
+    publisher.connect()
+    publisher.publish({"pressure": 1.23})
+    publisher.publish_status("online")
+    publisher.client.published.clear()
+
+    publisher.client.on_connect(
+        publisher.client,
+        None,
+        None,
+        0,
+        None,
+    )
+
+    published = publisher.client.published
+    assert_equal(
+        [item["topic"] for item in published],
+        [
+            "homeassistant/sensor/pressure_monitor_status/config",
+            "homeassistant/sensor/pressure_monitor_pressure/config",
+            "home/sensor/pressure_monitor/status",
+        ],
+        "reconnect topics",
+    )
+    restored_status = published[-1]
+    assert_equal(restored_status["payload"], "online", "reconnect status")
+    assert_equal(restored_status["qos"], 1, "reconnect status qos")
+    assert_equal(restored_status["retain"], True, "reconnect status retain")
+
+
+def test_publish_discovery_for_new_measurements() -> None:
+    """Check multi-format hubs discover measurements that appear after first publish."""
+
+    publisher = make_publisher(
+        service_name="pump_room",
+        device_name="Pump Room Sensor Hub",
+        measurements={
+            "flow1": {
+                "label": "Flow 1",
+                "setups": ["test_setup"],
+                "unit": "L/min",
+                "device_class": "volume_flow_rate",
+            },
+            "temp0": {
+                "label": "Temperature 0",
+                "setups": ["test_setup"],
+                "unit": "\u00b0C",
+                "device_class": "temperature",
+                "icon": "mdi:snowflake-thermometer",
+            },
+        },
+    )
+
+    publisher.publish({"flow1": 2.1})
+    publisher.publish({"temp0": 20.5})
+
+    published = publisher.client.published
+    discovery_publishes = [
+        (item["topic"], item["payload"])
+        for item in published
+        if str(item["topic"]).startswith("homeassistant/sensor/")
+    ]
+
+    assert_equal(
+        discovery_publishes,
+        [
+            (
+                "homeassistant/sensor/pump_room_flow1/config",
+                json.dumps(
+                    {
+                        "name": "Flow 1",
+                            "state_topic": "home/sensor/pump_room/flow1/state",
+                            "expire_after": 300,
+                            "force_update": True,
+                            "unique_id": "labpulse_pump_room_flow1",
+                        "object_id": "labpulse_pump_room_flow1",
+                        "default_entity_id": "sensor.labpulse_pump_room_flow1",
+                        "device": {
+                            "identifiers": ["pump_room"],
+                            "name": "Pump Room Sensor Hub",
+                        },
+                        "unit_of_measurement": "L/min",
+                        "icon": "mdi:pipe-valve",
+                        "state_class": "measurement",
+                    }
+                ),
+            ),
+            (
+                "homeassistant/sensor/pump_room_temp0/config",
+                json.dumps(
+                    {
+                        "name": "Temperature 0",
+                            "state_topic": "home/sensor/pump_room/temp0/state",
+                            "expire_after": 300,
+                            "force_update": True,
+                            "unique_id": "labpulse_pump_room_temp0",
+                        "object_id": "labpulse_pump_room_temp0",
+                        "default_entity_id": "sensor.labpulse_pump_room_temp0",
+                        "device": {
+                            "identifiers": ["pump_room"],
+                            "name": "Pump Room Sensor Hub",
+                        },
+                        "unit_of_measurement": "\u00b0C",
+                        "icon": "mdi:snowflake-thermometer",
+                        "state_class": "measurement",
+                    }
+                ),
+            ),
+        ],
+        "discovery publishes",
+    )
+
+
+def test_ignore_unconfigured_measurements() -> None:
+    """Check measurements not declared in config are ignored."""
+
+    publisher = make_publisher(
+        service_name="pump_room",
+        device_name="Pump Room Sensor Hub",
+        measurements={
+            "flow1": {"label": "Flow 1", "setups": ["test_setup"], "unit": "L/min"},
+        },
+    )
+
+    publisher.publish({"press1": 1.2, "flow1": 2.1})
+
+    published = publisher.client.published
+    assert_equal(
+        [item["topic"] for item in published],
+        [
+            "homeassistant/sensor/pump_room_flow1/config",
+            "home/sensor/pump_room/flow1/state",
+        ],
+        "published topics",
+    )
+
+
+def test_discovery_uses_configured_message_expiry() -> None:
+    """Ensure identical samples refresh the visible time until expiry."""
+
+    publisher = make_publisher(maximum_measurement_age_seconds=420)
+    publisher.publish({"pressure": 1.23})
+    payload = json.loads(str(publisher.client.published[0]["payload"]))
+    assert_equal(payload["expire_after"], 420, "ordinary measurement expiry")
+    assert_equal(payload["force_update"], True, "ordinary sample receipt update")
+
+
+def test_power_discovery_uses_power_message_expiry() -> None:
+    """Ensure all UPS measurements use the service's configured expiry."""
+
+    publisher = make_publisher(
+        service_name="ups_monitor",
+        device_name="UPS Monitor",
+        measurements={
+            "voltage": {"unit": "V"},
+            "battery_level": {"unit": "%"},
+            "mains_present": {"state_class": None},
+        },
+        power_detection={},
+        maximum_measurement_age_seconds=15,
+    )
+    publisher.publish({"voltage": 4.13})
+    payload = json.loads(str(publisher.client.published[0]["payload"]))
+    assert_equal(payload["expire_after"], 15, "power measurement expiry")
+    assert_equal(payload["force_update"], True, "power sample receipt update")

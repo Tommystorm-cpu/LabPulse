@@ -1,0 +1,148 @@
+{# Required readings own missing-data incidents. Non-required readings remain
+   visible when present but deliberately generate no helpers or automations. #}
+[% for service, measurement in model.measurements %]
+[% if measurement.required %]
+  - alias: LabPulse [[ measurement.label ]] Reading Missing
+    mode: restart
+    trigger:
+    - platform: state
+      id: missing_reading
+      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+      to: 'off'
+[% for blocking_service_name in measurement.blocking_service_names %]
+    - platform: state
+      id: service_recovered
+      entity_id: [[ entity_id('input_boolean', blocking_service_name, 'service_offline_incident_active') | yaml_scalar ]]
+      to: 'off'
+    - platform: state
+      id: service_communication_recovered
+      entity_id: [[ entity_id('binary_sensor', blocking_service_name, 'service_offline') | yaml_scalar ]]
+      to: 'off'
+[% endfor %]
+    - platform: homeassistant
+      id: startup
+      event: start
+[% if measurement.alarmed %]
+    - platform: state
+      id: resend
+      entity_id: [[ entity_id('input_button', service.name, measurement.name, 'resend_active_alert') | yaml_scalar ]]
+[% endif %]
+    action:
+    - choose:
+      - conditions: "{{ trigger.id != 'resend' }}"
+        sequence:
+        - delay:
+            seconds: [[ measurement.missing_confirm_seconds | yaml_scalar ]]
+        - condition: state
+          entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+          state: 'off'
+[% for blocking_service_name in measurement.blocking_service_names %]
+        - condition: state
+          entity_id: [[ entity_id('binary_sensor', blocking_service_name, 'service_offline') | yaml_scalar ]]
+          state: 'off'
+        - condition: state
+          entity_id: [[ entity_id('input_boolean', blocking_service_name, 'service_offline_incident_active') | yaml_scalar ]]
+          state: 'off'
+[% endfor %]
+        - choose:
+          - conditions:
+            - condition: state
+              entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
+              state: 'off'
+            sequence:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: [[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') | yaml_scalar ]]
+              data:
+                timestamp: "{{ as_timestamp(now()) }}"
+            - service: input_boolean.turn_on
+              target:
+                entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
+    - condition: state
+      entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
+      state: 'on'
+    - service: script.labpulse_open_incident
+      data:
+        notification_id: labpulse_[[ measurement.measurement_id ]]_missing_reading
+        title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse [[ measurement.label ]] has no recent data' }}
+        message: >-
+          [[ service.label ]] / [[ measurement.label ]] has not supplied recent usable data.
+          Check the sensor connection and service if the problem continues.
+          [[ measurement.notification_context ]]
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_sms_requested') | yaml_scalar ]]
+        resend: "{{ trigger.id == 'resend' }}"
+        delivery_allowed: >-
+          {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
+             and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
+        sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ measurement.measurement_id ]]_missing_reading_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "missing_reading",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "[[ measurement.name ]]",
+            "measurement_label": "[[ measurement.label ]]",
+            "state": "No recent data",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse No Recent Data: [[ service.label ]] - [[ measurement.label ]]',
+            "message": 'No recent usable data has been received. Check the sensor connection and service if the problem continues. [[ measurement.notification_context ]]',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ measurement.entity_id ]]')
+          } | to_json }}
+
+  - alias: LabPulse [[ measurement.label ]] Reading Restored
+    mode: restart
+    trigger:
+    - platform: state
+      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+      to: 'on'
+    - platform: homeassistant
+      event: start
+    action:
+    - delay:
+        seconds: [[ measurement.recovery_confirm_seconds | yaml_scalar ]]
+    - condition: state
+      entity_id: [[ entity_id('binary_sensor', service.name, measurement.name, 'reading_available') | yaml_scalar ]]
+      state: 'on'
+    - condition: template
+      value_template: >-
+        {{ is_state('[[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') ]]', 'on') }}
+    - variables:
+        missing_started: >-
+          {{ as_timestamp(states('[[ entity_id('input_datetime', service.name, measurement.name, 'missing_reading_incident_started') ]]'), as_timestamp(now())) }}
+        missing_seconds: >-
+          {{ [0, as_timestamp(now()) - missing_started] | max | round(0) }}
+    - service: script.labpulse_close_incident
+      data:
+        notification_id: labpulse_[[ measurement.measurement_id ]]_missing_reading
+        recovery_title: >-
+          {{ ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '')
+             ~ 'LabPulse [[ measurement.label ]] data restored' }}
+        recovery_message: >-
+          Fresh numeric telemetry for [[ service.label ]] / [[ measurement.label ]] resumed after {{ missing_seconds }} seconds.
+        notification_sent_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_notification_sent') | yaml_scalar ]]
+        sms_requested_entity: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_sms_requested') | yaml_scalar ]]
+        delivery_allowed: >-
+          {{ is_state('[[ measurement.reading_notification_mute_entity ]]', 'off')
+             and [[ measurement.setup_notifications_unmuted_template[3:-3] ]] }}
+        recovery_sms_payload: >-
+          {{ {
+            "request_id": "labpulse_[[ measurement.measurement_id ]]_restored_" ~ now().strftime('%Y%m%dT%H%M%S%f'),
+            "event": "recovery",
+            "service": "[[ service.name ]]",
+            "service_label": "[[ service.label ]]",
+            "measurement": "[[ measurement.name ]]",
+            "measurement_label": "[[ measurement.label ]]",
+            "state": "Data restored",
+            "title": ('[TEST] ' if is_state('input_boolean.labpulse_notification_test_mode', 'on') else '') ~ 'LabPulse Data Restored: [[ service.label ]] - [[ measurement.label ]]',
+            "message": 'Fresh numeric telemetry resumed after ' ~ missing_seconds ~ ' seconds. [[ measurement.notification_context ]]',
+            "test_mode": is_state('input_boolean.labpulse_notification_test_mode', 'on'),
+            "current_measurement": states('[[ measurement.entity_id ]]')
+          } | to_json }}
+    - service: input_boolean.turn_off
+      target:
+        entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'missing_reading_incident_active') | yaml_scalar ]]
+[% endif %]
+[% endfor %]

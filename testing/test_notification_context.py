@@ -1,0 +1,266 @@
+"""Focused tests for setup-aware, non-duplicated alarm notifications."""
+
+from collections.abc import Callable, Iterable
+from copy import deepcopy
+from pathlib import Path
+import sys
+from unittest.mock import patch
+
+from jinja2 import UndefinedError
+import pytest
+import yaml
+
+
+REFACTOR_DIR = Path(__file__).resolve().parents[1]
+
+from labpulse.common.config import LabPulseConfig
+from labpulse.common.identity import entity_id, stable_id
+from labpulse.homeassistant.alarm import build_template_context, render_alarm
+import labpulse.homeassistant.alarm as alarm
+
+
+def config_data() -> dict[str, object]:
+    """Return one service with single and shared setup memberships."""
+
+    return {
+        "mqtt": {"broker": "mosquitto"},
+        "setups": {
+            "alpha": {"label": "Alpha Experiment", "order": 10},
+            "beta": {"label": "Beta Experiment", "order": 20},
+        },
+        "services": {
+            "shared_hub": {
+                "label": "Shared Sensor Hub",
+                "driver": {
+                    "type": "labpulse.serial_pipe",
+                    "options": {"port": "/tmp/shared-hub"},
+                },
+                "measurements": {
+                    "alpha": {"label": "Alpha Measurement", "setups": ["alpha"]},
+                    "beta": {"label": "Beta Measurement", "setups": ["beta"]},
+                    "shared": {
+                        "label": "Shared Measurement",
+                        "setups": ["beta", "alpha"],
+                    },
+                },
+            }
+        },
+    }
+
+
+def test_sms_catalogue_uses_plain_missing_data_language() -> None:
+    """Keep technical availability terminology out of operator messages."""
+
+    model = build_template_context(LabPulseConfig.model_validate(config_data()))
+    templates = deepcopy(alarm.load_sms_templates())
+    rendered = render_alarm(model)
+    assert "missing_reading" in templates["alerts"]
+    assert "reading_restored" in templates["alerts"]
+    assert "sensor_fault" not in str(templates).lower()
+    assert "Sensor Fault" not in rendered
+
+
+def walk(value: object) -> Iterable[object]:
+    """Yield every nested YAML value."""
+
+    yield value
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
+
+
+def service_call_count(automation: dict[str, object], service: str) -> int:
+    """Count exact Home Assistant service actions in one automation."""
+
+    return sum(
+        1
+        for item in walk(automation)
+        if isinstance(item, dict) and item.get("service") == service
+    )
+
+
+def service_actions(
+    automation: dict[str, object], service: str
+) -> list[dict[str, object]]:
+    """Return exact Home Assistant service actions from one automation."""
+
+    return [
+        item
+        for item in walk(automation)
+        if isinstance(item, dict) and item.get("service") == service
+    ]
+
+
+def rendered_automations(config: LabPulseConfig) -> list[dict[str, object]]:
+    """Render alarm automations from the validated configuration."""
+
+    package = yaml.safe_load(render_alarm(build_template_context(config)))
+    return package["automation"]
+
+
+def test_context_for_every_scope_without_duplicate_events() -> None:
+    """Put setup context in each existing notification without multiplying it."""
+
+    config = LabPulseConfig.model_validate(config_data())
+    generated = rendered_automations(config)
+    expected = {
+        "Alpha Measurement": "Affected setup: Alpha Experiment.",
+        "Beta Measurement": "Affected setup: Beta Experiment.",
+        "Shared Measurement": "Affected setups: Alpha Experiment, Beta Experiment.",
+    }
+    transition_suffixes = (
+        " Danger",
+        " Recovery",
+        " Reading Missing",
+        " Reading Restored",
+    )
+    for label, context in expected.items():
+        measurement_automations = [
+            item
+            for item in generated
+            if str(item.get("alias", "")).startswith(f"LabPulse {label} ")
+            and str(item.get("alias", "")).endswith(transition_suffixes)
+        ]
+        if len(measurement_automations) != 4:
+            raise AssertionError(
+                f"{label} should retain four physical transition automations"
+            )
+        for automation in measurement_automations:
+            dispatches = [
+                item for item in walk(automation)
+                if isinstance(item, dict)
+                and item.get("service") in {
+                    "script.labpulse_open_incident", "script.labpulse_close_incident"
+                }
+            ]
+            if len(dispatches) != 1:
+                raise AssertionError(f"{automation['alias']} bypasses central delivery")
+            if context not in str(dispatches[0]["data"]):
+                raise AssertionError(f"{automation['alias']} lacks setup context")
+
+
+def test_membership_does_not_change_alarm_identity() -> None:
+    """Changing logical membership changes wording but not physical identity."""
+
+    first_data = config_data()
+    second_data = config_data()
+    second_data["services"]["shared_hub"]["measurements"]["beta"]["setups"] = [
+        "alpha",
+        "beta",
+    ]
+    first = build_template_context(LabPulseConfig.model_validate(first_data))
+    second = build_template_context(LabPulseConfig.model_validate(second_data))
+    first_measurement = first.services[0]["measurements"][1]
+    second_measurement = second.services[0]["measurements"][1]
+    first_identity = (
+        stable_id("shared_hub", first_measurement["name"]),
+        entity_id("sensor", "shared_hub", first_measurement["name"]),
+        entity_id("input_select", "shared_hub", first_measurement["name"], "alarm_state"),
+        entity_id("input_select", "shared_hub", first_measurement["name"], "alarm_mode"),
+        entity_id("input_boolean", "shared_hub", first_measurement["name"], "reading_notifications_muted"),
+    )
+    second_identity = (
+        stable_id("shared_hub", second_measurement["name"]),
+        entity_id("sensor", "shared_hub", second_measurement["name"]),
+        entity_id("input_select", "shared_hub", second_measurement["name"], "alarm_state"),
+        entity_id("input_select", "shared_hub", second_measurement["name"], "alarm_mode"),
+        entity_id("input_boolean", "shared_hub", second_measurement["name"], "reading_notifications_muted"),
+    )
+    if first_identity != second_identity:
+        raise AssertionError("setup membership changed physical alarm identity")
+    if first_measurement["notification_context"] == second_measurement["notification_context"]:
+        raise AssertionError("setup membership did not update notification context")
+
+
+def test_service_faults_remain_hub_level() -> None:
+    """Do not apply measurement/setup context to physical service-health alarms."""
+
+    generated = rendered_automations(LabPulseConfig.model_validate(config_data()))
+    service_health = [
+        item
+        for item in generated
+        if "Service Offline" in str(item.get("alias", ""))
+        or "Service Working" in str(item.get("alias", ""))
+    ]
+    if len(service_health) != 2:
+        raise AssertionError("expected one hub fault and one hub recovery automation")
+    rendered = yaml.safe_dump(service_health, sort_keys=False)
+    for setup_phrase in ("Affected setup", "Affects all setups", "General monitoring"):
+        if setup_phrase in rendered:
+            raise AssertionError("service health notification gained setup context")
+
+
+def test_setup_mutes_are_independent_delivery_gates() -> None:
+    """Keep shared alerts open while any owning setup remains unmuted."""
+
+    config = LabPulseConfig.model_validate(config_data())
+    model = build_template_context(config)
+    alpha_mute = "input_boolean.labpulse_setup_alpha_notifications_muted"
+    beta_mute = "input_boolean.labpulse_setup_beta_notifications_muted"
+    helpers = yaml.safe_load(render_alarm(model))["input_boolean"]
+    for helper in (alpha_mute, beta_mute):
+        helper_id = helper.split(".", 1)[1]
+        if helper_id not in helpers:
+            raise AssertionError(f"setup mute helper is missing: {helper}")
+        if "initial" in helpers[helper_id]:
+            raise AssertionError(f"setup mute does not restore state: {helper}")
+
+    measurements = {
+        measurement["label"]: measurement
+        for service in model.services
+        for measurement in service["measurements"]
+    }
+    shared_gate = measurements["Shared Measurement"]["setup_notifications_unmuted_template"]
+    if shared_gate != (
+        "{{ is_state('" + alpha_mute + "', 'off') or "
+        "is_state('" + beta_mute + "', 'off') }}"
+    ):
+        raise AssertionError("shared measurement does not allow either open setup")
+
+    generated = rendered_automations(config)
+    expected_gates = {
+        "Alpha Measurement": (alpha_mute,),
+        "Beta Measurement": (beta_mute,),
+        "Shared Measurement": (alpha_mute, beta_mute),
+    }
+    for label, gates in expected_gates.items():
+        transitions = [
+            automation
+            for automation in generated
+            if str(automation.get("alias", "")).startswith(f"LabPulse {label} ")
+            and str(automation.get("alias", "")).endswith(
+                    (" Danger", " Recovery", " Reading Missing", " Reading Restored")
+            )
+        ]
+        if len(transitions) != 4:
+            raise AssertionError(f"wrong transition count for {label}")
+        value_templates = [str(item) for transition in transitions for item in walk(transition)]
+        for gate in gates:
+            if not any(f"is_state('{gate}', 'off')" in item for item in value_templates):
+                raise AssertionError(f"{label} does not require open gate {gate}")
+        for unrelated in {alpha_mute, beta_mute}.difference(gates):
+            if any(unrelated in item for item in value_templates):
+                raise AssertionError(f"{label} gained unrelated setup gate {unrelated}")
+
+    setup_helpers = {alpha_mute, beta_mute}
+    for automation in generated:
+        for action in walk(automation):
+            if not isinstance(action, dict) or action.get("service") not in {
+                "input_boolean.turn_on",
+                "input_boolean.turn_off",
+            }:
+                continue
+            if any(helper in str(action.get("target", {})) for helper in setup_helpers):
+                raise AssertionError("an automation overwrites a setup mute helper")
+
+    service_health = [
+        automation
+        for automation in generated
+        if "Service Offline" in str(automation.get("alias", ""))
+        or "Service Working" in str(automation.get("alias", ""))
+    ]
+    if any(helper in yaml.safe_dump(service_health) for helper in setup_helpers):
+        raise AssertionError("setup mute leaked into physical service-health alarms")

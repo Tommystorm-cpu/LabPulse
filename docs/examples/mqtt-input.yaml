@@ -1,0 +1,27 @@
+# Complete example; requires a separate publisher of current timestamped records.
+mqtt:
+  broker: mosquitto
+sms:
+  dry_run: true
+setups:
+  cryostat:
+    label: Cryostat
+services:
+  triton:
+    label: Triton Logfile
+    notify_on_service_failure: true
+    driver:
+      type: labpulse.mqtt_json
+      options:
+        topic: labpulse/triton/triton-01/measurements
+        heartbeat_topic: labpulse/triton/triton-01/heartbeat
+        heartbeat_timeout_seconds: 60
+        maximum_record_age_seconds: 30
+    measurement_defaults:
+      setups: [cryostat]
+    maximum_measurement_age_seconds: 45
+    measurements:
+      cold_plate_temperature:
+        source: Cold Plate T(K)
+        unit: K
+        device_class: temperature
