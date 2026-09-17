@@ -673,6 +673,15 @@ def run_update_command(live_dir: Path, requested_version: str | None) -> int:
         )
         return recreate_result
 
+    print("Waiting for Home Assistant before final diagnostics...")
+    if not _wait_for_homeassistant():
+        print(
+            "ERROR: The update completed, but Home Assistant did not become ready "
+            "within 120 seconds. Inspect its logs.",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         doctor_result = subprocess.run(
             [fresh_labpulse, "--live-dir", str(live_dir), "doctor", "--timeout", "5"],

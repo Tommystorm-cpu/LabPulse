@@ -766,6 +766,8 @@ setups:
 services:
   triton_01:
     label: Triton 1 Fridge
+    service_health:
+      offline_confirm_seconds: 120
     driver:
       type: labpulse.mqtt_json
       options:
@@ -781,6 +783,8 @@ services:
 
   triton_02:
     label: Triton 2 Fridge
+    service_health:
+      offline_confirm_seconds: 120
     driver:
       type: labpulse.mqtt_json
       options:
@@ -1098,8 +1102,9 @@ labpulse logs --tail 100 labpulse-triton-02
 
 With test-mode recipients and global notifications still controlled, stop one
 Windows scheduled task. Its own service should become Offline and open one
-incident after the Last Will or the 60-second heartbeat timeout plus the
-10-second service confirmation. The other fridge should stay unaffected. Start
+incident after the Last Will plus the 120-second service confirmation, or after
+the 60-second heartbeat timeout followed by that confirmation. The other fridge
+should stay unaffected. Start
 the task and verify a single recovery after the 15-second recovery confirmation.
 Repeat for the other fridge. A quiet logfile with continuing heartbeats should
 leave the publisher online while old readings expire; required missing-reading

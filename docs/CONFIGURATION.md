@@ -179,6 +179,18 @@ service_health:
 These values confirm a complete hardware-service outage and recovery before
 Home Assistant opens or closes a service-level incident.
 
+One service can override either value while inheriting the other global value:
+
+```yaml
+services:
+  triton_01:
+    service_health:
+      offline_confirm_seconds: 120
+```
+
+This is useful for an external publisher whose brief network reconnects should
+remain visible in status without notifying operators.
+
 Both values accept 1 to 3600 seconds. They are separate from:
 
 - driver reconnect timing;
@@ -372,6 +384,7 @@ after collecting history unless a new identity is intended.
 | `reconnect_interval_seconds` | `5` | Delay before connection retry; greater than 0 |
 | `read_interval_seconds` | driver default | Central polling interval; greater than 0 when set |
 | `maximum_measurement_age_seconds` | `300` | MQTT expiry/freshness limit, 2 to 86400 |
+| `service_health` | absent | Optional `offline_confirm_seconds` and `recovery_confirm_seconds` overrides for this service; omitted values inherit the global `service_health` timing |
 | `power_detection` | absent | Dedicated power-outage confirmation |
 
 Each enabled service becomes `labpulse-<service-slug>` in Compose.

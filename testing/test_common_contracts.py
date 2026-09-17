@@ -164,6 +164,21 @@ def test_service_health_config_contract() -> None:
         }
     )
     assert_equal(configured.service_health.offline_confirm_seconds, 7, "offline override")
+
+    service_override = LabPulseConfig.model_validate({
+        **base,
+        "services": {
+            "hub": {
+                **base["services"]["hub"],
+                "service_health": {"offline_confirm_seconds": 120},
+            },
+        },
+    }).services["hub"].service_health
+    if service_override is None:
+        raise AssertionError("per-service health override was discarded")
+    assert_equal(service_override.offline_confirm_seconds, 120, "service offline override")
+    assert_equal(service_override.recovery_confirm_seconds, None, "service recovery inheritance")
+
     try:
         LabPulseConfig.model_validate(
             {**base, "service_health": {"offline_confirm_seconds": 0}}
@@ -172,6 +187,21 @@ def test_service_health_config_contract() -> None:
         pass
     else:
         raise AssertionError("zero service-health confirmation was accepted")
+
+    try:
+        LabPulseConfig.model_validate({
+            **base,
+            "services": {
+                "hub": {
+                    **base["services"]["hub"],
+                    "service_health": {"offline_confirm_seconds": 0},
+                },
+            },
+        })
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("zero per-service health confirmation was accepted")
 
 
 def test_external_mqtt_listener_config_contract() -> None:

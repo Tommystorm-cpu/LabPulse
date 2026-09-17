@@ -352,7 +352,7 @@ def test_update_installs_refreshes_and_recreates_every_container(
         control, "run_compose", return_value=0
     ) as compose, patch.object(
         control, "_wait_for_homeassistant", return_value=True
-    ):
+    ) as wait:
         result = control.run_update_command(live_dir.resolve(), None)
 
     assert result == 0
@@ -390,6 +390,7 @@ def test_update_installs_refreshes_and_recreates_every_container(
             ),
         ),
     ]
+    wait.assert_called_once_with()
     doctor = run.call_args_list[2]
     assert doctor.args[0] == [
         "/home/lab/.local/bin/labpulse",
@@ -444,6 +445,35 @@ def test_update_rechecks_equal_metadata_and_uses_newly_visible_release(live_dir:
     assert result == 0
     assert latest.call_count == 2
     assert run.call_args_list[0].args[0][-1] == "labpulse==0.3.1"
+
+
+def test_update_waits_for_homeassistant_and_skips_early_diagnostics(
+    live_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Do not diagnose the reconstructed stack before Home Assistant is listening."""
+
+    commands = {"pipx": "/usr/bin/pipx", "labpulse": "/home/lab/.local/bin/labpulse"}
+    with patch.object(control, "__version__", "0.1.1"), patch.object(
+        control, "latest_published_version", return_value="0.2.0"
+    ), patch.object(
+        control.shutil, "which", side_effect=lambda command: commands.get(command)
+    ), patch.object(
+        control.subprocess,
+        "run",
+        side_effect=(completed(["pipx"]), completed(["labpulse", "setup"])),
+    ) as run, patch.object(
+        control, "run_compose", return_value=0
+    ), patch.object(
+        control, "_wait_for_homeassistant", return_value=False
+    ) as wait:
+        result = control.run_update_command(live_dir.resolve(), None)
+
+    assert result == 1
+    wait.assert_called_once_with()
+    assert len(run.call_args_list) == 2
+    output = capsys.readouterr()
+    assert "Waiting for Home Assistant" in output.out
+    assert "did not become ready within 120 seconds" in output.err
 
 
 def test_explicit_current_version_does_not_recheck(live_dir: Path) -> None:

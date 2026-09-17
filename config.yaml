@@ -246,6 +246,8 @@ services:
   # triton_01:
   #   label: Triton 1 Fridge
   #   notify_on_service_failure: true
+  #   service_health:
+  #     offline_confirm_seconds: 120
   #   driver:
   #     type: labpulse.mqtt_json
   #     options:
@@ -260,6 +262,8 @@ services:
   # triton_02:
   #   label: Triton 2 Fridge
   #   notify_on_service_failure: true
+  #   service_health:
+  #     offline_confirm_seconds: 120
   #   driver:
   #     type: labpulse.mqtt_json
   #     options:

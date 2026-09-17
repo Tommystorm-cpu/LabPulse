@@ -415,6 +415,11 @@ Update to the latest LabPulse version published on TestPyPI:
 labpulse update
 ```
 
+After recreating the containers, the update command waits up to two minutes for
+Home Assistant to accept local connections before running final diagnostics.
+This avoids reporting an ordinary Home Assistant startup delay as an update
+failure.
+
 If that version is already installed, the command exits without changing the
 installation or restarting containers. To select a specific release instead:
 

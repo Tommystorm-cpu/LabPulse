@@ -166,6 +166,14 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
                     alarmed_measurements_by_setup[setup_id].append(measurement)
 
         service_id = slug(service_name)
+        health_override = service_config.service_health
+        health_offline_confirm_seconds = config.service_health.offline_confirm_seconds
+        health_recovery_confirm_seconds = config.service_health.recovery_confirm_seconds
+        if health_override is not None:
+            if health_override.offline_confirm_seconds is not None:
+                health_offline_confirm_seconds = health_override.offline_confirm_seconds
+            if health_override.recovery_confirm_seconds is not None:
+                health_recovery_confirm_seconds = health_override.recovery_confirm_seconds
         service = {
             "name": service_name,
             "label": service_config.label,
@@ -174,8 +182,8 @@ def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
             "notify_on_service_failure": service_config.notify_on_service_failure,
             "external_publisher_health": service_config.driver.type == "labpulse.mqtt_json"
             and getattr(service_config.driver.options, "heartbeat_topic", None) is not None,
-            "health_offline_confirm_seconds": config.service_health.offline_confirm_seconds,
-            "health_recovery_confirm_seconds": config.service_health.recovery_confirm_seconds,
+            "health_offline_confirm_seconds": health_offline_confirm_seconds,
+            "health_recovery_confirm_seconds": health_recovery_confirm_seconds,
             "measurements": service_measurements,
             "power": None,
         }

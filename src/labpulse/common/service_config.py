@@ -56,6 +56,15 @@ class PowerDetectionConfig(BaseModel):
     restore_confirm_seconds: int = Field(default=5, ge=1, le=3600)
 
 
+class ServiceHealthOverrideConfig(BaseModel):
+    """Optional per-service overrides for whole-service alarm confirmation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    offline_confirm_seconds: int | None = Field(default=None, ge=1, le=3600)
+    recovery_confirm_seconds: int | None = Field(default=None, ge=1, le=3600)
+
+
 class ServiceConfig(BaseModel):
     """Configuration for one independently running LabPulse sensor service."""
 
@@ -70,6 +79,7 @@ class ServiceConfig(BaseModel):
     reconnect_interval_seconds: float = Field(default=5.0, gt=0)
     read_interval_seconds: float | None = Field(default=None, gt=0)
     maximum_measurement_age_seconds: int = Field(default=300, ge=2, le=86400)
+    service_health: ServiceHealthOverrideConfig | None = None
     power_detection: PowerDetectionConfig | None = None
 
     @model_validator(mode="after")

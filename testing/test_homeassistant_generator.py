@@ -316,10 +316,12 @@ def test_service_failure_notification_switch_and_fridge_wording() -> None:
 
     root = REPOSITORY / "testing" / "tmp" / f"generator-health-{uuid4().hex}"
     data = sample_config()
+    data["service_health"] = {"offline_confirm_seconds": 10, "recovery_confirm_seconds": 23}
     data["services"]["pressure_monitor"]["notify_on_service_failure"] = False  # type: ignore[index]
     data["setups"]["cryogenics_room"] = {"label": "Cryogenics Room"}  # type: ignore[index]
     data["services"]["triton_01"] = {  # type: ignore[index]
         "label": "Triton 1 Fridge",
+        "service_health": {"offline_confirm_seconds": 120},
         "driver": {
             "type": "labpulse.mqtt_json",
             "options": {
@@ -354,6 +356,9 @@ def test_service_failure_notification_switch_and_fridge_wording() -> None:
                                })
         assert fridge_dispatch["data"]["delivery_allowed"] is True
         assert "control-PC publisher" in str(fridge_dispatch["data"])
+        delay = next(item["delay"]["seconds"] for item in walk(fridge)
+                     if isinstance(item, dict) and isinstance(item.get("delay"), dict))
+        assert delay == (120 if suffix == "Service Offline" else 23)
 
     assert "labpulse_pressure_monitor_service_offline_incident_active" in package["input_boolean"]
     assert automation(package, "LabPulse Pressure Reading Missing")
