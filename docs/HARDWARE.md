@@ -33,15 +33,21 @@ identifying the exact parts and checking their datasheets.
 
 ## Where the hardware information comes from
 
-The shopping lists are useful, but they describe different stages of the
-project. A purchased part isn't necessarily the part still fitted today.
+Use [LabPulse Purchasing.xlsx](LabPulse%20Purchasing.xlsx) for the consolidated
+parts list, supplier links, known quantities, historical prices, and requested
+additions. Its **Earlier choices** sheet separates replaced or incompatible
+parts. Unknown details remain labelled, and an email request does not establish
+that a part has arrived.
+
+The original workbooks are archived unchanged. They describe different stages
+of the project; a purchased part isn't necessarily the part still fitted today.
 
 | Record | What it tells us |
 |---|---|
-| [Internship purchased items](Internship%20purchased%20items.xlsx), Sheet1 | Original purchases and supplier links. Rows 2–15 cover the main electronics; rows 17–24 include plumbing and the older USB hubs. The note in E12 names the replacement UPS. |
-| [Mini Shopping List](Mini%20Shopping%20List.xlsx), Sheet1, rows 2–6 | Later choices for a powered hub, SHT40, Gravity board, sensor cable, and GPIO ribbon. The sensor cable turned out not to fit; see the [main-unit connection notes](MAIN_UNIT.md#gravity-board-and-room-sensor). |
+| [Internship purchased items](../legacy/Documentation/purchasing-2026-09-18/Internship%20purchased%20items.xlsx), Sheet1 | Original purchases and supplier links. Rows 2–15 cover the main electronics; rows 17–24 include plumbing and the older USB hubs. The note in E12 names the replacement UPS. |
+| [Mini Shopping List](../legacy/Documentation/purchasing-2026-09-18/Mini%20Shopping%20List.xlsx), Sheet1, rows 2–6 | Later choices for a powered hub, SHT40, Gravity board, sensor cable, and GPIO ribbon. The sensor cable turned out not to fit; see the [main-unit connection notes](MAIN_UNIT.md#gravity-board-and-room-sensor). |
 | [Shopping email and maintainer update, recorded 18 September 2026](MAIN_UNIT.md#additional-parts-requested) | Confirms the X1200 and planned mains-powered USB hub. Lists display accessories and two SHT40 cables; the SHT40 connections are not installed yet. |
-| [LabPulse Sensors](LabPulse%20Sensors.xlsx), Sheet1, rows 2–10 | Sensor counts and locations, plus an undated snapshot of which readings worked. It predates the current SHT40 configuration. |
+| [LabPulse Sensors](../legacy/Documentation/purchasing-2026-09-18/LabPulse%20Sensors.xlsx), Sheet1, rows 2–10 | Sensor counts and locations, plus an undated snapshot of which readings worked. It predates the current SHT40 configuration. |
 | [Firmware examples](../firmware/README.md#device-configuration) and [starter configuration](../config.yaml) | What the current source expects. The live installation's configuration and flashed firmware still need to match. |
 | [July 2026 acceptance record](../ROADMAP.md#real-hardware-reliability) | What was tested on the Pi, including the faulty USB hub and DHT11 that prompted replacement work. |
 

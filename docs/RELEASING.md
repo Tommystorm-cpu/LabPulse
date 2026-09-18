@@ -15,6 +15,96 @@ build it. PyPI distributes those Python packages. GHCR, GitHub's container
 registry, distributes the worker image. The release workflow builds and checks
 both, but publication can still succeed for one and fail for the other.
 
+## Quick guide: GitHub release to updated Pi
+
+Use this for a normal stable release once the repository's publishing access
+is configured. The sections below explain the checks and failure cases in
+more detail.
+
+### 1. Prepare the version
+
+Commit and push the intended changes, merge them into `main`, and check that
+**Actions → Test LabPulse** passes for the commit you intend to release. Update
+[CHANGELOG](../CHANGELOG.md) with the changes, any required operator action,
+and what was tested on a Pi.
+
+Choose a version higher than the last release which has never been published.
+For example, a small fix after `0.3.8` could be `0.3.9`, **if that version is
+still unused**. This example does not identify the current next version.
+The Git tag supplies the package version; don't edit a Python version constant.
+
+### 2. Publish through GitHub
+
+1. Open [LabPulse Releases](https://github.com/lairdgrouplancaster/LabPulse/releases)
+   and select **Draft a new release**.
+2. Under **Choose a tag**, enter your new tag, such as `v0.3.9`, and choose
+   **Create new tag**. Set **Target** to `main` and verify it contains the
+   reviewed commit. If choosing an existing tag, verify the commit it points to.
+3. Give it a title such as `LabPulse 0.3.9`. Write short notes covering the
+   changes, update instructions, tests, and known limitations. You can start
+   with **Generate release notes**, then edit them for users.
+4. For a normal stable release, leave **This is a pre-release** unchecked and
+   select **Set as latest release**. Review, then select **Publish release**.
+
+These are GitHub's [release creation steps](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
+A saved draft or a pushed tag alone does not trigger LabPulse publication.
+
+### 3. Wait for publication
+
+Open [Actions → Release LabPulse](https://github.com/lairdgrouplancaster/LabPulse/actions/workflows/release.yml)
+and select the run for your tag. Wait for all three jobs to succeed:
+
+- **Validate release artifacts**
+- **Publish Python distributions to PyPI**
+- **Publish multi-platform container**
+
+If the `pypi` environment requires approval, an authorised maintainer must
+approve the pending deployment. Confirm your exact version appears on
+[PyPI](https://pypi.org/project/labpulse/#history) and as a full-version tag in
+the [container package](https://github.com/lairdgrouplancaster/LabPulse/pkgs/container/labpulse).
+The GitHub release page can exist before either artifact is ready. Wait for
+both before updating a Pi. If a job fails, follow
+[partial publication recovery](#if-publication-only-partly-succeeds).
+
+### 4. Update a test Pi, then the live Pi
+
+Use the same Pi user and live directory as the existing installation. Updates
+restart services, so choose a suitable time for the live monitor. Record its
+notification settings and use **Mute all notifications** if messages should
+pause during maintenance.
+
+In the Pi's terminal, run one command at a time:
+
+```bash
+labpulse version
+mkdir -p ~/labpulse-backups
+labpulse backup ~/labpulse-backups/before-update-$(date +%Y%m%d-%H%M%S).tar.gz
+labpulse doctor
+```
+
+Resolve failures before continuing and review any warnings. Replace `X.Y.Z`
+below with the published version, without the tag's leading `v`:
+
+```bash
+labpulse update X.Y.Z
+labpulse version
+labpulse ps --all
+labpulse doctor
+```
+
+Update preserves the current real or fake-hardware mode and user configuration.
+It installs the package, regenerates the deployment, and recreates the
+containers. There is no need to uninstall first or run `git pull` on the Pi.
+For a non-default directory, put `--live-dir /path/to/installation` before
+each LabPulse command.
+
+Check **System Status**, fresh readings, and the behaviour changed by this
+release. Home Assistant starts with **Test mode** enabled; deliberately restore
+the intended Test mode and mute settings after checking. Once the test Pi
+passes, repeat the backup and update steps on the live Pi. See the
+[operator update guide](USER_GUIDE.md#updating-labpulse) for recovery if anything
+fails; an update does not automatically roll back a partially completed change.
+
 ## Prepare the candidate
 
 1. Choose the commit and version, review the changes, and update

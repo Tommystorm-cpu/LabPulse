@@ -6,6 +6,7 @@ read every guide before using LabPulse.
 Already looking after a running installation? Open the [User Guide](USER_GUIDE.md).
 Something has stopped working? Start with [Troubleshooting](TROUBLESHOOTING.md#find-the-problem).
 Changing the code? Follow [Your first day maintaining LabPulse](MAINTAINING.md).
+Publishing a version? Use [GitHub release to updated Pi](RELEASING.md#quick-guide-github-release-to-updated-pi).
 
 Use the guides from the same release as your installation. Run
 `labpulse version` on the Pi to check its version; the repository's default branch may
@@ -38,6 +39,8 @@ If something doesn't work, go straight to [Troubleshooting](TROUBLESHOOTING.md).
   notification and recovery problems.
 - [Hardware](HARDWARE.md): recorded sensor parts, hub assignments, firmware
   pins, and the wiring and calibration checks still needed.
+- [Purchasing workbook](LabPulse%20Purchasing.xlsx): consolidated parts, supplier
+  links, historical prices, requested additions, and earlier choices.
 - [Raspberry Pi main unit](MAIN_UNIT.md): Pi, UPS, modem, USB hub, Gravity board,
   sensor connections, and the touchscreen enclosure design history.
 - [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended

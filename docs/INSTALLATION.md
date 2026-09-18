@@ -96,6 +96,17 @@ the 64-bit Bookworm version used by the reference setup, rather than assuming
 the latest default is the same version. Writing an image erases the selected
 storage, so check which card or drive you've selected.
 
+In Imager, choose the model of the Pi that will **boot the new card**. Under
+**Raspberry Pi OS (other)**, look for **Raspberry Pi OS (Legacy, 64-bit)**
+whose description names **Debian Bookworm**. This is the desktop image used
+in this walkthrough; the recommended default may instead be Trixie.
+
+If your work computer cannot run Imager, another Raspberry Pi with a desktop
+can write the card through a USB card reader. Install Imager there with
+`sudo apt install rpi-imager`. Select only the target Pi's card, identified by
+its size and reader, and keep **Exclude system drives** enabled. Do not select
+the storage that the running Pi uses, particularly on a live monitoring unit.
+
 Choose **Raspberry Pi OS with desktop** if you want to open the dashboard on
 the Pi's own screen, or **Raspberry Pi OS Lite** if you will use another
 computer's browser and manage the Pi through SSH. Either must be 64-bit
@@ -109,6 +120,12 @@ password, and country; Ethernet can be connected directly. Set your timezone
 and keyboard layout. Let Imager finish writing and verifying, safely eject
 the storage, insert it into the powered-off Pi, then connect power and let
 the Pi boot and join the network.
+
+Give a test Pi a distinct hostname, such as `labpulse-test`, so you can tell it
+apart from the live monitor. If you have a screen, keyboard and mouse, you can
+skip Wi-Fi customisation and connect through the desktop network menu after
+boot, including to a phone hotspot. Remote access needs a working network
+connection first.
 
 ### Open a terminal
 
@@ -156,6 +173,10 @@ together, including its closing line.
 
 Run these commands in a terminal on the Pi, locally, through Connect, or over SSH. Use
 your usual user account for installation and later LabPulse commands.
+
+Keep using that same account: `~/labpulse-live` belongs to the logged-in user's
+home directory. Switching accounts changes the default installation path; it
+does not stop containers started by another account.
 
 ### Update and check the operating system
 

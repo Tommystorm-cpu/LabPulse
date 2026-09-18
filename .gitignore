@@ -5,6 +5,7 @@ dist/
 *.egg-info/
 __pycache__/
 .pytest_cache/
+~$*.xlsx
 /logs/
 **/__pycache__/
 

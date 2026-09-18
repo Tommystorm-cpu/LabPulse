@@ -27,6 +27,7 @@ confirm that fresh readings return in **System Status**.
 | Configuration is rejected | [Source validation](#configuration-fragment-or-resolved-runtime-fails) |
 | Containers restart or readings are missing | [Workers and devices](#containers-exit-or-restart-repeatedly) |
 | Dashboard is empty | [MQTT and discovery](#mqtt-or-home-assistant-entities-are-missing) |
+| Fresh setup shows an old Home Assistant login | [Existing Home Assistant state](#fresh-setup-shows-an-old-home-assistant-login) |
 | Alarm timing is unexpected | [Alarm decisions](#an-alarm-does-not-trigger-or-recover) |
 | SMS does not arrive | [Notification delivery](#no-notification-was-delivered) |
 | Update or restoration fails | [Update](#update-failed-or-sms-worker-is-offline) or [restore](#backup-or-restore-fails) |
@@ -256,6 +257,40 @@ enabled and the configured `/dev/i2c-<bus>` exists. For X1200, check I2C battery
 telemetry and mains GPIO separately: one can fail while the other keeps working.
 Use the [driver options](CONFIGURATION.md#built-in-drivers) and verify wiring
 against the actual device revision.
+
+## Fresh setup shows an old Home Assistant login
+
+Reinstalling the LabPulse package does not erase Home Assistant accounts or
+history. `labpulse setup` also preserves existing state. Docker images contain
+the application; the Home Assistant account data lives in its mounted config
+directory.
+
+First open `http://<test-pi-ip>:8123/` in a private browser window, using the
+test Pi's actual IP from `hostname -I`. Then inspect its containers and the
+directory mounted as Home Assistant's `/config`:
+
+```bash
+whoami
+sudo docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+sudo docker compose ls -a
+sudo docker inspect labpulse-homeassistant --format '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}'
+```
+
+Compare that path with the account you are using. For example, deleting
+`/home/alex/labpulse-live` does not reset a deployment under
+`/home/sam/labpulse-live`. Docker's project listing can retain a Compose path
+even after that file has been deleted; the containers may still be running.
+
+For a disposable test installation, use the
+[uninstall procedure](USER_GUIDE.md#removing-an-installation) with its confirmed
+live directory before creating a new simulated installation. If the Compose
+file is missing, identify and remove that deployment's containers before
+removing its remaining data. Do not delete unrelated Docker resources.
+
+If the login page remains after those containers are removed, identify the
+remaining listener with `sudo ss -ltnpe 'sport = :8123'`. A listener means
+something still owns that port; identify it before starting the new deployment.
+IPv4 and IPv6 entries alone do not establish that two instances exist.
 
 ## MQTT or Home Assistant entities are missing
 

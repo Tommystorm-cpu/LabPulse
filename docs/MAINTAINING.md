@@ -295,7 +295,8 @@ work that still needs deployment evidence. Don't treat an old completed
 milestone as certification of your current checkout.
 
 Publishing is a separate step, normally done by a maintainer with release
-access. Follow [Releasing LabPulse](RELEASING.md) for versioning, artifact
+access. Start with the [GitHub release and Pi update quick guide](RELEASING.md#quick-guide-github-release-to-updated-pi).
+Follow the rest of [Releasing LabPulse](RELEASING.md) for versioning, artifact
 checks, publication, and recovery from a partial release. You don't need to
 publish anything to validate your first contribution.
 

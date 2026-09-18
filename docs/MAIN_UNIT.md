@@ -23,8 +23,12 @@ you share a finished version of the case.
 
 ## Parts in the main unit
 
-“Purchased” below comes from [the original purchase workbook](Internship%20purchased%20items.xlsx),
-Sheet1. “Later list” means [Mini Shopping List](Mini%20Shopping%20List.xlsx),
+The current consolidated [purchasing workbook](LabPulse%20Purchasing.xlsx)
+includes supplier links, requested additions, and separately labelled earlier
+choices. Prices retained from the old lists are historical, not current quotes.
+
+“Purchased” below comes from [the archived purchase workbook](../legacy/Documentation/purchasing-2026-09-18/Internship%20purchased%20items.xlsx),
+Sheet1. “Later list” means [Mini Shopping List](../legacy/Documentation/purchasing-2026-09-18/Mini%20Shopping%20List.xlsx),
 Sheet1. The [enclosure history](#enclosure-history) identifies the supporting chats.
 
 | Part | Role | What the records establish |
