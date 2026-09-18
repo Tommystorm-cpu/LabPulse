@@ -61,9 +61,6 @@ Adding sensor support or sending your first pull request? Follow
 [Contributing sensors](../CONTRIBUTING.md#contributing-sensors) and the
 [GitHub fork-to-pull-request walkthrough](../CONTRIBUTING.md#making-a-change-through-github).
 
-The [manual documentation checklist](../DOCUMENTATION_TODO.md) tracks the
-remaining screenshots and practical corrections, with optional hardware photos
-and enclosure files.
 The [screenshot checklist](../screenshot.md) links to the screenshots and
 hardware photos still needed. Keep it updated as the guides change.
 
@@ -103,7 +100,6 @@ hardware photos still needed. Keep it updated as the guides change.
 | One Python package or template tree | Its folder `README.md` |
 | Arduino library, examples and serial wire format | [Firmware README](../firmware/README.md) |
 | Proposed improvements and bugs | [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues) |
-| Remaining documentation checks | [Documentation checklist](../DOCUMENTATION_TODO.md) |
 | Historical Pi reliability results | [July 2026 acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md) |
 
 LabPulse is a monitoring aid, not a safety interlock or guaranteed

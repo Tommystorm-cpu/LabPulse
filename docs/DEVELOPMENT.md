@@ -367,8 +367,8 @@ Update the guide that owns the subject; the [documentation index](README.md#auth
 lists those homes. Keep the procedure there and link to it elsewhere, so a
 future correction only needs to be made once. Track proposed work in
 [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues) and
-distinguish it from behaviour available in the current source. Keep unfinished
-documentation checks in the [documentation checklist](../DOCUMENTATION_TODO.md).
+distinguish it from behaviour available in the current source. State any
+unverified steps or hardware assumptions in the guide that owns them.
 
 Write for someone who knows their lab but hasn't used LabPulse before. For
 each procedure, say where to run it, explain placeholders, and give the reader

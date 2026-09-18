@@ -290,8 +290,7 @@ remaining real-device checks. Update the relevant guide and the
 [screenshot checklist](../screenshot.md) if the interface has changed.
 
 For implemented behaviour, read the [User Guide](USER_GUIDE.md) and the guide
-for the feature you're changing. Remaining documentation checks are in the
-[documentation checklist](../DOCUMENTATION_TODO.md); proposed changes belong in
+for the feature you're changing. Proposed changes and documentation corrections belong in
 [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues).
 The [July hardware acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md)
 applies to its recorded revision and equipment, not your current checkout.

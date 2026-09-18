@@ -180,8 +180,8 @@ while respecting an operator's configured `VISUAL` or `EDITOR`.
 Follow root `AGENTS.md` for `screenshot.md` maintenance. Use real captures for
 screenshots; distinguish live-installation showcases from simulated tutorials.
 Mark a documentation task complete only when its evidence or deliverable exists.
-Keep pending acceptance work visible in `DOCUMENTATION_TODO.md` or the relevant
-guide rather than implying it passed because unit tests are green.
+Keep unverified acceptance steps explicit in the relevant guide rather than
+implying they passed because unit tests are green.
 
 Keep hardware statements dated and sourced. Distinguish requested, purchased,
 received, fitted and tested parts; current configuration is not proof of wiring.

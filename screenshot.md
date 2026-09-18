@@ -4,9 +4,6 @@ This checklist tracks documentation captures, including those already added.
 Each link opens the image or its marked insertion point. Replace a placeholder
 with the image and a short caption when it's ready, then tick the item here.
 
-For the other remaining documentation tasks, use
-[the manual documentation checklist](DOCUMENTATION_TODO.md).
-
 ## Live installation screenshots
 
 - [x] **[Monitor: live installation overview](README.md#live-installation).**
