@@ -635,6 +635,7 @@ deployment/          Linux setup and guarded-edit workflow assets
 testing/             executable hardware-free contract/integration tests
 firmware/            Arduino library and device examples
 hardware/            PCB and enclosure assets
+integrations/triton/ standalone Windows logfile publishers and launcher
 docs/                current operator and contributor documentation
 ```
 

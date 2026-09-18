@@ -10,7 +10,7 @@ REFACTOR_DIR = Path(__file__).resolve().parents[1]
 
 from labpulse.common.config import load_config
 from labpulse.hardware.drivers.serial_pipe import parse_serial_line
-from simulate_serial import MeasurementGenerator, SimulatorService, build_parser
+from testing.tools.simulate_serial import MeasurementGenerator, SimulatorService, build_parser
 
 
 def test_generated_payloads_match_parsers() -> None:
@@ -179,7 +179,7 @@ def test_device_disconnect_control() -> None:
     if "pressure" not in status["disconnected_devices"]:
         raise AssertionError(f"status omitted disconnected endpoint: {status!r}")
     replacement = FakeEndpoint()
-    with patch("simulate_serial.SerialEndpoint.create", return_value=replacement) as create:
+    with patch("testing.tools.simulate_serial.SerialEndpoint.create", return_value=replacement) as create:
         response = service._dispatch({"command": "connect", "device": "pressure"})
     create.assert_called_once_with(service.sim_dir, "pressure")
     if service._endpoints.get("pressure") is not replacement:
@@ -207,7 +207,7 @@ def test_cli_and_transport_contract() -> None:
     if connect.command != "connect" or connect.device != "pump_room":
         raise AssertionError(f"unexpected connect CLI parse: {connect!r}")
 
-    source = (REFACTOR_DIR / "simulate_serial.py").read_text(encoding="utf-8")
+    source = (REFACTOR_DIR / "testing/tools/simulate_serial.py").read_text(encoding="utf-8")
     for fragment in (
         'CONTROL_SOCKET_NAME = "control.sock"',
         "pty.openpty()",

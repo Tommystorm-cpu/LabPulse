@@ -21,6 +21,21 @@ For the other remaining documentation tasks, use
   File: `docs/images/live-system-status.png`.
   LabPulse and Home Assistant versions were not supplied; add them when known.
 
+- [x] **[Alarm Setup: overview and notification controls](docs/USER_GUIDE.md#alarm-setup).**
+  Real capture supplied 18 September 2026, also shown in the
+  [README alarm controls](README.md#alarm-controls). Shows setup mute and
+  configuration buttons, power monitoring, group alarm settings, and both
+  global mute and Test mode enabled.
+  File: `docs/images/live-alarm-setup.png`.
+  LabPulse and Home Assistant versions were not supplied; add them when known.
+- [x] **[Measurement alarm editor: thresholds and timing](docs/USER_GUIDE.md#configuring-alarms).**
+  Real capture supplied 18 September 2026, also shown in the
+  [README alarm controls](README.md#alarm-controls). Shows the expanded
+  Temperature 0 editor on the Turbo Pump page, including Range mode,
+  thresholds, recovery deadband, confirmation timing, and live status.
+  File: `docs/images/live-measurement-alarm-editor.png`.
+  LabPulse and Home Assistant versions were not supplied; add them when known.
+
 ## First Steps screenshots (simulation)
 
 Capture these on the separate test Pi using fake-hardware mode and the starter
@@ -68,7 +83,9 @@ what is shown; a complete wiring record isn't needed.
   what they are looking at. If the display is shown, identify the 7-inch Touch
   Display 2 with its removed standoffs and show how the case supports it.
   Waiting for assembly: the current case is printed, but key parts have not
-  arrived yet.
+  arrived yet. The [CAD files](hardware/enclosure/README.md) are available;
+  record which revision the photographed assembly uses. CAD is not a substitute
+  for this real-hardware photo.
   Suggested filename: `docs/images/hardware-installation.jpg`.
 
 ## When adding an image

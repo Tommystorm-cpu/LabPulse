@@ -1,5 +1,9 @@
 # LabPulse documentation review
 
+Archived on 18 September 2026. Findings and line references below describe
+the original review, not current outstanding work. See the maintained
+[documentation checklist](../../DOCUMENTATION_TODO.md) for remaining guide tasks.
+
 Review date: 17 September 2026. Baseline: working tree at `17f2234`, including
 the uncommitted changes present when the review began. This is an audit of
 current behaviour, not a proposal to preserve old prototype implementations.
@@ -65,17 +69,17 @@ procedure. **P2** affects operation, diagnosis, or contributor understanding.
 
 ### 1. P1 — Blank-Pi restoration omits the external MQTT security files
 
-**Documentation:** [Installation](docs/INSTALLATION.md), lines 488–527, and
-[User Guide](docs/USER_GUIDE.md), lines 472–504, describe reconstruction from the
+**Documentation:** [Installation](../../docs/INSTALLATION.md), lines 488–527, and
+[User Guide](../../docs/USER_GUIDE.md), lines 472–504, describe reconstruction from the
 LabPulse archive. Neither includes restoring the external MQTT certificate,
 private key, password database, and ACL before regeneration.
 
-**Source:** [backup.py](src/labpulse/backup.py), `SNAPSHOT_PATHS` at line 24,
+**Source:** [backup.py](../../src/labpulse/backup.py), `SNAPSHOT_PATHS` at line 24,
 captures `mosquitto/data` but not `mosquitto/config/certs/server.crt`,
 `server.key`, `external-passwords`, or `external-acl`.
-[mosquitto.py](src/labpulse/deployment/mosquitto.py), lines 8 and 48, requires
+[mosquitto.py](../../src/labpulse/deployment/mosquitto.py), lines 8 and 48, requires
 all four when the external listener is enabled. The
-[restore workflow](src/labpulse/control.py), lines 426–431, restores the source
+[restore workflow](../../src/labpulse/control.py), lines 426–431, restores the source
 and then regenerates it.
 
 **Consequence:** an archive from a Triton-enabled installation is insufficient
@@ -92,12 +96,12 @@ deployment backup until this boundary is resolved.
 
 ### 2. P2 — Saving unchanged configuration does not repair generated files
 
-**Documentation:** [Installation](docs/INSTALLATION.md), lines 570–573 and
+**Documentation:** [Installation](../../docs/INSTALLATION.md), lines 570–573 and
 718–719, recommends `labpulse config` to repair damaged generated files or a
 stale dashboard. The User Guide also broadly presents this as regeneration on
 save.
 
-**Source:** [edit_config.sh](deployment/edit_config.sh), lines 168–182, exits
+**Source:** [edit_config.sh](../../deployment/edit_config.sh), lines 168–182, exits
 when the source bundle and `config.resolved.yaml` are unchanged. It does not
 compare installed Compose, fake-runtime, Mosquitto, or Home Assistant files
 against the staged versions before that exit.
@@ -114,16 +118,16 @@ Add a test with valid unchanged source and deliberately damaged projections.
 
 ### 3. P2 — Optional readings can still make a service need attention
 
-**Documentation:** [Configuration](docs/CONFIGURATION.md), lines 511–514,
-[User Guide](docs/USER_GUIDE.md), lines 107–108, and
-[Triton publisher](docs/TRITON_PUBLISHER.md), lines 837–838, promise that an
+**Documentation:** [Configuration](../../docs/CONFIGURATION.md), lines 511–514,
+[User Guide](../../docs/USER_GUIDE.md), lines 107–108, and
+[Triton publisher](../../docs/TRITON_PUBLISHER.md), lines 837–838, promise that an
 absent optional reading does not make the service unhealthy.
 
-**Source:** [mqtt_json.py](src/labpulse/hardware/drivers/mqtt_json.py), lines
+**Source:** [mqtt_json.py](../../src/labpulse/hardware/drivers/mqtt_json.py), lines
 164–180, reports `HardwareIssue(code="missing_measurements")` for any missing
 mapped field. Its source mapping does not carry `required` policy. The
-[runner](src/labpulse/hardware/runner.py), lines 223–230, publishes that issue
-as service status; the [health template](src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
+[runner](../../src/labpulse/hardware/runner.py), lines 223–230, publishes that issue
+as service status; the [health template](../../src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
 lines 57–64, classifies a non-`online` component status as **Needs attention**.
 
 **Reproduction:** a payload containing one required field but omitting one
@@ -138,11 +142,11 @@ end before changing the wording.
 
 ### 4. P2 — Danger percentage is time-based, not a count of observations
 
-**Documentation:** [User Guide](docs/USER_GUIDE.md), lines 174–182, says that
+**Documentation:** [User Guide](../../docs/USER_GUIDE.md), lines 174–182, says that
 70% of recent observations must be outside the threshold. The installation
 troubleshooting section repeats the observations explanation.
 
-**Source:** [derived_entities.yaml.j2](src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
+**Source:** [derived_entities.yaml.j2](../../src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
 lines 8–19, configures `history_stats` with `type: ratio`. That measures the
 time spent in the tracked state as a percentage of the window, as defined in
 the [Home Assistant History Stats documentation](https://www.home-assistant.io/integrations/history_stats/#sensor-type).
@@ -158,14 +162,14 @@ missing-data confirmation, danger window, and recovery duration distinct.
 
 ### 5. P2 — The no-unit-conversion promise is not true for all generated sensors
 
-**Documentation:** [Configuration](docs/CONFIGURATION.md), lines 518–523, and
+**Documentation:** [Configuration](../../docs/CONFIGURATION.md), lines 518–523, and
 the User Guide's measurement/history section say configured classes are used
 for LabPulse semantics/icons without exposing a convertible Home Assistant
 device class.
 
 **Source:** physical MQTT discovery follows that policy, but calculated
 sensors explicitly emit `device_class` in
-[derived_entities.yaml.j2](src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
+[derived_entities.yaml.j2](../../src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
 lines 29–34. Calculated sensors also emit an icon only when explicitly supplied,
 whereas their configuration table describes the icon default as derived.
 
@@ -180,12 +184,12 @@ the distinction explicitly, especially for calculated temperature differences.
 
 ### 6. P2 — Two package guides describe the old simulation topology
 
-**Documentation:** [deployment package README](src/labpulse/deployment/README.md),
+**Documentation:** [deployment package README](../../src/labpulse/deployment/README.md),
 line 15, says fake mode omits physical outputs;
-[output README](src/labpulse/output/README.md), line 15, explicitly says it
+[output README](../../src/labpulse/output/README.md), line 15, explicitly says it
 omits output workers.
 
-**Source:** [compose.py](src/labpulse/deployment/compose.py) loops over enabled
+**Source:** [compose.py](../../src/labpulse/deployment/compose.py) loops over enabled
 outputs in both modes, removes hardware resource declarations in simulation,
 and adds `--simulate`. The output process selects `SimulatedOutputDriver`.
 The root README and current operator guides correctly describe this.
@@ -197,15 +201,15 @@ foundation.
 
 ### 7. P2 — The documented driver-health contract omits independent heartbeats
 
-**Documentation:** [Architecture](docs/ARCHITECTURE.md), lines 310–338, lists
+**Documentation:** [Architecture](../../docs/ARCHITECTURE.md), lines 310–338, lists
 four runner states and unconditionally says a stale batch causes reconnect
 and a valid reading is required before online. The
-[hardware README](src/labpulse/hardware/README.md) and User Guide's freshness
+[hardware README](../../src/labpulse/hardware/README.md) and User Guide's freshness
 section repeat that reading-only model.
 
-**Source:** [HardwareDriver.health_status](src/labpulse/hardware/driver.py),
+**Source:** [HardwareDriver.health_status](../../src/labpulse/hardware/driver.py),
 line 83, provides independent `SourceHealth`. The
-[runner](src/labpulse/hardware/runner.py), lines 235–253, bypasses
+[runner](../../src/labpulse/hardware/runner.py), lines 235–253, bypasses
 reading-based reconnection when that health channel is available. It can mark
 a publisher online without a fresh measurement and emits `awaiting_heartbeat`.
 The architecture guide's later security section already describes this newer
@@ -219,10 +223,10 @@ readings. A healthy heartbeat with expired data can show **Needs attention**.
 
 ### 8. P2 — The serial protocol promises duplicate rejection that does not exist
 
-**Documentation:** [firmware README](firmware/README.md), line 258, says
+**Documentation:** [firmware README](../../firmware/README.md), line 258, says
 duplicate names are invalid, and elsewhere requires exact name matching.
 
-**Source:** [parse_serial_line](src/labpulse/hardware/drivers/serial_pipe.py),
+**Source:** [parse_serial_line](../../src/labpulse/hardware/drivers/serial_pipe.py),
 lines 37–61, lowercases labels and assigns each usable number into a dictionary.
 A later valid duplicate overwrites an earlier one.
 
@@ -237,12 +241,12 @@ one authoritative wire contract.
 
 ### 9. P2 — Triton commands assume a different Docker access policy
 
-**Documentation:** [Installation](docs/INSTALLATION.md), lines 48–63, defaults
+**Documentation:** [Installation](../../docs/INSTALLATION.md), lines 48–63, defaults
 to `sudo docker`, with Docker-group access an explicit alternative. The
-[Triton guide](docs/TRITON_PUBLISHER.md), lines 507, 516, 698 and 1082 onward,
+[Triton guide](../../docs/TRITON_PUBLISHER.md), lines 507, 516, 698 and 1082 onward,
 uses bare `docker run` and `docker exec` without that prerequisite.
 
-**Source:** [docker_command](src/labpulse/control.py), line 69, selects the
+**Source:** [docker_command](../../src/labpulse/control.py), line 69, selects the
 configured prefix or normally `sudo docker` on the Pi. Raw guide commands do
 not use this function or `LABPULSE_DOCKER_COMMAND`.
 
@@ -254,12 +258,12 @@ the distinction.
 
 ### 10. P2 — Editor failure recovery is described inconsistently
 
-**Documentation:** [Installation](docs/INSTALLATION.md), lines 746–752,
+**Documentation:** [Installation](../../docs/INSTALLATION.md), lines 746–752,
 describes accepted configuration followed by failed recreation and limits its
 rollback explanation to validation/check failures. Earlier migration text
 instead promises automatic rollback after installation failures.
 
-**Source:** [edit_config.sh](deployment/edit_config.sh), lines 250–257,
+**Source:** [edit_config.sh](../../deployment/edit_config.sh), lines 250–257,
 explicitly restores the previous source bundle, regenerates it, and attempts
 to recreate the old stack when the new Compose recreation fails. The retry
 can itself fail and does not make the transaction atomic.
@@ -272,12 +276,12 @@ that rollback is guaranteed.
 
 ### 11. P2 — The hardware guide conflates BCM numbering and chip offsets
 
-**Documentation:** [Hardware](docs/HARDWARE.md), lines 36–38 and 47, says Pi
+**Documentation:** [Hardware](../../docs/HARDWARE.md), lines 36–38 and 47, says Pi
 configuration selects BCM GPIO numbers.
 
 **Source:** the GPIO input/output and X1200 drivers use the configured Linux
 `gpio_chip` and `gpio_line`; DHT11 uses a Blinka board pin name. The
-[driver README](src/labpulse/hardware/drivers/README.md) and configuration
+[driver README](../../src/labpulse/hardware/drivers/README.md) and configuration
 reference correctly describe a chip line offset.
 
 **Improvement:** document each identifier explicitly: physical header pin,
@@ -288,11 +292,11 @@ offsets are universal BCM identities.
 ### 12. P2 — Operator lists omit two important generated Home Assistant files
 
 **Documentation:** the “Do not edit” lists in
-[Configuration](docs/CONFIGURATION.md) and [User Guide](docs/USER_GUIDE.md)
+[Configuration](../../docs/CONFIGURATION.md) and [User Guide](../../docs/USER_GUIDE.md)
 only show `homeassistant/config/labpulse-*.yaml` for HA output. Installation
 also broadly says the existing HA directory is preserved.
 
-**Source:** [generator.py](src/labpulse/homeassistant/generator.py), lines
+**Source:** [generator.py](../../src/labpulse/homeassistant/generator.py), lines
 34–41 and 105–122, replaces `configuration.yaml`,
 `packages/labpulse_generated.yaml`, and `labpulse-dashboard.yaml`. Existing
 `automations.yaml`, `scripts.yaml`, and `scenes.yaml` are preserved. The
@@ -311,9 +315,9 @@ upgrade procedures contain `VERSION_WITH_MEASUREMENT_FILES` and
 `VERSION_WITH_HEARTBEAT`; the rollback example defaults to `0.1.1`.
 
 **Evidence:** local tags inspected extend through `v0.3.6`. This does not prove
-which remote artifacts currently exist. [CHANGELOG](CHANGELOG.md) has one
+which remote artifacts currently exist. [CHANGELOG](../../CHANGELOG.md) has one
 `Unreleased` section containing the project's whole modern foundation.
-[ROADMAP](ROADMAP.md) both describes production PyPI publication as implemented
+The former `ROADMAP.md` (removed on 18 September 2026) both describes production PyPI publication as implemented
 and leaves it unchecked in Track A, while presenting Triton implementation as
 future work despite the implemented publisher, driver, and guide.
 
@@ -324,11 +328,11 @@ from tags and actual publication records. Distinguish implemented Triton
 software from remaining site acceptance. State that restore regenerates using
 the installed package; it does not install the archive's recorded version.
 Only LabPulse's image is exact-versioned; HA `stable` and Mosquitto `2` remain
-mutable tags in [compose.py](src/labpulse/deployment/compose.py).
+mutable tags in [compose.py](../../src/labpulse/deployment/compose.py).
 
 ### 14. P2 — The local project skill teaches a superseded architecture
 
-**Documentation:** [.codex/skills/labpulse-project/SKILL.md](.codex/skills/labpulse-project/SKILL.md),
+**Documentation:** [.codex/skills/labpulse-project/SKILL.md](../../.codex/skills/labpulse-project/SKILL.md),
 lines 16, 52, 123–145, 170 and 285–289, says the project is not in live use,
 shows a copied `labpulse-python` tree, describes fake USB paths as the main
 simulation route, refers to nonexistent `hardware/cli.py`, and names deleted
@@ -346,10 +350,10 @@ This prevents future automated changes from reintroducing old assumptions.
 
 ### 15. P3 — Fake-mode acceptance incorrectly requires every value to change
 
-**Documentation:** [Installation](docs/INSTALLATION.md), line 331, and the
+**Documentation:** [Installation](../../docs/INSTALLATION.md), line 331, and the
 User Guide's fake-mode acceptance say every measurement should be changing.
 
-**Source:** [sensible_measurement_value](src/labpulse/hardware/_simulation.py)
+**Source:** [sensible_measurement_value](../../src/labpulse/hardware/_simulation.py)
 returns constant `1.0` for GPIO and names indicating a present/active state.
 Outputs also remain at their current state until commanded. Other values can
 appear constant when rounded by configured precision.
@@ -361,19 +365,19 @@ alarm controls, not physically accurate Triton values or fault scenarios.
 
 ### 16. P3 — Small but definite UI and command-reference errors
 
-- [User Guide](docs/USER_GUIDE.md), line 165, calls the disabled alarm mode
-  **Off**; the [helper options](src/labpulse/homeassistant/templates/alarm/helpers.yaml.j2),
+- [User Guide](../../docs/USER_GUIDE.md), line 165, calls the disabled alarm mode
+  **Off**; the [helper options](../../src/labpulse/homeassistant/templates/alarm/helpers.yaml.j2),
   line 113, use **Disabled**.
 - User Guide lines 187–188 describe strictly below/above recovery boundaries;
-  [derived entities](src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
+  [derived entities](../../src/labpulse/homeassistant/templates/alarm/derived_entities.yaml.j2),
   lines 147–149, use inclusive `<=` and `>=`.
-- [Triton guide](docs/TRITON_PUBLISHER.md), line 977, uses
+- [Triton guide](../../docs/TRITON_PUBLISHER.md), line 977, uses
   **Unavailable — optional** instead of the current **No recent data — optional**.
-- [Architecture](docs/ARCHITECTURE.md), lines 136–145, omits `update` and
+- [Architecture](../../docs/ARCHITECTURE.md), lines 136–145, omits `update` and
   `uninstall` from its operator command list.
-- [Installation](docs/INSTALLATION.md), lines 413–419, says every command
+- [Installation](../../docs/INSTALLATION.md), lines 413–419, says every command
   checks for updates and update always fetches fresh release metadata.
-  [control.py](src/labpulse/control.py), lines 627 and 955, excludes
+  [control.py](../../src/labpulse/control.py), lines 627 and 955, excludes
   `uninstall` and the normal update notifier; an explicitly supplied version
   skips the latest-version JSON lookup. Distinguish that lookup from pipx's
   package-index access.
@@ -425,7 +429,7 @@ Update the documentation index and contributor ownership rules together.
 ### D. Turn package summaries into usable extension guidance
 
 The driver README lists the modules but does not walk a contributor through
-adding one. Link [driver_template.py](docs/examples/driver_template.py), show
+adding one. Link [driver_template.py](../../docs/examples/driver_template.py), show
 where to copy it, give a complete minimal configuration and focused test,
 explain lazy dependencies and runtime image rebuilds, and cover input versus
 output driver requirements. `container_requirements` is required by
@@ -441,15 +445,15 @@ scripts and should be discoverable before starting a fault exercise.
 
 The three spreadsheets are useful historical evidence but not a current BOM:
 
-- [Internship purchased items.xlsx](docs/Internship%20purchased%20items.xlsx),
-  Sheet1 A4, says `SEN057`; [LabPulse Sensors.xlsx](docs/LabPulse%20Sensors.xlsx),
+- [Internship purchased items.xlsx](purchasing-2026-09-18/Internship%20purchased%20items.xlsx),
+  Sheet1 A4, says `SEN057`; [LabPulse Sensors.xlsx](purchasing-2026-09-18/LabPulse%20Sensors.xlsx),
   Sheet1 A10, says `SEN0257`. Reconcile the actual part rather than guessing.
 - The purchased-items workbook explicitly marks its UPS as superseded and
   points to X1200 in E12. It should be labelled historical purchases.
 - The sensor inventory records “Working”, partial failures, and unknown
   models/locations without observation dates or hardware revisions. It cannot
   establish current commissioning status and lacks the new pressure-hub SHT40.
-- [Mini Shopping List.xlsx](docs/Mini%20Shopping%20List.xlsx) describes proposed
+- [Mini Shopping List.xlsx](purchasing-2026-09-18/Mini%20Shopping%20List.xlsx) describes proposed
   purchases without purchased/installed status or a date. Its prices were not
   checked against current suppliers.
 - An Office owner-lock file, `docs/~$Internship purchased items.xlsx`, is tracked.

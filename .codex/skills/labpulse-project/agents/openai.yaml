@@ -1,0 +1,4 @@
+interface:
+  display_name: "LabPulse Project"
+  short_description: "Maintain LabPulse code, Pi deployment, and documentation"
+  default_prompt: "Use $labpulse-project to make and validate this LabPulse change against the current architecture and live-installation constraints."

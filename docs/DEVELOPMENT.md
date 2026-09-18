@@ -127,6 +127,7 @@ src/labpulse/
 deployment/          packaged Linux workflow scripts
 testing/             executable hardware-free tests
 firmware/            Arduino library and examples
+integrations/triton/ standalone Windows logfile publishers and launcher
 hardware/            PCB and enclosure assets
 docs/                maintained documentation
 ```
@@ -364,8 +365,10 @@ the [hardware driver package guide](../src/labpulse/hardware/drivers/README.md).
 
 Update the guide that owns the subject; the [documentation index](README.md#authoritative-homes)
 lists those homes. Keep the procedure there and link to it elsewhere, so a
-future correction only needs to be made once. Put proposed work in the roadmap
-and distinguish it from behaviour available in the current source.
+future correction only needs to be made once. Track proposed work in
+[GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues) and
+distinguish it from behaviour available in the current source. Keep unfinished
+documentation checks in the [documentation checklist](../DOCUMENTATION_TODO.md).
 
 Write for someone who knows their lab but hasn't used LabPulse before. For
 each procedure, say where to run it, explain placeholders, and give the reader

@@ -17,7 +17,7 @@ from labpulse.common.service_config import ServiceConfig
 from labpulse.homeassistant.generator import main as generate_homeassistant
 
 
-SIM_CONFIG = REFACTOR_DIR / "testing" / "ups_test_pi_config.yaml"
+SIM_CONFIG = REFACTOR_DIR / "testing" / "fixtures" / "ups_serial.yaml"
 
 
 def test_config_validation_and_stable_identity() -> None:

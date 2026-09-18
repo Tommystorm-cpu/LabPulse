@@ -411,7 +411,7 @@ def test_show_graph_requires_a_boolean(location: str) -> None:
 def test_power_problem_links_to_its_alarm_setup_page() -> None:
     """Open the matching power alarm configuration from Current Problems."""
 
-    _, dashboard, _ = generate(config_path=REPOSITORY / "testing" / "ups_test_pi_config.yaml")
+    _, dashboard, _ = generate(config_path=REPOSITORY / "testing" / "fixtures" / "ups_serial.yaml")
     monitor = view(dashboard, "monitor")
     problems = next(
         item for item in walk(monitor)

@@ -17,8 +17,8 @@ For the software installation, use [Installation](INSTALLATION.md).
 
 If you're identifying an existing unit, start with [the parts list](#parts-in-the-main-unit)
 and [connections](#how-the-connections-fit-together). If you're continuing the
-case design, read [the enclosure history](#enclosure-history) before importing
-models. The [build notes](#finish-the-build-record) explain what to include if
+case design, start with [the CAD files and build status](#enclosure-files-and-build-status),
+then read [the enclosure history](#enclosure-history). The [build notes](#finish-the-build-record) explain what to include if
 you share a finished version of the case.
 
 ## Parts in the main unit
@@ -51,7 +51,7 @@ HAT in this enclosure has to plug into the Pi's 40-pin header.
 The original list's **Waveshare UPS HAT (A)** is marked “DON'T USE THIS ONE”.
 It was superseded by the X1200. It also lists three Gembird UHB-U2P4-04 USB hubs;
 these belong to the earlier purchases, not the later Waveshare enclosure plan.
-The [July acceptance record](../ROADMAP.md#real-hardware-reliability) reports a
+The [July acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md) reports a
 faulty external hub, but doesn't identify its model.
 
 ## Additional parts requested
@@ -197,6 +197,28 @@ measure main-lab temperature and humidity at the compressed-air hub. It is
 separate from the planned Pi room sensor; firmware support does not establish
 that either sensor has been connected and checked.
 
+## Enclosure files and build status
+
+The touchscreen enclosure files are in
+[`hardware/enclosure/`](../hardware/enclosure/README.md):
+
+| File | What it provides |
+|---|---|
+| [Screen Enclosure.f3z](../hardware/enclosure/Screen%20Enclosure.f3z) | Autodesk Fusion assembly archive for continuing the design. It contains seven Fusion design documents. |
+| [Screen Enclosure.step](../hardware/enclosure/Screen%20Enclosure.step) | Assembly geometry exported on 18 September 2026 for inspection in other CAD software; it does not retain the original Fusion editing history. |
+
+The CAD is available. The maintainer reports that the current case is printed,
+but assembly is waiting for parts. The repository does not yet identify the
+CAD revision used for that print or contain its exported print parts and
+settings. Final component fit, display retention, cable routing, and assembly
+remain to be checked against the actual hardware.
+
+The older STLs and their original design credits are now in
+[`legacy/hardware/3d_parts/`](../legacy/hardware/3d_parts/). They are obsolete
+and are not print exports of the touchscreen case. `Tall boi With hole!.stl`
+contains only a newline, not a model; `RPi 4 cover holes.stl` is the other
+historical mesh. Keep these separate from the current Fusion and STEP files.
+
 ## Enclosure history
 
 Two Codex tasks contain the useful design context:
@@ -248,11 +270,6 @@ CAD envelopes**, not a measured assembled height. Don't use those old answers
 as manufacturing dimensions. Check the complete stack, cooler, display bosses,
 plug bodies, and cable bends in the actual assembly.
 
-The current [3D-parts folder](../hardware/3d_parts/) contains only the older
-STLs marked obsolete by its README. It doesn't contain the touchscreen case's
-editable Fusion assembly or a verified printable release. Keep those distinct
-when bringing the finished CAD back into the repository.
-
 ## References for continuing the CAD
 
 Start with the manufacturers' drawings, then compare them with the physical
@@ -274,8 +291,10 @@ isn't enough to represent the USB hub with its metal case fitted.
 This enclosure is an optional example. Other labs can use a different case
 and arrange their own sensors without reproducing this installation.
 
-If you share the finished case, add the editable CAD and print files, identify
-the parts they fit, and give a short assembly order with the required fasteners.
+The [editable assembly and STEP export](#enclosure-files-and-build-status) are
+already included. To make the case reproducible, identify the CAD revision used
+for the print, add the individual print files and settings, identify the parts
+they fit, and give a short assembly order with the required fasteners.
 Include any non-obvious details, such as a tight cable bend, a changed connector,
 or a power arrangement that someone copying the case needs to understand.
 Keep unfinished ideas labelled as proposals.
@@ -285,7 +304,8 @@ Keep unfinished ideas labelled as proposals.
 > view if useful, and identify any pictured prototype or planned part. If the
 > display is shown, identify the 7-inch Touch Display 2 with its removed
 > standoffs and show how the case supports it. This capture is waiting for
-> assembly; the current case is printed but key parts have not arrived.
+> assembly; the current case is printed but key parts have not arrived. Record
+> which CAD revision the photographed assembly uses.
 
 The optional photo is tracked in [screenshot.md](../screenshot.md). A full lab
 wiring inventory or commissioning report isn't needed to complete this guide.

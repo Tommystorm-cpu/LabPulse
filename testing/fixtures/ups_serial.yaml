@@ -1,3 +1,4 @@
+# Test fixture: a simulated UPS over pseudo-serial, not direct X1200 hardware.
 mqtt:
   broker: mosquitto
   port: 1883

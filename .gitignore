@@ -5,6 +5,7 @@ dist/
 *.egg-info/
 __pycache__/
 .pytest_cache/
+/.vscode/
 ~$*.xlsx
 /logs/
 **/__pycache__/
@@ -14,6 +15,14 @@ tmp_ha_*/
 tmp_ha_*-check.py
 /testing/tmp/
 
-# Codex local workspace/artifact files
-.codex/
+# Keep local Codex state private, but share the project skill.
+/.codex/*
+!/.codex/skills/
+/.codex/skills/*
+!/.codex/skills/labpulse-project/
+/.codex/skills/labpulse-project/*
+!/.codex/skills/labpulse-project/SKILL.md
+!/.codex/skills/labpulse-project/agents/
+/.codex/skills/labpulse-project/agents/*
+!/.codex/skills/labpulse-project/agents/openai.yaml
 .agents/

@@ -289,10 +289,14 @@ the intended changes. Include the problem, new behaviour, tests run, and any
 remaining real-device checks. Update the relevant guide and the
 [screenshot checklist](../screenshot.md) if the interface has changed.
 
-For the project's status, read [the current-source summary](../ROADMAP.md#current-source-status).
-It distinguishes implemented software from historical acceptance records and
-work that still needs deployment evidence. Don't treat an old completed
-milestone as certification of your current checkout.
+For implemented behaviour, read the [User Guide](USER_GUIDE.md) and the guide
+for the feature you're changing. Remaining documentation checks are in the
+[documentation checklist](../DOCUMENTATION_TODO.md); proposed changes belong in
+[GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues).
+The [July hardware acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md)
+applies to its recorded revision and equipment, not your current checkout.
+For a Triton installation, record the
+[site acceptance checks](TRITON_PUBLISHER.md#final-acceptance-checklist) separately.
 
 Publishing is a separate step, normally done by a maintainer with release
 access. Start with the [GitHub release and Pi update quick guide](RELEASING.md#quick-guide-github-release-to-updated-pi).

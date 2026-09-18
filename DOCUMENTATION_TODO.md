@@ -54,10 +54,11 @@ how our lab is wired.
 - Add a clear photo of a sensor hub and the main unit if it helps readers
   understand the hardware. The optional capture slots are in
   [screenshot.md](screenshot.md).
-- If you want others to print your enclosure, add the current editable CAD
-  and print files, plus a short note on parts, fasteners, and assembly.
-  Link them from [Main unit](docs/MAIN_UNIT.md). Otherwise leave the case as
-  a design example.
+- The [enclosure CAD](hardware/enclosure/README.md) now includes the Fusion
+  assembly and STEP export. If others should reproduce the print, identify the
+  printed CAD revision, add the individual print files and settings, and record
+  parts, fasteners, and assembly. Fit and assembly are still unverified; see
+  [Main unit](docs/MAIN_UNIT.md#finish-the-build-record).
 - If someone new tries the user or maintainer guides, use their questions to
   improve the wording. A formal handover exercise isn't a requirement.
 

@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from firmware import triton_logfile_publisher_setup as setup_publisher
-from firmware.triton_logfile_publisher_production import (
+from integrations.triton import triton_logfile_publisher_setup as setup_publisher
+from integrations.triton.triton_logfile_publisher_production import (
     availability_topic,
     create_mqtt_client,
     default_client_id,
@@ -17,8 +17,8 @@ from firmware.triton_logfile_publisher_production import (
     publish_heartbeat,
     record_to_json,
 )
-from firmware import triton_logfile_publisher_production as production_publisher
-from firmware.triton_logfile_publisher_setup import (
+from integrations.triton import triton_logfile_publisher_production as production_publisher
+from integrations.triton.triton_logfile_publisher_setup import (
     parse_args as parse_setup_args,
     record_to_json as setup_record_to_json,
 )
@@ -68,7 +68,7 @@ def test_default_client_id_is_stable_and_computer_specific() -> None:
     """Control PCs must not disconnect one another by sharing a client ID."""
 
     with patch(
-        "firmware.triton_logfile_publisher_production.socket.gethostname",
+        "integrations.triton.triton_logfile_publisher_production.socket.gethostname",
         return_value="Triton PC 01.lab",
     ):
         assert default_client_id() == "Triton-logfile-publisher-Triton-PC-01-lab"
@@ -224,7 +224,7 @@ def test_mqtt_client_applies_tls_authentication_and_identity(
     client = Mock()
 
     with patch(
-        "firmware.triton_logfile_publisher_production.mqtt.Client",
+        "integrations.triton.triton_logfile_publisher_production.mqtt.Client",
         return_value=client,
     ) as factory:
         assert create_mqtt_client(args) is client

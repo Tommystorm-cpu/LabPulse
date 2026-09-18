@@ -43,6 +43,9 @@ README_PATHS = {
     "deployment/README.md",
     "docs/README.md",
     "firmware/README.md",
+    "hardware/enclosure/README.md",
+    "hardware/pcbs/README.md",
+    "integrations/triton/README.md",
     "src/labpulse/README.md",
     "src/labpulse/common/README.md",
     "src/labpulse/deployment/README.md",
@@ -54,6 +57,7 @@ README_PATHS = {
     "src/labpulse/sms/README.md",
     "testing/README.md",
     "testing/real_hardware/README.md",
+    "testing/tools/README.md",
 }
 
 def _maintained_markdown_files(repository_root: Path) -> tuple[Path, ...]:
@@ -63,7 +67,7 @@ def _maintained_markdown_files(repository_root: Path) -> tuple[Path, ...]:
         repository_root / "README.md",
         repository_root / "CHANGELOG.md",
         repository_root / "CONTRIBUTING.md",
-        repository_root / "ROADMAP.md",
+        repository_root / "testing/real_hardware/ACCEPTANCE_2026-07-27.md",
         repository_root / "SECURITY.md",
         repository_root / "screenshot.md",
         repository_root / "DOCUMENTATION_TODO.md",

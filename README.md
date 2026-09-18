@@ -37,6 +37,8 @@ the containers, Home Assistant entities, dashboards and alarms around it.
   to the Raspberry Pi, UPS hardware, and named messages from other computers.
 - Creates Home Assistant dashboards, history, service-health indicators and
   configurable measurement alarms.
+- Lets researchers [download sensor history as CSV](docs/USER_GUIDE.md#download-sensor-data-as-csv)
+  for plotting, analysis, and comparison with experimental results.
 - Separates a failed sensor service from an individual missing or dangerous
   reading, so the dashboard gives a useful explanation instead of one generic
   error.
@@ -58,6 +60,21 @@ Your dashboard reflects your own configured equipment.*
 
 The [System Status example in the user guide](docs/USER_GUIDE.md#system-status)
 shows how LabPulse distinguishes service health from missing optional readings.
+
+### Alarm controls
+
+![Alarm Setup dashboard showing setup mute and configuration buttons, power monitoring, notification controls, and group alarm settings.](docs/images/live-alarm-setup.png)
+
+*Alarm Setup brings setup controls and notification settings together. In this
+capture, both **Mute all notifications** and **Test mode** are enabled.*
+
+![Turbo Pump measurement alarm editor showing temperature thresholds, recovery deadband, confirmation timing, and live status.](docs/images/live-measurement-alarm-editor.png)
+
+*Open **Configure** beside a measurement to adjust its alarm mode, thresholds
+and timing while keeping its current reading in view. Both captures were
+supplied 18 September 2026; the pictured settings are examples from this
+installation. See [Configuring alarms](docs/USER_GUIDE.md#configuring-alarms)
+for what each control does and choose settings for your equipment.*
 
 ## How it fits together
 
@@ -180,7 +197,8 @@ a new installation; changing it does not change an existing Pi.
 - **I want to understand or change the code:** read
   [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md) and
   [Contributing](CONTRIBUTING.md).
-- **I want to see what may come next:** read the [Roadmap](ROADMAP.md).
+- **I want to suggest an improvement:** read [Contributing](CONTRIBUTING.md)
+  and check the [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues).
 - **I want to browse everything:** use the
   [documentation index](docs/README.md).
 

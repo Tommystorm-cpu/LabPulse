@@ -49,7 +49,7 @@ of the project; a purchased part isn't necessarily the part still fitted today.
 | [Shopping email and maintainer update, recorded 18 September 2026](MAIN_UNIT.md#additional-parts-requested) | Confirms the X1200 and planned mains-powered USB hub. Lists display accessories and two SHT40 cables; the SHT40 connections are not installed yet. |
 | [LabPulse Sensors](../legacy/Documentation/purchasing-2026-09-18/LabPulse%20Sensors.xlsx), Sheet1, rows 2–10 | Sensor counts and locations, plus an undated snapshot of which readings worked. It predates the current SHT40 configuration. |
 | [Firmware examples](../firmware/README.md#device-configuration) and [starter configuration](../config.yaml) | What the current source expects. The live installation's configuration and flashed firmware still need to match. |
-| [July 2026 acceptance record](../ROADMAP.md#real-hardware-reliability) | What was tested on the Pi, including the faulty USB hub and DHT11 that prompted replacement work. |
+| [July 2026 acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md) | What was tested on the Pi, including the faulty USB hub and DHT11 that prompted replacement work. |
 
 The [main-unit guide](MAIN_UNIT.md#enclosure-history) also records the decisions
 recovered from the July and August 2026 CAD chats. Those discussions include
@@ -233,17 +233,23 @@ Keep these identities distinct:
 
 ## Existing hardware assets
 
-The [PCB directory](../hardware/PCB_files/) contains `PCBv6.zip` and several
+The [PCB revision index](../hardware/pcbs/README.md) lists `PCBv6.zip` and several
 Arduino-HAT Gerber archives named prototype1, prototype2, prototype3, and
 Final_prototype. A Gerber archive contains board-manufacturing artwork; its
 filename doesn't establish which revision is fitted or whether it was tested.
 Match the board markings and trace its connections before using one as the
-assembly reference.
+assembly reference. None is currently labelled as a verified manufacturing
+choice; the index records each archive's contents and unresolved status.
 
-The [3D-parts README](../hardware/3d_parts/README.txt) explicitly marks the two
-STLs beside it as old and no longer used. They are not the touchscreen case
-from the later CAD discussions. See the [enclosure history](MAIN_UNIT.md#enclosure-history)
-before choosing a model to print.
+The [enclosure folder](../hardware/enclosure/README.md) contains the touchscreen
+case's Fusion assembly archive and STEP export. The case is reported printed,
+but final assembly and fit checks are pending. See
+[the CAD files and build status](MAIN_UNIT.md#enclosure-files-and-build-status)
+before reproducing it.
+
+The obsolete STLs and original attribution notes are preserved under
+[`legacy/hardware/3d_parts/`](../legacy/hardware/3d_parts/). These are not print
+files for the touchscreen case, and `Tall boi With hole!.stl` is only a newline.
 
 > **Photo to add: one verified sensor hub (optional).** Show the main parts,
 > connectors, and USB connection. Name the firmware example it uses and any

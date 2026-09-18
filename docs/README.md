@@ -43,8 +43,12 @@ If something doesn't work, go straight to [Troubleshooting](TROUBLESHOOTING.md).
   links, historical prices, requested additions, and earlier choices.
 - [Raspberry Pi main unit](MAIN_UNIT.md): Pi, UPS, modem, USB hub, Gravity board,
   sensor connections, and the touchscreen enclosure design history.
+- [Enclosure CAD](../hardware/enclosure/README.md): Fusion assembly, STEP export,
+  and the assembly and print information still to be recorded.
 - [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended
   Windows control-PC installation.
+  The [publisher source and quick reference](../integrations/triton/README.md)
+  are separate from the Arduino firmware.
 
 The installed source bundle is `~/labpulse-live/config.yaml` plus any
 measurement files it references beneath `config.d/`. The repository
@@ -69,9 +73,10 @@ hardware photos still needed. Keep it updated as the guides change.
    heading before moving on to configuration and drivers.
 3. Use [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), and the
    nearest [package README](../src/labpulse/README.md) as references.
-4. Check [the roadmap's current-source summary](../ROADMAP.md#current-source-status)
-   before deciding what's missing. Use [Releasing](RELEASING.md) when preparing
-   a version for other people to install.
+4. Check the relevant guide and current implementation before deciding what's
+   missing. Track proposed changes in
+   [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues).
+   Use [Releasing](RELEASING.md) when preparing a version for other people to install.
 
 ## Authoritative homes
 
@@ -97,7 +102,9 @@ hardware photos still needed. Keep it updated as the guides change.
 | Triton logfile publication from Windows control PCs | [Triton publisher](TRITON_PUBLISHER.md) |
 | One Python package or template tree | Its folder `README.md` |
 | Arduino library, examples and serial wire format | [Firmware README](../firmware/README.md) |
-| Future work and historical acceptance | [Roadmap](../ROADMAP.md) |
+| Proposed improvements and bugs | [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues) |
+| Remaining documentation checks | [Documentation checklist](../DOCUMENTATION_TODO.md) |
+| Historical Pi reliability results | [July 2026 acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md) |
 
 LabPulse is a monitoring aid, not a safety interlock or guaranteed
 notification path. Hardware-free tests validate software contracts; wiring,

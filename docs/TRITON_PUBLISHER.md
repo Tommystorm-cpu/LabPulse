@@ -129,9 +129,9 @@ host route but do not change an adapter address or its existing configuration.
   `mqtt.external_listener.bind_addresses`.
 - Python 3.11 or newer on each control PC.
 - These repository files:
-  - `firmware/triton_logfile_publisher_setup.py`
-  - `firmware/triton_logfile_publisher_production.py`
-  - `firmware/run_triton_publisher.example.ps1`
+  - `integrations/triton/triton_logfile_publisher_setup.py`
+  - `integrations/triton/triton_logfile_publisher_production.py`
+  - `integrations/triton/run_triton_publisher.example.ps1`
 - One CA certificate file, `labpulse-ca.crt`, created later in this guide.
 
 The two Python publishers are deliberately independent, one-file programs.

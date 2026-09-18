@@ -26,7 +26,9 @@ python -m pytest
 | Documentation | `test_documentation.py` |
 
 `conftest.py` supplies repository and disposable workspace fixtures.
-`ups_test_pi_config.yaml` is a real-Pi acceptance configuration, not a starter.
+[`fixtures/ups_serial.yaml`](fixtures/ups_serial.yaml) is a simulated UPS serial
+configuration used by the power and dashboard tests, not a real-X1200 setup.
+[`tools/`](tools/README.md) contains the standalone serial simulator.
 `testing/tmp/` is generated and disposable.
 
 Tests inject fake clocks, MQTT, serial, buses, GPIO and modem calls. A green

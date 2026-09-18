@@ -201,7 +201,8 @@ green Python publication job as a successful complete release.
 ## Keep the status documents honest
 
 Record released behaviour in the changelog, current usage in the guides, and
-remaining work in the [roadmap](../ROADMAP.md). Preserve older hardware results
+remaining work in [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues)
+or the [documentation checklist](../DOCUMENTATION_TODO.md). Preserve older hardware results
 as evidence for their recorded revision, rather than silently extending them
 to new hardware or new source. Update [screenshot.md](../screenshot.md) whenever
 a visible change means a guide's capture needs refreshing.

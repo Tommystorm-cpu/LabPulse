@@ -1,5 +1,9 @@
 # Real-hardware test helpers
 
+The [27 July 2026 acceptance record](ACCEPTANCE_2026-07-27.md) preserves the
+reported results and hardware limitations for that revision. It does not
+qualify later releases or replacement devices.
+
 These Linux scripts inject reversible device-access failures into individual
 LabPulse containers on a Raspberry Pi:
 
