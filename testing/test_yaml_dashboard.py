@@ -427,6 +427,19 @@ def test_power_problem_links_to_its_alarm_setup_page() -> None:
         "navigation_path": "/labpulse-monitor/alarm-power-ups_monitor",
     }
     assert {"condition": "state", "state": "Running on battery"} in power_row["conditions"]
+    assert "UPS Power" in headings(monitor)
+    for suffix in ("battery_level", "voltage", "power_last_outage_started", "power_last_outage_duration"):
+        assert occurrences(monitor, f"sensor.labpulse_ups_monitor_{suffix}") == 1
+    assert any(
+        isinstance(item, dict) and item.get("type") == "gauge"
+        and item.get("entity") == "sensor.labpulse_ups_monitor_battery_level"
+        for item in walk(monitor)
+    )
+    system_status = view(dashboard, "system-status")
+    for suffix in ("status", "service_health"):
+        entity = f"sensor.labpulse_ups_monitor_{suffix}"
+        assert occurrences(monitor, entity) == 0
+        assert occurrences(system_status, entity) > 0
 
 
 def test_alarm_setup_measurements_open_history_and_status_is_read_only() -> None:

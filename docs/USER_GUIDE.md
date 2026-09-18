@@ -89,6 +89,7 @@ uses the same main views.
 
 - current readings grouped by experiment or lab setup;
 - graphs for measurements configured to show one;
+- UPS battery level, external-power status, and voltage when power monitoring is enabled;
 - manual output switches;
 - a **Current Problems** card for confirmed, unmuted problems;
 - banners when Global Mute or Test mode is active.
@@ -97,14 +98,13 @@ Select a reading to open Home Assistant's detail window and view its history.
 A crossed threshold may be visible before an alarm becomes **Danger**, because
 the configured observation window still needs enough evidence.
 
+The **UPS Power** section also includes the power state and last outage details
+when power alarms are enabled. The UPS service-health card is on **System Status**.
+
 ### System Status
 
 **System Status** answers two questions: is each monitoring service working,
 and are all of its required readings current?
-
-When power monitoring is enabled, its service card also shows **UPS Power**:
-battery level, external-power status, and voltage. When power alarms are
-enabled, it includes the power state and the last outage details.
 
 Each service card shows its latest readings and one of these states:
 
