@@ -220,6 +220,25 @@ If you use LabPulse in published research, please use the repository's
 [citation metadata](CITATION.cff) and record the exact release and local
 configuration used so the monitoring setup can be reproduced.
 
+## Contributors and acknowledgements
+
+LabPulse grew out of a Lancaster University internship in the Laird Group.
+Thank you to the contributors who have helped build and improve the project:
+
+- [Tommy (@Tommystorm-cpu)](https://github.com/Tommystorm-cpu)
+- [@JBond2004](https://github.com/JBond2004)
+- [@Claudethelobster](https://github.com/Claudethelobster)
+- [Edward Laird (@EdwardLaird1)](https://github.com/EdwardLaird1)
+- [@callumbrown0five](https://github.com/callumbrown0five)
+- [Patrick Steger (@PatrickSteger)](https://github.com/PatrickSteger)
+
+For the earlier enclosure, thanks also to
+[Stamos](https://www.printables.com/@Stamos), whose
+[Raspberry Pi case design](https://www.printables.com/model/742926-raspberry-pi-5-case)
+provided the starting point, and to Patrick Steger for help with the initial
+Fusion 360 design. The [original enclosure notes](legacy/hardware/3d_parts/README.txt)
+preserve that design's attribution and history.
+
 ## Licence
 
 LabPulse is released under the [MIT License](LICENSE). Third-party hardware

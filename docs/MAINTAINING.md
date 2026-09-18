@@ -27,7 +27,7 @@ Git tags:
 ```bash
 git clone https://github.com/lairdgrouplancaster/LabPulse.git
 cd LabPulse
-git switch -c codex/first-maintainer-change
+git switch -c first-maintainer-change
 ```
 
 Create a Python virtual environment. It keeps this checkout's dependencies

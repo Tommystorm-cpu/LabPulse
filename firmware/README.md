@@ -71,13 +71,6 @@ current library rather than copying only its sketches.
 | `pump_room` | `flow1`, `flow2`, `temp0`–`temp3`, `roomtemp`, `roomhum`, `press1`, `press2` | 5 seconds |
 | `turbo_pump` | `flow1`, `flow2`, `temp0`–`temp3` | 5 seconds |
 
-For the reference installation, the maintainer reported successfully flashing
-each Arduino example on **22 July 2026**, in the conversation **Find next
-LabPulse work** (`019f892e-9ba8-7b80-afad-e10000c32a29`), after resolving the
-Arduino library installation. This confirms adoption of the LabPulseFirmware
-examples at that time; it does not identify an exact flashed commit or establish
-that later changes, including SHT40 support, have been uploaded.
-
 Open the example through the installed library's Examples menu so the toolchain
 can resolve the library headers.
 
@@ -114,23 +107,18 @@ to match.
 
 ## Retained example calibration
 
-The [hardware guide](../docs/HARDWARE.md#sensor-hub-parts) identifies the recorded
-sensor parts, including GE-1337 thermistors, SEN0217/YF-S201 flow sensors, and
-the SEN0257 pressure sensor. The pump-room pressure transducers remain an
-unknown model in the sensor inventory.
+The [hardware guide](../docs/HARDWARE.md#sensor-hub-parts) lists sensor parts,
+including GE-1337 thermistors, SEN0217/YF-S201 flow sensors, and the SEN0257
+pressure sensor. The [conversion-source notes](../docs/HARDWARE.md#where-the-conversion-values-came-from)
+link to the original sketches and thermistor fitting data.
 
-The maintainer confirmed on 18 September 2026 that the conversion values were
-inherited from the original code. Those original sources document an
-atmospheric-pressure zero adjustment and a thermistor curve-fitting method;
-the parts workbooks identify the sensors rather than recording those methods.
-The [conversion-source notes](../docs/HARDWARE.md#where-the-conversion-values-came-from)
-link to the original sketches and fitting data. Check the actual sensor and
-circuit before reusing these settings for another build.
+Check the actual sensor and circuit before reusing these settings in another
+build. Set pressure ranges, zero values, and divider resistance to match the
+components you connect.
 
 For both pump hubs, the retained **450 pulses per litre** agrees with the
 [SEN0217 manufacturer specification](https://wiki.dfrobot.com/sen0217).
-Agreement with that nominal value does not establish that the installed flow
-sensors were calibrated against a measured volume.
+Check flow accuracy against a measured volume when commissioning a sensor.
 
 ### Pressure monitor
 

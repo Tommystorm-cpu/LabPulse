@@ -767,7 +767,7 @@ def test_shared_sms_template_catalogue() -> None:
         "phone book notification title",
     )
     for expected in (
-        "t.k.davey@lancaster.ac.uk",
+        "p.steger@lancaster.ac.uk",
         "UNSUBSCRIBE",
         "SUBSCRIBE",
         "No action is required.",

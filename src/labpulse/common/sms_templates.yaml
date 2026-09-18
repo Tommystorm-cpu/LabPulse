@@ -70,4 +70,4 @@ notifications:
     title: >-
       ("[TEST] " if is_state("input_boolean.labpulse_notification_test_mode", 'on') else "") ~ ("LabPulse Phone Book Notification")
     message: >-
-      "You are receiving this message because your phone number is registered for LabPulse monitoring alerts. No action is required. To pause notifications, reply UNSUBSCRIBE to this phone number. To re-enable notifications, reply SUBSCRIBE. For permanent removal, contact t.k.davey@lancaster.ac.uk. (This message was triggered manually from the LabPulse dashboard)"
+      "You are receiving this message because your phone number is registered for LabPulse monitoring alerts. No action is required. To pause notifications, reply UNSUBSCRIBE to this phone number. To re-enable notifications, reply SUBSCRIBE. For permanent removal, contact p.steger@lancaster.ac.uk. (This message was triggered manually from the LabPulse dashboard)"

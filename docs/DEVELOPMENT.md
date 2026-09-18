@@ -367,8 +367,9 @@ Update the guide that owns the subject; the [documentation index](README.md#auth
 lists those homes. Keep the procedure there and link to it elsewhere, so a
 future correction only needs to be made once. Track proposed work in
 [GitHub issues](https://github.com/lairdgrouplancaster/LabPulse/issues) and
-distinguish it from behaviour available in the current source. State any
-unverified steps or hardware assumptions in the guide that owns them.
+document established behaviour in the guides. Do not cite private chats,
+conversation titles, or task IDs, or include speculative hardware details.
+Where a build needs checking, give practical verification steps.
 
 Write for someone who knows their lab but hasn't used LabPulse before. For
 each procedure, say where to run it, explain placeholders, and give the reader
@@ -377,7 +378,7 @@ first matters. Keep introductory steps short and link to detail when needed.
 
 Check commands and defaults against their implementation. Mark illustrative
 output as an example, and distinguish a checked physical build from a software
-example or design proposal. Screenshots need a readable caption and a matching
+configuration example. Screenshots need a readable caption and a matching
 entry in [screenshot.md](../screenshot.md); don't mark a capture complete until
 the real image is present.
 

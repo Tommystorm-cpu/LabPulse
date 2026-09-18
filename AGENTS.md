@@ -34,3 +34,7 @@ UI changes make an existing image inaccurate, mark it as needing a refresh.
 Use clearly labelled insertion points when a real capture isn't available.
 Do not present a diagram or mockup as a screenshot. Write user documentation
 in approachable, plain language and explain unfamiliar terms where needed.
+
+Document established facts directly. Do not cite private chats, conversation
+titles, or task IDs, or include speculative hardware details. Keep proposed
+work in issues and include practical verification steps where needed.

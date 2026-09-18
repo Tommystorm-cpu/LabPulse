@@ -75,10 +75,10 @@ what is shown; a complete wiring record isn't needed.
   Suggested filename: `docs/images/hardware-sensor-hub.jpg`.
 - [ ] **[Assembled installation](docs/MAIN_UNIT.md#finish-the-build-record)** —
   replace the “Photo to add: the assembled installation” block. Show the open
-  main unit with its principal boards and connections. Add a closed-case view
-  if useful. Identify any pictured prototype or planned part so readers know
-  what they are looking at. If the display is shown, identify the 7-inch Touch
-  Display 2 with its removed standoffs and show how the case supports it.
+  main unit with its principal boards and connections, including the FPC
+  extension's route between the Pi and Gravity board. Add a closed-case view
+  if useful. Identify the components shown. If the display is shown, identify
+  the 7-inch Touch Display 2 with its removed standoffs and show how the case supports it.
   Waiting for assembly: the current case is printed, but key parts have not
   arrived yet. The [CAD files](hardware/enclosure/README.md) are available;
   record which revision the photographed assembly uses. CAD is not a substitute

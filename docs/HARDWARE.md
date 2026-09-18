@@ -4,9 +4,9 @@ LabPulse's reference installation has a Raspberry Pi main unit and three
 Arduino sensor hubs. The Pi runs the dashboard and talks to the hubs over USB.
 The hubs sit near the equipment and read its sensors.
 
-This guide brings together the parts bought for that installation, the current
-firmware, and the later enclosure discussions. For the Pi, UPS, modem, USB hub,
-and touchscreen enclosure, go to [The Raspberry Pi main unit](MAIN_UNIT.md).
+This guide covers sensor parts, firmware pin assignments, and connections.
+For the Pi, UPS, modem, USB hub, and touchscreen enclosure, go to
+[The Raspberry Pi main unit](MAIN_UNIT.md).
 You can also [try LabPulse in simulation](FIRST_STEPS.md) without assembling any
 of this hardware.
 
@@ -22,56 +22,34 @@ of this hardware.
 | Read a Triton control PC | A [Windows publisher and installation guide](TRITON_PUBLISHER.md) | Access to the control PC and a network plan suited to your lab; the guide describes a particular two-fridge arrangement |
 | Operate a relay, valve, or other output | Manual dashboard switches and a [GPIO output driver](CONFIGURATION.md#generic-gpio-output) | A designed and checked switching circuit for the actual load |
 
-The simulation route is documented from installation to a working dashboard.
-The Arduino walkthrough covers the software connection once a sensor board is
-working. There isn't yet a complete, verified shopping-and-assembly guide for
-a new lab to reproduce the whole physical installation.
+If you're starting from loose sensors rather than an existing board, identify
+the exact parts and check their datasheets before wiring. The firmware examples
+provide pin assignments and conversion settings for adapting a sensor hub.
 
-If you're starting from loose sensors rather than an existing board, don't
-assume that a firmware example is also a complete wiring plan. Start by
-identifying the exact parts and checking their datasheets.
+## Parts and references
 
-## Where the hardware information comes from
+Use [LabPulse Purchasing.xlsx](LabPulse%20Purchasing.xlsx) for the parts list,
+supplier links, quantities, historical prices, and accessories. Original
+purchase records are preserved under
+[`legacy/Documentation/purchasing-2026-09-18/`](../legacy/Documentation/purchasing-2026-09-18/README.md).
 
-Use [LabPulse Purchasing.xlsx](LabPulse%20Purchasing.xlsx) for the consolidated
-parts list, supplier links, known quantities, historical prices, and requested
-additions. Its **Earlier choices** sheet separates replaced or incompatible
-parts. Unknown details remain labelled, and an email request does not establish
-that a part has arrived.
-
-The original workbooks are archived unchanged. They describe different stages
-of the project; a purchased part isn't necessarily the part still fitted today.
-
-| Record | What it tells us |
-|---|---|
-| [Internship purchased items](../legacy/Documentation/purchasing-2026-09-18/Internship%20purchased%20items.xlsx), Sheet1 | Original purchases and supplier links. Rows 2–15 cover the main electronics; rows 17–24 include plumbing and the older USB hubs. The note in E12 names the replacement UPS. |
-| [Mini Shopping List](../legacy/Documentation/purchasing-2026-09-18/Mini%20Shopping%20List.xlsx), Sheet1, rows 2–6 | Later choices for a powered hub, SHT40, Gravity board, sensor cable, and GPIO ribbon. The sensor cable turned out not to fit; see the [main-unit connection notes](MAIN_UNIT.md#gravity-board-and-room-sensor). |
-| [Shopping email and maintainer update, recorded 18 September 2026](MAIN_UNIT.md#additional-parts-requested) | Confirms the X1200 and planned mains-powered USB hub. Lists display accessories and two SHT40 cables; the SHT40 connections are not installed yet. |
-| [LabPulse Sensors](../legacy/Documentation/purchasing-2026-09-18/LabPulse%20Sensors.xlsx), Sheet1, rows 2–10 | Sensor counts and locations, plus an undated snapshot of which readings worked. It predates the current SHT40 configuration. |
-| [Firmware examples](../firmware/README.md#device-configuration) and [starter configuration](../config.yaml) | What the current source expects. The live installation's configuration and flashed firmware still need to match. |
-| [July 2026 acceptance record](../testing/real_hardware/ACCEPTANCE_2026-07-27.md) | What was tested on the Pi, including the faulty USB hub and DHT11 that prompted replacement work. |
-
-The [main-unit guide](MAIN_UNIT.md#enclosure-history) also records the decisions
-recovered from the July and August 2026 CAD chats. Those discussions include
-prototypes and abandoned suggestions, so they aren't a finished assembly record.
+The [firmware examples](../firmware/README.md#device-configuration) define the
+Arduino connections and serial output. The [main-unit guide](MAIN_UNIT.md)
+covers the Pi, UPS, display, and enclosure.
 
 ## Sensor hub parts
 
-These are the parts we can identify from the purchase and sensor records.
-Quantities describe the recorded installation, not a universal shopping list.
-The supplier links in the workbooks are useful for identifying replacements;
-their old prices aren't a current quotation.
+The reference sensor-hub parts include:
 
-| Part | Recorded quantity | Where it belongs and what we know |
-|---|---:|---|
-| Arduino Uno Rev3 | 3 | One controller for each serial sensor hub. Purchase row 3. |
-| Amphenol GE-1337 water-temperature sensor | 8 | Four thermistors on the pump-room hub and four on the turbo-pump hub. Purchase row 6; matching connectors are in row 7, RS stock 8011017. |
-| DFRobot SEN0217 / YF-S201 1/2-inch water-flow sensor | 4 | Two per pump hub. The supplier link in purchase Sheet1 A5 identifies SEN0217/YF-S201; sensor-inventory A4 and A6 link to the same product. This is identification from the purchase record, not a check of the fitted markings. |
-| DFRobot SEN0257 pressure sensor | 1 | The pressure-monitor hub. Purchase row 4 says `SEN057`, but its supplier link and sensor-inventory row 10 both identify **SEN0257**. |
-| Pressure sensors recorded as “Triton 1/2 (Unknown Model)” | 2 | Pump-room hub. Their manufacturer, range, and exact model still need reading from the hardware. Don't assume they are SEN0257s. |
-| DHT11 | 2 in the older inventory | One on the pump-room Arduino and one formerly on the Pi. The current starter config uses an SHT40 for the Pi's room readings; the pump-room firmware still uses DHT11. |
-| Adafruit SHT40 STEMMA QT/Qwiic breakout | Two planned connections; fitted quantity not established | The maintainer reports that the SHT40 is not connected yet. Planned cables serve the Pi and the compressed-air Arduino, with the latter measuring main-lab temperature and humidity. See the [additional parts](MAIN_UNIT.md#additional-parts-requested). |
-| USB-A to USB-B leads | One 3 m, two 5 m | Purchase rows 14–15. These connect the Uno hubs to the Pi or its USB hub. Label both ends with the hub name. |
+| Part | Use |
+|---|---|
+| Arduino Uno Rev3 | Controller for each of the three serial sensor hubs. |
+| Amphenol GE-1337 water-temperature sensor | Thermistors used by the pump-room and turbo-pump examples. |
+| DFRobot SEN0217 / YF-S201 1/2-inch water-flow sensor | Pulse-counting flow input for the pump hubs. |
+| DFRobot SEN0257 pressure sensor | Compressed-air pressure input. |
+| DHT11 | Temperature and humidity input in the pump-room firmware. |
+| Adafruit SHT40 STEMMA QT/Qwiic breakout | I2C temperature and humidity input supported by the Pi driver and pressure-monitor firmware. |
+| USB-A to USB-B leads | Connect the Uno hubs to the Pi or USB hub. Label both ends with the hub name. |
 
 The original purchases also include 1/2-inch pipe fittings, tees, elbows,
 washers, hose tails, and 22 mm compression couplers (rows 17–23). These are
@@ -81,9 +59,9 @@ rating, and sensor position with the eventual circuit drawing.
 
 ## Which sensor goes on which hub?
 
-The table below describes the **current example firmware**, not a continuity
-check of an assembled PCB. The pin names are Arduino labels. Each hub sends
-its readings at 9600 baud using the [standard serial format](../firmware/README.md#pipesamplewriter).
+The table below describes the **current example firmware**. The pin names are
+Arduino labels. Each hub sends its readings at 9600 baud using the
+[standard serial format](../firmware/README.md#pipesamplewriter).
 
 | Hub and source | Arduino connection | Serial measurement names |
 |---|---|---|
@@ -108,13 +86,10 @@ settings until they've been checked against the actual sensor and circuit.
 
 ### Where the conversion values came from
 
-On 18 September 2026, the maintainer confirmed that the conversion values were
-inherited from the original code. All three workbooks were checked, including
-their supplier links. They identify purchased parts and earlier observations,
-but contain no calibration coefficients, reference measurements, or record of
-a calibration check. The original Arduino sources do document conversion
-methods, as described below. The Mini Shopping List adds the later SHT40 and
-main-unit parts; it does not identify the unknown pump-room pressure sensors.
+The firmware retains conversion settings from the original sensor code. The
+source files below show the pressure zero adjustment and thermistor fitting
+method. Check the sensor and circuit before reusing a conversion in another
+build.
 
 The flow-sensor [purchase link](https://thepihut.com/products/gravity-water-flow-sensor-1-2-for-arduino)
 identifies SEN0217/YF-S201. DFRobot specifies **450 pulses per litre**, matching
@@ -146,21 +121,13 @@ contains five resistance/temperature pairs and labels them “Datasheet Data”:
 | 125 | 88.11 |
 
 The script fits the four-coefficient equation used by the current firmware.
-It does not name the source datasheet or its revision. This establishes the
-documented fitting method and retained inputs, but is not a record of checking
-each assembled temperature channel against a reference thermometer.
+When adapting the firmware, fit coefficients to the selected thermistor's
+datasheet and check readings against a reference thermometer.
 
-The pump-room pressure sensor models remain unknown, so their inherited
-conversions cannot yet be tied to a particular sensor specification. Check the
-actual sensors and divider resistors when reusing these examples. The older
-standalone temperature sketch used a 2.2 kΩ resistor; the combined water-sensor
-sketch and current firmware use 4.7 kΩ.
-
-The old inventory reports zero flow on all four flow sensors, zero on both
-pump-room pressure channels, and only two working turbo-pump temperature
-channels. Those are observations from an undated record, not a diagnosis or
-today's status. In particular, zero flow can mean either stopped flow or a
-missing pulse signal. Recheck the channels before relying on their alarms.
+Use the actual divider resistance in the thermistor conversion. The older
+standalone temperature sketch uses 2.2 kΩ; the combined water-sensor sketch
+and current firmware use 4.7 kΩ. Set each pressure channel's conversion to
+match its transducer's specified range and measured zero.
 
 Once a hub produces trustworthy serial readings, follow
 [Connect your first sensor](FIRST_SENSOR.md) to bring it into LabPulse.
@@ -233,19 +200,14 @@ Keep these identities distinct:
 
 ## Existing hardware assets
 
-The [PCB revision index](../hardware/pcbs/README.md) lists `PCBv6.zip` and several
-Arduino-HAT Gerber archives named prototype1, prototype2, prototype3, and
-Final_prototype. A Gerber archive contains board-manufacturing artwork; its
-filename doesn't establish which revision is fitted or whether it was tested.
-Match the board markings and trace its connections before using one as the
-assembly reference. None is currently labelled as a verified manufacturing
-choice; the index records each archive's contents and unresolved status.
+The [PCB revision index](../hardware/pcbs/README.md) lists the sensor-hub
+manufacturing files. Match the board markings and connections to your sensor
+and firmware pin assignments before manufacturing a board.
 
 The [enclosure folder](../hardware/enclosure/README.md) contains the touchscreen
-case's Fusion assembly archive and STEP export. The case is reported printed,
-but final assembly and fit checks are pending. See
+case's Fusion assembly archive and STEP export. See
 [the CAD files and build status](MAIN_UNIT.md#enclosure-files-and-build-status)
-before reproducing it.
+for the main-unit design.
 
 The obsolete STLs and original attribution notes are preserved under
 [`legacy/hardware/3d_parts/`](../legacy/hardware/3d_parts/). These are not print

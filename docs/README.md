@@ -37,14 +37,14 @@ If something doesn't work, go straight to [Troubleshooting](TROUBLESHOOTING.md).
   restoring on a replacement Pi.
 - [Troubleshooting](TROUBLESHOOTING.md): installation, host, device, reading,
   notification and recovery problems.
-- [Hardware](HARDWARE.md): recorded sensor parts, hub assignments, firmware
-  pins, and the wiring and calibration checks still needed.
+- [Hardware](HARDWARE.md): sensor parts, hub assignments, firmware
+  pins, wiring, and calibration procedures.
 - [Purchasing workbook](LabPulse%20Purchasing.xlsx): consolidated parts, supplier
   links, historical prices, requested additions, and earlier choices.
 - [Raspberry Pi main unit](MAIN_UNIT.md): Pi, UPS, modem, USB hub, Gravity board,
-  sensor connections, and the touchscreen enclosure design history.
+  sensor connections, and the touchscreen enclosure.
 - [Enclosure CAD](../hardware/enclosure/README.md): Fusion assembly, STEP export,
-  and the assembly and print information still to be recorded.
+  and guidance for assembly and printing.
 - [Triton publisher](TRITON_PUBLISHER.md): secure Pi MQTT listener and unattended
   Windows control-PC installation.
   The [publisher source and quick reference](../integrations/triton/README.md)
