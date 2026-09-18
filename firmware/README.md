@@ -166,10 +166,12 @@ to match.
 
 ## Retained example calibration
 
-The repository does not currently identify every sensor manufacturer and model.
-These values preserve existing LabPulse behavior and are not universal
-specifications. Record part numbers and datasheets before reusing or replacing
-hardware.
+The [hardware guide](../docs/HARDWARE.md#sensor-hub-parts) identifies the recorded
+sensor parts, including GE-1337 thermistors and the SEN0257 pressure sensor.
+The exact flow-sensor model and pump-room pressure transducers still need
+confirmation. These values preserve existing LabPulse behavior and are not
+universal specifications; check the actual sensor and circuit before reusing
+them for another build.
 
 ### Pressure monitor
 
@@ -323,8 +325,7 @@ pressure: 1.23 | temperature: 21.40 | humidity: 48.20
 Then assign or confirm the stable Pi path:
 
 ```bash
-cd ~/labpulse-live
-./setup_usb_devices.py --config config.yaml
+labpulse usb
 labpulse config
 ```
 

@@ -10,6 +10,7 @@ Docker containers.
 | `installer.py` | Locate packaged assets and launch the Linux bootstrap | Pi host |
 | `backup.py` | Create, validate and restore checksummed state archives | Pi host |
 | `doctor.py` | Read-only installation, hardware, Docker and endpoint checks | Pi host |
+| `usb.py` | Interactive USB board identification and stable serial path assignment | Pi host |
 | `common/` | Configuration, identity, MQTT, logging and file contracts | Host and containers |
 | `deployment/` | Generate Compose and staged Home Assistant output | Pi host |
 | `hardware/` | Acquire and publish one sensor service | One container per service |

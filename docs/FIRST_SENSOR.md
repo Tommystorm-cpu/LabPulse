@@ -58,6 +58,10 @@ the Pi recognises the board before continuing.
 Use this persistent path rather than `/dev/ttyUSB0` or `/dev/ttyACM0`, whose
 number can change when devices are reconnected.
 
+For example, a listing might contain `usb-Arduino_Example-if00 -> ../../ttyACM0`.
+The path to copy would be `/dev/serial/by-id/usb-Arduino_Example-if00`, not
+`../../ttyACM0`. This name is illustrative; use the one printed for your board.
+
 ## 3. Describe one reading
 
 Run `labpulse config` **on the Pi**, then select `config.yaml`. On a new practice
@@ -132,7 +136,7 @@ labpulse logs --tail 100 labpulse-pressure-monitor
 ```
 
 Check the port, baud rate, and `pressure` field name before changing alarm
-settings. [Serial troubleshooting](TROUBLESHOOTING.md) covers missing devices
+settings. [Serial troubleshooting](TROUBLESHOOTING.md#serial-readings-are-missing-or-stale) covers missing devices
 and stale readings.
 
 ## 5. Check the reading, then set an alarm
@@ -161,3 +165,8 @@ labpulse backup ~/labpulse-first-sensor.tar.gz
 
 Use a new filename if that backup already exists. Follow
 [Testing SMS](USER_GUIDE.md#testing-sms) separately if you want real text messages.
+
+Keep a short record with the board: its sensor model, firmware revision, USB
+path, measurement unit, and the reference reading used to check it. You now
+have one identified sensor producing a checked reading; those notes make it
+possible for someone else to replace or troubleshoot it later.

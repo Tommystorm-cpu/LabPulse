@@ -1,8 +1,8 @@
 # Architecture
 
-This document describes the current LabPulse implementation. It is organized
-around ownership boundaries: which process owns each decision, which module is
-the source of truth, and which files are user-owned or generated.
+This guide explains where LabPulse's work happens: which program reads a
+sensor, which one decides to raise an alarm, and which files you should change
+to alter that behaviour.
 
 For a first tour, follow [one pressure reading through the code](MAINTAINING.md#2-follow-one-pressure-reading).
 That walkthrough gives concrete values, topics, and source links. Use this
@@ -10,6 +10,23 @@ page for the broader design once you've followed that example.
 
 Looking for the code behind a feature? The [package guides](#package-guides)
 link to every README under `src/`.
+
+## Find the part you need
+
+| Question | Start here |
+|---|---|
+| What runs on the Pi, and how do the programs communicate? | [Runtime topology](#runtime-topology) |
+| Which files are safe to edit? | [User-owned and generated state](#user-owned-and-generated-state) |
+| How do settings reach the workers and dashboard? | [Configuration flow](#configuration-model-and-flow) and [generation](#deployment-generation) |
+| Where do sensor connection, retries, and faults belong? | [Hardware process](#hardware-process) and [driver contract](#driver-contract) |
+| Who owns alarm and notification decisions? | [Home Assistant](#home-assistant-generation-and-ownership) and [SMS](#sms-process) |
+| Where should I start changing code? | [Package guides](#package-guides), then [a complete reading](#follow-a-complete-reading) |
+
+Here, the **host** is the Pi's operating system outside Docker. A **worker**
+is a running program assigned to a service or output. **Generation** turns
+your settings and LabPulse's templates into the files that Docker and Home
+Assistant use; it happens during setup or configuration changes. **Runtime**
+means what those programs do afterward while the installation is running.
 
 ## Product boundary
 
@@ -79,7 +96,6 @@ assets. `labpulse setup` creates or refreshes:
   edit_config.sh                      package-managed workflow helper
   generate_compose.sh                 package-managed low-level wrapper
   generate_homeassistant_config.sh    package-managed low-level wrapper
-  setup_usb_devices.py                package-managed USB mapper
   test_dht11_fault.sh                 package-managed acceptance helper
   test_x1200_faults.sh                package-managed acceptance helper
   backups/                            one rolling copy per backed-up live file
@@ -147,12 +163,18 @@ labpulse ps | logs
 labpulse backup | restore
 labpulse update | uninstall
 labpulse doctor
+labpulse usb
 labpulse open | firmware | version | help
 ```
 
 It resolves the live directory, selects the Docker command, delegates setup,
 controls Compose, coordinates backup and restore, and exposes diagnostics.
 Operator documentation should use this interface.
+
+`labpulse usb` delegates to `src/labpulse/usb.py` for interactive USB serial
+identification. It saves confirmed stable device paths in the live master
+configuration, with a rolling backup. The operator then applies the mappings
+through `labpulse config`.
 
 `src/labpulse/installer.py` locates package data and launches
 `deployment/setup_container_fs.sh`. The shell script owns Linux filesystem
@@ -568,6 +590,7 @@ src/labpulse/
   installer.py       package-data lookup and setup launcher
   backup.py          archive creation, validation, extraction, restore
   doctor.py          read-only installation/runtime diagnostics
+  usb.py             guided USB serial identification and port assignment
   common/            configuration, IDs, MQTT contracts, shared logging/copy
   deployment/        Compose renderer and staged unified generation
   hardware/          CLI, driver API/registry, runner, parser, MQTT publisher

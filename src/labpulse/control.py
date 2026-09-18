@@ -32,6 +32,7 @@ from labpulse.backup import (
 )
 from labpulse.installer import find_install_assets, main as installer_main
 from labpulse.doctor import run_doctor
+from labpulse.usb import run_usb_setup
 
 
 DEFAULT_LIVE_DIR = Path("~/labpulse-live")
@@ -838,6 +839,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="config.yaml or YAML files beneath config.d (default: interactive selection)",
     )
     commands.add_parser("open", help="open Home Assistant at http://localhost:8123")
+    usb_parser = commands.add_parser(
+        "usb",
+        help="identify USB serial boards and save their stable paths to the live config",
+        description="Follow unplug/replug prompts for each enabled serial service, then confirm the detected assignments.",
+    )
+    usb_parser.add_argument(
+        "--dry-run", action="store_true", help="detect and preview without writing config"
+    )
+    usb_parser.add_argument(
+        "--yes", action="store_true", help="save without the final confirmation (device prompts still apply)"
+    )
     doctor_parser = commands.add_parser(
         "doctor",
         help="diagnose the installation, hardware access, and running services",
@@ -899,6 +911,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return open_homeassistant()
 
         live_dir = live_directory(arguments.live_dir)
+        if arguments.action == "usb":
+            return run_usb_setup(
+                live_dir / "config.yaml", dry_run=arguments.dry_run, assume_yes=arguments.yes
+            )
         if arguments.action == "update":
             return run_update_command(live_dir, arguments.version)
         if arguments.action == "backup":

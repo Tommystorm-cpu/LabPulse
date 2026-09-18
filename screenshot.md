@@ -4,6 +4,9 @@ This is the checklist for images still needed in the documentation. Each link
 opens the section with its marked insertion point. Replace that placeholder
 with the image and a short caption when it's ready, then tick the item here.
 
+For the other remaining documentation tasks, use
+[the manual documentation checklist](DOCUMENTATION_TODO.md).
+
 ## Dashboard screenshots
 
 - [ ] **[Monitor: find a reading](docs/FIRST_STEPS.md#1-find-a-reading).**
@@ -21,19 +24,21 @@ with the image and a short caption when it's ready, then tick the item here.
   walkthrough, with notifications muted.
   Suggested filename: `docs/images/first-steps-alarm-setup.png`.
 
-## Hardware photos
+## Hardware photos (optional)
 
-These need a checked physical build, not just a screenshot of a design file.
+These help readers recognise the main parts. Use real hardware and explain
+what is shown; a complete wiring record isn't needed.
 
 - [ ] **[Verified sensor hub](docs/HARDWARE.md#existing-hardware-assets)** —
   replace the “Photo to add: one verified sensor hub” block. Show the board,
-  sensor part numbers, connectors, and USB connection. Include its revision
-  and link to the checked pin table and calibration notes.
+  main parts, connectors, and USB connection. Name the firmware example it uses
+  and any differences from its pin assignments.
   Suggested filename: `docs/images/hardware-sensor-hub.jpg`.
-- [ ] **[Assembled installation](docs/HARDWARE.md#existing-hardware-assets)** —
-  replace the “Photo to add: the assembled installation” block. Show cable
-  labels, power connections, and enclosure layout. State the hardware
-  revisions pictured.
+- [ ] **[Assembled installation](docs/MAIN_UNIT.md#finish-the-build-record)** —
+  replace the “Photo to add: the assembled installation” block. Show the open
+  main unit with its principal boards and connections. Add a closed-case view
+  if useful. Identify any pictured prototype or planned part so readers know
+  what they are looking at.
   Suggested filename: `docs/images/hardware-installation.jpg`.
 
 ## When adding an image

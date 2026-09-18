@@ -1,7 +1,7 @@
 # Development
 
-This guide covers the current source tree, package entry-point conventions,
-local execution, tests, generated artifacts, and release checks.
+Use this guide when you need a development command, a project convention, or
+the steps for trying changed code on a Pi.
 
 New to the code? Start with [Your first day maintaining LabPulse](MAINTAINING.md)
 for a checkout-to-first-change walkthrough. This page is the reference for
@@ -9,17 +9,18 @@ the conventions and commands you'll use afterward.
 
 ## Requirements
 
-Development requires:
+What you need depends on what you're checking:
 
 - CPython 3.11 or 3.12 for the supported package matrix;
 - Git;
-- pipx when exercising the installed operator CLI;
+- pipx when exercising the installed `labpulse` command;
 - Docker with the Compose plugin for container and deployment checks;
 - Bash for deployment-script syntax and Linux workflows;
 - no physical hardware for the normal test suite.
 
-Development can take place on Windows, macOS, or Linux. The qualified runtime
-host and provisional alternatives are described in [Installation](INSTALLATION.md#requirements).
+You can edit code and run the ordinary Python tests on Windows, macOS, or Linux.
+Use a Linux development host for the complete deployment workflow. The tested
+Pi and OS combination is described in [Installation](INSTALLATION.md#requirements).
 
 ## Editable installation
 
@@ -115,6 +116,7 @@ src/labpulse/
   installer.py       packaged setup launcher
   backup.py          backup archive and restore primitives
   doctor.py          read-only diagnostics
+  usb.py             interactive USB serial port assignment
   common/            shared typed contracts
   deployment/        Compose rendering and unified generation
   hardware/          hardware service and driver system
@@ -360,18 +362,27 @@ the [hardware driver package guide](../src/labpulse/hardware/drivers/README.md).
 
 ## Documentation changes
 
-Document only current behavior:
+Update the guide that owns the subject; the [documentation index](README.md#authoritative-homes)
+lists those homes. Keep the procedure there and link to it elsewhere, so a
+future correction only needs to be made once. Put proposed work in the roadmap
+and distinguish it from behaviour available in the current source.
 
-- installation or host prerequisites -> `INSTALLATION.md`;
-- config schema -> `CONFIGURATION.md`;
-- every user-visible feature and operator command -> `USER_GUIDE.md`;
-- symptom-led recovery -> `TROUBLESHOOTING.md`;
-- component ownership/contracts -> `ARCHITECTURE.md`;
-- code-local ownership and contracts -> the nearest folder `README.md`;
-- contributor workflow -> this guide;
-- unimplemented work -> `ROADMAP.md`.
+Write for someone who knows their lab but hasn't used LabPulse before. For
+each procedure, say where to run it, explain placeholders, and give the reader
+a visible way to tell whether it worked. Explain an unfamiliar term where it
+first matters. Keep introductory steps short and link to detail when needed.
 
-Do not create parallel implementation-history or refactor documents.
+Check commands and defaults against their implementation. Mark illustrative
+output as an example, and distinguish a checked physical build from a software
+example or design proposal. Screenshots need a readable caption and a matching
+entry in [screenshot.md](../screenshot.md); don't mark a capture complete until
+the real image is present.
+
+Run `python -m pytest testing/test_documentation.py -q` after editing. It checks
+maintained local links, anchors, and selected executable examples; it doesn't
+verify every command, external link, screenshot, or explanation. For a changed
+procedure, also follow the affected steps in a suitable development environment
+and record any steps you couldn't check.
 
 ## Package and release checks
 

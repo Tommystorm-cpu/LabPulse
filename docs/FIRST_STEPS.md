@@ -141,6 +141,12 @@ necessarily change immediately: LabPulse needs enough time outside the limit.
 With a full two-minute window, 70% means 84 seconds in danger. Allow a few
 minutes because Home Assistant updates the history calculation periodically.
 
+If it still hasn't changed, check that pressure is current, **Alarm mode** is
+**High Only**, and the maximum is **0.5 bar**. Keep the mutes on; they don't
+prevent the alarm state changing. Then use
+[alarm troubleshooting](TROUBLESHOOTING.md#an-alarm-does-not-trigger-or-recover)
+if needed.
+
 You should see **Danger**. The service can still say **Working**: it is
 successfully reporting a value which you've deliberately made unacceptable.
 Global mute blocks notifications, but the alarm can still appear in

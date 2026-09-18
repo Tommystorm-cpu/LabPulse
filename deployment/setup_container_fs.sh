@@ -251,8 +251,6 @@ copy_file "$ASSET_DIR/testing/real_hardware/test_x1200_faults.sh" "$PROJECT_DIR/
 chmod +x "$PROJECT_DIR/test_x1200_faults.sh"
 copy_file "$ASSET_DIR/testing/real_hardware/test_dht11_fault.sh" "$PROJECT_DIR/test_dht11_fault.sh"
 chmod +x "$PROJECT_DIR/test_dht11_fault.sh"
-copy_file "$ASSET_DIR/setup_usb_devices.py" "$PROJECT_DIR/setup_usb_devices.py"
-chmod +x "$PROJECT_DIR/setup_usb_devices.py"
 
 # Preserve the live user-edited config if it exists. The repo config is only a
 # starter template for new installations.
@@ -286,7 +284,7 @@ fi
   "${COMPOSE_MODE_ARGS[@]}"
 
 FAKE_CONFIG_OUTPUT=""
-NEXT_HARDWARE_COMMAND="./setup_usb_devices.py --config config.yaml"
+NEXT_HARDWARE_COMMAND="labpulse --live-dir \"$PROJECT_DIR\" usb"
 if [ "$FAKE_USB" -eq 1 ]; then
   FAKE_CONFIG_OUTPUT="  $PROJECT_DIR/config.fake.yaml"
   NEXT_HARDWARE_COMMAND="# No device assignment or separate simulator is needed."
@@ -308,7 +306,6 @@ $FAKE_CONFIG_OUTPUT
   $PROJECT_DIR/edit_config.sh
   $PROJECT_DIR/test_x1200_faults.sh
   $PROJECT_DIR/test_dht11_fault.sh
-  $PROJECT_DIR/setup_usb_devices.py
   $PROJECT_DIR/requirements-host.txt
   $PROJECT_DIR/.venv/
   $PROJECT_DIR/homeassistant/config/packages/labpulse_generated.yaml

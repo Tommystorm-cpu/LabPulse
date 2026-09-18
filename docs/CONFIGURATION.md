@@ -29,6 +29,14 @@ package, use the documentation for that release.
 
 ## Before editing
 
+Choose the place that owns the setting:
+
+| What you want to change | Where to do it |
+|---|---|
+| Alarm limits, timing, mutes, or Test mode | **Alarm Setup** in the browser; see [the user guide](USER_GUIDE.md#configuring-alarms) |
+| A sensor port, measurement name/unit, recipient list, or dashboard grouping | `labpulse config` on the Pi |
+| How a sensor is read or how a generated page behaves | The source checkout; see [maintainer examples](MAINTAINER_EXAMPLES.md) |
+
 On your Raspberry Pi, your settings live in:
 
 ```text
@@ -36,7 +44,7 @@ On your Raspberry Pi, your settings live in:
 ~/labpulse-live/config.d/**/*.yaml   when measurement files are used
 ```
 
-Edit it with:
+Edit these files with:
 
 ```bash
 labpulse config
@@ -50,10 +58,12 @@ labpulse config config.yaml
 labpulse config config.yaml config.d/triton-01-measurements.yaml
 ```
 
-LabPulse edits temporary copies, validates the complete configuration, builds
-the generated files, and only then applies the result. If validation fails, it
-shows the source file and field which need attention rather than installing the
-invalid edit.
+LabPulse edits temporary copies and validates all the files together before
+installing your changes. It then regenerates files and recreates the services.
+A validation error leaves the live source unchanged; a later failure triggers
+an attempt to restore the previous configuration. See
+[the editor workflow](USER_GUIDE.md#changing-the-configuration) for success
+checks and recovery. Saving a change can restart the deployment.
 
 The `config.yaml` in the GitHub repository is only the starter copied into a
 new installation. Editing that file does not change an existing Pi.
@@ -151,7 +161,7 @@ The important relationships are:
 - `pressure` must match the name produced by the Arduino;
 - `compressed_air` controls where the measurement appears on the dashboard;
 - `mosquitto` is the broker hostname used inside the generated containers;
-- SMS remains harmless because `dry_run` is `true`.
+- SMS requests are logged without sending messages because `dry_run` is `true`.
 
 This same file works in fake-hardware mode without the serial device. LabPulse
 keeps the service and measurement but substitutes simulated values at runtime.
@@ -734,7 +744,7 @@ pressure:1.02|temperature:21.4|humidity:48.2
 Measurement IDs must match the lower-case names sent by the firmware. Units
 belong in the LabPulse configuration, not in the serial record. The driver
 blocks while reading and therefore uses a default runner interval of zero. See
-the [firmware guide](../firmware/README.md) for the complete wire contract.
+the [firmware guide](../firmware/README.md) for the complete serial format.
 
 The serial driver can also feed LabPulse's installation-wide power monitor.
 This is mainly useful for a serial UPS simulator or a board that emits the same

@@ -1,66 +1,19 @@
-{# Monitor is the page used for quick checks. Show power first, then each setup
+{# Monitor is the page used for quick checks. Show each setup
    in the order used in config.yaml. #}
 - title: Monitor
   path: monitor
   cards:
-[% set power_services = model.services | selectattr('power', 'ne', none) | list %]
-[% if not power_services and not model.monitor_setups %]
+[% if not model.monitor_setups %]
 {# Keep global status on the main tab even when every setup has moved to custom
    dashboards or no measurements have been configured yet. #}
   - type: vertical-stack
     cards:
 [% include "dashboard/monitor_status.yaml.j2" %]
 [% endif %]
-[% for service in power_services %]
-{# Put status cards in the first section. A separate section would leave too
-   much empty space at the top of the page. #}
-  - type: vertical-stack
-    cards:
-[% if loop.first %]
-[% include "dashboard/monitor_status.yaml.j2" %]
-[% endif %]
-    - type: heading
-      heading: UPS Power
-      heading_style: title
-      icon: mdi:battery-charging
-    - type: tile
-      entity: [[ entity_id('sensor', service.name, 'status') ]]
-      name: [[ (service.label ~ ' Status') | yaml_scalar ]]
-    - type: gauge
-      entity: [[ entity_id('sensor', service.name, 'battery_level') ]]
-      name: [[ service.power.battery_level.short_label | yaml_scalar ]]
-      min: 0
-      max: 100
-      severity: {red: 0, yellow: 25, green: 50}
-    - type: entities
-      show_header_toggle: false
-      entities:
-[% if service.power.alarmed %]
-      - type: simple-entity
-        entity: [[ entity_id('input_select', service.name, 'power', 'state') ]]
-        name: Power state
-        tap_action: {action: none}
-        hold_action: {action: none}
-        double_tap_action: {action: none}
-      - entity: [[ entity_id('binary_sensor', service.name, 'power', 'mains_present') ]]
-        name: External power present
-      - entity: [[ entity_id('sensor', service.name, 'voltage') ]]
-        name: [[ service.power.voltage.short_label | yaml_scalar ]]
-      - entity: [[ entity_id('sensor', service.name, 'power', 'last_outage_started') ]]
-        name: Last outage started
-      - entity: [[ entity_id('sensor', service.name, 'power', 'last_outage_duration') ]]
-        name: Last outage duration
-[% else %]
-      - entity: [[ entity_id('sensor', service.name, 'mains_present') ]]
-        name: [[ service.power.mains_present.short_label | yaml_scalar ]]
-      - entity: [[ entity_id('sensor', service.name, 'voltage') ]]
-        name: [[ service.power.voltage.short_label | yaml_scalar ]]
-[% endif %]
-[% endfor %]
 [% for setup in model.monitor_setups %]
   - type: vertical-stack
     cards:
-[% if loop.first and not power_services %]
+[% if loop.first %]
 [% include "dashboard/monitor_status.yaml.j2" %]
 [% endif %]
 [% include "dashboard/setup_measurements.yaml.j2" %]

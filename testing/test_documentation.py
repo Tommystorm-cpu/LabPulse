@@ -66,6 +66,7 @@ def _maintained_markdown_files(repository_root: Path) -> tuple[Path, ...]:
         repository_root / "ROADMAP.md",
         repository_root / "SECURITY.md",
         repository_root / "screenshot.md",
+        repository_root / "DOCUMENTATION_TODO.md",
     )
     readmes = tuple(repository_root / path for path in sorted(README_PATHS - {"README.md"}))
     return (*root_guides, *readmes, *sorted((repository_root / "docs").glob("*.md")))

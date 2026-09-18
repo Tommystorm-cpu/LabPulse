@@ -56,7 +56,7 @@ http://<pi-address>:8123
 For a quick check of the installation, run:
 
 ```bash
-labpulse ps
+labpulse ps --all
 labpulse doctor
 ```
 
@@ -67,10 +67,12 @@ Then check these things in Home Assistant:
 2. Open **Monitor** and confirm that the readings are present and continue to
    update.
 3. Open **Alarm Setup** and review the thresholds and notification controls.
-4. Leave **Test mode** enabled until test messages have reached the intended
-   test recipients.
-5. Only disable **Mute all notifications** after the alarms and recipient lists
-   have been reviewed.
+4. Check the mute and Test mode banners. A healthy dashboard doesn't mean
+   notifications are enabled or going to the normal recipients.
+
+When taking over an installation, leave its notification settings as agreed
+with the lab. For first-time commissioning, follow [Testing SMS](#testing-sms)
+before switching to normal recipients.
 
 If something is missing or unhealthy, start with
 [Troubleshooting](TROUBLESHOOTING.md).
@@ -87,7 +89,6 @@ uses the same main views.
 
 - current readings grouped by experiment or lab setup;
 - graphs for measurements configured to show one;
-- UPS and external-power information when power monitoring is enabled;
 - manual output switches;
 - a **Current Problems** card for confirmed, unmuted problems;
 - banners when Global Mute or Test mode is active.
@@ -100,6 +101,10 @@ the configured observation window still needs enough evidence.
 
 **System Status** answers two questions: is each monitoring service working,
 and are all of its required readings current?
+
+When power monitoring is enabled, its service card also shows **UPS Power**:
+battery level, external-power status, and voltage. When power alarms are
+enabled, it includes the power state and the last outage details.
 
 Each service card shows its latest readings and one of these states:
 
@@ -150,6 +155,12 @@ LabPulse deliberately separates different kinds of problem:
 | **Offline** | The whole service cannot communicate. |
 | **Running on battery** | The power monitor has confirmed loss of external power. |
 
+When responding to a problem, first check the affected equipment using the
+lab's normal procedure. Then use **System Status** to establish whether you
+have a trustworthy reading. An empty **Current Problems** card isn't enough:
+measurement/setup and power mutes can hide their incidents there, and missing
+data doesn't mean a safe value. Global Mute alone doesn't hide the card's problems.
+
 A running Docker container does not prove that its sensor is healthy. Use
 **System Status** to check whether the readings are actually getting through.
 
@@ -185,9 +196,9 @@ LabPulse does not have to alarm on one brief spike. It looks at the recent
 observation window and measures the percentage of time spent in the danger
 zone, using Home Assistant history. It does not count samples.
 
-For example, with a 120-second observation window and a required danger value
-of 70%, the reading must spend at least 84 seconds of that window outside the
-threshold before the state can change to **Danger**. Home Assistant updates
+For example, in a fully observed 120-second window with a required danger
+value of 70%, at least 84 seconds must have been spent outside the threshold
+before the state can change to **Danger**. Home Assistant updates
 the history statistic periodically, so this is not an exact countdown timer.
 
 Recovery requires the reading to remain safe for the configured recovery time.
@@ -199,6 +210,11 @@ The recovery deadband also moves the safe boundary away from the threshold:
 
 This prevents repeated alarm and recovery messages when a value sits close to
 the boundary.
+
+For example, a high limit of 2.0 bar with a 0.1 bar deadband needs the reading
+to reach 1.9 bar or below and stay there for the recovery time. Returning to
+1.99 bar is below the alarm limit but isn't enough to clear an active alarm.
+These numbers illustrate the controls; choose limits for your equipment.
 
 ### Bulk alarm editor
 
@@ -227,6 +243,16 @@ Home Assistant and do not create an additional sensor container.
 LabPulse can leave notifications in Home Assistant and send text messages if
 you've set up SMS.
 
+Three controls have different jobs:
+
+| Control | What it changes | Can it send a real SMS? |
+|---|---|---|
+| **Test mode** in the dashboard | Routes new messages to test recipients | Yes, if SMS is enabled and the notification isn't muted |
+| **Mute all notifications** in the dashboard | Blocks generated notifications | No new generated notification while muted; already queued SMS requests may still be processed |
+| `sms.dry_run: true` in the configuration | Logs SMS requests without using the modem | No; Home Assistant notifications can still appear |
+
+Simulation forces SMS dry-run regardless of the setting in your file.
+
 ### Test mode
 
 Test mode is enabled whenever Home Assistant starts. Messages created while it
@@ -249,6 +275,7 @@ settings.
 Mutes do not expire automatically and do not change the underlying service or
 alarm state. Muted measurement and power incidents are removed from **Current
 Problems**, but their condition remains visible elsewhere on the dashboard.
+Global Mute blocks delivery without hiding those problems on its own.
 
 A measurement shared between setups can still notify if at least one of its
 setups remains unmuted. Home Assistant warns before applying this kind of setup
@@ -278,10 +305,11 @@ use the modem. Keep it enabled while checking the rest of the system.
 
 To send a real test message:
 
-1. Use the [Configuration reference](CONFIGURATION.md#sms) to configure the
-   modem, check the test recipient's number, and disable `sms.dry_run`.
-2. Run `labpulse config`, then confirm the SMS container is running with
-   `labpulse ps`.
+1. Complete [SMS host setup](TROUBLESHOOTING.md#sms-host-setup) on the Pi so
+   ModemManager can see the modem and SIM.
+2. Run `labpulse config`, check the [test recipients](CONFIGURATION.md#sms),
+   and set `sms.dry_run: false`. Confirm the SMS container is running with
+   `labpulse ps`. Use a real-hardware installation; simulation cannot send SMS.
 3. In **Alarm Setup**, leave **Test mode** enabled and turn off **Mute all
    notifications**.
 4. Press **Send phone book notification** and confirm the action.
@@ -299,7 +327,8 @@ message.
 ## Using controlled outputs
 
 Configured outputs appear as Home Assistant switches. Outputs assigned to a
-setup appear in that setup's **Controls** card; unassigned outputs appear in
+setup appear as rows under the setup heading, like its measurements, with no
+separate controls heading. Unassigned outputs appear in
 the general **Controlled Outputs** section. **System Status** shows every
 enabled output.
 
@@ -342,6 +371,7 @@ Run commands on the Raspberry Pi which hosts LabPulse.
 | `labpulse down` | Stop and remove containers without deleting persistent data. |
 | `labpulse restart` | Restart the complete stack. |
 | `labpulse config` | Edit, validate, regenerate, and apply the live configuration. |
+| `labpulse usb` | Walk through USB board identification and save stable serial paths; see [Assigning serial devices](TROUBLESHOOTING.md#assigning-serial-devices). |
 | `labpulse update` | Install the latest PyPI release and recreate the stack. |
 | `labpulse backup FILE.tar.gz` | Create a checksummed state archive. |
 | `labpulse restore FILE.tar.gz` | Restore an archive and diagnose the result. |
@@ -400,7 +430,18 @@ these settings and includes examples you can adapt.
 
 When you save a change and close the editor, LabPulse checks all your
 configuration files together, updates the generated files, and applies the
-changes. If it finds an error, it leaves the previous configuration in place.
+changes by recreating the containers. Saving can therefore start workers even
+if they were stopped. The current real or simulated mode is preserved.
+
+A validation error leaves the live source unchanged. If a later generation or
+container step fails, LabPulse attempts to restore the previous configuration;
+check the reported result rather than assuming rollback succeeded. Follow
+[configuration recovery](TROUBLESHOOTING.md#configuration-was-accepted-but-containers-did-not-refresh)
+if it fails while applying a change.
+
+Look for `Configuration applied successfully.` when the command finishes.
+Then check **System Status** for fresh readings and **Monitor** for the change
+you intended. A successful edit validates the settings, not the sensor wiring.
 
 Closing the editor without a configuration change does not rebuild missing
 generated files. Use the [repair procedure](TROUBLESHOOTING.md#installation-or-generated-files-are-missing)
@@ -462,24 +503,36 @@ when changing an installation between fake and real hardware.
 
 ## Updating LabPulse
 
-Before an update, create a backup and check the current state:
+On the Pi, record `labpulse version`, read the target release's notes, and
+choose a time when the services can restart. Create a backup and check the
+current state before updating:
 
 ```bash
-labpulse backup ~/labpulse-before-update.tar.gz
+mkdir -p ~/labpulse-backups
+labpulse backup ~/labpulse-backups/before-update-$(date +%Y%m%d-%H%M%S).tar.gz
 labpulse doctor
 labpulse update
 ```
 
+Run these one at a time. If the backup or Doctor fails, resolve that problem
+before continuing. The update doesn't create a full state backup for you.
+
 `labpulse update` installs the latest release from PyPI, refreshes the generated
-files, recreates the stack, and runs the new version's diagnostics. To install a
-specific release:
+files, preserves the current real or simulated mode, recreates the stack, and
+runs the new version's diagnostics. To install a specific published release:
 
 ```bash
 labpulse update 1.0.0
 ```
 
-Afterward, run `labpulse ps`, open **System Status**, and confirm that readings
-resume. Updates don't automatically mute notifications or wait for fresh
+`1.0.0` is an example: substitute the release you intend to install. If that
+version is already installed, the command exits without rebuilding the
+deployment. Use [generated-file repair](TROUBLESHOOTING.md#installation-or-generated-files-are-missing)
+when repair is what you need.
+
+Afterward, run `labpulse version` and `labpulse ps --all`, open **System Status**,
+and confirm that readings resume. Check Test mode too: Home Assistant turns it
+on at startup. Updates don't automatically mute notifications or wait for fresh
 readings before allowing alarms. Confirmed problems follow the usual timing
 and mute settings. If you want to pause messages during maintenance, use
 **Mute all notifications** and turn it off again after checking the system.
@@ -510,16 +563,28 @@ configuration or Home Assistant changes:
 labpulse backup ~/labpulse-backup-2026-09-17.tar.gz
 ```
 
+Use a new filename each time. The command finishes with `Backup created:` and
+the archive's path. Copy that archive to protected storage **off the Pi**;
+a backup on the same storage won't help if that storage fails.
+
 LabPulse briefly stops the services which are currently running, copies the
 operator configuration, Home Assistant state, Mosquitto retained data, and SMS
 state, writes checksums, and starts the same services again before compressing
-the archive. It does not include ordinary logs, firmware, wiring information,
-or host operating-system settings.
+the archive. A checksum lets restoration detect damaged archive contents.
 
-External MQTT security files under `mosquitto/config/` are also excluded:
-certificates, private keys, `external-passwords`, and `external-acl`. Keep a
-separate protected copy if you use the external listener; restore those files
-before regenerating a deployment that enables it.
+| Item | In the LabPulse archive? | What to keep separately |
+|---|---|---|
+| `config.yaml` and `config.d/` | Yes | No separate copy required for restoration |
+| Home Assistant accounts, settings, and recorded history | Yes, under `homeassistant/config/` | Nothing else for this directory |
+| Mosquitto retained data and SMS subscription/processed-request state | Yes | Nothing else for these files |
+| External MQTT certificates, keys, passwords, and access rules | **No** | Protected copy of the [four listener files](TROUBLESHOOTING.md#backup-or-restore-fails), if enabled |
+| Pi OS and host configuration | **No** | OS and LabPulse versions; network, clock, watchdog, interface, and modem setup notes |
+| Firmware, wiring, calibration, and CAD | **No** | Build records and the matching firmware revision |
+| Windows Triton publisher and its credentials | **No** | Protected copy and the [publisher setup record](TRITON_PUBLISHER.md) |
+| Ordinary worker logs | **No** | Any logs needed to investigate an incident |
+
+Restore external MQTT security files before regenerating a deployment that
+enables that listener. The same exclusion applies to automatic rollback archives.
 
 The archive contains credentials, phone-number state, and Home Assistant
 history. On Linux it is restricted to its owner, but it is not encrypted. Store
@@ -544,7 +609,9 @@ physical wiring. These are properties of the host and are not restored from the
 archive.
 
 Restoration uses the installed LabPulse package; it does not reinstall the
-version recorded in the archive. For a replacement Pi, follow
+version recorded in the archive. Once it finishes, check fresh readings,
+history, alarm settings, and notification routing. Test delivery to the intended
+test handset before returning to normal recipients. For a replacement Pi, follow
 [restoring on a replacement Pi](INSTALLATION.md#backups-and-restoring-on-a-new-pi).
 
 ## Removing an installation

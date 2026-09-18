@@ -1,10 +1,14 @@
 # Triton refrigerator setup
 
-This is the complete commissioning guide for sending Oxford Instruments
-Triton `.vcl` logfile readings from the refrigerator control PCs to LabPulse.
-It covers the physical network, both TP-Link Archer D2 routers, Windows, the
-LabPulse Pi, MQTT security, LabPulse configuration, the setup publisher, and
-the unattended production publisher.
+This guide connects two Oxford Instruments Triton control PCs to LabPulse so
+their `.vcl` logfile readings appear on the dashboard. It describes the lab's
+specific two-fridge arrangement, including its TP-Link Archer D2 routers and
+network addresses. Check that your installation matches before following it;
+another lab needs a network plan for its own equipment.
+
+You'll first run a publisher by hand to check the readings, then arrange for
+Windows to run the production publisher automatically. A publisher is the
+small program that reads the logfile and sends its values to LabPulse.
 
 Follow the sections in order. Instructions marked **repeat for each fridge**
 are performed once for Triton 1 and once for Triton 2. Instructions marked
@@ -44,6 +48,11 @@ started from the Pi side towards the control-PC LAN.
 
 ### Security boundary and threat model
 
+The **LAN** is each fridge's private network. The router's **WAN** port faces
+the separate Pi-side network. These must stay on the correct sides of the
+router. The **security boundary** is the equipment and configuration that
+prevent the Pi from starting connections into a fridge's private network.
+
 Assume that the Pi, its operating system, every container, and every device on
 the Pi-side switch are hostile. No Pi setting is a security control. In
 particular, Pi firewall rules, Docker rules, routes, and
@@ -56,6 +65,8 @@ initiate a connection through either Archer into a Triton LAN. If laboratory IT
 does not accept the Archer model and firmware as that boundary, replace it with
 an approved externally managed firewall before connecting the Pi.
 
+TLS encrypts MQTT connections, certificates identify the server, and an ACL
+(access-control list) says which topics each account may use.
 MQTT TLS, passwords, ACLs, and topic restrictions remain useful for normal
 operation, but they are implemented by or terminate on the Pi. They cannot
 constrain a compromised Pi and are not part of the Triton network boundary.

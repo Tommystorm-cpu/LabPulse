@@ -2,7 +2,9 @@
 
 Start here when installation, readings, or notifications do not behave as
 expected. For a new installation, follow the [Installation guide](INSTALLATION.md)
-first. These commands inspect the current deployment:
+first. Run the commands below **in the Pi's terminal**, locally or over SSH,
+using the same account as the installation. They inspect the deployment without
+changing its settings:
 
 ```bash
 labpulse doctor
@@ -10,9 +12,9 @@ labpulse ps --all
 labpulse logs --tail 100
 ```
 
-Follow the data from the hardware or external publisher to its worker,
-Mosquitto, Home Assistant, and finally SMS. Check the last working step before
-changing the next one.
+Keep the first error message before restarting anything. Later errors may be
+consequences of it. Change one thing at a time, repeat the failing check, then
+confirm that fresh readings return in **System Status**.
 
 ## Find the problem
 
@@ -29,6 +31,37 @@ changing the next one.
 | SMS does not arrive | [Notification delivery](#no-notification-was-delivered) |
 | Update or restoration fails | [Update](#update-failed-or-sms-worker-is-offline) or [restore](#backup-or-restore-fails) |
 
+### Read the first results
+
+`labpulse doctor` labels each check:
+
+| Result | Meaning | Next step |
+|---|---|---|
+| `PASS` | This particular check succeeded | Continue; it doesn't prove the rest of the system is healthy |
+| `WARN` | Something needs review, such as clock synchronisation | Read the explanation and resolve it if it applies to this installation |
+| `FAIL` | A required check failed | Follow its suggested action before relying on the installation |
+| `SKIP` | A check wasn't performed, often because an earlier check couldn't supply what it needed | Fix the earlier problem, then run Doctor again |
+
+For example, these are representative lines in Doctor's output, not a captured
+report from your Pi:
+
+```text
+[PASS] Installation: live directory exists
+[FAIL] Resolved configuration freshness: config.resolved.yaml is stale; run 'labpulse config'
+```
+
+The first line only confirms that the directory exists. The second means the
+generated configuration doesn't match your source settings. Apply the source
+through `labpulse config`, then repeat Doctor; don't edit the generated file.
+
+In `labpulse ps --all`, look at the service and state columns. A container that
+is exited or keeps restarting needs its log checked. A running container can
+still have a disconnected sensor, so also read its **System Status** card.
+Logs contain progress as well as errors; find the most recent failure for the
+affected service and check whether a later entry reports recovery.
+
+### Choose the service to inspect
+
 Use Compose service names with `labpulse logs` and `labpulse restart`:
 
 | Component | Compose service | Container name |
@@ -41,6 +74,10 @@ Use Compose service names with `labpulse logs` and `labpulse restart`:
 Your worker names depend on the service IDs in the live configuration. For an
 alternate installation, put `--live-dir /path/to/live` before each LabPulse
 command and adjust the paths below.
+
+`labpulse logs --follow SERVICE` keeps the log open as new entries arrive.
+Replace `SERVICE` with a name from the table or your deployment. Press
+**Ctrl+C** to leave the log; that doesn't stop the service.
 
 ## pipx cannot find or install LabPulse
 
@@ -99,8 +136,9 @@ some host failures; it does not prove that sensors or SMS are working.
 
 ## Installation or generated files are missing
 
-Setup regenerates managed files while preserving the live source bundle and
-Home Assistant private state. Select the installation's intended mode:
+Setup rebuilds the generated files while preserving your `config.yaml`,
+measurement files, and saved Home Assistant state. Select the installation's
+intended mode:
 
 ```bash
 # Real hardware
@@ -146,7 +184,7 @@ labpulse logs --tail 100 labpulse-pressure-monitor
 Check for missing host devices, invalid driver options, Docker permissions,
 MQTT connection failures, or an unintended hardware mode. Compare Compose's
 runtime mount with `config.resolved.yaml` or `config.fake.yaml`. Edit the
-source bundle, not the generated runtime.
+source settings through `labpulse config`, not the generated runtime file.
 
 ## Assigning serial devices
 
@@ -157,28 +195,44 @@ have. Then stop the stack and connect every enabled serial board:
 
 ```bash
 labpulse down
-cd ~/labpulse-live
-./setup_usb_devices.py --config config.yaml
+labpulse usb
 labpulse config
 labpulse up
 ```
 
-The helper asks you to unplug and reconnect one board at a time. It updates
-`driver.options.port` and keeps `backups/config.yaml.usb-setup-backup`.
+`labpulse usb` works from any directory and uses `~/labpulse-live/config.yaml`
+by default. It asks you to unplug and reconnect one board at a time, previews
+the detected assignments, and asks before saving. It updates only the assigned
+`driver.options.port` lines and keeps `backups/config.yaml.usb-setup-backup`.
 The subsequent configuration command applies the new mappings. Close Arduino
 serial monitors before restarting workers.
 
+Use `labpulse usb --dry-run` to identify boards without saving. For an installation
+elsewhere, use `labpulse --live-dir /srv/labpulse usb`. `--yes` skips the final
+save confirmation; you still need to follow the unplug/replug prompts.
+
 ## Serial readings are missing or stale
 
-Check that the configured path exists with `ls -l /dev/serial/by-id/` and read
-the worker log. Stop its worker before opening a serial monitor at the
-configured baud rate, normally 9600. Each newline-terminated sample needs a
-usable field such as `pressure:1.02`; units belong in YAML.
+Check the USB connection first, then the sample, then the dashboard:
 
-Check measurement names, empty output, `null` channels, firmware resets, and
-USB power. A partial sample can publish valid sibling fields. A service with
-no valid samples eventually reconnects; individual measurements also expire
-in Home Assistant. See the [firmware guide](../firmware/README.md).
+| What you find | What to check next |
+|---|---|
+| No board entry under `/dev/serial/by-id/` | USB data cable, board power, hub, and whether Linux recognises the device |
+| Board exists, but the configured path differs | Correct `driver.options.port` through `labpulse config` |
+| Port exists, but the worker can't open it | Its log, device access, and whether another program has the port open |
+| Serial output is blank or unreadable | Firmware, board resets, and matching baud rate, normally 9600 |
+| Sample contains `pressure: null` | Sensor wiring and the firmware's validity/calibration checks |
+| Sample contains `pressure:1.02`, but that reading is missing | Matching measurement key in the live configuration and then [MQTT discovery](#mqtt-or-home-assistant-entities-are-missing) |
+
+To inspect raw serial output, stop the worker that owns the board before
+opening a serial monitor. Each sample must end with a newline; put units in
+the configuration, not in the serial value. The [first-sensor walkthrough](FIRST_SENSOR.md#1-check-what-the-arduino-sends)
+shows an example.
+
+Close the monitor and restart the worker when finished. Confirm that the
+reading's timestamp advances in **System Status**. Its number needn't change
+if the physical quantity is steady. Valid fields can continue updating even
+when another field in the same sample is `null`.
 
 ## Fake-hardware readings do not appear
 
@@ -369,18 +423,31 @@ For a missing persistent Home Assistant notification, check that the incident
 was confirmed and that Global Mute and its service, reading, setup, or power
 mute allow delivery. SMS worker state does not block these notifications.
 For a missing SMS, also check Test mode,
-recipient configuration, `sms.dry_run`, and the SMS service log. A recovery SMS
-requires an opening SMS request and current notification permission.
+recipient configuration, `sms.dry_run`, and the SMS service log. Use this order:
+
+1. Confirm the problem reached a confirmed alarm or outage state. A crossed
+   threshold alone may still be waiting for its observation window.
+2. Check whether notification mutes allow a message. If the Home Assistant
+   notification is also absent, start with those controls.
+3. Check the recipient list selected by Test mode. Test mode can send real
+   SMS; dry-run cannot. Simulation always uses dry-run.
+4. Inspect `labpulse logs --tail 100 labpulse-sms`. A dry-run entry means the
+   software processed the request without contacting the modem. A send error
+   needs the modem and network checks below.
+
+A recovery SMS requires an opening SMS request and current notification permission.
 For modem failures, work through [SMS host setup](#sms-host-setup). Modem
-acceptance is not proof of handset delivery.
+acceptance is not proof of handset delivery. After fixing the cause, use
+[Testing SMS](USER_GUIDE.md#testing-sms) and check the intended handset;
+don't assume an earlier muted notification will be sent automatically.
 
 ## Update failed or SMS worker is offline
 
 Read the update error and inspect `labpulse ps --all` and `labpulse logs
 labpulse-sms`. Repair the reported package, setup, or Compose problem, then run
 `labpulse up` to start the generated stack. There is no retained update mute to
-clear. If the SMS worker was disconnected, queued QoS 1 requests from its
-persistent MQTT session may be delivered on reconnect, including a failure and
+clear. If the SMS worker was disconnected, the broker may have held SMS
+requests for it to process on reconnect, including a failure and
 its recovery close together. Check Test mode and recipient settings before
 interpreting where those messages were sent.
 

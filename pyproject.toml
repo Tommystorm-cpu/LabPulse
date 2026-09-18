@@ -84,7 +84,6 @@ include = ["labpulse*"]
 "share/labpulse" = [
   "config.yaml",
   "requirements-host.txt",
-  "setup_usb_devices.py",
 ]
 "share/labpulse/config.d" = [
   "config.d/triton-01-measurements.yaml",

@@ -1,21 +1,20 @@
 """Behavior tests for interactive real USB serial assignment."""
 
-import os
 import shutil
-import sys
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
+
+from labpulse import control
 
 REFACTOR_DIR = Path(__file__).resolve().parents[1]
 TEST_TMP = REFACTOR_DIR / "testing" / "tmp"
 TEST_TMP.mkdir(parents=True, exist_ok=True)
 
-from setup_usb_devices import (
+from labpulse.usb import (
     SerialService,
-    _use_managed_python_when_deployed,
-    build_parser,
     identify_devices,
     load_serial_services,
     replace_serial_ports,
@@ -50,36 +49,6 @@ services:
         pin: D4
     measurements: {}
 """
-
-
-def test_deployed_helper_reexecutes_from_system_python() -> None:
-    """Use the managed environment even when both executables resolve alike."""
-
-    directory = TEST_TMP / f"usb-python-{uuid4().hex}"
-    python_path = directory / ".venv" / "bin" / "python"
-    python_path.parent.mkdir(parents=True)
-    python_path.write_text("fixture", encoding="utf-8")
-    script_path = directory / "setup_usb_devices.py"
-    try:
-        with (
-            patch("setup_usb_devices.__file__", str(script_path)),
-            patch.object(sys, "prefix", str(directory / "system-python")),
-            patch.object(sys, "executable", str(python_path)),
-            patch.object(sys, "argv", [str(script_path), "--help"]),
-            patch.dict(os.environ, {}, clear=True),
-            patch("setup_usb_devices.os.execv") as execute,
-        ):
-            _use_managed_python_when_deployed()
-
-        execute.assert_called_once_with(
-            str(python_path),
-            [str(python_path), str(script_path), "--help"],
-        )
-    finally:
-        python_path.unlink(missing_ok=True)
-        python_path.parent.rmdir()
-        (directory / ".venv").rmdir()
-        directory.rmdir()
 
 
 def test_loads_only_enabled_serial_services() -> None:
@@ -122,7 +91,7 @@ def test_identifies_unplugged_then_replugged_devices() -> None:
         ]
     )
     prompts: list[str] = []
-    with patch("setup_usb_devices.snapshot_devices", side_effect=lambda _path: next(snapshots)), patch(
+    with patch("labpulse.usb.snapshot_devices", side_effect=lambda _path: next(snapshots)), patch(
         "builtins.input", side_effect=lambda message: prompts.append(message) or ""
     ):
         assignments = identify_devices(services, Path("/dev/serial/by-id"))
@@ -142,7 +111,7 @@ def test_rejects_ambiguous_unplug() -> None:
     baseline = {"one": "/fake/one", "two": "/fake/two"}
     snapshots = iter([baseline, {}])
     try:
-        with patch("setup_usb_devices.snapshot_devices", side_effect=lambda _path: next(snapshots)), patch(
+        with patch("labpulse.usb.snapshot_devices", side_effect=lambda _path: next(snapshots)), patch(
             "builtins.input", return_value=""
         ):
             identify_devices([SerialService("service", "Service")], Path("/fake"))
@@ -224,13 +193,84 @@ services:
         shutil.rmtree(directory)
 
 
-def test_cli_modes() -> None:
-    """Check preview and confirmed-write options remain explicit."""
+@pytest.mark.parametrize("mode", ["save", "yes", "dry-run", "decline", "interrupt", "eof"])
+def test_usb_command_guides_assignment_and_only_saves_when_confirmed(
+    workspace_tmp_path: Path, mode: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exercise the installed command through detection, preview, and saving."""
 
-    parser = build_parser()
-    preview = parser.parse_args(["--config", "config.yaml", "--dry-run"])
-    if not preview.dry_run:
-        raise AssertionError(f"dry-run option was not parsed: {preview!r}")
-    real = parser.parse_args(["--config", "config.yaml", "--yes"])
-    if not real.yes:
-        raise AssertionError(f"real apply options were not parsed: {real!r}")
+    config_path = workspace_tmp_path / "config.yaml"
+    config_path.write_text(CONFIG, encoding="utf-8")
+    baseline = {
+        "pressure": "/dev/serial/by-id/usb-pressure",
+        "pump": "/dev/serial/by-id/usb-pump",
+    }
+    snapshots = [baseline, {"pump": baseline["pump"]}, baseline,
+                 {"pressure": baseline["pressure"]}, baseline]
+    arguments = ["--live-dir", str(workspace_tmp_path), "usb"]
+    if mode in {"yes", "dry-run"}:
+        arguments.append(f"--{mode}")
+    responses = ["", "", "", "", "", "yes" if mode == "save" else "no"]
+    if mode in {"interrupt", "eof"}:
+        responses[-1] = KeyboardInterrupt() if mode == "interrupt" else EOFError()
+
+    with (
+        patch("labpulse.usb.snapshot_devices", side_effect=snapshots),
+        patch("builtins.input", side_effect=responses) as prompt,
+        patch.object(control, "notify_if_update_available"),
+    ):
+        result = control.main(arguments)
+
+    assert result == (130 if mode in {"interrupt", "eof"} else 0)
+    output = capsys.readouterr()
+    assert "Detected assignments:" in output.out
+    assert "/dev/serial/by-id/usb-pressure" in output.out
+    assert "Unplug the USB device for Air Pressure Sensor Hub" in prompt.call_args_list[1].args[0]
+    backup_path = workspace_tmp_path / "backups/config.yaml.usb-setup-backup"
+    if mode in {"save", "yes"}:
+        assert backup_path.read_text(encoding="utf-8") == CONFIG
+        updated = config_path.read_text(encoding="utf-8")
+        assert 'port: "/dev/serial/by-id/usb-pressure"' in updated
+        assert 'port: "/dev/serial/by-id/usb-pump"' in updated
+        assert "# preserve this manual comment" in updated
+        assert "config config.yaml" in output.out
+    else:
+        assert config_path.read_text(encoding="utf-8") == CONFIG
+        assert not backup_path.exists()
+
+
+@pytest.mark.parametrize("selection", ["default", "environment", "flag"])
+def test_usb_command_selects_live_config(
+    workspace_tmp_path: Path, monkeypatch: pytest.MonkeyPatch, selection: str
+) -> None:
+    """Resolve the live config without depending on the current directory."""
+
+    monkeypatch.setattr(control, "DEFAULT_LIVE_DIR", workspace_tmp_path / "default")
+    monkeypatch.delenv("LABPULSE_LIVE_DIR", raising=False)
+    expected = workspace_tmp_path / "default"
+    arguments = ["usb", "--dry-run"]
+    if selection in {"environment", "flag"}:
+        expected = workspace_tmp_path / "environment"
+        monkeypatch.setenv("LABPULSE_LIVE_DIR", str(expected))
+    if selection == "flag":
+        expected = workspace_tmp_path / "override"
+        arguments = ["--live-dir", str(expected), *arguments]
+    with patch.object(control, "run_usb_setup", return_value=1) as setup, patch.object(
+        control, "notify_if_update_available"
+    ):
+        assert control.main(arguments) == 1
+    setup.assert_called_once_with(
+        expected.resolve() / "config.yaml", dry_run=True, assume_yes=False
+    )
+
+
+def test_usb_help_explains_interactive_options(capsys: pytest.CaptureFixture[str]) -> None:
+    """Expose USB setup through the normal command help without scanning devices."""
+
+    with patch.object(control, "notify_if_update_available"), patch("builtins.input") as prompt:
+        assert control.main(["help", "usb"]) == 0
+    prompt.assert_not_called()
+    output = capsys.readouterr().out
+    assert "unplug/replug" in output
+    assert "--dry-run" in output
+    assert "--yes" in output

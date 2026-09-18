@@ -9,6 +9,12 @@ in this checkout. Check that file when changing the release process. Publishing
 requires access to the project's GitHub releases, package registry, and PyPI
 publishing configuration; it isn't part of a normal contributor's test run.
 
+The **wheel** (`.whl`) is the installable Python package; the **source
+distribution** (`.tar.gz`, often called an sdist) contains the files needed to
+build it. PyPI distributes those Python packages. GHCR, GitHub's container
+registry, distributes the worker image. The release workflow builds and checks
+both, but publication can still succeed for one and fail for the other.
+
 ## Prepare the candidate
 
 1. Choose the commit and version, review the changes, and update
@@ -35,6 +41,10 @@ python -m twine check dist/*
 
 These shell examples use Bash on Linux. Keep `dist/` limited to this candidate's
 artifacts so wildcard commands don't accidentally check older builds too.
+
+Run the commands one at a time and stop at the first failure. A successful
+build leaves a wheel and source archive in `dist/`; Twine should report that
+their metadata checks passed. Neither result means anything has been published.
 
 The version comes from Git tags through `setuptools-scm`, not a version string
 you edit in Python. Before tagging, a development version is normal. At the
@@ -72,6 +82,10 @@ The workflow runs three jobs:
 | `validate` | Checks the tag-derived version, runs tests, builds and checks wheel/sdist, smoke-installs them, performs fake setup, and smoke-tests a local image |
 | `publish-python` | Publishes the validated Python artifacts to PyPI |
 | `publish-container` | Builds and pushes AMD64 and ARM64 images to GHCR, with provenance and SBOM metadata |
+
+AMD64 is the architecture used by typical Intel/AMD computers; ARM64 is used
+by the 64-bit Pi installation. Provenance records how an image was built, and
+the SBOM (software bill of materials) lists its software components.
 
 Both publishing jobs depend on validation, but they don't depend on each
 other. One can succeed while the other fails. The image receives a full-version

@@ -10,6 +10,11 @@ If the product itself is new to you, read
 [Development guide](DEVELOPMENT.md) nearby as a reference; you don't need to
 read it all before starting.
 
+By the end of this guide, you should have a working checkout, a generated
+dashboard you can inspect, and one small change whose route through the code
+you understand. The first three sections run on your own computer. The live
+debugging recipes in section 4 need a separate Linux development installation.
+
 ## 1. Get a working checkout
 
 For this first session you need Git and Python 3.11 or 3.12. You don't need a
@@ -288,3 +293,8 @@ Publishing is a separate step, normally done by a maintainer with release
 access. Follow [Releasing LabPulse](RELEASING.md) for versioning, artifact
 checks, publication, and recovery from a partial release. You don't need to
 publish anything to validate your first contribution.
+
+You're ready to hand the change over when you can explain which source files
+you changed, show the resulting behaviour, and say what the tests checked.
+Include any remaining Pi or browser checks in the pull request so the next
+person knows exactly where to continue.

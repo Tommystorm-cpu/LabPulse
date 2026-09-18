@@ -581,9 +581,13 @@ def test_controlled_outputs_can_be_assigned_to_setups() -> None:
     controls = [
         item for item in walk(monitor)
         if isinstance(item, dict) and item.get("type") == "entities"
-        and item.get("title") == "Controls"
+        and any(
+            row.get("entity") == "switch.labpulse_output_cooling_valve"
+            for row in item.get("entities", [])
+        )
     ]
     assert len(controls) == 1
+    assert "title" not in controls[0]
     assert controls[0]["entities"][0]["name"] == "Cooling Valve"
     assert not any(
         isinstance(item, dict)

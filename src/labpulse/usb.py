@@ -1,54 +1,24 @@
-#!/usr/bin/env python3
 """Interactively assign stable USB serial paths to LabPulse services."""
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import sys
 import tempfile
-from typing import Sequence
-
-
-def _use_managed_python_when_deployed() -> None:
-    """Re-execute deployed commands with LabPulse's managed interpreter."""
-
-    project_dir = Path(__file__).resolve().parent
-    default_python = project_dir / ".venv/bin/python"
-    if not default_python.is_file() and "LABPULSE_PYTHON" not in os.environ:
-        return
-    configured = os.environ.get("LABPULSE_PYTHON")
-    python_path = Path(configured) if configured else default_python
-    if not python_path.is_file():
-        raise SystemExit(
-            f"ERROR: LabPulse's managed Python environment is missing: {python_path}\n"
-            "Run 'labpulse setup' to restore the managed environment."
-        )
-    managed_environment = python_path.parent.parent
-    # A virtual environment's python executable is commonly a symlink to the
-    # system interpreter. Comparing resolved executable paths therefore makes
-    # the system Python look identical to the managed one and skips this
-    # re-exec, after which importing labpulse fails. sys.prefix identifies the
-    # environment that actually supplied the running interpreter.
-    if Path(sys.prefix).resolve() != managed_environment.resolve():
-        # Replace this process rather than starting a child, so signals and the
-        # final exit code still belong to the command the operator launched.
-        os.execv(str(python_path), [str(python_path), *sys.argv])
-
-
-if __name__ == "__main__":
-    _use_managed_python_when_deployed()
 
 from labpulse.common.config import (
     ConfigError,
     format_config_error,
     load_config,
 )
+
+
 REAL_DEVICE_DIR = Path("/dev/serial/by-id")
 
 
@@ -195,7 +165,7 @@ def replace_serial_ports(
             lines[port_index] = replacement
             continue
 
-        # Older configs may omit the optional port line. Insert it directly
+        # Configs may omit the optional port line. Insert it directly
         # below driver.options when there is no existing line to replace.
         insert_after = next(
             (
@@ -253,23 +223,11 @@ def write_config(config_path: Path, updated_text: str) -> Path:
     return backup_path
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Build the USB assignment helper command-line parser."""
+def run_usb_setup(config_path: Path, *, dry_run: bool = False, assume_yes: bool = False) -> int:
+    """Guide USB identification and save confirmed assignments to the live config."""
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path("config.yaml"))
-    parser.add_argument("--device-dir", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--dry-run", action="store_true", help="detect and preview without writing config")
-    parser.add_argument("--yes", action="store_true", help="apply the detected mapping without a final prompt")
-    return parser
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the interactive stable USB assignment workflow."""
-
-    args = build_parser().parse_args(argv)
-    config_path = args.config.expanduser().resolve()
-    device_dir = args.device_dir or REAL_DEVICE_DIR
+    config_path = config_path.expanduser().resolve()
+    device_dir = REAL_DEVICE_DIR
     try:
         services = load_serial_services(config_path)
         if not services:
@@ -282,6 +240,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         for service in services:
             print(f"  {service.name}: {service.label}")
 
+        command = f"labpulse --live-dir {shlex.quote(str(config_path.parent))}"
+        print("\nBefore unplugging boards, stop LabPulse workers in another terminal:")
+        print(f"  {command} down")
+        print("Close any Arduino serial monitors. Then follow the prompts below.")
         assignments = identify_devices(services, device_dir)
         print("\nDetected assignments:")
         for service in services:
@@ -289,10 +251,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         original = config_path.read_text(encoding="utf-8")
         updated = replace_serial_ports(original, assignments, source=config_path)
-        if args.dry_run:
+        if dry_run:
             print("\nDry run complete; config was not changed.")
             return 0
-        if not args.yes:
+        if not assume_yes:
             answer = input("\nApply these serial driver port assignments? [y/N] ").strip().lower()
             if answer not in {"y", "yes"}:
                 print("Config was not changed.")
@@ -301,15 +263,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         backup_path = write_config(config_path, updated)
         print(f"Updated {config_path}")
         print(f"Previous config saved at {backup_path}")
-        print("Regenerate Compose before restarting LabPulse services.")
+        print("\nApply the new mappings with:")
+        print(f"  {command} config config.yaml")
+        print("Save and close the editor to regenerate and apply the configuration.")
+        print("Then ensure the services are running:")
+        print(f"  {command} up")
         return 0
+    except (EOFError, KeyboardInterrupt):
+        print("\nUSB setup cancelled; config was not changed.", file=sys.stderr)
+        return 130
     except ConfigError as error:
         print(format_config_error(error), file=sys.stderr)
         return 1
     except (KeyError, OSError, RuntimeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
