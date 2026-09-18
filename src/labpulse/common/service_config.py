@@ -12,7 +12,7 @@ from labpulse.common.measurement_config import (
 
 
 class DriverConfig(BaseModel):
-    """One stable driver identity and its typed, driver-owned options."""
+    """Pair a driver ID with options converted to its concrete Pydantic model."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -66,7 +66,11 @@ class ServiceHealthOverrideConfig(BaseModel):
 
 
 class ServiceConfig(BaseModel):
-    """Configuration for one independently running LabPulse sensor service."""
+    """Settings for one worker: typed driver options, named measurements and timing.
+
+    Validation applies measurement defaults and binds source names or GPIO lines
+    before the runner, publisher and generators consume this model.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -84,7 +88,11 @@ class ServiceConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_hardware_contract(self) -> "ServiceConfig":
-        """Validate driver-specific fields and the normalized UPS measurements."""
+        """Apply defaults and driver bindings in place, then check service rules.
+
+        Return the completed model; reject incompatible fields and incomplete power
+        settings before any driver is constructed.
+        """
 
         from labpulse.hardware.driver import HardwareOutputDriver
         from labpulse.hardware.registry import get_driver_definition

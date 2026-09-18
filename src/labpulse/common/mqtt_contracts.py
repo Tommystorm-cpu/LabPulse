@@ -15,7 +15,11 @@ OUTPUT_TOPIC_PREFIX = "home/output"
 
 
 class SmsRequest(BaseModel):
-    """One validated request published by Home Assistant for SMS delivery."""
+    """Validated MQTT request: event identity, message text and delivery mode.
+
+    request_id supports deduplication and result topics. test_mode selects test
+    recipients; only dry-run prevents modem delivery. No numbers are carried here.
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

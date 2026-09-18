@@ -20,8 +20,10 @@ build a dashboard yourself.
 **Docker** runs the different parts of LabPulse in separate containers. A
 container is a packaged program with the software it needs. **MQTT** carries
 messages between those programs, and **Mosquitto** is the program that passes
-the messages on. The installation guide sets these up; you don't need to
-learn their configuration to try the demo.
+the messages on. You install Docker on the Pi first; `labpulse up` then
+downloads and starts Home Assistant, Mosquitto, and the LabPulse workers.
+The [installation guide](INSTALLATION.md#what-needs-installing) covers the
+whole process from blank storage, including the host software you need.
 
 SMS is optional. Reading the dashboard and recording measurements don't need
 a modem or SIM card.
@@ -91,9 +93,9 @@ Open **Monitor** and find **Compressed Air**, then its pressure reading. With
 the unchanged starter configuration, simulated pressure is around **1.2 bar**.
 It should vary a little over time.
 
-> **Screenshot to add: Monitor.** Capture the simulated starter dashboard with
-> Compressed Air and its pressure reading visible. Mark the setup heading, the
-> reading, and where to select it to open history. Use example data only.
+> **Screenshot to add: Monitor (simulated installation).** Show Compressed Air
+> and its pressure reading using the starter configuration in fake-hardware
+> mode. Identify the reading to select for history.
 
 Select the reading to open its history. A new installation only has a short
 history; the graph fills up as LabPulse runs. Some simulated readings, such as
@@ -103,6 +105,7 @@ digital inputs, stay constant. That doesn't mean they've stopped updating.
 
 Open **System Status** and find **Compressed Air and Environment Sensor Hub**.
 It should say **Working** and show pressure, temperature, and humidity.
+The System Status tab may appear as a heart/pulse icon.
 
 > **Screenshot to add: System Status.** Show the Compressed Air and Environment
 > Sensor Hub reporting Working, with its latest readings. Mark the service

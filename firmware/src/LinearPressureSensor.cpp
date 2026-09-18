@@ -19,12 +19,15 @@ Reading LinearPressureSensor::read() const {
     return {0.0F, false};
   }
 
+  // Convert ADC counts to volts, then map the configured voltage span to the
+  // sensor's pressure scale. outputMultiplier supplies the final unit conversion.
   const float voltage =
       adc * (config_.adcReferenceVolts / static_cast<float>(config_.adcDivisor));
   float basePressure =
       ((voltage - config_.minimumCalibrationVolts) / calibrationSpan) *
       config_.fullScalePressure;
   if (config_.preConversionQuantizationScale > 0.0F) {
+    // Some examples preserve rounding before unit conversion; zero disables it.
     basePressure =
         round(basePressure * config_.preConversionQuantizationScale) /
         config_.preConversionQuantizationScale;
@@ -35,6 +38,7 @@ Reading LinearPressureSensor::read() const {
       output > config_.maximumValidOutput) {
     return {0.0F, false};
   }
+  // Range checks happen first: clamping does not rescue an invalid reading.
   if (config_.clampNegativeToZero && output < 0.0F) {
     output = 0.0F;
   }

@@ -19,6 +19,7 @@ void Dht11Sensor::begin() {
 }
 
 Dht11Reading Dht11Sensor::read() {
+  // Validate channels independently: bad humidity must not discard temperature.
   const float temperature = sensor_.readTemperature();
   const float humidity = sensor_.readHumidity();
   return {

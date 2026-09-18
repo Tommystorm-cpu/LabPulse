@@ -1,17 +1,34 @@
 # Screenshots and photos to add
 
-This is the checklist for images still needed in the documentation. Each link
-opens the section with its marked insertion point. Replace that placeholder
+This checklist tracks documentation captures, including those already added.
+Each link opens the image or its marked insertion point. Replace a placeholder
 with the image and a short caption when it's ready, then tick the item here.
 
 For the other remaining documentation tasks, use
 [the manual documentation checklist](DOCUMENTATION_TODO.md).
 
-## Dashboard screenshots
+## Live installation screenshots
+
+- [x] **[Monitor: live installation overview](README.md#live-installation).**
+  Real capture of the live reference installation supplied 18 September 2026,
+  with the account sidebar removed. Shows readings grouped by setup, UPS power,
+  and the Test mode banner.
+  File: `docs/images/live-monitor.png`.
+  LabPulse and Home Assistant versions were not supplied; add them when known.
+- [x] **[System Status: service health and optional readings](docs/USER_GUIDE.md#system-status).**
+  Real capture of the live reference installation supplied 18 September 2026.
+  Shows three working sensor hubs and two absent optional temperature readings.
+  File: `docs/images/live-system-status.png`.
+  LabPulse and Home Assistant versions were not supplied; add them when known.
+
+## First Steps screenshots (simulation)
+
+Capture these on the separate test Pi using fake-hardware mode and the starter
+configuration, so the images match the walkthrough.
 
 - [ ] **[Monitor: find a reading](docs/FIRST_STEPS.md#1-find-a-reading).**
-  Show the simulated starter dashboard with Compressed Air and pressure
-  visible. Mark the setup heading, the reading, and where to click for history.
+  Show Compressed Air and its simulated pressure reading. Identify the reading
+  to select for history.
   Suggested filename: `docs/images/first-steps-monitor.png`.
 - [ ] **[System Status: check the service](docs/FIRST_STEPS.md#2-check-the-service).**
   Show Compressed Air and Environment Sensor Hub reporting Working, with its
@@ -23,6 +40,16 @@ For the other remaining documentation tasks, use
   Observation window, and Required recovery. Use the practice settings in the
   walkthrough, with notifications muted.
   Suggested filename: `docs/images/first-steps-alarm-setup.png`.
+
+## Contributor screenshots
+
+- [ ] **[GitHub: open a sensor pull request](CONTRIBUTING.md#4-open-a-pull-request-into-labpulse).**
+  Replace the “Screenshot to add: contributing from a fork” block. Show
+  `lairdgrouplancaster/LabPulse` and `main` as the base, and a real contributor
+  fork and sensor branch as the head. Obtain permission to show the account
+  name and crop unrelated account details. Record the capture date because
+  GitHub's interface can change.
+  Suggested filename: `docs/images/contributing-sensor-pull-request.png`.
 
 ## Hardware photos (optional)
 
@@ -38,7 +65,10 @@ what is shown; a complete wiring record isn't needed.
   replace the “Photo to add: the assembled installation” block. Show the open
   main unit with its principal boards and connections. Add a closed-case view
   if useful. Identify any pictured prototype or planned part so readers know
-  what they are looking at.
+  what they are looking at. If the display is shown, identify the 7-inch Touch
+  Display 2 with its removed standoffs and show how the case supports it.
+  Waiting for assembly: the current case is printed, but key parts have not
+  arrived yet.
   Suggested filename: `docs/images/hardware-installation.jpg`.
 
 ## When adding an image

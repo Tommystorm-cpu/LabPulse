@@ -22,6 +22,7 @@ walks through a practice alarm using simulated data.
 ## Contents
 
 - [Start here](#start-here)
+- [Access from outside the lab](#access-from-outside-the-lab)
 - [Using the dashboard](#using-the-dashboard)
 - [Understanding system state](#understanding-system-state)
 - [Configuring alarms](#configuring-alarms)
@@ -77,6 +78,57 @@ before switching to normal recipients.
 If something is missing or unhealthy, start with
 [Troubleshooting](TROUBLESHOOTING.md).
 
+## Access from outside the lab
+
+Use **Nabu Casa** for the Home Assistant dashboard and **Raspberry Pi Connect**
+for the Pi's command line, where you run `labpulse` commands.
+
+### Dashboard: Nabu Casa
+
+For convenient access from home or your phone, we recommend **Home Assistant
+Cloud by Nabu Casa**. It gives you a secure remote address for the same Home
+Assistant dashboard you use in the lab. It's an optional paid subscription;
+LabPulse and the local dashboard work without it. See
+[Home Assistant Cloud](https://www.home-assistant.io/cloud/) for details.
+
+Set it up while you can reach Home Assistant locally:
+
+1. Open **Settings → Home Assistant Cloud** and sign in or create a Nabu Casa
+   account.
+2. Enable **Remote access**. Allow a little time for the remote address to be
+   prepared.
+3. Open that address from your other device and sign in with your Home Assistant
+   account. Bookmark it for future visits.
+
+The [official setup guide](https://support.nabucasa.com/hc/en-us/articles/26474279202973-Enabling-remote-access-to-Home-Assistant)
+includes screenshots. The Pi and Home Assistant must stay running and connected
+to the internet for the remote address to work.
+
+### Shell: Raspberry Pi Connect
+
+Raspberry Pi Connect opens the Pi's terminal in your browser. Use it for
+`labpulse config`, logs, updates and other maintenance commands from home.
+
+On Raspberry Pi OS Bookworm or later, set up Connect using the Pi account that
+owns the LabPulse installation. From a local terminal or existing SSH session:
+
+```bash
+rpi-connect on
+rpi-connect signin
+```
+
+Follow the sign-in link with your Raspberry Pi ID. If Connect isn't installed,
+follow the [official Connect guide](https://www.raspberrypi.com/documentation/services/connect.html);
+Connect Lite supports shell access on Raspberry Pi OS Lite.
+
+Then open [Raspberry Pi Connect](https://connect.raspberrypi.com), select the Pi,
+and choose **Connect via → Remote shell**. Commands in that browser window run
+on the Pi. It must stay powered and online.
+
+For access after reboot without logging in locally, run `loginctl enable-linger`
+from that Pi account. Check the connection before leaving the lab. SSH remains
+an alternative when you can reach the Pi directly.
+
 ## Using the dashboard
 
 LabPulse generates its Home Assistant dashboard from the live configuration.
@@ -119,6 +171,14 @@ raising a missing-data alert. The service can still need attention if its
 driver reports a problem. For example, an MQTT JSON message missing a field
 that you've configured is reported as a fault, even when that reading is
 optional. Other usable readings continue to update.
+
+![Live System Status dashboard showing three sensor hubs marked Working, their latest readings, and two optional turbo-pump temperature channels with no recent data.](images/live-system-status.png)
+
+*The live reference installation, supplied 18 September 2026. The three visible
+sensor hubs report **Working**. The Turbo Pump Hub also shows two temperature
+channels with **No recent data — optional**: absent optional readings do not
+by themselves make the service unhealthy. Service names and readings depend
+on your configuration. Open this view using the heart/pulse tab.*
 
 ### Alarm Setup
 

@@ -30,27 +30,38 @@ THRESHOLD_RANGES = {
 
 @dataclass(frozen=True)
 class HomeAssistantRenderModel:
-    """All data made available to the Home Assistant templates.
+    """Records shared by dashboard and alarm templates during generation.
 
-    Measurements, services, setups, and group-editing targets contain different
-    fields, so their inner records remain dictionaries. This one top-level
-    class still gives the templates a clear list of everything they can use,
-    without adding a separate class for every small piece of generated YAML.
+    Nested dictionaries hold metadata and expressions, not live entity state.
+    Treat them as read-only after building; README.md describes their shapes.
     """
 
+    # Physical services contain name, label, config, measurements and optional
+    # power metadata. Output records describe switches, not sensor services.
     services: tuple[dict[str, Any], ...]
     outputs: tuple[dict[str, Any], ...]
     unassigned_outputs: tuple[dict[str, Any], ...]
     dashboards: tuple[dict[str, Any], ...]
+    # setups contains alarm-capable groups, across all dashboards. monitor_setups
+    # contains all setups on Monitor, including empty ones. dashboards holds
+    # the equivalent records for custom pages; alarm_setup_groups groups mute
+    # controls by dashboard for the alarm editor.
     setups: tuple[dict[str, Any], ...]
     alarm_setup_groups: tuple[dict[str, Any], ...]
     monitor_setups: tuple[dict[str, Any], ...]
+    # Calculated readings have their own sensor entity and generated formula.
+    # Synthetic service records let them reuse ordinary measurement alarms.
     custom_measurements: tuple[dict[str, Any], ...]
     custom_alarm_services: tuple[dict[str, Any], ...]
+    # Each pair keeps the owning service beside its measurement for templates
+    # needing both. alarm_measurements filters to ordinary high/low alarms;
+    # power_alarm_services uses separate composite power-event templates.
     measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
     alarm_measurements: tuple[tuple[dict[str, Any], dict[str, Any]], ...]
     power_alarm_services: tuple[dict[str, Any], ...]
     sms_send_topic: str
+    # Bulk-editor targets carry measurement keys, helper entity IDs and unit
+    # groups. These are choices the user can apply later, not live thresholds.
     bulk_alarm_targets: tuple[dict[str, Any], ...]
     bulk_alarm_target_options: tuple[str, ...]
     bulk_target_counts: dict[str, int]
@@ -80,7 +91,11 @@ def _threshold(name: str, measurement: MeasurementConfig | CustomMeasurementConf
 
 
 def build_template_context(config: LabPulseConfig) -> HomeAssistantRenderModel:
-    """Build all values used by the Home Assistant templates."""
+    """Build physical/calculated records, then group them for alarms and views.
+
+    Input is validated config; output holds metadata and future HA expressions.
+    No hardware/HA queries, file writes or changes to the supplied config occur.
+    """
 
     # Sort once and reuse the same order everywhere. Otherwise a setup can move
     # between the monitor, alarm editor, and notification text after a render.

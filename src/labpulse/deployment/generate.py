@@ -75,7 +75,11 @@ def generate_deployment(
     force_simulated: bool = False,
     external_files_dir: Path | None = None,
 ) -> ConfigDocument:
-    """Load once, stage every generated artifact, then install owned outputs."""
+    """Render and stage output, then replace managed files one at a time.
+
+    Return the source ConfigDocument. Render failures preserve live output; an
+    I/O failure during replacement may leave mixed files, with no automatic rollback.
+    """
 
     config_path = config_path.expanduser().resolve()
     project_dir = project_dir.expanduser().resolve()
@@ -127,7 +131,11 @@ def generate_deployment(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Load once and atomically install the requested generated outputs."""
+    """Generate deployment files, optionally including staged Home Assistant output.
+
+    Return 1 for configuration/file errors. Replacement is atomic per file,
+    not across the complete output set.
+    """
 
     parser = argparse.ArgumentParser(
         description="Generate deployment files from validated LabPulse configuration"

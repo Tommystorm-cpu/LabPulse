@@ -112,7 +112,11 @@ class HardwareServiceRunner:
             self.close()
 
     def step(self) -> None:
-        """Perform the next connection or reading action that is due."""
+        """Wait, connect, or read/publish once; this may sleep or block in driver I/O.
+
+        Monotonic times measure elapsed intervals without wall-clock changes.
+        Tests replace clock/sleep to exercise the same lifecycle without waiting.
+        """
 
         if self._is_closed:
             raise RuntimeError("HardwareServiceRunner is closed")
@@ -179,7 +183,11 @@ class HardwareServiceRunner:
         self._publish_status(ServiceStatus.RECONNECTING)
 
     def _read_and_publish(self) -> None:
-        """Read one sample, handle its outcome, and publish valid values."""
+        """Read once, handle failures, then publish usable values before status.
+
+        Partial samples refresh the batch clock; Home Assistant expires individual
+        missing readings separately. None or empty values take the missing-data path.
+        """
 
         try:
             hardware_readings = self.driver.read()

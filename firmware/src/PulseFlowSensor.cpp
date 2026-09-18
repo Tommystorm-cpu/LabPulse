@@ -14,6 +14,7 @@ void PulseFlowSensor::begin(void (*interruptHandler)()) {
 }
 
 void PulseFlowSensor::recordPulse() {
+  // Keep interrupt work short: no serial output or conversion calculations here.
   ++pulseCount_;
 }
 
@@ -24,12 +25,15 @@ Reading PulseFlowSensor::readingFor(
     return {0.0F, false};
   }
   const float litresPerMinute =
+      // 60000 converts the measured millisecond interval into minutes.
       (pulses * 60000.0F) /
       (config_.pulsesPerLitre * static_cast<float>(elapsedMilliseconds));
   return {litresPerMinute, isfinite(litresPerMinute)};
 }
 
 Reading PulseFlowSensor::sampleAndReset(unsigned long elapsedMilliseconds) {
+  // On the Uno, copying this multi-byte counter can be interrupted midway.
+  // Copy/reset together, then re-enable interrupts before doing arithmetic.
   noInterrupts();
   const unsigned long pulses = pulseCount_;
   pulseCount_ = 0;
@@ -43,6 +47,8 @@ void PulseFlowSensor::samplePairAndReset(
     unsigned long elapsedMilliseconds,
     Reading &firstReading,
     Reading &secondReading) {
+  // One short interruption keeps the two counters on the same reset boundary.
+  // These sampling methods assume interrupts were enabled on entry.
   noInterrupts();
   const unsigned long firstPulses = first.pulseCount_;
   const unsigned long secondPulses = second.pulseCount_;

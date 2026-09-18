@@ -27,7 +27,11 @@ MAX_REMEMBERED_REQUESTS = 2_000
 
 
 class RecentRequestCache:
-    """Bounded duplicate and short-term flood protection for SMS requests."""
+    """Remember accepted requests to suppress duplicate and rapid repeat alerts.
+
+    Request-ID timestamps persist to JSON; event cooldowns stay in memory.
+    Remembered means accepted by the sender, not necessarily delivered.
+    """
 
     def __init__(
         self,
@@ -120,7 +124,11 @@ class RecentRequestCache:
 
 
 class SmsSubscriber:
-    """Reliable MQTT subscriber used by the SMS container."""
+    """Validate/queue requests on the MQTT loop and publish sender results.
+
+    The sender thread reports results without modifying this loop-owned cache.
+    Persistent MQTT sessions do not make the sender queue durable.
+    """
 
     def __init__(
         self,
@@ -212,7 +220,11 @@ class SmsSubscriber:
         _userdata: object,
         message: mqtt.MQTTMessage,
     ) -> None:
-        """Validate and enqueue one inbound MQTT request."""
+        """Validate and deduplicate a request, then ask the sender to accept it.
+
+        Save its ID only after acceptance. Sending happens later; a failed send
+        does not remove that ID. Rejected duplicates/cooldowns publish a result.
+        """
 
         try:
             request = parse_sms_payload(message.payload)

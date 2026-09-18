@@ -55,7 +55,10 @@ def output_discovery_payload(output_name: str, config: OutputConfig) -> dict[str
 
 
 def parse_output_command(payload: bytes | str) -> bool:
-    """Decode the exact non-retained ON/OFF payload emitted by Home Assistant."""
+    """Parse exact ON/OFF as True/False, raising ValueError for anything else.
+
+    on_message() checks the topic and retained flag before calling this parser.
+    """
 
     try:
         text = payload.decode("utf-8") if isinstance(payload, bytes) else payload
@@ -69,7 +72,11 @@ def parse_output_command(payload: bytes | str) -> bool:
 
 
 class OutputMqttService:
-    """Own one output, subscribe to commands, and enforce its safe-state policy."""
+    """Coordinate MQTT callbacks with the output maintenance loop.
+
+    _lock serializes hardware access and readiness/deadline changes. State lives
+    in memory; reconnect starts safe. See README.md for threading and shutdown.
+    """
 
     def __init__(
         self,

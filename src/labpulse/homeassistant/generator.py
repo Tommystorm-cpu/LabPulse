@@ -104,7 +104,11 @@ def ensure_ui_files(ha_config_dir: Path) -> None:
 
 
 def generate_homeassistant(document: ConfigDocument, ha_config_dir: Path) -> None:
-    """Create and check every LabPulse-owned Home Assistant file."""
+    """Render/check all three managed YAML files before replacing any of them.
+
+    Replacements are atomic per file. Preserve existing UI-owned files. Parsing
+    checks YAML structure, not live automation behaviour; deployment stages here.
+    """
 
     ha_config_dir = Path(ha_config_dir).expanduser().resolve()
     context = build_template_context(document.config)

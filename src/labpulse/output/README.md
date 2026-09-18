@@ -15,6 +15,40 @@ maximum-active deadline apply the safe state. Repeated `ON` does not extend an
 active deadline. Fake mode retains output workers and their switches and safety
 timers, using an in-memory driver without GPIO access.
 
+## Follow a command
+
+[`main()`](__main__.py) loads one `OutputConfig`, selects its driver and creates
+an `OutputMqttService`. In [`service.py`](service.py), read these functions:
+
+1. `run_forever()` registers MQTT callbacks and calls `_maintain_output()` to
+   connect hardware in its safe state. It starts Paho's network thread, then
+   checks hardware/retry/deadline state every short main-loop wake-up.
+2. `on_connect()` subscribes to the output's command topic and publishes its
+   discovery, readback and availability.
+3. `on_message()` checks the topic and retained flag; `parse_output_command()`
+   converts exact `ON`/`OFF` payloads into a boolean. The parser itself cannot
+   check MQTT metadata.
+4. `_apply_state()` writes through the driver, reads its `HardwareReadings`
+   field `state`, and publishes `ON` or `OFF`. It starts a maximum-active
+   deadline on an active state if one is configured. Repeated ON leaves an
+   existing deadline unchanged.
+
+## Follow failure and shutdown
+
+Paho invokes callbacks on its background network thread while the main loop
+runs `_maintain_output()`. `_lock` keeps hardware operations and the associated
+readiness/deadline changes together. It is re-entrant, meaning the same thread
+can acquire it again. Callers hold it while applying state or reconnecting.
+
+MQTT loss invokes `on_disconnect()` and attempts the safe state. Driver failures
+take `_prepare_for_reconnect()`, which closes hardware, clears the deadline and
+schedules a retry. A new connection starts safe. `stop()` signals the main loop;
+its `finally` calls `close()` to apply safe state, release hardware and stop MQTT.
+
+Timers and readiness flags are not persisted. Retained MQTT state is for the
+dashboard, not a saved command to replay. The worker uses a clean subscriber
+session and rejects retained commands, so a restart needs a new live command.
+
 Readback proves the Pi latch, not equipment motion. Pi GPIO uses 0 V/3.3 V;
 equipment-specific switching and protection are custom. LabPulse is not a
 safety interlock, and automatic alarm-driven actuation is outside this package.

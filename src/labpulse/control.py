@@ -379,7 +379,11 @@ def run_restore_command(
     *,
     assume_yes: bool,
 ) -> int:
-    """Restore, regenerate, start, and diagnose one LabPulse installation."""
+    """Restore state, regenerate and start; attempt rollback on restore/start errors.
+
+    Final readiness/doctor errors leave restored state in place. Return 0 on
+    success, 2 on cancellation, or a failure status with CLI detail.
+    """
 
     archive = archive.expanduser().resolve()
     try:
@@ -615,7 +619,11 @@ def notify_if_update_available(
 
 
 def run_update_command(live_dir: Path, requested_version: str | None) -> int:
-    """Install one release, regenerate the deployment, and recreate the stack."""
+    """Install a requested/latest release, regenerate, recreate and check the stack.
+
+    There is no automatic release rollback: a failure can leave the new package,
+    files or containers in place. The error message identifies the failed stage.
+    """
 
     compose_path = live_dir / "compose.yaml"
     config_path = live_dir / "config.yaml"

@@ -24,7 +24,7 @@ The current sources of generation behavior are:
 
 ```text
 src/labpulse/deployment/compose.py       Compose rendering
-src/labpulse/deployment/generate.py      unified staging/install transaction
+src/labpulse/deployment/generate.py      staged rendering and per-file installation
 src/labpulse/homeassistant/generator.py  HA command and core/dashboard generation
 src/labpulse/homeassistant/alarm.py      alarm context/package generation
 ```
@@ -37,10 +37,26 @@ files are replaced. Fake mode preserves the complete resolved document in
 `config.fake.yaml`; Compose selects safe in-memory workers at runtime.
 
 The scripts accept live paths and version/image selections from the operator
-command; they do not own the configuration schema. A failed validation or
-generation step must leave operator-owned configuration and the last installed
-managed files intact. Host permission, missing-command, and generator failures
-are reported to the calling command with a non-zero exit status.
+command; they do not own the configuration schema. Validation/render failures
+leave managed live output untouched. Installation replaces files individually;
+a filesystem failure during replacement can leave mixed output. Host permission,
+missing-command, and generator failures return a non-zero exit status.
+
+## Follow the host-to-Python boundary
+
+[`installer.main()`](../src/labpulse/installer.py) locates the packaged assets
+and starts [`setup_container_fs.sh`](setup_container_fs.sh). Read that script's
+main sequence to see directory creation, managed host environment setup,
+generation and permission handling. The generator runs as a separate Python
+process; its exit status tells the shell whether to continue.
+
+For a config change, [`control.run_config_editor()`](../src/labpulse/control.py)
+starts [`edit_config.sh`](edit_config.sh). The editor works on a disposable copy
+of the master and fragments, generates candidate output and checks it before
+installing the edited bundle. Its shell traps handle temporary files and rollback
+work; follow those alongside the successful path when changing error handling.
+Continue in the [deployment package README](../src/labpulse/deployment/README.md)
+for the Python function sequence and data structures.
 
 Coverage is primarily in `testing/test_control_cli.py`,
 `testing/test_deployment_generation.py`, and

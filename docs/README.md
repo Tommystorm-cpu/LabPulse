@@ -50,6 +50,10 @@ fake-runtime, Compose, and Home Assistant files are not independent settings.
 
 ## Contributor
 
+Adding sensor support or sending your first pull request? Follow
+[Contributing sensors](../CONTRIBUTING.md#contributing-sensors) and the
+[GitHub fork-to-pull-request walkthrough](../CONTRIBUTING.md#making-a-change-through-github).
+
 The [manual documentation checklist](../DOCUMENTATION_TODO.md) tracks the
 remaining screenshots and practical corrections, with optional hardware photos
 and enclosure files.
@@ -83,6 +87,7 @@ hardware photos still needed. Keep it updated as the guides change.
 | First maintainer session and debugging recipes | [Maintaining](MAINTAINING.md) |
 | Worked dashboard, configuration, and driver changes | [Maintainer examples](MAINTAINER_EXAMPLES.md) |
 | Development conventions and local builds | [Development](DEVELOPMENT.md) |
+| Sensor contributions, GitHub forks, and pull requests | [Contributing](../CONTRIBUTING.md) |
 | Release preparation and publication | [Releasing](RELEASING.md) |
 | Sensor parts, hub assignments, and physical verification | [Hardware](HARDWARE.md) |
 | Main-unit parts, connections, power, and enclosure design | [Raspberry Pi main unit](MAIN_UNIT.md) |

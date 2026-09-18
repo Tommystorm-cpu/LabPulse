@@ -202,6 +202,39 @@ domain modules do not inspect `sys.argv` or exit the interpreter.
 
 ## Configuration model and flow
 
+### Data to follow in the source
+
+There are two paths through this code. During **generation**, settings become
+files. At **runtime**, readings and commands become messages and actions:
+
+```text
+Generation:
+YAML + fragments -> ConfigDocument -> validated settings
+  -> Compose text and HomeAssistantRenderModel -> generated YAML files
+
+Runtime:
+device -> HardwareReadings -> runner -> MQTT -> Home Assistant entity state
+  -> alarm automation -> SmsRequest -> recipient queue -> DeliveryResult
+```
+
+`ConfigDocument` keeps plain resolved YAML data alongside typed settings;
+the [common guide](../src/labpulse/common/README.md#follow-a-configuration-load)
+explains why both exist. A `DriverDefinition` connects those settings to driver
+construction and Docker access. A `HardwareReadings` is one batch of values,
+with optional partial faults; the [hardware guide](../src/labpulse/hardware/README.md#follow-one-sample)
+follows its publication and failure paths.
+
+The render model contains metadata and expressions, not live readings. Its
+nested records and their consumers are mapped in the
+[Home Assistant guide](../src/labpulse/homeassistant/README.md#what-the-render-model-contains).
+Live entity state and alarm helpers belong to Home Assistant after it loads the
+generated YAML. The [SMS guide](../src/labpulse/sms/README.md#follow-an-alert)
+then distinguishes request acceptance, queueing and delivery results, including
+what survives a restart. Processes exchange serialized messages through MQTT;
+they do not pass these Python objects directly to one another.
+
+### Loading settings
+
 `src/labpulse/common/config.py` is the authoritative validated LabPulse configuration loader and
 owns the final cross-section validation. Physical and calculated measurement
 models live in `common/measurement_config.py`; driver, service, and power models

@@ -1,6 +1,7 @@
 {# High/low alarm state is evaluated only from an available reading. Delivery
    goes through the shared incident scripts so mute rules have
-   exactly one implementation. #}
+   exactly one implementation. The service/measurement records are generation
+   data; states() and is_state() below read live Home Assistant entities later. #}
   - alias: LabPulse [[ measurement.label ]] Initialize Alarm Timing
     mode: single
     trigger:
@@ -29,6 +30,11 @@
       target:
         entity_id: [[ entity_id('input_boolean', service.name, measurement.name, 'alarm_timing_initialized') | yaml_scalar ]]
 
+{# Natural means the danger expression just became true. Startup reevaluates
+   after HA restarts; resend repeats a warning already in Danger. All three
+   require an available reading and no blocking source-service outage. Startup
+   can reopen delivery for an existing Danger, but the dispatcher flags stop
+   duplicate requests. An explicit resend bypasses those flags, not mutes. #}
   - alias: LabPulse [[ measurement.label ]] Danger
     mode: single
     trigger:
@@ -85,6 +91,9 @@
         window: "{{ states('[[ entity_id('input_number', service.name, measurement.name, 'observation_window_seconds') ]]') | int(120) }}"
         threshold: >-
           {{ 'below ' ~ minimum if mode == 'Low Only' else 'above ' ~ maximum if mode == 'High Only' else 'outside ' ~ minimum ~ ' to ' ~ maximum }}
+{# Alarm state changed above even when delivery is muted. Pass the reading and
+   setup mute decision to the dispatcher, which also checks the global mute.
+   A shared reading stays deliverable while any affected setup is unmuted. #}
     - service: script.labpulse_open_incident
       data:
         notification_id: labpulse_[[ measurement.measurement_id ]]_danger
@@ -117,6 +126,9 @@
             "current_measurement": states('[[ measurement.entity_id ]]')
           } | to_json }}
 
+{# Recovery needs an available reading continuously inside the recovery zone
+   for the selected duration. The dispatcher pairs recovery delivery with the
+   opening flags; afterward the caller returns alarm state to Normal. #}
   - alias: LabPulse [[ measurement.label ]] Recovery
     mode: single
     trigger:

@@ -18,7 +18,11 @@ from pydantic import BaseModel
 # Values returned by drivers
 @dataclass(frozen=True)
 class HardwareIssue:
-    """One connected-device fault that does not invalidate every measurement."""
+    """A partial fault alongside usable readings; code supplies runner status.
+
+    The runner uses the first issue unless source health says waiting/offline.
+    The message holds detail; creating this record does not log it.
+    """
 
     code: str
     message: str
@@ -26,7 +30,11 @@ class HardwareIssue:
 
 @dataclass(frozen=True)
 class HardwareReadings:
-    """Values returned by one hardware read, with any partial hardware faults."""
+    """One sample: stable names mapped to finite numbers, plus optional faults.
+
+    Drivers validate values before returning them, e.g. {'pressure': 1.2}.
+    Omit missing channels, preserve real zeros, and leave returned data unchanged.
+    """
 
     values: Mapping[str, float]
     issues: tuple[HardwareIssue, ...] = ()
@@ -120,11 +128,10 @@ class ContainerRequirements:
 # runner. Each driver module exports exactly one DRIVER_DEFINITION.
 @dataclass(frozen=True)
 class DriverDefinition:
-    """Describe how one driver is configured, constructed, and deployed.
+    """Registration metadata linking an ID, option model, driver and Docker access.
 
-    The definition joins a self-contained driver module to the generic
-    registry, Compose generator, and hardware runner. Every driver supplies one
-    function that returns its required container access.
+    Validation uses config_model and optional bind callbacks; workers instantiate
+    driver_class later. This shared record contains no live hardware state.
     """
 
     driver_id: str

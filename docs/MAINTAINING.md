@@ -106,6 +106,11 @@ pressure:1.2
 Here's where it goes. Follow these links in order rather than reading whole
 packages at once.
 
+For each step, the [package guides](ARCHITECTURE.md#package-guides) give a
+function reading order, the data passed between calls and the failure path.
+Use them beside the source; the short docstrings are reminders of each
+function's job rather than a second copy of the walkthrough.
+
 | Step | Code to open | What happens to the example |
 |---|---|---|
 | Load the settings | [`load_config`](../src/labpulse/common/config.py), then [`ServiceConfig`](../src/labpulse/common/service_config.py) | Validate the service, measurement, and serial options |

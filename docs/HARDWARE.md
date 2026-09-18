@@ -40,6 +40,7 @@ project. A purchased part isn't necessarily the part still fitted today.
 |---|---|
 | [Internship purchased items](Internship%20purchased%20items.xlsx), Sheet1 | Original purchases and supplier links. Rows 2–15 cover the main electronics; rows 17–24 include plumbing and the older USB hubs. The note in E12 names the replacement UPS. |
 | [Mini Shopping List](Mini%20Shopping%20List.xlsx), Sheet1, rows 2–6 | Later choices for a powered hub, SHT40, Gravity board, sensor cable, and GPIO ribbon. The sensor cable turned out not to fit; see the [main-unit connection notes](MAIN_UNIT.md#gravity-board-and-room-sensor). |
+| [Shopping email and maintainer update, recorded 18 September 2026](MAIN_UNIT.md#additional-parts-requested) | Confirms the X1200 and planned mains-powered USB hub. Lists display accessories and two SHT40 cables; the SHT40 connections are not installed yet. |
 | [LabPulse Sensors](LabPulse%20Sensors.xlsx), Sheet1, rows 2–10 | Sensor counts and locations, plus an undated snapshot of which readings worked. It predates the current SHT40 configuration. |
 | [Firmware examples](../firmware/README.md#device-configuration) and [starter configuration](../config.yaml) | What the current source expects. The live installation's configuration and flashed firmware still need to match. |
 | [July 2026 acceptance record](../ROADMAP.md#real-hardware-reliability) | What was tested on the Pi, including the faulty USB hub and DHT11 that prompted replacement work. |
@@ -59,11 +60,11 @@ their old prices aren't a current quotation.
 |---|---:|---|
 | Arduino Uno Rev3 | 3 | One controller for each serial sensor hub. Purchase row 3. |
 | Amphenol GE-1337 water-temperature sensor | 8 | Four thermistors on the pump-room hub and four on the turbo-pump hub. Purchase row 6; matching connectors are in row 7, RS stock 8011017. |
-| Gravity 1/2-inch water-flow sensor | 4 | Two per pump hub. Purchase row 5 identifies the product listing but doesn't give an exact model number. Check the fitted sensor before ordering or adopting its calibration. |
+| DFRobot SEN0217 / YF-S201 1/2-inch water-flow sensor | 4 | Two per pump hub. The supplier link in purchase Sheet1 A5 identifies SEN0217/YF-S201; sensor-inventory A4 and A6 link to the same product. This is identification from the purchase record, not a check of the fitted markings. |
 | DFRobot SEN0257 pressure sensor | 1 | The pressure-monitor hub. Purchase row 4 says `SEN057`, but its supplier link and sensor-inventory row 10 both identify **SEN0257**. |
 | Pressure sensors recorded as “Triton 1/2 (Unknown Model)” | 2 | Pump-room hub. Their manufacturer, range, and exact model still need reading from the hardware. Don't assume they are SEN0257s. |
 | DHT11 | 2 in the older inventory | One on the pump-room Arduino and one formerly on the Pi. The current starter config uses an SHT40 for the Pi's room readings; the pump-room firmware still uses DHT11. |
-| Adafruit SHT40 STEMMA QT/Qwiic breakout | Listed in the later shopping list; quantity unspecified | The current source supports one directly on the Pi and one on the pressure-monitor Arduino. The shopping list alone doesn't establish how many were fitted. |
+| Adafruit SHT40 STEMMA QT/Qwiic breakout | Two planned connections; fitted quantity not established | The maintainer reports that the SHT40 is not connected yet. Planned cables serve the Pi and the compressed-air Arduino, with the latter measuring main-lab temperature and humidity. See the [additional parts](MAIN_UNIT.md#additional-parts-requested). |
 | USB-A to USB-B leads | One 3 m, two 5 m | Purchase rows 14–15. These connect the Uno hubs to the Pi or its USB hub. Label both ends with the hub name. |
 
 The original purchases also include 1/2-inch pipe fittings, tees, elbows,
@@ -98,6 +99,56 @@ five seconds. The [firmware guide](../firmware/README.md#retained-example-calibr
 explains the retained conversion values, including 450 pulses per litre for
 flow and the thermistor coefficients. Treat those as existing software
 settings until they've been checked against the actual sensor and circuit.
+
+### Where the conversion values came from
+
+On 18 September 2026, the maintainer confirmed that the conversion values were
+inherited from the original code. All three workbooks were checked, including
+their supplier links. They identify purchased parts and earlier observations,
+but contain no calibration coefficients, reference measurements, or record of
+a calibration check. The original Arduino sources do document conversion
+methods, as described below. The Mini Shopping List adds the later SHT40 and
+main-unit parts; it does not identify the unknown pump-room pressure sensors.
+
+The flow-sensor [purchase link](https://thepihut.com/products/gravity-water-flow-sensor-1-2-for-arduino)
+identifies SEN0217/YF-S201. DFRobot specifies **450 pulses per litre**, matching
+both pump-hub examples. This confirms agreement with the nominal specification,
+not the accuracy of the assembled plumbing and sensors.
+[DFRobot SEN0217 specification](https://wiki.dfrobot.com/sen0217).
+
+For the compressed-air SEN0257, DFRobot specifies **0.5–4.5 V for 0–1.6 MPa**.
+The original [pressure sketch](../legacy/Arduino/Pressure_Arduino.cpp) explicitly
+labels **0.48 V** as the calibrated start voltage at atmospheric pressure and
+4.5 V as the manual's maximum output. Its accompanying
+[calibration notes](../legacy/Arduino/Compressed%20Air%20sensor/Calibration%20code%20for%20CA%20sensor.cpp)
+explain measuring the sensor's voltage at ambient pressure and using that as
+the lower endpoint. This documents the reason for the retained 0.48 V value;
+it is specific to the original sensor, not a universal setting.
+[DFRobot SEN0257 specification](https://wiki.dfrobot.com/sen0257).
+
+The original [water-sensor sketch](../legacy/Arduino/full_water_sensor_code.cpp)
+says its thermistor coefficients came from Python curve fitting. The retained
+[fitting script](../legacy/Arduino%20code%20Water%20Temperature%20Sensor%20calibration.py)
+contains five resistance/temperature pairs and labels them “Datasheet Data”:
+
+| Temperature (°C) | Resistance (Ω) |
+|---:|---:|
+| -40 | 101770 |
+| 25 | 2820 |
+| 50 | 988.1 |
+| 100 | 179.6 |
+| 125 | 88.11 |
+
+The script fits the four-coefficient equation used by the current firmware.
+It does not name the source datasheet or its revision. This establishes the
+documented fitting method and retained inputs, but is not a record of checking
+each assembled temperature channel against a reference thermometer.
+
+The pump-room pressure sensor models remain unknown, so their inherited
+conversions cannot yet be tied to a particular sensor specification. Check the
+actual sensors and divider resistors when reusing these examples. The older
+standalone temperature sketch used a 2.2 kΩ resistor; the combined water-sensor
+sketch and current firmware use 4.7 kΩ.
 
 The old inventory reports zero flow on all four flow sensors, zero on both
 pump-room pressure channels, and only two working turbo-pump temperature
@@ -165,7 +216,11 @@ outputs.
 Keep these identities distinct:
 
 - Arduino board pin labels belong to firmware and its wiring;
-- Raspberry Pi configuration uses BCM GPIO numbers;
+- BCM GPIO numbers name Pi signals, while physical header pin numbers describe
+  positions on the connector;
+- GPIO input/output and X1200 configuration select a Linux `gpio_chip` and a
+  `gpio_line` offset within that chip; check the mapping on the actual Pi;
+- the DHT11 driver uses a Blinka board pin name, such as `D4`;
 - I2C bus numbers and device addresses identify bus devices;
 - `/dev/serial/by-id/...` identifies a persistent USB serial device;
 - measurement and service names identify software entities, not physical pins.

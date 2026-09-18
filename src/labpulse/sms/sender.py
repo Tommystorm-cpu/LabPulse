@@ -23,7 +23,11 @@ COMMAND_POLL_INTERVAL_SECONDS = 5.0
 
 @dataclass(frozen=True)
 class DeliveryResult:
-    """Outcome of delivering one request to one configured recipient."""
+    """One recipient outcome linked to request_id; recipient numbers are masked.
+
+    An empty recipient means a whole-request result. sent means mmcli accepted
+    the send, not phone receipt; logged means dry-run. detail explains failures.
+    """
 
     request_id: str
     recipient: str
@@ -137,7 +141,11 @@ def mask_phone_number(phone_number: str) -> str:
 
 
 class SmsSender:
-    """Queue SMS requests and either log them or deliver them through mmcli."""
+    """Queue recipient/request pairs for a background sender and report results.
+
+    Inbound polling can send replies too; _modem_lock serializes modem access.
+    The queue is in memory. See README.md for threads and restart behaviour.
+    """
 
     def __init__(
         self,
@@ -173,7 +181,11 @@ class SmsSender:
         self._result_handler = handler
 
     def broadcast(self, request: SmsRequest) -> bool:
-        """Queue one outbound request for every configured recipient."""
+        """Queue all subscribed recipients if there is room for the whole group.
+
+        True means accepted, not delivered, and includes everyone being unsubscribed.
+        False means stopping, no configured recipients, or insufficient queue space.
+        """
 
         if self._closed:
             self._logger.error("SMS request rejected because the sender is stopping")
@@ -207,7 +219,10 @@ class SmsSender:
         return True
 
     def send_sms(self, phone_number: str, message: str) -> bool:
-        """Log one SMS in dry-run mode or send it through ModemManager."""
+        """Log a dry run or block on a serialized modem send and its retries.
+
+        True means logged or accepted by mmcli, not confirmed phone receipt.
+        """
 
         if self.dry_run:
             self._logger.info(
@@ -284,7 +299,11 @@ class SmsSender:
                 self._delete_sms(modem_id, sms_path)
 
     def close(self, timeout: float = 15) -> None:
-        """Drain pending sends and stop the worker thread."""
+        """Stop accepting work, queue an exit marker, and wait for pending sends.
+
+        Inserting the marker may block on a full queue; timeout limits the join only.
+        A warning means the worker remains alive. Pending work is not persisted.
+        """
 
         if self._closed:
             return

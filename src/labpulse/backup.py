@@ -342,7 +342,11 @@ def create_backup(
     quiesce: bool = True,
     progress: Callable[[str], None] | None = None,
 ) -> Path:
-    """Create one checksummed private archive, restarting quiesced services."""
+    """Return a checksummed archive path, briefly stopping active services by default.
+
+    Restart before compression and attempt restart after copy failures. With
+    quiesce=False the caller owns stop/start; the archive must be outside live_dir.
+    """
 
     live_dir = live_dir.expanduser().resolve()
     archive_path = archive_path.expanduser().resolve()
@@ -578,7 +582,11 @@ def _apply_payload(live_dir: Path, payload_root: Path) -> None:
 
 
 def restore_backup(live_dir: Path, archive_path: Path) -> dict[str, Any]:
-    """Validate and apply archive state to an existing scaffolded live directory."""
+    """Validate/apply saved state to an existing directory and return its manifest.
+
+    Attempt local file rollback if replacement fails. The caller owns stopping
+    containers, regeneration and health checks; this helper only restores files.
+    """
 
     live_dir = live_dir.expanduser().resolve()
     archive_path = archive_path.expanduser().resolve()

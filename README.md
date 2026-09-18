@@ -47,6 +47,18 @@ the containers, Home Assistant entities, dashboards and alarms around it.
 - Includes a complete fake-hardware mode which simulates every configured
   sensor and output without changing the dashboard or container layout.
 
+## Live installation
+
+![Live LabPulse dashboard showing UPS power, chilled-water readings for two Triton fridges, turbo-pump cooling, compressed air, and room conditions.](docs/images/live-monitor.png)
+
+*The live reference installation, supplied 18 September 2026. Readings are
+grouped by lab setup, with UPS power information alongside them. The Test mode
+banner shows that notifications are routed to the configured test recipients.
+Your dashboard reflects your own configured equipment.*
+
+The [System Status example in the user guide](docs/USER_GUIDE.md#system-status)
+shows how LabPulse distinguishes service health from missing optional readings.
+
 ## How it fits together
 
 ```text
@@ -108,6 +120,11 @@ Status dashboard should show the example services and their readings should
 continue to update. The [installation guide](docs/INSTALLATION.md#create-a-simulated-installation)
 walks through onboarding, and the [user guide](docs/USER_GUIDE.md#using-fake-hardware)
 explains what you can test in simulation and what needs real hardware.
+
+For convenient dashboard access away from the lab, we recommend the optional
+**Nabu Casa / Home Assistant Cloud** subscription. The
+[remote-access instructions](docs/USER_GUIDE.md#access-from-outside-the-lab)
+also cover **Raspberry Pi Connect** for running shell commands from your browser.
 
 When finished, stop the containers without deleting their state:
 

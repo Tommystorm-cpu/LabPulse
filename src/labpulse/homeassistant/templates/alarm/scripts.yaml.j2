@@ -1,5 +1,9 @@
 {# These scripts contain work used in more than one place, such as sending a
-   message or applying a group of alarm settings. #}
+   message or applying a group of alarm settings. Home Assistant executes the
+   generated service actions at runtime; rendering this file sends nothing.
+   Callers own incident/alarm state. These scripts gate delivery and remember
+   dashboard-notification creation separately from requesting an SMS. Neither
+   flag proves that a phone received the message. #}
 script:
   labpulse_open_incident:
     alias: Open Confirmed LabPulse Incident
@@ -48,6 +52,9 @@ script:
           target:
             entity_id: "{{ sms_requested_entity }}"
 
+{# Always dismiss the matching problem. Recovery messages require an opening
+   notification/request and the current mute gates. Capture the old flags
+   before clearing them so a muted or repeated recovery cannot invent an alert. #}
   labpulse_close_incident:
     alias: Close Confirmed LabPulse Incident
     mode: queued
@@ -106,8 +113,8 @@ script:
     icon: mdi:account-multiple-check
     mode: single
     sequence:
-    # Home Assistant chooses recipients here so live phone-book edits take
-    # effect without regenerating the LabPulse package.
+    # Home Assistant selects test/live mode here; the SMS worker chooses the
+    # configured recipients and applies their saved subscription choices.
     - condition: state
       entity_id: [[ 'input_boolean.labpulse_global_notifications_muted' | yaml_scalar ]]
       state: 'off'

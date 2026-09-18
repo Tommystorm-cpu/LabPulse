@@ -1,6 +1,6 @@
 # LabPulse Installation Guide
 
-This guide takes you from a Raspberry Pi to a working LabPulse
+This guide takes you from a blank Raspberry Pi to a working LabPulse
 dashboard. You can start with simulated readings or connect real sensors.
 Both use the same configuration and Home Assistant interface.
 
@@ -11,13 +11,14 @@ LabPulse installs with pipx and runs its services in Docker containers. You do
 not need a repository checkout or a local container build. For everyday use
 after installation, read the [User Guide](USER_GUIDE.md).
 
-For your first session, follow **Prepare the Pi → Install LabPulse → Create a
+For your first session, follow **Get onto the Pi → Prepare the Pi → Install LabPulse → Create a
 simulated installation → Open Home Assistant → Check the installation**.
 You can leave real sensors, SMS, and the reference sections for later.
 
 ## Contents
 
 - [Requirements](#requirements)
+- [What needs installing?](#what-needs-installing)
 - [Get onto the Pi](#get-onto-the-pi)
 - [Prepare the Pi](#prepare-the-pi)
 - [Install LabPulse](#install-labpulse)
@@ -51,6 +52,33 @@ Simulation needs no sensors, modem, or output hardware. Real SMS delivery
 additionally needs a supported modem, an active SIM, and ModemManager on the
 Pi. Review the [hardware guide](HARDWARE.md) before wiring physical devices.
 
+## What needs installing?
+
+The **host** means Raspberry Pi OS itself, outside Docker. Prepare that first;
+LabPulse then sets up the programs which run inside containers.
+
+| Component | How it gets installed | Needed for the simulated demo? |
+|---|---|---|
+| Raspberry Pi OS, 64-bit Bookworm | Write the OS with Raspberry Pi Imager | Yes |
+| Python, pipx, text editor | Install on the Pi with `apt`, below | Yes |
+| Docker Engine and Compose plugin | Install on the Pi, below | Yes |
+| Clock synchronisation | Enable the Pi's time service; use systemd-timesyncd or chrony | Yes |
+| LabPulse command | `pipx install labpulse` | Yes |
+| Home Assistant | `labpulse up` downloads and starts its container | Included automatically |
+| Mosquitto, the MQTT broker | `labpulse up` downloads and starts its container | Included automatically |
+| LabPulse workers and sensor libraries | Downloaded in the LabPulse runtime image by `labpulse up` | Included automatically |
+| ModemManager host service | Install with `apt` when preparing real SMS | No |
+| I2C interface and Arduino firmware | Enable or upload for the real devices you connect | No |
+
+You do not separately install Home Assistant or Mosquitto with `apt` or `pip`,
+and you do not need Home Assistant's Mosquitto add-on. You will add the **MQTT
+integration** in the Home Assistant browser interface after startup; that
+connects Home Assistant to the broker LabPulse has already started.
+
+`labpulse setup` creates the deployment and its managed Python environment.
+It does **not** install Docker, OS packages, a time service, or the host
+ModemManager service. The steps below cover those host prerequisites.
+
 ## Get onto the Pi
 
 If the Pi already runs the OS described above and you can open its terminal,
@@ -68,9 +96,19 @@ the 64-bit Bookworm version used by the reference setup, rather than assuming
 the latest default is the same version. Writing an image erases the selected
 storage, so check which card or drive you've selected.
 
+Choose **Raspberry Pi OS with desktop** if you want to open the dashboard on
+the Pi's own screen, or **Raspberry Pi OS Lite** if you will use another
+computer's browser and manage the Pi through SSH. Either must be 64-bit
+Bookworm for this reference procedure. Choose Raspberry Pi OS, not Home
+Assistant OS: this deployment needs a normal Linux host for pipx and Docker.
+
 In Imager, set a hostname, create your user account, and configure the network.
 Enable SSH if you want to use the Pi from another computer. Keep a note of
-the username and hostname you chose. Boot the Pi and let it join the network.
+the username and hostname you chose. For Wi-Fi, enter its network name,
+password, and country; Ethernet can be connected directly. Set your timezone
+and keyboard layout. Let Imager finish writing and verifying, safely eject
+the storage, insert it into the powered-off Pi, then connect power and let
+the Pi boot and join the network.
 
 ### Open a terminal
 
@@ -78,7 +116,10 @@ With a keyboard and screen attached to the Pi, open **Terminal** on its
 desktop. A terminal is the window where you type commands and read their
 results. On a Lite installation, log in at the text prompt instead.
 
-For remote access, open PowerShell on Windows or Terminal on macOS/Linux
+For browser-based shell access, including from home, use
+[Raspberry Pi Connect](USER_GUIDE.md#shell-raspberry-pi-connect).
+
+For SSH access on the same network, open PowerShell on Windows or Terminal on macOS/Linux
 **on your own computer**. Connect using your Pi's username and hostname:
 
 ```bash
@@ -100,7 +141,7 @@ has more help with addresses and SSH.
 
 | Task | Where to do it |
 |---|---|
-| Install LabPulse or run a `labpulse` command | The Pi's terminal, either directly or through SSH |
+| Install LabPulse or run a `labpulse` command | The Pi's terminal, directly, through Raspberry Pi Connect, or over SSH |
 | View readings and change alarms | A browser on your own computer or on the Pi |
 | Upload Arduino firmware | The computer with the Arduino connected by USB |
 
@@ -108,17 +149,46 @@ In command examples, copy the commands without the surrounding code fences.
 `sudo` asks to run a command with administrator privileges; `~` means your
 user's home directory. Run commands one at a time and check for errors before
 moving on.
+Where a code block contains a multi-line command, paste the whole command
+together, including its closing line.
 
 ## Prepare the Pi
 
-Run these commands in a terminal on the Pi, either locally or over SSH. Use
+Run these commands in a terminal on the Pi, locally, through Connect, or over SSH. Use
 your usual user account for installation and later LabPulse commands.
 
-Install the Python tools and a text editor:
+### Update and check the operating system
+
+Check the installed release and architecture:
+
+```bash
+cat /etc/os-release
+dpkg --print-architecture
+```
+
+For this procedure, look for `VERSION_CODENAME=bookworm` and `arm64`.
+If these differ, choose the reference OS image before continuing or plan to
+validate that other platform separately.
+
+Update the fresh installation, then reboot:
 
 ```bash
 sudo apt update
-sudo apt install -y python3-full pipx nano
+sudo apt full-upgrade -y
+sudo reboot
+```
+
+Reboot closes an SSH or Connect session. Wait for the Pi to return, then
+reconnect or open its terminal again. The Pi needs internet access to download
+OS packages, the LabPulse package, and container images.
+
+### Install the Python tools
+
+Install Python, pipx, a text editor, and the download tools used below:
+
+```bash
+sudo apt update
+sudo apt install -y python3-full pipx nano ca-certificates curl
 pipx ensurepath
 ```
 
@@ -127,9 +197,43 @@ PATH, the list of places your shell searches for commands. Check that
 `python3 --version` reports a supported Python version and `pipx --version`
 prints a version number.
 
-Install Docker Engine using Docker's
-[Debian installation guide](https://docs.docker.com/engine/install/debian/#install-using-the-apt-repository),
-including the `docker-compose-plugin` package. Verify the installation:
+### Install Docker Engine and Compose
+
+On a fresh 64-bit Bookworm installation, add Docker's Debian package repository
+and install its engine and Compose plugin. These commands follow
+[Docker's official installation instructions](https://docs.docker.com/engine/install/debian/#install-using-the-apt-repository).
+If Docker is already installed, use that guide to check for conflicting
+packages before replacing it.
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+```
+
+Paste this entire block, including the final `EOF` line. It tells the package
+manager where to find Docker for this OS and architecture:
+
+```bash
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: bookworm
+Components: stable
+Architectures: arm64
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+```
+
+Then install and start Docker:
+
+```bash
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+```
+
+Verify the installation:
 
 ```bash
 sudo docker run --rm hello-world
@@ -145,6 +249,12 @@ LabPulse normally uses `sudo docker` for container operations. It does not
 require membership of the Docker group. If Compose is missing, follow Docker's
 [Compose plugin instructions](https://docs.docker.com/compose/install/linux/).
 
+### Set the clock and timezone
+
+LabPulse uses the Pi's clock for reading timestamps and alarms. It needs a
+working network time service, but does not specifically require chrony.
+The OS time service is sufficient when it synchronises successfully.
+
 Set the Pi's timezone and enable clock synchronisation. Replace
 `Europe/London` with the lab's timezone:
 
@@ -155,7 +265,58 @@ timedatectl status
 ```
 
 Check that the time is correct and `System clock synchronized` says `yes`
-before testing alarms. Use the same timezone in LabPulse's configuration.
+before testing alarms. Allow a few minutes after connecting to the network.
+Use the same timezone in LabPulse's configuration. The
+[timedatectl manual](https://manpages.debian.org/bookworm/systemd/timedatectl.1.en.html)
+explains these checks.
+
+If enabling NTP reports that it is unsupported, and no other time service is
+installed, install and start systemd-timesyncd:
+
+```bash
+sudo apt install -y systemd-timesyncd
+sudo systemctl enable --now systemd-timesyncd
+sudo timedatectl set-ntp true
+timedatectl status
+```
+
+If your lab uses **chrony**, it can provide synchronisation instead. Use this
+alternative rather than installing both time services:
+
+```bash
+sudo apt install -y chrony
+sudo systemctl enable --now chrony
+chronyc tracking
+chronyc sources -v
+timedatectl status
+```
+
+Look for a selected source marked `*` and a normal leap status in the
+[chrony reports](https://manpages.debian.org/bookworm/chrony/chronyc.1.en.html).
+If no source becomes available, check network access and ask your lab's IT
+team which NTP server to use. With chrony, server settings belong in
+`/etc/chrony/chrony.conf`; restart `chrony` after changing them. Installing a
+time service alone does not prove the clock is synchronised.
+
+### Optional: prepare a modem for real SMS
+
+Skip this section for fake-hardware mode or while using SMS dry-run. For real
+SMS, connect the supported modem with its SIM and antenna, then run:
+
+```bash
+sudo apt install -y modemmanager
+sudo systemctl enable --now ModemManager
+sudo mmcli --list-modems
+```
+
+Use the modem number printed by that command in `sudo mmcli -m ID`, replacing
+`ID` with the number. Check SIM readiness, mobile-network registration and SMS
+support. If no modem is listed, resolve that before enabling real delivery;
+see [SMS host setup](TROUBLESHOOTING.md#sms-host-setup).
+
+The LabPulse container includes the modem command-line client, but relies on
+this host service to control the device. Keep `sms.dry_run: true` until you
+are ready to follow [Testing SMS](USER_GUIDE.md#testing-sms).
 
 ## Install LabPulse
 
@@ -265,6 +426,12 @@ containers use `mosquitto:1883`; keep that hostname in the live configuration.
 Once MQTT is connected, the LabPulse sensors and switches should appear
 automatically.
 
+Want to check the dashboard from home or your phone outside the lab network?
+We recommend **Home Assistant Cloud by Nabu Casa** as the convenient option.
+It's an optional paid subscription, configured in **Settings → Home Assistant
+Cloud**. Follow [Access from outside the lab](USER_GUIDE.md#access-from-outside-the-lab)
+once local access is working.
+
 ## Check the installation
 
 ```bash
@@ -295,6 +462,14 @@ calibration or that a text message reached a handset.
 
 Create a [backup](USER_GUIDE.md#backups-and-restoration) once everything is working. To
 stop a demonstration without deleting configuration or history, run `labpulse down`.
+
+On the new test Pi, also check startup after a full Pi reboot: with the stack
+running, run `sudo reboot`, reconnect, and repeat the checks above. Docker
+and the containers should start again without rerunning setup. Containers
+stopped with `labpulse down` need `labpulse up` to be created again. A hardware
+watchdog is an additional recovery feature for unattended use; its warning
+does not prevent a simulated walkthrough, and its setup is covered by the
+[watchdog guidance](TROUBLESHOOTING.md#host-clock-or-watchdog-warning).
 
 If you're using simulation, continue with
 [Your first look at LabPulse](FIRST_STEPS.md#find-your-way-around). It walks

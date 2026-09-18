@@ -86,7 +86,8 @@ void setup() {
 }
 
 void loop() {
-  // Non-blocking timing keeps the flow interrupts active between samples.
+  // Return until due, while interrupts keep counting pulses. Unsigned subtraction
+  // also handles millis() wrapping around, provided intervals stay within a wrap.
   const unsigned long now = millis();
   const unsigned long elapsedMilliseconds = now - lastSampleMilliseconds;
   if (elapsedMilliseconds < SAMPLE_INTERVAL_MS) {
@@ -94,6 +95,7 @@ void loop() {
   }
 
   lastSampleMilliseconds = now;
+  // Use actual elapsed time, not the nominal interval, for the flow conversion.
   emitSample(elapsedMilliseconds);
 }
 

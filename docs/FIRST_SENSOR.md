@@ -5,6 +5,10 @@ identify the board, give LabPulse a small configuration, and check the result
 on the dashboard. Start with [the simulated walkthrough](FIRST_STEPS.md) if you
 haven't used LabPulse before.
 
+Adding support for a different sensor to the open-source project? Follow
+[Contributing sensors](../CONTRIBUTING.md#contributing-sensors) for the firmware,
+driver, testing, and GitHub pull-request steps.
+
 You need a Pi with LabPulse installed and an Arduino with a working, correctly
 wired pressure sensor. This is the software setup, not a pressure-sensor wiring
 guide. Check [the hardware guide](HARDWARE.md) and your sensor's documentation

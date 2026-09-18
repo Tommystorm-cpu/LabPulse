@@ -7,6 +7,8 @@ namespace LabPulse {
 PipeSampleWriter::PipeSampleWriter(Print &output)
     : output_(output), firstValue_(true) {}
 
+// The overloads accept names held in flash (F("name")) or ordinary character
+// strings. Both write the same protocol; firstValue_ avoids a leading separator.
 void PipeSampleWriter::prefix(const __FlashStringHelper *name) {
   if (!firstValue_) {
     output_.print(F(" | "));
@@ -50,6 +52,8 @@ void PipeSampleWriter::value(
 }
 
 void PipeSampleWriter::end() {
+  // End this sample's line. Examples construct a fresh writer for each sample;
+  // end() does not reset firstValue_ for reuse.
   output_.println();
 }
 

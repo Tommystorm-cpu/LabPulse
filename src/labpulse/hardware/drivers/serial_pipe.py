@@ -37,7 +37,11 @@ class SerialPipeConfig(BaseModel):
 
 # Arduino samples use "name: value | name: value" on one serial line.
 def parse_serial_line(line: str) -> dict[str, float] | None:
-    """Return finite measurements from one pipe-delimited line."""
+    """Parse finite values with stripped, lowercase names; return None if empty.
+
+    Skip malformed/null fields. For duplicate names, the last valid value wins;
+    later invalid fields leave it intact. Units and configured names are not checked.
+    """
 
     measurements: dict[str, float] = {}
     for part in line.strip().split("|"):
@@ -95,7 +99,11 @@ class SerialPipeDriver(HardwareDriver):
         self.logger.info("Connected to %s at %s baud", self.port, self.baud_rate)
 
     def read(self) -> HardwareReadings | None:
-        """Read and parse one standard pipe-delimited serial line."""
+        """Read one line, waiting up to two seconds, and wrap its usable values.
+
+        Empty or invalid-only lines return None. Port/UTF-8 failures raise
+        ConnectionLost so the runner closes the handle and schedules reconnection.
+        """
 
         if self._serial_connection is None or self._serial_library is None:
             raise ConnectionLost(f"serial port is not open: {self.port}")

@@ -184,7 +184,11 @@ def parse_measurement_message(
 # The MQTT network loop receives messages on a background thread. The runner
 # reads the newest completed snapshot through the small lock below.
 class MqttJsonDriver(HardwareDriver):
-    """Receive complete JSON snapshots and expose selected numeric fields."""
+    """Pass the latest MQTT sample from Paho callbacks to the runner under a lock.
+
+    Pending data is one replaceable slot, not a queue. Nothing is persisted.
+    With heartbeat monitoring, reconnect needs fresh health evidence. See README.md.
+    """
 
     def __init__(self, service_name: str, config: MqttJsonConfig) -> None:
         """Store the MQTT source and configured raw-header mapping."""
@@ -242,7 +246,11 @@ class MqttJsonDriver(HardwareDriver):
         self.logger.info("Connecting to MQTT broker %s:%s for %s", self.broker, self.port, self.topic)
 
     def read(self) -> HardwareReadings | None:
-        """Return the newest snapshot once, or classify an MQTT stream failure."""
+        """Take and clear pending data under the lock without waiting for a message.
+
+        ConnectionLost takes priority over TransientReadError, then readings.
+        Return None if no sample or failure is pending.
+        """
 
         if self._client is None:
             raise ConnectionLost("MQTT input client is not running")

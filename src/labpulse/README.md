@@ -21,6 +21,44 @@ Docker containers.
 `__init__.py` exposes the installed version. Executable subpackages use
 `__main__.py` so Compose can run them with `python -m`.
 
+## Follow a command
+
+Start at [`control.main()`](control.py), which parses the command and selects
+its handler. Then choose the route you need:
+
+| Command | Functions to follow | What crosses the boundary |
+|---|---|---|
+| `setup` | `run_setup()` → [`installer.main()`](installer.py) → [bootstrap](../../deployment/README.md) | Command arguments become a Linux installation and generated files |
+| `config` | `run_config_editor()` → `select_config_sources()` → [guarded editor](../../deployment/README.md) | A disposable copy of the source bundle is edited and checked before installation |
+| `backup` | `run_backup_command()` → [`create_backup()`](backup.py) → `_assemble_snapshot()` | User-owned files become a checksum manifest and compressed archive |
+| `restore` | `run_restore_command()` → `inspect_backup()` → `restore_backup()` → `run_setup()` → `run_compose()` | Checked archive contents replace saved state, then regenerate the deployment |
+| `update` | `run_update_command()` → pipx → fresh `labpulse setup` → `run_compose()` | The new package generates and starts its matching deployment |
+| `doctor` | [`run_doctor()` → `diagnose()`](doctor.py) | Read-only checks become a report and shell exit status |
+
+Function names in a row belong to `control.py` unless linked elsewhere. The
+ordinary sensor path starts in the [hardware package](hardware/README.md);
+it doesn't call the host CLI on each reading.
+
+## What a failed command leaves behind
+
+`create_backup()` normally stops only running services, copies/checksums state,
+and restarts those services before compression. It also attempts restart after
+a copy failure. `quiesce=False` leaves stop/start to the caller. The finished
+archive is installed outside the live directory; `force=True` allows replacing
+an existing archive.
+
+`restore_backup()` only validates and restores files, with local rollback copies
+for replacement failures. The CLI adds service control and a pre-restore archive
+of existing user state. Restore or stack-start errors attempt rollback when that
+archive exists. The later Home Assistant readiness and doctor checks can return
+failure **after restoration has succeeded**; they leave the restored state in
+place. Rollback attempts can also fail, and the CLI reports that separately.
+
+Updates install the package first, run its new entry point for generation, then
+recreate containers. They do not automatically reinstall the old release on
+failure. Read the error's stage before assuming nothing changed. The
+[user guide](../../docs/USER_GUIDE.md) covers operator recovery.
+
 Each process loads the validated configuration independently and coordinates
 through MQTT rather than shared Python memory. The operator-owned source is
 `~/labpulse-live/config.yaml` plus referenced measurement files beneath
