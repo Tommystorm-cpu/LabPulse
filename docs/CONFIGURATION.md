@@ -115,9 +115,10 @@ create a second `services:` heading. A **complete example** contains everything
 needed for that example installation. Replacing a lab's existing file with one
 would also remove the lab's other settings.
 
-Open your settings with `labpulse config`. If the editor is nano, press
-**Ctrl+O**, then **Enter** to save, and **Ctrl+X** to exit. Other editors use
-their own save and exit controls. LabPulse then checks the files together. If
+Open your settings with `labpulse config`. With Micro, press **Ctrl+S** to save
+and **Ctrl+Q** to quit. The [installation guide](INSTALLATION.md#install-the-python-tools)
+explains how to install and select it. If the editor is nano, press **Ctrl+O**,
+then **Enter** to save, and **Ctrl+X** to exit. LabPulse then checks the files together. If
 it rejects a change, read the file and field it names, correct the mistake,
 and try again.
 

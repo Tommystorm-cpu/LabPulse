@@ -682,11 +682,96 @@ def test_uninstall_removes_compose_resources_directory_and_cache(
 def test_uninstall_keeps_files_when_docker_cleanup_fails(live_dir: Path) -> None:
     """Do not orphan a running stack by deleting its Compose project first."""
 
-    with patch.object(control, "run_compose", return_value=1):
+    with patch.object(control, "run_compose", return_value=1), patch.object(
+        control.shutil, "rmtree"
+    ) as remove, patch.object(control.subprocess, "run") as run:
         result = control.run_uninstall_command(live_dir, assume_yes=True)
 
     assert result == 1
     assert live_dir.is_dir()
+    remove.assert_not_called()
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize("sudo_status", [0, 1])
+def test_uninstall_retries_container_owned_files_with_sudo(
+    live_dir: Path, sudo_status: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Recover from protected container data without elevating the whole CLI."""
+
+    permission_error = PermissionError(13, "Permission denied", str(live_dir / "homeassistant"))
+    with patch.object(control, "run_compose", return_value=0) as compose, patch.object(
+        control.shutil, "rmtree", side_effect=permission_error
+    ), patch.object(control.shutil, "which", return_value="/usr/bin/sudo"), patch.object(
+        control.subprocess, "run", return_value=completed(["sudo"], sudo_status)
+    ) as run, patch.object(control, "update_check_cache_path") as cache:
+        result = control.run_uninstall_command(live_dir, assume_yes=True)
+
+    assert result == sudo_status
+    compose.assert_called_once_with(live_dir, ("down", "--remove-orphans", "--volumes"))
+    run.assert_called_once_with(
+        ["/usr/bin/sudo", "rm", "-rf", "--", str(live_dir)], check=False
+    )
+    if sudo_status:
+        cache.assert_not_called()
+        assert "Removed LabPulse deployment" not in capsys.readouterr().out
+    else:
+        cache.assert_called_once_with()
+
+
+@pytest.mark.parametrize("error", [PermissionError(13, "Permission denied"), OSError(5, "I/O error")])
+def test_uninstall_reports_cleanup_errors_without_available_elevation(
+    live_dir: Path, error: OSError, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Do not silently succeed or run another command when cleanup cannot finish."""
+
+    with patch.object(control, "run_compose", return_value=0), patch.object(
+        control.shutil, "rmtree", side_effect=error
+    ), patch.object(
+        control.shutil, "which", return_value=None if isinstance(error, PermissionError) else "/usr/bin/sudo"
+    ), patch.object(
+        control.subprocess, "run"
+    ) as run, patch.object(control, "update_check_cache_path") as cache:
+        result = control.run_uninstall_command(live_dir, assume_yes=True)
+
+    assert result == 1
+    run.assert_not_called()
+    cache.assert_not_called()
+    assert "ERROR:" in capsys.readouterr().err
+
+
+def test_uninstall_can_finish_a_partially_removed_installation(live_dir: Path) -> None:
+    """Retry protected leftovers even if the first cleanup deleted Compose."""
+
+    (live_dir / "compose.yaml").unlink()
+    with patch.object(control, "run_compose") as compose, patch.object(
+        control.shutil, "rmtree", side_effect=PermissionError(13, "Permission denied")
+    ), patch.object(control.shutil, "which", return_value="/usr/bin/sudo"), patch.object(
+        control.subprocess, "run", return_value=completed(["sudo"])
+    ) as run, patch.object(control, "update_check_cache_path"):
+        result = control.run_uninstall_command(live_dir, assume_yes=True)
+
+    assert result == 0
+    compose.assert_not_called()
+    run.assert_called_once_with(
+        ["/usr/bin/sudo", "rm", "-rf", "--", str(live_dir)], check=False
+    )
+
+
+@pytest.mark.parametrize("target", ["root", "home"])
+def test_uninstall_rejects_unsafe_paths_before_cleanup(target: str) -> None:
+    """Neither confirmation bypass nor elevated cleanup may delete root or home."""
+
+    path = Path(Path.home().anchor) if target == "root" else Path.home()
+    with patch.object(control, "run_compose") as compose, patch.object(
+        control.shutil, "rmtree"
+    ) as remove, patch.object(control.subprocess, "run") as run:
+        result = control.run_uninstall_command(path, assume_yes=True)
+
+    assert result == 2
+    compose.assert_not_called()
+    remove.assert_not_called()
+    run.assert_not_called()
 
 
 def test_restore_rebuilds_and_validates_the_installation(live_dir: Path) -> None:

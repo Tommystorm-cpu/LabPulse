@@ -184,11 +184,12 @@ OS packages, the LabPulse package, and container images.
 
 ### Install the Python tools
 
-Install Python, pipx, a text editor, and the download tools used below:
+Install Python, pipx, the [Micro text editor](https://github.com/micro-editor/micro),
+and the download tools used below:
 
 ```bash
 sudo apt update
-sudo apt install -y python3-full pipx nano ca-certificates curl
+sudo apt install -y python3-full pipx micro ca-certificates curl
 pipx ensurepath
 ```
 
@@ -196,6 +197,21 @@ Open a new terminal, or reconnect over SSH, if `pipx ensurepath` changes your
 PATH, the list of places your shell searches for commands. Check that
 `python3 --version` reports a supported Python version and `pipx --version`
 prints a version number.
+
+If the other tools are already installed, add Micro with `sudo apt install -y
+micro`. In Micro, use **Ctrl+S** to save and **Ctrl+Q** to quit.
+
+`labpulse config` automatically chooses Micro when available, unless `VISUAL`
+or `EDITOR` already selects another editor. To choose Micro explicitly for the
+current terminal session, run:
+
+```bash
+export VISUAL=micro
+export EDITOR=micro
+```
+
+To keep this preference in future Bash sessions, add those two lines to
+`~/.bashrc` using `micro ~/.bashrc`. Nano remains a supported fallback.
 
 ### Install Docker Engine and Compose
 

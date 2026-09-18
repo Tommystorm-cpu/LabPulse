@@ -279,6 +279,7 @@ def run_backup_command(live_dir: Path, output: Path, *, force: bool) -> int:
 def run_uninstall_command(live_dir: Path, *, assume_yes: bool) -> int:
     """Remove one LabPulse deployment and its Docker resources."""
 
+    live_dir = live_dir.resolve()
     if not live_dir.is_dir():
         print(f"ERROR: LabPulse is not installed at {live_dir}.", file=sys.stderr)
         return 2
@@ -305,7 +306,30 @@ def run_uninstall_command(live_dir: Path, *, assume_yes: bool) -> int:
             return result
 
     try:
-        shutil.rmtree(live_dir)
+        try:
+            shutil.rmtree(live_dir)
+        except PermissionError:
+            # Containers can create directories owned by root inside the bind
+            # mounts. Elevate only this already-confirmed deletion, not the CLI
+            # (which would change the user home and pipx command lookup).
+            sudo = shutil.which("sudo")
+            if sudo is None:
+                print("ERROR: Cleanup needs administrator access, but sudo is unavailable.", file=sys.stderr)
+                return 1
+            if live_dir.is_symlink() or live_dir.resolve() != live_dir:
+                print("ERROR: Installation path changed during cleanup; refusing elevated deletion.", file=sys.stderr)
+                return 1
+            print(f"Permission denied during cleanup; using sudo to remove {live_dir}.")
+            result = subprocess.run(
+                [sudo, "rm", "-rf", "--", str(live_dir)], check=False
+            ).returncode
+            if result != 0:
+                print(
+                    "ERROR: Elevated cleanup failed; the installation may be partially removed. "
+                    "Resolve sudo access and rerun the same uninstall command.",
+                    file=sys.stderr,
+                )
+                return result
     except OSError as error:
         print(f"ERROR: Could not remove LabPulse installation: {error}", file=sys.stderr)
         return 1

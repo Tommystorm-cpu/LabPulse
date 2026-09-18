@@ -695,6 +695,12 @@ including configuration, Home Assistant history and settings, MQTT state,
 logs, and any backups stored inside that directory. For a non-default path,
 put `--live-dir /path/to/installation` before `uninstall`.
 
+Run this as your usual Pi user. If container-created files require administrator
+access, LabPulse retries directory cleanup through `sudo`, which may ask for
+your Pi password. You do not need to run `sudo labpulse`. If elevated cleanup
+fails, the command reports failure; fix sudo access and rerun the same uninstall
+command to finish removing any remaining files.
+
 The pipx-installed command remains available. To remove that too, run this
 after removing the installation:
 
